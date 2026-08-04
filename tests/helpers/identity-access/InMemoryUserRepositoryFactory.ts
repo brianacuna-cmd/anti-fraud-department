@@ -1,6 +1,7 @@
 import type { User } from '../../../src/modules/identity-access/domain/model/aggregates/User.js';
 import type { UserRepositoryFactory } from '../../../src/modules/identity-access/domain/ports/UserRepositoryFactory.js';
 import type { OrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
+import type { Email } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 import { InMemoryUserRepository } from './InMemoryUserRepository.js';
 
 /**
@@ -15,5 +16,14 @@ export class InMemoryUserRepositoryFactory implements UserRepositoryFactory {
 
   forTenant(organizationId: OrganizationId): InMemoryUserRepository {
     return new InMemoryUserRepository(organizationId, this.byId);
+  }
+
+  async existsByEmailAcrossTenants(email: Email): Promise<boolean> {
+    for (const user of this.byId.values()) {
+      if ((user.email as string) === (email as string)) {
+        return true;
+      }
+    }
+    return false;
   }
 }
