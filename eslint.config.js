@@ -72,12 +72,7 @@ module.exports = [
                 ['domain', { module: '!${from.module}' }],
               ],
               message:
-                'domain must stay pure: no application, infrastructure, shared, or other modules\' domain.',
-            },
-            {
-              from: 'domain',
-              disallow: ['shared'],
-              message: 'domain must stay pure: no dependency on shared/.',
+                'domain must stay pure: no application, infrastructure, or other modules\' domain. shared/** is allowed (kernel, branded IDs, TenantContext).',
             },
             {
               from: 'application',
