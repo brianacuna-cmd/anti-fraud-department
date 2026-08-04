@@ -11,3 +11,6 @@ coverage/
 
 # Local tool caches (machine-specific absolute paths)
 .atl/
+
+# SDD planning artifacts live in Engram only, not in the repo
+openspec/
