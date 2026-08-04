@@ -1,4 +1,4 @@
-import type { Collection, Db } from 'mongodb';
+import type { ClientSession, Collection, Db } from 'mongodb';
 import { buildCursorPage } from '../../../../../../shared/http/pagination.js';
 import type { Organization } from '../../../../domain/model/aggregates/Organization.js';
 import type {
@@ -7,10 +7,16 @@ import type {
 } from '../../../../domain/ports/OrganizationRepository.js';
 import type { OrganizationId } from '../../../../domain/model/value-objects/OrganizationId.js';
 import type { Slug } from '../../../../domain/model/value-objects/Slug.js';
+import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
 import { organizationSlugTaken } from '../../../../domain/errors/IdentityAccessError.js';
 import type { OrganizationDocument } from './documents/OrganizationDocument.js';
 import { toDocument, toDomain } from './mappers/OrganizationDocumentMapper.js';
 import { extractDuplicateKeyIndexName } from './duplicateKey.js';
+
+/** Casts the opaque `Transaction` handle back to a real Mongo `ClientSession` (design D6). */
+function toSession(tx: Transaction | undefined): ClientSession | undefined {
+  return tx as unknown as ClientSession | undefined;
+}
 
 const COLLECTION_NAME = 'organizations';
 const SLUG_UNIQUE_INDEX_NAME = 'slug_unique';
@@ -26,10 +32,13 @@ export class MongoOrganizationRepository implements OrganizationRepository {
     this.collection = db.collection<OrganizationDocument>(COLLECTION_NAME);
   }
 
-  async save(organization: Organization): Promise<void> {
+  async save(organization: Organization, tx?: Transaction): Promise<void> {
     const document = toDocument(organization);
     try {
-      await this.collection.replaceOne({ _id: document._id }, document, { upsert: true });
+      await this.collection.replaceOne({ _id: document._id }, document, {
+        upsert: true,
+        session: toSession(tx),
+      });
     } catch (error) {
       if (extractDuplicateKeyIndexName(error) === SLUG_UNIQUE_INDEX_NAME) {
         throw organizationSlugTaken(organization.slug);
@@ -43,8 +52,8 @@ export class MongoOrganizationRepository implements OrganizationRepository {
     return document ? toDomain(document) : null;
   }
 
-  async findBySlug(slug: Slug): Promise<Organization | null> {
-    const document = await this.collection.findOne({ slug });
+  async findBySlug(slug: Slug, tx?: Transaction): Promise<Organization | null> {
+    const document = await this.collection.findOne({ slug }, { session: toSession(tx) });
     return document ? toDomain(document) : null;
   }
 
