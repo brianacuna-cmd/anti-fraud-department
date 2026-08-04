@@ -1,0 +1,37 @@
+schema: spec-driven
+
+context: |
+  Tech stack: TypeScript (strict), Node, Express 5, MongoDB driver 7, zod 4, Jest + ts-jest.
+  Architecture: modular monolith, hexagonal per module under src/modules/<module>/{domain,application,infrastructure}.
+    Boundaries enforced by eslint-plugin-boundaries; `max-depth: 1` override in domain/**; sonarjs enabled.
+    Normative docs: docs/ESTANDAR_INGENIERIA_DOMINIO.md, docs/ADDENDUM_ARQUITECTURA_DOMINIO.md,
+    docs/MODELO_DATOS_MONGO.md, docs/PRD_ANTIFRAUDE.md.
+  Testing: Jest, roots src/ + tests/. Strict TDD mode is ACTIVE (RED-GREEN-REFACTOR).
+  Style: guard clauses over nesting, DTO -> Mapper -> Domain, zod only in infrastructure mappers,
+    branded IDs via crypto.randomUUID(), immutable value objects, closed DomainError list per module.
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - State explicitly which product decisions are already fixed by the user
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Document architecture decisions with rationale
+    - Respect hexagonal boundaries; no cross-module domain imports
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    guidelines:
+      - Follow docs/ESTANDAR_INGENIERIA_DOMINIO.md and docs/ADDENDUM_ARQUITECTURA_DOMINIO.md
+      - Never use if/switch cascades for state transitions; use a transition lookup table
+    tdd: true
+    test_command: "npm test"
+  verify:
+    test_command: "npm test"
+    build_command: "npm run typecheck && npm run lint"
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas
