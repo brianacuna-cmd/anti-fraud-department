@@ -40,6 +40,22 @@ describe('Organization.create', () => {
       }),
     ).toThrow(IdentityAccessError);
   });
+
+  it.each(['domain', 'logoUrl'] as const)('rejects a blank %s as an invariant violation', (field) => {
+    expect(() =>
+      Organization.create({
+        id: createOrganizationId('org-1'),
+        name: 'Acme Corp',
+        slug: createSlug('acme-corp'),
+        [field]: '   ',
+        now: NOW,
+      }),
+    ).toThrow(IdentityAccessError);
+  });
+
+  it('allows domain/logoUrl to be omitted (null), only rejects present-but-blank', () => {
+    expect(() => buildOrganization()).not.toThrow();
+  });
 });
 
 describe('Organization.rehydrate', () => {
@@ -79,6 +95,12 @@ describe('Organization#patchIdentity', () => {
     const organization = buildOrganization();
 
     expect(() => organization.patchIdentity({ name: '' }, LATER)).toThrow(IdentityAccessError);
+  });
+
+  it.each(['domain', 'logoUrl'] as const)('rejects patching %s to a blank string', (field) => {
+    const organization = buildOrganization();
+
+    expect(() => organization.patchIdentity({ [field]: '  ' }, LATER)).toThrow(IdentityAccessError);
   });
 });
 

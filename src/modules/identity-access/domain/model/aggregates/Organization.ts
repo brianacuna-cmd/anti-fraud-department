@@ -44,6 +44,8 @@ export class Organization {
 
   static create(input: CreateOrganizationInput): Organization {
     assertNonEmptyName(input.name);
+    assertNotBlankIfPresent('domain', input.domain);
+    assertNotBlankIfPresent('logoUrl', input.logoUrl);
     return new Organization({
       id: input.id,
       name: input.name,
@@ -101,6 +103,8 @@ export class Organization {
   patchIdentity(input: PatchOrganizationIdentityInput, now: Instant): Organization {
     const name = input.name ?? this.props.name;
     assertNonEmptyName(name);
+    assertNotBlankIfPresent('domain', input.domain);
+    assertNotBlankIfPresent('logoUrl', input.logoUrl);
     return new Organization({
       ...this.props,
       name,
@@ -119,5 +123,12 @@ export class Organization {
 function assertNonEmptyName(name: string): void {
   if (name.trim().length === 0) {
     throw invariantViolation('Organization name must be a non-empty string', { name });
+  }
+}
+
+/** `domain`/`logoUrl` are optional (undefined/null are both valid "absent"), but when present must not be blank. */
+function assertNotBlankIfPresent(field: 'domain' | 'logoUrl', value: string | null | undefined): void {
+  if (value != null && value.trim().length === 0) {
+    throw invariantViolation(`Organization ${field} must not be blank when provided`, { field, value });
   }
 }
