@@ -1,0 +1,33 @@
+{
+  "name": "anti-fraud-department",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Anti-fraud department backend — TypeScript modular monolith.",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/main.ts",
+    "test": "jest",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "mongodb": "^7.5.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.1.2",
+    "@typescript-eslint/eslint-plugin": "^8.66.0",
+    "@typescript-eslint/parser": "^8.66.0",
+    "eslint": "^10.8.0",
+    "eslint-plugin-boundaries": "^7.1.0",
+    "eslint-plugin-sonarjs": "^4.2.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.12",
+    "tsx": "^4.23.5",
+    "typescript": "^6.0.3"
+  }
+}

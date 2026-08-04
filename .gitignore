@@ -1,0 +1,13 @@
+# Internal docs — never commit
+docs/
+
+# Node / TypeScript
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+*.log
+
+# Local tool caches (machine-specific absolute paths)
+.atl/
