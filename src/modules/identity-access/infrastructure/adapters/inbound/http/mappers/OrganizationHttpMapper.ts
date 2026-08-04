@@ -1,0 +1,38 @@
+import type { Organization } from '../../../../../domain/model/aggregates/Organization.js';
+import type { OrganizationListPage } from '../../../../../domain/ports/OrganizationRepository.js';
+
+export interface OrganizationResponseDto {
+  readonly id: string;
+  readonly name: string;
+  readonly slug: string;
+  readonly domain: string | null;
+  readonly status: string;
+  readonly logoUrl: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface OrganizationListResponseDto {
+  readonly items: readonly OrganizationResponseDto[];
+  readonly nextCursor: string | null;
+}
+
+export function toOrganizationResponse(organization: Organization): OrganizationResponseDto {
+  return {
+    id: organization.id,
+    name: organization.name,
+    slug: organization.slug,
+    domain: organization.domain,
+    status: organization.status,
+    logoUrl: organization.logoUrl,
+    createdAt: organization.createdAt,
+    updatedAt: organization.updatedAt,
+  };
+}
+
+export function toOrganizationListResponse(page: OrganizationListPage): OrganizationListResponseDto {
+  return {
+    items: page.items.map(toOrganizationResponse),
+    nextCursor: page.nextCursor,
+  };
+}
