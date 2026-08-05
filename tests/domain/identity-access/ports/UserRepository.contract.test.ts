@@ -76,7 +76,7 @@ describe('UserRepository (port contract, via InMemoryUserRepositoryFactory fake)
     const repository = factory.forTenant(ORG_1);
     await repository.save(buildUser('user-1'));
     const suspended = (await repository.findById(createUserId('user-1')))!.transitionTo(
-      'SUSPENDIDO',
+      'SUSPENDED',
       { isPlatformAdmin: true },
       NOW,
     );
@@ -84,7 +84,7 @@ describe('UserRepository (port contract, via InMemoryUserRepositoryFactory fake)
     await repository.save(suspended);
 
     const found = await repository.findById(createUserId('user-1'));
-    expect(found?.status).toBe('SUSPENDIDO');
+    expect(found?.status).toBe('SUSPENDED');
   });
 
   describe('list', () => {

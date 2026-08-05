@@ -24,10 +24,10 @@ function buildUser(): User {
 }
 
 describe('User.create', () => {
-  it('starts a new user ACTIVO with matching created/updated timestamps', () => {
+  it('starts a new user ACTIVE with matching created/updated timestamps', () => {
     const user = buildUser();
 
-    expect(user.status).toBe('ACTIVO');
+    expect(user.status).toBe('ACTIVE');
     expect(user.email).toBe('alice@example.com');
     expect(user.firstName).toBe('Alice');
     expect(user.lastName).toBe('Smith');
@@ -103,13 +103,13 @@ describe('User.rehydrate', () => {
       firstName: 'Alice',
       lastName: 'Smith',
       avatarUrl: 'https://example.com/a.png',
-      status: 'SUSPENDIDO',
+      status: 'SUSPENDED',
       isPlatformAdmin: false,
       createdAt: NOW,
       updatedAt: LATER,
     });
 
-    expect(user.status).toBe('SUSPENDIDO');
+    expect(user.status).toBe('SUSPENDED');
     expect(user.avatarUrl).toBe('https://example.com/a.png');
     expect(user.updatedAt).toBe(LATER);
   });
@@ -157,32 +157,32 @@ describe('User#transitionTo', () => {
   it('delegates to StatusTransitionPolicy and returns a new instance on a valid transition', () => {
     const user = buildUser();
 
-    const transitioned = user.transitionTo('SUSPENDIDO', createTransitionActor(false), LATER);
+    const transitioned = user.transitionTo('SUSPENDED', createTransitionActor(false), LATER);
 
     expect(transitioned).not.toBe(user);
-    expect(transitioned.status).toBe('SUSPENDIDO');
+    expect(transitioned.status).toBe('SUSPENDED');
     expect(transitioned.updatedAt).toBe(LATER);
-    expect(user.status).toBe('ACTIVO');
+    expect(user.status).toBe('ACTIVE');
   });
 
   it('rejects an invalid transition, leaving the original instance untouched', () => {
     const user = buildUser();
 
-    expect(() => user.transitionTo('ACTIVO', createTransitionActor(true), LATER)).toThrow(IdentityAccessError);
-    expect(user.status).toBe('ACTIVO');
+    expect(() => user.transitionTo('ACTIVE', createTransitionActor(true), LATER)).toThrow(IdentityAccessError);
+    expect(user.status).toBe('ACTIVE');
   });
 
-  it('rejects an org-admin self-reactivating a DESHABILITADO user in their own org', () => {
-    const user = buildUser().transitionTo('DESHABILITADO', createTransitionActor(true), LATER);
+  it('rejects an org-admin self-reactivating a DISABLED user in their own org', () => {
+    const user = buildUser().transitionTo('DISABLED', createTransitionActor(true), LATER);
 
-    expect(() => user.transitionTo('ACTIVO', createTransitionActor(false), LATER)).toThrow(IdentityAccessError);
+    expect(() => user.transitionTo('ACTIVE', createTransitionActor(false), LATER)).toThrow(IdentityAccessError);
   });
 
-  it('allows a platform-admin to reactivate a DESHABILITADO user', () => {
-    const user = buildUser().transitionTo('DESHABILITADO', createTransitionActor(true), LATER);
+  it('allows a platform-admin to reactivate a DISABLED user', () => {
+    const user = buildUser().transitionTo('DISABLED', createTransitionActor(true), LATER);
 
-    const reactivated = user.transitionTo('ACTIVO', createTransitionActor(true), LATER);
+    const reactivated = user.transitionTo('ACTIVE', createTransitionActor(true), LATER);
 
-    expect(reactivated.status).toBe('ACTIVO');
+    expect(reactivated.status).toBe('ACTIVE');
   });
 });

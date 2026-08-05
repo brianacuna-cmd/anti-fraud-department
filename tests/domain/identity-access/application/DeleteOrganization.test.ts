@@ -33,17 +33,17 @@ function buildUseCases(organizations: InMemoryOrganizationRepository) {
 }
 
 describe('createDeleteOrganizationUseCase', () => {
-  it('transitions the organization to DESHABILITADO', async () => {
+  it('transitions the organization to DISABLED', async () => {
     const organizations = new InMemoryOrganizationRepository();
     await seedOrganization(organizations);
     const { deleteOrganization } = buildUseCases(organizations);
 
     const organization = await deleteOrganization({ auth: PLATFORM_ADMIN, organizationId: 'org-1' });
 
-    expect(organization.status).toBe('DESHABILITADO');
+    expect(organization.status).toBe('DISABLED');
   });
 
-  it('produces the exact same result as calling transitionOrganizationStatus with next=DESHABILITADO', async () => {
+  it('produces the exact same result as calling transitionOrganizationStatus with next=DISABLED', async () => {
     const organizationsForDelete = new InMemoryOrganizationRepository();
     await seedOrganization(organizationsForDelete, 'org-1');
     const organizationsForTransition = new InMemoryOrganizationRepository();
@@ -55,14 +55,14 @@ describe('createDeleteOrganizationUseCase', () => {
     const viaTransition = await transitionOrganizationStatus({
       auth: PLATFORM_ADMIN,
       organizationId: 'org-1',
-      next: 'DESHABILITADO',
+      next: 'DISABLED',
     });
 
     expect(viaDelete.status).toBe(viaTransition.status);
     expect(viaDelete.updatedAt).toBe(viaTransition.updatedAt);
   });
 
-  it('fails identically to /transition when the organization is already DESHABILITADO', async () => {
+  it('fails identically to /transition when the organization is already DISABLED', async () => {
     const organizations = new InMemoryOrganizationRepository();
     await seedOrganization(organizations);
     const { deleteOrganization } = buildUseCases(organizations);

@@ -27,7 +27,7 @@ function buildUseCase() {
 }
 
 describe('createCreateOrganizationUseCase', () => {
-  it('creates and persists a new ACTIVO organization for a platform-admin', async () => {
+  it('creates and persists a new ACTIVE organization for a platform-admin', async () => {
     const { createOrganization, organizations } = buildUseCase();
 
     const organization = await createOrganization({
@@ -36,7 +36,7 @@ describe('createCreateOrganizationUseCase', () => {
       slug: 'acme-corp',
     });
 
-    expect(organization.status).toBe('ACTIVO');
+    expect(organization.status).toBe('ACTIVE');
     expect(organization.slug).toBe('acme-corp');
     const persisted = await organizations.findBySlug(createSlug('acme-corp'));
     expect(persisted?.name).toBe('Acme Corp');

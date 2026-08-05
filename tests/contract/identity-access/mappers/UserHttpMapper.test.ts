@@ -36,7 +36,7 @@ describe('toUserResponse', () => {
       firstName: 'First',
       lastName: 'Last',
       avatarUrl: null,
-      status: 'ACTIVO',
+      status: 'ACTIVE',
       isPlatformAdmin: false,
       createdAt: NOW,
       updatedAt: NOW,

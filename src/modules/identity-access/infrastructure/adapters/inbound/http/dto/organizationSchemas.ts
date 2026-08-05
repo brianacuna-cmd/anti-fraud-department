@@ -37,7 +37,7 @@ export type PatchOrganizationBody = z.infer<typeof patchOrganizationSchema>;
 
 /** POST /organizations/:id/transition body. */
 export const transitionOrganizationSchema = z.object({
-  next: z.enum(['ACTIVO', 'INACTIVO', 'SUSPENDIDO', 'DESHABILITADO']),
+  next: z.enum(['ACTIVE', 'INACTIVE', 'SUSPENDED', 'DISABLED']),
 });
 
 export type TransitionOrganizationBody = z.infer<typeof transitionOrganizationSchema>;

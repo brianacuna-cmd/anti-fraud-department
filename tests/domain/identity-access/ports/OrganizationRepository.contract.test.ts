@@ -58,7 +58,7 @@ describe('OrganizationRepository (port contract, via InMemoryOrganizationReposit
     const repository = new InMemoryOrganizationRepository();
     await repository.save(buildOrganization('org-1', 'acme'));
     const suspended = (await repository.findById(createOrganizationId('org-1')))!.transitionTo(
-      'SUSPENDIDO',
+      'SUSPENDED',
       { isPlatformAdmin: true },
       NOW,
     );
@@ -66,7 +66,7 @@ describe('OrganizationRepository (port contract, via InMemoryOrganizationReposit
     await repository.save(suspended);
 
     const found = await repository.findById(createOrganizationId('org-1'));
-    expect(found?.status).toBe('SUSPENDIDO');
+    expect(found?.status).toBe('SUSPENDED');
   });
 
   describe('list', () => {

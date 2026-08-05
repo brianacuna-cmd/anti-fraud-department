@@ -28,7 +28,7 @@ function buildUseCase() {
 }
 
 describe('createCreateUserUseCase', () => {
-  it('creates and persists a new ACTIVO user scoped to the caller\'s organization', async () => {
+  it('creates and persists a new ACTIVE user scoped to the caller\'s organization', async () => {
     const { createUser, userRepositoryFactory, passwordHasher } = buildUseCase();
 
     const user = await createUser({
@@ -39,7 +39,7 @@ describe('createCreateUserUseCase', () => {
       lastName: 'Smith',
     });
 
-    expect(user.status).toBe('ACTIVO');
+    expect(user.status).toBe('ACTIVE');
     expect(user.email).toBe('alice@example.com');
     expect(user.credential.passwordHash).toBe('hashed:super-secret');
     expect(passwordHasher.hashCallCount).toBe(1);

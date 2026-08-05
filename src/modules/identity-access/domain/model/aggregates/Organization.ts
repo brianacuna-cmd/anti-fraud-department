@@ -51,7 +51,7 @@ export class Organization {
       name: input.name,
       slug: input.slug,
       domain: input.domain ?? null,
-      status: 'ACTIVO',
+      status: 'ACTIVE',
       logoUrl: input.logoUrl ?? null,
       createdAt: input.now,
       updatedAt: input.now,

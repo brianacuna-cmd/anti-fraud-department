@@ -13,11 +13,11 @@ export interface DeleteUserDeps {
 
 /**
  * HTTP sugar (user-lifecycle spec: "Soft Delete as Status Transition").
- * Calls the exact same use case as `/transition` with `next=DESHABILITADO` —
+ * Calls the exact same use case as `/transition` with `next=DISABLED` —
  * never a parallel implementation.
  */
 export function createDeleteUserUseCase(deps: DeleteUserDeps) {
   return async function deleteUser(input: DeleteUserInput): Promise<User> {
-    return deps.transitionUserStatus({ auth: input.auth, userId: input.userId, next: 'DESHABILITADO' });
+    return deps.transitionUserStatus({ auth: input.auth, userId: input.userId, next: 'DISABLED' });
   };
 }

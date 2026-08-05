@@ -61,14 +61,14 @@ describe('patchOrganizationSchema (allow-list)', () => {
   });
 
   it('rejects a payload attempting to set an unknown field', () => {
-    const result = patchOrganizationSchema.safeParse({ status: 'ACTIVO' });
+    const result = patchOrganizationSchema.safeParse({ status: 'ACTIVE' });
 
     expect(result.success).toBe(false);
   });
 });
 
 describe('transitionOrganizationSchema', () => {
-  it.each(['ACTIVO', 'INACTIVO', 'SUSPENDIDO', 'DESHABILITADO'])('accepts the valid status %s', (next) => {
+  it.each(['ACTIVE', 'INACTIVE', 'SUSPENDED', 'DISABLED'])('accepts the valid status %s', (next) => {
     const result = transitionOrganizationSchema.safeParse({ next });
 
     expect(result.success).toBe(true);

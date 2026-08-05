@@ -62,7 +62,7 @@ export class User {
       firstName: input.firstName,
       lastName: input.lastName,
       avatarUrl: input.avatarUrl ?? null,
-      status: 'ACTIVO',
+      status: 'ACTIVE',
       isPlatformAdmin: input.isPlatformAdmin ?? false,
       createdAt: input.now,
       updatedAt: input.now,

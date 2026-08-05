@@ -40,17 +40,17 @@ function buildUseCases(userRepositoryFactory: InMemoryUserRepositoryFactory) {
 }
 
 describe('createDeleteUserUseCase', () => {
-  it('transitions the user to DESHABILITADO', async () => {
+  it('transitions the user to DISABLED', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
     await seedUser(userRepositoryFactory);
     const { deleteUser } = buildUseCases(userRepositoryFactory);
 
     const user = await deleteUser({ auth: ORG_ADMIN, userId: 'user-1' });
 
-    expect(user.status).toBe('DESHABILITADO');
+    expect(user.status).toBe('DISABLED');
   });
 
-  it('produces the exact same result as calling transitionUserStatus with next=DESHABILITADO', async () => {
+  it('produces the exact same result as calling transitionUserStatus with next=DISABLED', async () => {
     const factoryForDelete = new InMemoryUserRepositoryFactory();
     await seedUser(factoryForDelete);
     const factoryForTransition = new InMemoryUserRepositoryFactory();
@@ -59,13 +59,13 @@ describe('createDeleteUserUseCase', () => {
     const { transitionUserStatus } = buildUseCases(factoryForTransition);
 
     const viaDelete = await deleteUser({ auth: ORG_ADMIN, userId: 'user-1' });
-    const viaTransition = await transitionUserStatus({ auth: ORG_ADMIN, userId: 'user-1', next: 'DESHABILITADO' });
+    const viaTransition = await transitionUserStatus({ auth: ORG_ADMIN, userId: 'user-1', next: 'DISABLED' });
 
     expect(viaDelete.status).toBe(viaTransition.status);
     expect(viaDelete.updatedAt).toBe(viaTransition.updatedAt);
   });
 
-  it('fails identically to /transition when the user is already DESHABILITADO', async () => {
+  it('fails identically to /transition when the user is already DISABLED', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
     await seedUser(userRepositoryFactory);
     const { deleteUser } = buildUseCases(userRepositoryFactory);

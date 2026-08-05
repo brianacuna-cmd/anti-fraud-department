@@ -14,7 +14,7 @@ export interface DeleteOrganizationDeps {
 /**
  * HTTP sugar (organization-lifecycle spec: "Soft Delete as Status
  * Transition"). Calls the exact same use case as `/transition` with
- * `next=DESHABILITADO` — never a parallel implementation, so results and
+ * `next=DISABLED` — never a parallel implementation, so results and
  * errors are byte-for-byte identical by construction.
  */
 export function createDeleteOrganizationUseCase(deps: DeleteOrganizationDeps) {
@@ -22,7 +22,7 @@ export function createDeleteOrganizationUseCase(deps: DeleteOrganizationDeps) {
     return deps.transitionOrganizationStatus({
       auth: input.auth,
       organizationId: input.organizationId,
-      next: 'DESHABILITADO',
+      next: 'DISABLED',
     });
   };
 }

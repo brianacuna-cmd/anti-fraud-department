@@ -24,7 +24,7 @@ describe('toOrganizationResponse', () => {
       name: 'Org org-1',
       slug: 'acme',
       domain: null,
-      status: 'ACTIVO',
+      status: 'ACTIVE',
       logoUrl: null,
       createdAt: NOW,
       updatedAt: NOW,

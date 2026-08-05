@@ -91,7 +91,7 @@ describe('organizationRouter (e2e, in-memory repository)', () => {
       .send({ name: 'Acme Corp', slug: 'acme-corp', ...ADMIN_BOOTSTRAP_FIELDS });
 
     expect(response.status).toBe(201);
-    expect(response.body).toMatchObject({ name: 'Acme Corp', slug: 'acme-corp', status: 'ACTIVO' });
+    expect(response.body).toMatchObject({ name: 'Acme Corp', slug: 'acme-corp', status: 'ACTIVE' });
     const adminUser = await userRepositoryFactory
       .forTenant(createOrganizationId(response.body.id))
       .findByEmail(createEmail('admin@acme.com'));
@@ -175,10 +175,10 @@ describe('organizationRouter (e2e, in-memory repository)', () => {
 
     const response = await request(app)
       .post(`/api/v1/organizations/${created.body.id}/transition`)
-      .send({ next: 'SUSPENDIDO' });
+      .send({ next: 'SUSPENDED' });
 
     expect(response.status).toBe(200);
-    expect(response.body.status).toBe('SUSPENDIDO');
+    expect(response.body.status).toBe('SUSPENDED');
   });
 
   it('POST /organizations/:id/transition rejects an invalid transition with 422', async () => {
@@ -189,13 +189,13 @@ describe('organizationRouter (e2e, in-memory repository)', () => {
 
     const response = await request(app)
       .post(`/api/v1/organizations/${created.body.id}/transition`)
-      .send({ next: 'ACTIVO' });
+      .send({ next: 'ACTIVE' });
 
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe('INVALID_TRANSITION');
   });
 
-  it('DELETE /organizations/:id behaves identically to transition to DESHABILITADO', async () => {
+  it('DELETE /organizations/:id behaves identically to transition to DISABLED', async () => {
     const { app } = buildApp(() => PLATFORM_ADMIN);
     const created = await request(app)
       .post('/api/v1/organizations')
@@ -204,7 +204,7 @@ describe('organizationRouter (e2e, in-memory repository)', () => {
     const response = await request(app).delete(`/api/v1/organizations/${created.body.id}`);
 
     expect(response.status).toBe(200);
-    expect(response.body.status).toBe('DESHABILITADO');
+    expect(response.body.status).toBe('DISABLED');
   });
 
   it('GET /organizations/unknown-route-suffix returns a plain 404 (no router claims it)', async () => {

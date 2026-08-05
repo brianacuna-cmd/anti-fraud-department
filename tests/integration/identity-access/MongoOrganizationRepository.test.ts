@@ -10,6 +10,7 @@ import { createOrganizationId } from '../../../src/modules/identity-access/domai
 import { createSlug } from '../../../src/modules/identity-access/domain/model/value-objects/Slug.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import { IdentityAccessError } from '../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
+import type { OrganizationDocument } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/documents/OrganizationDocument.js';
 
 jest.setTimeout(120_000);
 
@@ -53,7 +54,7 @@ describe('MongoOrganizationRepository (integration, real replica-set Mongo)', ()
 
     expect(found?.name).toBe('Org org-1');
     expect(found?.slug).toBe('acme');
-    expect(found?.status).toBe('ACTIVO');
+    expect(found?.status).toBe('ACTIVE');
   });
 
   it('retrieves an organization by slug', async () => {
@@ -119,5 +120,28 @@ describe('MongoOrganizationRepository (integration, real replica-set Mongo)', ()
     });
 
     expect(foundWithinTransaction?.id).toBe('org-tx-2');
+  });
+
+  /**
+   * Regression guard for design decision A1: `_id` MUST stay lowercase, the
+   * single documented exception to the otherwise-PascalCase persistence
+   * shape. A stray `_Id` field would get a shadow driver-generated
+   * `ObjectId` instead of reusing the branded `OrganizationId`, silently
+   * breaking `findOne({_id})`/`{_id:{$gt:cursor}}` paging/`replaceOne`
+   * upserts. This test reads the RAW document directly (bypassing the
+   * mapper) so it fails if a later phase ever renames `_id` to `_Id`.
+   * Re-run this exact assertion after every later PR in this change.
+   */
+  it('round-trips the raw document by _id (design A1 regression guard)', async () => {
+    await repository.save(buildOrganization('org-id-guard', 'id-guard'));
+
+    const rawDocument = await db
+      .collection<OrganizationDocument>('organizations')
+      .findOne({ _id: 'org-id-guard' });
+
+    expect(rawDocument).not.toBeNull();
+    expect(rawDocument?._id).toBe('org-id-guard');
+    expect(typeof rawDocument?._id).toBe('string');
+    expect(rawDocument).not.toHaveProperty('_Id');
   });
 });
