@@ -4,6 +4,7 @@ import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
 import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
 import { MongoOrganizationRepository } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/MongoOrganizationRepository.js';
+import { MongoUnitOfWork } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { Organization } from '../../../src/modules/identity-access/domain/model/aggregates/Organization.js';
 import { createOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createSlug } from '../../../src/modules/identity-access/domain/model/value-objects/Slug.js';
@@ -93,5 +94,30 @@ describe('MongoOrganizationRepository (integration, real replica-set Mongo)', ()
     const secondPage = await repository.list(2, firstPage.nextCursor!);
     expect(secondPage.items.map((organization) => organization.id)).toEqual(['org-3']);
     expect(secondPage.nextCursor).toBeNull();
+  });
+
+  it('participates in a given transaction: save() is rolled back when the transaction aborts', async () => {
+    const unitOfWork = new MongoUnitOfWork(client);
+
+    await expect(
+      unitOfWork.withTransaction(async (tx) => {
+        await repository.save(buildOrganization('org-tx', 'tx-org'), tx);
+        throw new Error('boom');
+      }),
+    ).rejects.toThrow('boom');
+
+    const found = await repository.findById(createOrganizationId('org-tx'));
+    expect(found).toBeNull();
+  });
+
+  it('findBySlug() participates in a given transaction and sees prior writes made in it', async () => {
+    const unitOfWork = new MongoUnitOfWork(client);
+
+    const foundWithinTransaction = await unitOfWork.withTransaction(async (tx) => {
+      await repository.save(buildOrganization('org-tx-2', 'tx-org-2'), tx);
+      return repository.findBySlug(createSlug('tx-org-2'), tx);
+    });
+
+    expect(foundWithinTransaction?.id).toBe('org-tx-2');
   });
 });

@@ -4,21 +4,34 @@ import {
   transitionOrganizationSchema,
 } from '../../../../src/modules/identity-access/infrastructure/adapters/inbound/http/dto/organizationSchemas.js';
 
+const VALID_ADMIN_FIELDS = {
+  adminEmail: 'admin@acme.com',
+  adminPassword: 'super-secret',
+  adminFirstName: 'Root',
+  adminLastName: 'Admin',
+};
+
 describe('createOrganizationSchema', () => {
-  it('accepts a valid payload with name and slug', () => {
-    const result = createOrganizationSchema.safeParse({ name: 'Acme', slug: 'acme' });
+  it('accepts a valid payload with name, slug, and admin bootstrap fields (Atomic Organization Bootstrap)', () => {
+    const result = createOrganizationSchema.safeParse({ name: 'Acme', slug: 'acme', ...VALID_ADMIN_FIELDS });
 
     expect(result.success).toBe(true);
   });
 
   it('rejects a payload missing the required slug', () => {
-    const result = createOrganizationSchema.safeParse({ name: 'Acme' });
+    const result = createOrganizationSchema.safeParse({ name: 'Acme', ...VALID_ADMIN_FIELDS });
 
     expect(result.success).toBe(false);
   });
 
   it('rejects an empty name', () => {
-    const result = createOrganizationSchema.safeParse({ name: '', slug: 'acme' });
+    const result = createOrganizationSchema.safeParse({ name: '', slug: 'acme', ...VALID_ADMIN_FIELDS });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a payload missing the required admin bootstrap fields', () => {
+    const result = createOrganizationSchema.safeParse({ name: 'Acme', slug: 'acme' });
 
     expect(result.success).toBe(false);
   });
