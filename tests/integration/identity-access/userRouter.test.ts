@@ -22,8 +22,10 @@ const ORG_1_USER = createAuthContext({ userId: 'u1', organizationId: 'org-1', is
 const ORG_2_USER = createAuthContext({ userId: 'u2', organizationId: 'org-2', isPlatformAdmin: false });
 const PLATFORM_ADMIN_ORG_1 = createAuthContext({ userId: 'u3', organizationId: 'org-1', isPlatformAdmin: true });
 
-function buildApp(actorPerRequest: () => AuthContext): { app: Express; userRepositoryFactory: InMemoryUserRepositoryFactory } {
-  const userRepositoryFactory = new InMemoryUserRepositoryFactory();
+function buildApp(
+  actorPerRequest: () => AuthContext,
+  userRepositoryFactory: InMemoryUserRepositoryFactory = new InMemoryUserRepositoryFactory(),
+): { app: Express; userRepositoryFactory: InMemoryUserRepositoryFactory } {
   const unitOfWork = new InMemoryUnitOfWork();
   const passwordHasher = new FakePasswordHasher();
   const clock = new SystemClock();
@@ -182,18 +184,23 @@ describe('userRouter (e2e, in-memory repository)', () => {
     expect(response.body.status).toBe('DESHABILITADO');
   });
 
-  it('a platform-admin from another organization cannot read a user via these routes (platform-admin flag does not bypass tenant scoping)', async () => {
-    const { app: org1App } = buildApp(() => ORG_1_USER);
+  it('a platform-admin shares the ordinary tenant-scoped path — no special cross-tenant bypass exists', async () => {
+    const sharedFactory = new InMemoryUserRepositoryFactory();
+    const { app: org1App } = buildApp(() => ORG_1_USER, sharedFactory);
     const created = await request(org1App)
       .post('/api/v1/users')
       .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith' });
 
-    const { app: platformAdminOrg1App } = buildApp(() => PLATFORM_ADMIN_ORG_1);
-    // Platform-admin here shares org-1, included only to prove no special bypass logic exists
-    // for isPlatformAdmin on these routes at all — a same-org platform-admin still just reads
-    // their own org's data via the ordinary tenant-scoped path.
+    const { app: platformAdminOrg1App } = buildApp(() => PLATFORM_ADMIN_ORG_1, sharedFactory);
     const sameOrgResponse = await request(platformAdminOrg1App).get(`/api/v1/users/${created.body.id}`);
     expect(sameOrgResponse.status).toBe(200);
+
+    const { app: platformAdminOrg2App } = buildApp(
+      () => createAuthContext({ userId: 'u4', organizationId: 'org-2', isPlatformAdmin: true }),
+      sharedFactory,
+    );
+    const crossOrgResponse = await request(platformAdminOrg2App).get(`/api/v1/users/${created.body.id}`);
+    expect(crossOrgResponse.status).toBe(404);
   });
 
   it('GET /users/unknown-route-suffix returns a plain 404 (no router claims it)', async () => {
