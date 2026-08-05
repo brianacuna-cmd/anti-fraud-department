@@ -8,21 +8,38 @@ import { SystemClock } from '../../../src/shared/time/SystemClock.js';
 import { identityAccessErrorStatus } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/errorStatus.js';
 import { organizationRouter } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/organizationRouter.js';
 import { InMemoryOrganizationRepository } from '../../helpers/identity-access/InMemoryOrganizationRepository.js';
+import { InMemoryUserRepositoryFactory } from '../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
 import { InMemoryUnitOfWork } from '../../helpers/identity-access/InMemoryUnitOfWork.js';
-import { createCreateOrganizationUseCase } from '../../../src/modules/identity-access/application/CreateOrganization.js';
+import { FakePasswordHasher } from '../../helpers/identity-access/FakePasswordHasher.js';
 import { createGetOrganizationUseCase } from '../../../src/modules/identity-access/application/GetOrganization.js';
 import { createListOrganizationsUseCase } from '../../../src/modules/identity-access/application/ListOrganizations.js';
 import { createPatchOrganizationIdentityUseCase } from '../../../src/modules/identity-access/application/PatchOrganizationIdentity.js';
 import { createTransitionOrganizationStatusUseCase } from '../../../src/modules/identity-access/application/TransitionOrganizationStatus.js';
 import { createDeleteOrganizationUseCase } from '../../../src/modules/identity-access/application/DeleteOrganization.js';
-import { generateOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
+import { createCreateOrganizationWithAdminUseCase } from '../../../src/modules/identity-access/application/CreateOrganizationWithAdmin.js';
+import { generateOrganizationId, createOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
+import { generateUserId } from '../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
+import { createEmail } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 
 const PLATFORM_ADMIN = createAuthContext({ userId: 'admin-1', organizationId: 'o0', isPlatformAdmin: true });
 const REGULAR_USER = createAuthContext({ userId: 'user-1', organizationId: 'o1', isPlatformAdmin: false });
 
-function buildApp(actorPerRequest: () => AuthContext): { app: Express; organizations: InMemoryOrganizationRepository } {
+const ADMIN_BOOTSTRAP_FIELDS = {
+  adminEmail: 'admin@acme.com',
+  adminPassword: 'super-secret',
+  adminFirstName: 'Root',
+  adminLastName: 'Admin',
+};
+
+function buildApp(actorPerRequest: () => AuthContext): {
+  app: Express;
+  organizations: InMemoryOrganizationRepository;
+  userRepositoryFactory: InMemoryUserRepositoryFactory;
+} {
   const organizations = new InMemoryOrganizationRepository();
+  const userRepositoryFactory = new InMemoryUserRepositoryFactory();
   const unitOfWork = new InMemoryUnitOfWork();
+  const passwordHasher = new FakePasswordHasher();
   const clock = new SystemClock();
 
   const transitionOrganizationStatus = createTransitionOrganizationStatusUseCase({
@@ -32,7 +49,15 @@ function buildApp(actorPerRequest: () => AuthContext): { app: Express; organizat
   });
 
   const router = organizationRouter({
-    createOrganization: createCreateOrganizationUseCase({ organizations, clock, generateId: generateOrganizationId }),
+    createOrganizationWithAdmin: createCreateOrganizationWithAdminUseCase({
+      organizations,
+      userRepositoryFactory,
+      passwordHasher,
+      unitOfWork,
+      clock,
+      generateOrganizationId,
+      generateUserId,
+    }),
     getOrganization: createGetOrganizationUseCase({ organizations }),
     listOrganizations: createListOrganizationsUseCase({ organizations }),
     patchOrganizationIdentity: createPatchOrganizationIdentityUseCase({ organizations, clock }),
@@ -54,19 +79,23 @@ function buildApp(actorPerRequest: () => AuthContext): { app: Express; organizat
     errorHandler: createErrorHandler(identityAccessErrorStatus),
   });
 
-  return { app, organizations };
+  return { app, organizations, userRepositoryFactory };
 }
 
 describe('organizationRouter (e2e, in-memory repository)', () => {
-  it('POST /organizations creates an organization for a platform-admin', async () => {
-    const { app } = buildApp(() => PLATFORM_ADMIN);
+  it('POST /organizations atomically creates an organization AND its first admin user for a platform-admin', async () => {
+    const { app, userRepositoryFactory } = buildApp(() => PLATFORM_ADMIN);
 
     const response = await request(app)
       .post('/api/v1/organizations')
-      .send({ name: 'Acme Corp', slug: 'acme-corp' });
+      .send({ name: 'Acme Corp', slug: 'acme-corp', ...ADMIN_BOOTSTRAP_FIELDS });
 
     expect(response.status).toBe(201);
     expect(response.body).toMatchObject({ name: 'Acme Corp', slug: 'acme-corp', status: 'ACTIVO' });
+    const adminUser = await userRepositoryFactory
+      .forTenant(createOrganizationId(response.body.id))
+      .findByEmail(createEmail('admin@acme.com'));
+    expect(adminUser?.firstName).toBe('Root');
   });
 
   it('rejects a non-platform-admin on every organizations route with FORBIDDEN_CROSS_TENANT', async () => {
@@ -74,7 +103,7 @@ describe('organizationRouter (e2e, in-memory repository)', () => {
 
     const response = await request(app)
       .post('/api/v1/organizations')
-      .send({ name: 'Acme Corp', slug: 'acme-corp' });
+      .send({ name: 'Acme Corp', slug: 'acme-corp', ...ADMIN_BOOTSTRAP_FIELDS });
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe('FORBIDDEN_CROSS_TENANT');
@@ -91,8 +120,12 @@ describe('organizationRouter (e2e, in-memory repository)', () => {
 
   it('GET /organizations paginates with a cursor', async () => {
     const { app } = buildApp(() => PLATFORM_ADMIN);
-    await request(app).post('/api/v1/organizations').send({ name: 'Acme', slug: 'acme' });
-    await request(app).post('/api/v1/organizations').send({ name: 'Globex', slug: 'globex' });
+    await request(app)
+      .post('/api/v1/organizations')
+      .send({ name: 'Acme', slug: 'acme', ...ADMIN_BOOTSTRAP_FIELDS, adminEmail: 'admin1@acme.com' });
+    await request(app)
+      .post('/api/v1/organizations')
+      .send({ name: 'Globex', slug: 'globex', ...ADMIN_BOOTSTRAP_FIELDS, adminEmail: 'admin2@globex.com' });
 
     const firstPage = await request(app).get('/api/v1/organizations?limit=1');
 
@@ -107,7 +140,9 @@ describe('organizationRouter (e2e, in-memory repository)', () => {
 
   it('PATCH /organizations/:id updates name/logoUrl and leaves slug unchanged', async () => {
     const { app } = buildApp(() => PLATFORM_ADMIN);
-    const created = await request(app).post('/api/v1/organizations').send({ name: 'Acme', slug: 'acme' });
+    const created = await request(app)
+      .post('/api/v1/organizations')
+      .send({ name: 'Acme', slug: 'acme', ...ADMIN_BOOTSTRAP_FIELDS });
 
     const response = await request(app)
       .patch(`/api/v1/organizations/${created.body.id}`)
@@ -120,7 +155,9 @@ describe('organizationRouter (e2e, in-memory repository)', () => {
 
   it('PATCH /organizations/:id rejects an attempt to change slug', async () => {
     const { app } = buildApp(() => PLATFORM_ADMIN);
-    const created = await request(app).post('/api/v1/organizations').send({ name: 'Acme', slug: 'acme' });
+    const created = await request(app)
+      .post('/api/v1/organizations')
+      .send({ name: 'Acme', slug: 'acme', ...ADMIN_BOOTSTRAP_FIELDS });
 
     const response = await request(app)
       .patch(`/api/v1/organizations/${created.body.id}`)
@@ -132,7 +169,9 @@ describe('organizationRouter (e2e, in-memory repository)', () => {
 
   it('POST /organizations/:id/transition changes status on a valid transition', async () => {
     const { app } = buildApp(() => PLATFORM_ADMIN);
-    const created = await request(app).post('/api/v1/organizations').send({ name: 'Acme', slug: 'acme' });
+    const created = await request(app)
+      .post('/api/v1/organizations')
+      .send({ name: 'Acme', slug: 'acme', ...ADMIN_BOOTSTRAP_FIELDS });
 
     const response = await request(app)
       .post(`/api/v1/organizations/${created.body.id}/transition`)
@@ -144,7 +183,9 @@ describe('organizationRouter (e2e, in-memory repository)', () => {
 
   it('POST /organizations/:id/transition rejects an invalid transition with 422', async () => {
     const { app } = buildApp(() => PLATFORM_ADMIN);
-    const created = await request(app).post('/api/v1/organizations').send({ name: 'Acme', slug: 'acme' });
+    const created = await request(app)
+      .post('/api/v1/organizations')
+      .send({ name: 'Acme', slug: 'acme', ...ADMIN_BOOTSTRAP_FIELDS });
 
     const response = await request(app)
       .post(`/api/v1/organizations/${created.body.id}/transition`)
@@ -156,7 +197,9 @@ describe('organizationRouter (e2e, in-memory repository)', () => {
 
   it('DELETE /organizations/:id behaves identically to transition to DESHABILITADO', async () => {
     const { app } = buildApp(() => PLATFORM_ADMIN);
-    const created = await request(app).post('/api/v1/organizations').send({ name: 'Acme', slug: 'acme' });
+    const created = await request(app)
+      .post('/api/v1/organizations')
+      .send({ name: 'Acme', slug: 'acme', ...ADMIN_BOOTSTRAP_FIELDS });
 
     const response = await request(app).delete(`/api/v1/organizations/${created.body.id}`);
 

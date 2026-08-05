@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { parsePaginationParams } from '../../../../../../shared/http/pagination.js';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
-import type { createCreateOrganizationUseCase } from '../../../../application/CreateOrganization.js';
+import type { createCreateOrganizationWithAdminUseCase } from '../../../../application/CreateOrganizationWithAdmin.js';
 import type { createGetOrganizationUseCase } from '../../../../application/GetOrganization.js';
 import type { createListOrganizationsUseCase } from '../../../../application/ListOrganizations.js';
 import type { createPatchOrganizationIdentityUseCase } from '../../../../application/PatchOrganizationIdentity.js';
@@ -16,7 +16,7 @@ import { toOrganizationListResponse, toOrganizationResponse } from './mappers/Or
 import { parseRequest } from './parseRequest.js';
 
 export interface OrganizationRouterDeps {
-  readonly createOrganization: ReturnType<typeof createCreateOrganizationUseCase>;
+  readonly createOrganizationWithAdmin: ReturnType<typeof createCreateOrganizationWithAdminUseCase>;
   readonly getOrganization: ReturnType<typeof createGetOrganizationUseCase>;
   readonly listOrganizations: ReturnType<typeof createListOrganizationsUseCase>;
   readonly patchOrganizationIdentity: ReturnType<typeof createPatchOrganizationIdentityUseCase>;
@@ -35,7 +35,7 @@ export function organizationRouter(deps: OrganizationRouterDeps): Router {
   router.post('/organizations', async (req, res) => {
     const auth = requireAuthContext(req);
     const body = parseRequest(createOrganizationSchema, req.body);
-    const organization = await deps.createOrganization({ auth, ...body });
+    const organization = await deps.createOrganizationWithAdmin({ auth, ...body });
     res.status(201).json(toOrganizationResponse(organization));
   });
 
