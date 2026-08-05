@@ -58,11 +58,12 @@ export function organizationNotFound(id: string): IdentityAccessError {
 }
 
 export function userEmailTaken(email: string): IdentityAccessError {
-  return new IdentityAccessError(
-    'USER_EMAIL_TAKEN',
-    `email "${email}" is already in use in this organization`,
-    { email },
-  );
+  // Callers span two different scopes: same-organization duplicate checks
+  // (CreateUser, PatchUserIdentity, MongoUserRepository) and the
+  // cross-tenant "duplicate admin email anywhere" bootstrap check
+  // (CreateOrganizationWithAdmin) — the message stays scope-neutral so it
+  // never claims a scope narrower than the check that actually ran.
+  return new IdentityAccessError('USER_EMAIL_TAKEN', `email "${email}" is already in use`, { email });
 }
 
 export function userNotFound(id: string): IdentityAccessError {
