@@ -11,7 +11,11 @@ export interface OrganizationDocument {
   readonly Slug: string;
   readonly Domain: string | null;
   readonly Status: string;
-  readonly LogoUrl: string | null;
+  /**
+   * Free-form persistence/domain-only settings bag (design D8/A11, schema-v2
+   * PR5 — replaces `LogoUrl`). Defaults to `{}`; never exposed over HTTP.
+   */
+  readonly Configuration: Record<string, unknown>;
   readonly CreatedAt: string;
   readonly UpdatedAt: string;
   /** Set on transition to `CANCELLED` (design D10); written explicitly, never omitted. */

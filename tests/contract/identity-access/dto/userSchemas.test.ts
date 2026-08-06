@@ -16,6 +16,42 @@ describe('createUserSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts a valid payload with middleName (design A12)', () => {
+    const result = createUserSchema.safeParse({
+      email: 'alice@example.com',
+      password: 'super-secret',
+      firstName: 'Alice',
+      middleName: 'Marie',
+      lastName: 'Smith',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts middleName omitted or null', () => {
+    expect(
+      createUserSchema.safeParse({
+        email: 'alice@example.com',
+        password: 'super-secret',
+        firstName: 'Alice',
+        lastName: 'Smith',
+        middleName: null,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects a blank middleName', () => {
+    const result = createUserSchema.safeParse({
+      email: 'alice@example.com',
+      password: 'super-secret',
+      firstName: 'Alice',
+      middleName: '',
+      lastName: 'Smith',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it('rejects a payload missing the required password', () => {
     const result = createUserSchema.safeParse({ email: 'alice@example.com', firstName: 'Alice', lastName: 'Smith' });
 
@@ -30,13 +66,20 @@ describe('createUserSchema', () => {
 });
 
 describe('patchUserSchema (allow-list)', () => {
-  it('accepts firstName, lastName, email, and avatarUrl', () => {
+  it('accepts firstName, lastName, email, middleName, and avatarUrl', () => {
     const result = patchUserSchema.safeParse({
       firstName: 'Alicia',
       lastName: 'Smith',
       email: 'alicia@example.com',
+      middleName: 'Marie',
       avatarUrl: 'https://example.com/a.png',
     });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts middleName set to null (design A12)', () => {
+    const result = patchUserSchema.safeParse({ middleName: null });
 
     expect(result.success).toBe(true);
   });
@@ -47,8 +90,8 @@ describe('patchUserSchema (allow-list)', () => {
     expect(result.success).toBe(true);
   });
 
-  it.each(['roleIds', 'mfa', 'notificationPreferences', 'passwordHash', 'passwordSalt', 'loginAttempts', 'lockedUntil', 'lastLogin', 'isPlatformAdmin'])(
-    'rejects a payload attempting to set %s',
+  it.each(['roleId', 'roleIds', 'mfa', 'resetToken', 'notificationPreferences', 'passwordHash', 'passwordSalt', 'loginAttempts', 'lockedUntil', 'lastLogin', 'isPlatformAdmin'])(
+    'rejects a payload attempting to set %s (task 5.6 — strict allow-list)',
     (field) => {
       const result = patchUserSchema.safeParse({ [field]: 'anything' });
 

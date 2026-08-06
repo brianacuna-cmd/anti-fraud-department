@@ -1,10 +1,11 @@
 import { z } from 'zod';
 
-/** POST /users body. */
+/** POST /users body. `middleName` is nullable/optional (design A12), no non-empty rule when omitted or null. */
 export const createUserSchema = z.object({
   email: z.string().min(1),
   password: z.string().min(1),
   firstName: z.string().min(1),
+  middleName: z.string().min(1).nullish(),
   lastName: z.string().min(1),
   avatarUrl: z.string().min(1).nullish(),
 });
@@ -14,15 +15,18 @@ export type CreateUserBody = z.infer<typeof createUserSchema>;
 /**
  * PATCH /users/:id body. `.strict()` enforces the allow-list at the
  * transport boundary (user-lifecycle spec: "User Identity Patch" — ONLY
- * firstName/lastName/email/avatarUrl; roleIds, mfa, notificationPreferences,
- * passwordHash, passwordSalt, resetToken fields, loginAttempts, lockedUntil,
- * and lastLogin MUST NOT be alterable through this route.
+ * firstName/lastName/email/middleName/avatarUrl (design A12 adds
+ * `middleName` explicitly to the allow-list); roleId, mfa,
+ * notificationPreferences, passwordHash, passwordSalt, resetToken,
+ * loginAttempts, lockedUntil, and lastLogin MUST NOT be alterable through
+ * this route (design A11).
  */
 export const patchUserSchema = z
   .object({
     firstName: z.string().min(1).optional(),
     lastName: z.string().min(1).optional(),
     email: z.string().min(1).optional(),
+    middleName: z.string().min(1).nullish(),
     avatarUrl: z.string().min(1).nullish(),
   })
   .strict();

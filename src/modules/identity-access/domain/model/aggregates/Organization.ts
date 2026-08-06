@@ -13,7 +13,12 @@ export interface OrganizationProps {
   readonly slug: Slug;
   readonly domain: string | null;
   readonly status: OrganizationStatus;
-  readonly logoUrl: string | null;
+  /**
+   * Free-form, persistence/domain-only settings bag (design A11, schema-v2
+   * PR5 — replaces `logoUrl`, design D8). Absent from every request/response
+   * DTO and not patchable in this slice; defaults to `{}` on creation.
+   */
+  readonly configuration: Record<string, unknown>;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
   /** Set to the transition instant on `CANCELLED` (design D10, organization-lifecycle spec). Never unset once written. */
@@ -25,14 +30,12 @@ export interface CreateOrganizationInput {
   readonly name: string;
   readonly slug: Slug;
   readonly domain?: string | null;
-  readonly logoUrl?: string | null;
   readonly now: Instant;
 }
 
 export interface PatchOrganizationIdentityInput {
   readonly name?: string;
   readonly domain?: string | null;
-  readonly logoUrl?: string | null;
 }
 
 /**
@@ -47,14 +50,13 @@ export class Organization {
   static create(input: CreateOrganizationInput): Organization {
     assertNonEmptyName(input.name);
     assertNotBlankIfPresent('domain', input.domain);
-    assertNotBlankIfPresent('logoUrl', input.logoUrl);
     return new Organization({
       id: input.id,
       name: input.name,
       slug: input.slug,
       domain: input.domain ?? null,
       status: 'ACTIVE',
-      logoUrl: input.logoUrl ?? null,
+      configuration: {},
       createdAt: input.now,
       updatedAt: input.now,
       deletedAt: null,
@@ -86,8 +88,8 @@ export class Organization {
     return this.props.status;
   }
 
-  get logoUrl(): string | null {
-    return this.props.logoUrl;
+  get configuration(): Record<string, unknown> {
+    return this.props.configuration;
   }
 
   get createdAt(): Instant {
@@ -106,17 +108,15 @@ export class Organization {
     return this.props;
   }
 
-  /** Only name/domain/logoUrl are patchable — slug is immutable. */
+  /** Only name/domain are patchable — slug is immutable; `configuration` is not patchable this slice (design A11). */
   patchIdentity(input: PatchOrganizationIdentityInput, now: Instant): Organization {
     const name = input.name ?? this.props.name;
     assertNonEmptyName(name);
     assertNotBlankIfPresent('domain', input.domain);
-    assertNotBlankIfPresent('logoUrl', input.logoUrl);
     return new Organization({
       ...this.props,
       name,
       domain: input.domain === undefined ? this.props.domain : input.domain,
-      logoUrl: input.logoUrl === undefined ? this.props.logoUrl : input.logoUrl,
       updatedAt: now,
     });
   }
@@ -146,8 +146,8 @@ function assertNonEmptyName(name: string): void {
   }
 }
 
-/** `domain`/`logoUrl` are optional (undefined/null are both valid "absent"), but when present must not be blank. */
-function assertNotBlankIfPresent(field: 'domain' | 'logoUrl', value: string | null | undefined): void {
+/** `domain` is optional (undefined/null are both valid "absent"), but when present must not be blank. */
+function assertNotBlankIfPresent(field: 'domain', value: string | null | undefined): void {
   if (value != null && value.trim().length === 0) {
     throw invariantViolation(`Organization ${field} must not be blank when provided`, { field, value });
   }
