@@ -15,4 +15,10 @@ export type IdentityAccessErrorCode =
   | 'ORGANIZATION_SLUG_TAKEN'
   | 'ORGANIZATION_NOT_FOUND'
   | 'USER_EMAIL_TAKEN'
-  | 'USER_NOT_FOUND';
+  | 'USER_NOT_FOUND'
+  // Phase 4 (design D18, D19, D24, D29): login/logout/lockout.
+  | 'INVALID_CREDENTIALS'
+  | 'ACCOUNT_LOCKED'
+  | 'SESSION_EXPIRED'
+  | 'SESSION_INVALID'
+  | 'ORGANIZATION_SUSPENDED';

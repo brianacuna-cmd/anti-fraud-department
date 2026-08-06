@@ -7,14 +7,17 @@ import { SystemClock } from './shared/time/SystemClock.js';
 import { identityAccessErrorStatus } from './modules/identity-access/infrastructure/adapters/inbound/http/errorStatus.js';
 import { organizationRouter } from './modules/identity-access/infrastructure/adapters/inbound/http/organizationRouter.js';
 import { userRouter } from './modules/identity-access/infrastructure/adapters/inbound/http/userRouter.js';
+import { authRouter } from './modules/identity-access/infrastructure/adapters/inbound/http/authRouter.js';
 import { assertAuthModeSafeForProduction } from './modules/identity-access/infrastructure/adapters/inbound/http/auth/assertAuthModeSafeForProduction.js';
 import { resolveAuthContextResolver } from './modules/identity-access/infrastructure/adapters/inbound/http/auth/resolveAuthContextResolver.js';
 import { createAuthContextMiddleware } from './modules/identity-access/infrastructure/adapters/inbound/http/auth/authContextMiddleware.js';
 import { MongoOrganizationRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoOrganizationRepository.js';
 import { MongoUserRepositoryFactory } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUserRepositoryFactory.js';
 import { MongoSessionRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoSessionRepository.js';
+import { UserActorGateway } from './modules/identity-access/infrastructure/adapters/outbound/mongo/UserActorGateway.js';
+import { OrganizationActorGateway } from './modules/identity-access/infrastructure/adapters/outbound/mongo/OrganizationActorGateway.js';
 import { MongoUnitOfWork } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
-import { BcryptPasswordHasher } from './modules/identity-access/infrastructure/adapters/outbound/crypto/BcryptPasswordHasher.js';
+import { BcryptPasswordHasher, DUMMY_PASSWORD_HASH } from './modules/identity-access/infrastructure/adapters/outbound/crypto/BcryptPasswordHasher.js';
 import { AesGcmSecretCipher } from './modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
 import { AesGcmSessionTokenService } from './modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSessionTokenService.js';
 import { generateOrganizationId } from './modules/identity-access/domain/model/value-objects/OrganizationId.js';
@@ -31,6 +34,9 @@ import { createListUsersUseCase } from './modules/identity-access/application/Li
 import { createPatchUserIdentityUseCase } from './modules/identity-access/application/PatchUserIdentity.js';
 import { createTransitionUserStatusUseCase } from './modules/identity-access/application/TransitionUserStatus.js';
 import { createDeleteUserUseCase } from './modules/identity-access/application/DeleteUser.js';
+import { createAuthenticateActorUseCase } from './modules/identity-access/application/auth/AuthenticateActor.js';
+import { createLogoutUseCase } from './modules/identity-access/application/auth/Logout.js';
+import { createPasswordCredential } from './modules/identity-access/domain/model/value-objects/PasswordCredential.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const MONGO_URI = process.env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/?replicaSet=rs0';
@@ -100,12 +106,36 @@ async function bootstrap(): Promise<void> {
     deleteUser: createDeleteUserUseCase({ transitionUserStatus }),
   });
 
+  // Phase 4 (design D19, D24): a fixed, valid bcrypt hash with no real
+  // credential behind it — every unresolved login (unknown email, unknown
+  // organizationSlug, credential-less organization) still pays the full
+  // verify cost against this so failure timing is uniform (design D24).
+  // Constructed here, not imported into `application/`, because `application`
+  // may only depend on its own module's `domain` (eslint `boundaries`).
+  const dummyCredential = createPasswordCredential(DUMMY_PASSWORD_HASH);
+  const identityAccessAuthRouter = authRouter({
+    authenticateUser: createAuthenticateActorUseCase({
+      gateway: new UserActorGateway(organizations, userRepositoryFactory),
+      passwordHasher,
+      clock,
+      dummyCredential,
+    }),
+    authenticateOrganization: createAuthenticateActorUseCase({
+      gateway: new OrganizationActorGateway(organizations),
+      passwordHasher,
+      clock,
+      dummyCredential,
+    }),
+    logout: createLogoutUseCase({ sessions, clock }),
+  });
+
   const authContextMiddleware = createAuthContextMiddleware(
     resolveAuthContextResolver(AUTH_MODE, { sessionTokenService, sessionRepository: sessions }),
   );
 
   const identityAccessRouter = Router();
   identityAccessRouter.use(authContextMiddleware);
+  identityAccessRouter.use(identityAccessAuthRouter);
   identityAccessRouter.use(identityAccessOrganizationsRouter);
   identityAccessRouter.use(identityAccessUsersRouter);
 

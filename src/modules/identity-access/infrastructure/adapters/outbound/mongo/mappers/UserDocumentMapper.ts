@@ -26,6 +26,8 @@ export function toDocument(user: User): UserDocument {
     ResetToken:
       user.resetToken === null ? null : { Hash: user.resetToken.hash, ExpiresAt: user.resetToken.expiresAt },
     Mfa: { Secret: user.mfa.secret, Enabled: user.mfa.enabled, RecoveryCodes: [...user.mfa.recoveryCodes] },
+    LoginAttempts: user.lockout.loginAttempts,
+    BlockedUntil: user.lockout.blockedUntil,
     CreatedAt: user.createdAt,
     UpdatedAt: user.updatedAt,
   };
@@ -52,6 +54,10 @@ export function toDomain(document: UserDocument): User {
       secret: document.Mfa.Secret,
       enabled: document.Mfa.Enabled,
       recoveryCodes: [...document.Mfa.RecoveryCodes],
+    },
+    lockout: {
+      loginAttempts: document.LoginAttempts,
+      blockedUntil: document.BlockedUntil === null ? null : brand<string, 'Instant'>(document.BlockedUntil),
     },
     createdAt: brand<string, 'Instant'>(document.CreatedAt),
     updatedAt: brand<string, 'Instant'>(document.UpdatedAt),

@@ -3,6 +3,8 @@ import { Organization } from '../../../../../domain/model/aggregates/Organizatio
 import { createOrganizationId } from '../../../../../domain/model/value-objects/OrganizationId.js';
 import { createSlug } from '../../../../../domain/model/value-objects/Slug.js';
 import { createOrganizationStatus } from '../../../../../domain/model/value-objects/OrganizationStatus.js';
+import { createEmail } from '../../../../../domain/model/value-objects/Email.js';
+import { createPasswordCredential } from '../../../../../domain/model/value-objects/PasswordCredential.js';
 import type { OrganizationDocument } from '../documents/OrganizationDocument.js';
 
 /**
@@ -17,6 +19,10 @@ export function toDocument(organization: Organization): OrganizationDocument {
     Domain: organization.domain,
     Status: organization.status,
     Configuration: organization.configuration,
+    Email: organization.email,
+    PasswordHash: organization.credential === null ? null : organization.credential.passwordHash,
+    LoginAttempts: organization.lockout.loginAttempts,
+    BlockedUntil: organization.lockout.blockedUntil,
     CreatedAt: organization.createdAt,
     UpdatedAt: organization.updatedAt,
     DeletedAt: organization.deletedAt,
@@ -32,6 +38,12 @@ export function toDomain(document: OrganizationDocument): Organization {
     domain: document.Domain,
     status: createOrganizationStatus(document.Status),
     configuration: document.Configuration,
+    email: document.Email === null ? null : createEmail(document.Email),
+    credential: document.PasswordHash === null ? null : createPasswordCredential(document.PasswordHash),
+    lockout: {
+      loginAttempts: document.LoginAttempts,
+      blockedUntil: document.BlockedUntil === null ? null : brand<string, 'Instant'>(document.BlockedUntil),
+    },
     createdAt: brand<string, 'Instant'>(document.CreatedAt),
     updatedAt: brand<string, 'Instant'>(document.UpdatedAt),
     deletedAt: document.DeletedAt === null ? null : brand<string, 'Instant'>(document.DeletedAt),

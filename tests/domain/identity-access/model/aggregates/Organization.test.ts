@@ -1,6 +1,8 @@
 import { Organization } from '../../../../../src/modules/identity-access/domain/model/aggregates/Organization.js';
 import { createOrganizationId } from '../../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createSlug } from '../../../../../src/modules/identity-access/domain/model/value-objects/Slug.js';
+import { createEmail } from '../../../../../src/modules/identity-access/domain/model/value-objects/Email.js';
+import { createPasswordCredential } from '../../../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
 import { createTransitionActor } from '../../../../../src/modules/identity-access/domain/model/value-objects/TransitionActor.js';
 import { IdentityAccessError } from '../../../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
 import { fromDate } from '../../../../../src/shared/time/Instant.js';
@@ -68,6 +70,28 @@ describe('Organization.create', () => {
 
     expect((organization as unknown as Record<string, unknown>).logoUrl).toBeUndefined();
   });
+
+  it('defaults email/credential to null and lockout to zero failed attempts (design D18, D36 pulled forward)', () => {
+    const organization = buildOrganization();
+
+    expect(organization.email).toBeNull();
+    expect(organization.credential).toBeNull();
+    expect(organization.lockout).toEqual({ loginAttempts: 0, blockedUntil: null });
+  });
+
+  it('accepts an explicit email/credential when provisioned (design D36 self-credentials, pulled forward)', () => {
+    const organization = Organization.create({
+      id: createOrganizationId('org-1'),
+      name: 'Acme Corp',
+      slug: createSlug('acme-corp'),
+      email: createEmail('org@acme.example.com'),
+      credential: createPasswordCredential('hash-value'),
+      now: NOW,
+    });
+
+    expect(organization.email).toBe('org@acme.example.com');
+    expect(organization.credential).toEqual({ passwordHash: 'hash-value' });
+  });
 });
 
 describe('Organization.rehydrate', () => {
@@ -79,6 +103,9 @@ describe('Organization.rehydrate', () => {
       domain: 'acme.com',
       status: 'SUSPENDED',
       configuration: { theme: 'dark' },
+      email: null,
+      credential: null,
+      lockout: { loginAttempts: 0, blockedUntil: null },
       createdAt: NOW,
       updatedAt: LATER,
       deletedAt: null,
@@ -99,6 +126,9 @@ describe('Organization.rehydrate', () => {
       domain: null,
       status: 'CANCELLED',
       configuration: {},
+      email: null,
+      credential: null,
+      lockout: { loginAttempts: 0, blockedUntil: null },
       createdAt: NOW,
       updatedAt: LATER,
       deletedAt: LATER,
@@ -140,6 +170,20 @@ describe('Organization#patchIdentity', () => {
     const organization = buildOrganization();
 
     expect(() => organization.patchIdentity({ domain: '  ' }, LATER)).toThrow(IdentityAccessError);
+  });
+});
+
+describe('Organization#withLockout', () => {
+  it('returns a new instance with only lockout/updatedAt changed (design D18)', () => {
+    const organization = buildOrganization();
+
+    const locked = organization.withLockout({ loginAttempts: 3, blockedUntil: LATER }, LATER);
+
+    expect(locked).not.toBe(organization);
+    expect(locked.lockout).toEqual({ loginAttempts: 3, blockedUntil: LATER });
+    expect(locked.updatedAt).toBe(LATER);
+    expect(locked.name).toBe('Acme Corp');
+    expect(organization.lockout).toEqual({ loginAttempts: 0, blockedUntil: null });
   });
 });
 
