@@ -8,6 +8,7 @@ import { createOrganizationId } from '../domain/model/value-objects/Organization
 import { createUserId } from '../domain/model/value-objects/UserId.js';
 import { createTransitionActor } from '../domain/model/value-objects/TransitionActor.js';
 import { userNotFound } from '../domain/errors/IdentityAccessError.js';
+import { requireTenantContext } from './authorization/requireTenantContext.js';
 
 export interface TransitionUserStatusInput {
   readonly auth: AuthContext;
@@ -30,7 +31,7 @@ export interface TransitionUserStatusDeps {
  */
 export function createTransitionUserStatusUseCase(deps: TransitionUserStatusDeps) {
   return async function transitionUserStatus(input: TransitionUserStatusInput): Promise<User> {
-    const repository = deps.userRepositoryFactory.forTenant(createOrganizationId(input.auth.organizationId));
+    const repository = deps.userRepositoryFactory.forTenant(createOrganizationId(requireTenantContext(input.auth)));
 
     return deps.unitOfWork.withTransaction(async () => {
       const id = createUserId(input.userId);
