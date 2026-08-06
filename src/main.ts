@@ -7,6 +7,7 @@ import { SystemClock } from './shared/time/SystemClock.js';
 import { identityAccessErrorStatus } from './modules/identity-access/infrastructure/adapters/inbound/http/errorStatus.js';
 import { organizationRouter } from './modules/identity-access/infrastructure/adapters/inbound/http/organizationRouter.js';
 import { userRouter } from './modules/identity-access/infrastructure/adapters/inbound/http/userRouter.js';
+import { adminOrganizationRouter } from './modules/identity-access/infrastructure/adapters/inbound/http/adminOrganizationRouter.js';
 import { assertAuthModeSafeForProduction } from './modules/identity-access/infrastructure/adapters/inbound/http/auth/assertAuthModeSafeForProduction.js';
 import { resolveAuthContextResolver } from './modules/identity-access/infrastructure/adapters/inbound/http/auth/resolveAuthContextResolver.js';
 import { createAuthContextMiddleware } from './modules/identity-access/infrastructure/adapters/inbound/http/auth/authContextMiddleware.js';
@@ -14,17 +15,22 @@ import { MongoOrganizationRepository } from './modules/identity-access/infrastru
 import { MongoUserRepositoryFactory } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUserRepositoryFactory.js';
 import { MongoSessionRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoSessionRepository.js';
 import { MongoUnitOfWork } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
+import { MongoAdminOrganizationRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoAdminOrganizationRepository.js';
 import { BcryptPasswordHasher } from './modules/identity-access/infrastructure/adapters/outbound/crypto/BcryptPasswordHasher.js';
 import { AesGcmSecretCipher } from './modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
 import { AesGcmSessionTokenService } from './modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSessionTokenService.js';
+import { NodeAdminKeyPairGenerator } from './modules/identity-access/infrastructure/adapters/outbound/crypto/NodeAdminKeyPairGenerator.js';
 import { generateOrganizationId } from './modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { generateUserId } from './modules/identity-access/domain/model/value-objects/UserId.js';
+import { generateAdminOrganizationId } from './modules/identity-access/domain/model/value-objects/AdminOrganizationId.js';
+import { generateAdminKeyId } from './modules/identity-access/domain/model/value-objects/AdminKeyId.js';
 import { createGetOrganizationUseCase } from './modules/identity-access/application/GetOrganization.js';
 import { createListOrganizationsUseCase } from './modules/identity-access/application/ListOrganizations.js';
 import { createPatchOrganizationIdentityUseCase } from './modules/identity-access/application/PatchOrganizationIdentity.js';
 import { createTransitionOrganizationStatusUseCase } from './modules/identity-access/application/TransitionOrganizationStatus.js';
 import { createDeleteOrganizationUseCase } from './modules/identity-access/application/DeleteOrganization.js';
 import { createCreateOrganizationWithAdminUseCase } from './modules/identity-access/application/CreateOrganizationWithAdmin.js';
+import { createProvisionAdminOrganizationUseCase } from './modules/identity-access/application/admin/ProvisionAdminOrganization.js';
 import { createCreateUserUseCase } from './modules/identity-access/application/CreateUser.js';
 import { createGetUserUseCase } from './modules/identity-access/application/GetUser.js';
 import { createListUsersUseCase } from './modules/identity-access/application/ListUsers.js';
@@ -57,11 +63,14 @@ async function bootstrap(): Promise<void> {
   const organizations = new MongoOrganizationRepository(db);
   const userRepositoryFactory = new MongoUserRepositoryFactory(db);
   const sessions = new MongoSessionRepository(db);
+  const admins = new MongoAdminOrganizationRepository(db);
   const passwordHasher = new BcryptPasswordHasher();
   // Phase 3b (design D13): the ONE AES-256-GCM primitive, layered — also
-  // reused by MFA-secret encryption (mfa-totp spec) once that phase lands.
+  // reused by MFA-secret encryption (mfa-totp spec) once that phase lands,
+  // and by PR 1c's Ed25519 private-key encryption (design D32).
   const secretCipher = new AesGcmSecretCipher(TOKEN_SECRET, TOKEN_KEY_VERSION);
   const sessionTokenService = new AesGcmSessionTokenService(secretCipher);
+  const adminKeyPairGenerator = new NodeAdminKeyPairGenerator();
   // Phase 3: a REAL Mongo-session-backed UnitOfWork — required for
   // CreateOrganizationWithAdmin's genuine cross-collection atomicity.
   // Phase 2's PassthroughUnitOfWork is deliberately NOT reused here.
@@ -100,6 +109,19 @@ async function bootstrap(): Promise<void> {
     deleteUser: createDeleteUserUseCase({ transitionUserStatus }),
   });
 
+  // Phase 3 (PR 1c, design D31/D32): provisioning only. Download/rotate/
+  // revoke land on this same router in later PRs (2a/2c).
+  const identityAccessAdminOrganizationsRouter = adminOrganizationRouter({
+    provisionAdminOrganization: createProvisionAdminOrganizationUseCase({
+      admins,
+      keyPairs: adminKeyPairGenerator,
+      cipher: secretCipher,
+      clock,
+      generateAdminOrganizationId,
+      generateAdminKeyId,
+    }),
+  });
+
   const authContextMiddleware = createAuthContextMiddleware(
     resolveAuthContextResolver(AUTH_MODE, { sessionTokenService, sessionRepository: sessions }),
   );
@@ -108,6 +130,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(authContextMiddleware);
   identityAccessRouter.use(identityAccessOrganizationsRouter);
   identityAccessRouter.use(identityAccessUsersRouter);
+  identityAccessRouter.use(identityAccessAdminOrganizationsRouter);
 
   const app = createApp({
     routers: [{ path: '/api/v1', router: identityAccessRouter }],
