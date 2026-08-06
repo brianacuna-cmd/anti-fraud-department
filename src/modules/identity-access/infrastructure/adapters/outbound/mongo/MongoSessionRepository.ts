@@ -70,6 +70,15 @@ export class MongoSessionRepository implements SessionRepository {
     return result.modifiedCount;
   }
 
+  /** Sets `deletedAt` on exactly the given session (Phase 4 — `Logout`). A no-op for an unknown or already-revoked id. */
+  async revokeSession(id: SessionId, revokedAt: Instant, tx?: Transaction): Promise<void> {
+    await this.collection.updateOne(
+      { _id: id, DeletedAt: null },
+      { $set: { DeletedAt: revokedAt, UpdatedAt: revokedAt } },
+      { session: toSession(tx) },
+    );
+  }
+
   async revokeAllForOrganization(id: OrganizationId, at: Instant, tx?: Transaction): Promise<number> {
     const result = await this.collection.updateMany(
       { OrganizationId: id, DeletedAt: null },

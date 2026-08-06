@@ -41,6 +41,9 @@ export interface SessionRepository {
   /** Unsessioned by design (D16) — reuse-detection revocation must survive the failing request's own rollback. */
   revokeFamily(familyId: FamilyId, revokedAt: Instant): Promise<number>;
 
+  /** Sets `deletedAt` on exactly the given session (Phase 4 — `Logout`). A no-op for an unknown or already-revoked id. */
+  revokeSession(id: SessionId, revokedAt: Instant, tx?: Transaction): Promise<void>;
+
   revokeAllForOrganization(id: OrganizationId, at: Instant, tx?: Transaction): Promise<number>;
 
   revokeAllForActor(actor: SessionActorRef, at: Instant, tx?: Transaction): Promise<number>;

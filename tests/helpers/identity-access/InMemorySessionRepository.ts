@@ -53,6 +53,10 @@ export class InMemorySessionRepository implements SessionRepository {
     return this.revokeMatching((session) => session.familyId === familyId, revokedAt);
   }
 
+  async revokeSession(id: SessionId, revokedAt: Instant): Promise<void> {
+    await this.revokeMatching((session) => session.id === id, revokedAt);
+  }
+
   async revokeAllForOrganization(id: OrganizationId, at: Instant): Promise<number> {
     return this.revokeMatching((session) => session.organizationId === id, at);
   }

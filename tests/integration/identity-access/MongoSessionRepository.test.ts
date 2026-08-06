@@ -151,6 +151,22 @@ describe('MongoSessionRepository (integration, real replica-set Mongo)', () => {
     });
   });
 
+  describe('revokeSession (Phase 4 — Logout)', () => {
+    it('sets DeletedAt on exactly the given session id', async () => {
+      await repository.save(buildSession({ id: 'session-1' }));
+      await repository.save(buildSession({ id: 'session-2' }));
+
+      await repository.revokeSession(createSessionId('session-1'), LATER);
+
+      expect((await repository.findByTokenHash('token-hash-session-1'))?.deletedAt).toBe(LATER);
+      expect((await repository.findByTokenHash('token-hash-session-2'))?.deletedAt).toBeNull();
+    });
+
+    it('is a no-op for an unknown session id', async () => {
+      await expect(repository.revokeSession(createSessionId('missing'), LATER)).resolves.toBeUndefined();
+    });
+  });
+
   describe('revokeAllForOrganization', () => {
     it('revokes only sessions belonging to that organization, inside a given transaction', async () => {
       const unitOfWork = new MongoUnitOfWork(client);

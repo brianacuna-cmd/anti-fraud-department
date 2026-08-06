@@ -3,6 +3,9 @@ import type { OrganizationId } from '../value-objects/OrganizationId.js';
 import type { Slug } from '../value-objects/Slug.js';
 import type { OrganizationStatus } from '../value-objects/OrganizationStatus.js';
 import type { TransitionActor } from '../value-objects/TransitionActor.js';
+import type { Email } from '../value-objects/Email.js';
+import type { PasswordCredential } from '../value-objects/PasswordCredential.js';
+import { INITIAL_LOCKOUT_STATE, type LockoutState } from '../value-objects/LockoutState.js';
 import { ORGANIZATION_STATUS_TRANSITIONS } from '../../services/transitions.js';
 import { assertTransitionAllowed } from '../../services/StatusTransitionPolicy.js';
 import { invariantViolation } from '../../errors/IdentityAccessError.js';
@@ -19,6 +22,20 @@ export interface OrganizationProps {
    * DTO and not patchable in this slice; defaults to `{}` on creation.
    */
   readonly configuration: Record<string, unknown>;
+  /**
+   * Organization's OWN authentication credentials (design D36, pulled
+   * forward as a Phase 4 judgment call — see `AuthenticateActor.ts` doc
+   * comment). Both `null` until Phase 7 (D36) wires the bootstrap flow that
+   * actually sets them; an organization with a `null` `email`/`credential`
+   * can never resolve at `POST /auth/organizations/login` (no stored email
+   * to match), which is the correct "no credentials yet" behavior, not a
+   * bug — the login path falls through to the same dummy-verify branch as
+   * an unknown email (design D24).
+   */
+  readonly email: Email | null;
+  readonly credential: PasswordCredential | null;
+  /** Failed-login tracking, shared shape with `User` (design D18). Always present, independent of whether credentials exist yet. */
+  readonly lockout: LockoutState;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
   /** Set to the transition instant on `CANCELLED` (design D10, organization-lifecycle spec). Never unset once written. */
@@ -30,6 +47,9 @@ export interface CreateOrganizationInput {
   readonly name: string;
   readonly slug: Slug;
   readonly domain?: string | null;
+  /** Absent until Phase 7 (D36) wires org self-credential bootstrap — both default to `null`. */
+  readonly email?: Email | null;
+  readonly credential?: PasswordCredential | null;
   readonly now: Instant;
 }
 
@@ -57,6 +77,9 @@ export class Organization {
       domain: input.domain ?? null,
       status: 'ACTIVE',
       configuration: {},
+      email: input.email ?? null,
+      credential: input.credential ?? null,
+      lockout: INITIAL_LOCKOUT_STATE,
       createdAt: input.now,
       updatedAt: input.now,
       deletedAt: null,
@@ -90,6 +113,18 @@ export class Organization {
 
   get configuration(): Record<string, unknown> {
     return this.props.configuration;
+  }
+
+  get email(): Email | null {
+    return this.props.email;
+  }
+
+  get credential(): PasswordCredential | null {
+    return this.props.credential;
+  }
+
+  get lockout(): LockoutState {
+    return this.props.lockout;
   }
 
   get createdAt(): Instant {
@@ -129,6 +164,11 @@ export class Organization {
    * `deletedAt` at the transition instant (organization-lifecycle spec:
    * "Organization Status Transition Matrix").
    */
+  /** Applies a new `LockoutState` computed by `LockoutPolicy` (design D18) — the aggregate stays policy-free. */
+  withLockout(lockout: LockoutState, now: Instant): Organization {
+    return new Organization({ ...this.props, lockout, updatedAt: now });
+  }
+
   transitionTo(next: OrganizationStatus, actor: TransitionActor, now: Instant): Organization {
     assertTransitionAllowed(ORGANIZATION_STATUS_TRANSITIONS, this.props.status, next, actor);
     return new Organization({

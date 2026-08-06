@@ -110,4 +110,17 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     expect(actorTypeUserIdIndex).toBeDefined();
     expect(actorTypeUserIdIndex?.key).toEqual({ ActorType: 1, UserId: 1 });
   });
+
+  it('creates a PARTIAL (not sparse) unique index on Organizations.Email (Phase 4, design D36 pulled forward, D38 general rule)', async () => {
+    await ensureIndexes(db);
+
+    const organizationIndexes = await db.collection('Organizations').indexes();
+    const emailIndex = organizationIndexes.find((index) => index.name === 'organization_email_unique');
+
+    expect(emailIndex).toBeDefined();
+    expect(emailIndex?.key).toEqual({ Email: 1 });
+    expect(emailIndex?.unique).toBe(true);
+    expect(emailIndex?.sparse).not.toBe(true);
+    expect(emailIndex?.partialFilterExpression).toEqual({ Email: { $exists: true, $type: 'string' } });
+  });
 });

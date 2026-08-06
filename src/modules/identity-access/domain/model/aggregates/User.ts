@@ -5,6 +5,7 @@ import type { Email } from '../value-objects/Email.js';
 import type { PasswordCredential } from '../value-objects/PasswordCredential.js';
 import type { LifecycleStatus } from '../value-objects/LifecycleStatus.js';
 import type { TransitionActor } from '../value-objects/TransitionActor.js';
+import { INITIAL_LOCKOUT_STATE, type LockoutState } from '../value-objects/LockoutState.js';
 import { USER_TRANSITIONS } from '../../services/transitions.js';
 import { assertTransitionAllowed, type ReactivationEdge } from '../../services/StatusTransitionPolicy.js';
 import { invariantViolation } from '../../errors/IdentityAccessError.js';
@@ -42,6 +43,8 @@ export interface UserProps {
   readonly isPlatformAdmin: boolean;
   readonly resetToken: ResetToken | null;
   readonly mfa: MfaSettings;
+  /** Failed-login tracking, shared shape with `Organization` (design D18). Never surfaces on a DTO. */
+  readonly lockout: LockoutState;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
 }
@@ -96,6 +99,7 @@ export class User {
       isPlatformAdmin: input.isPlatformAdmin ?? false,
       resetToken: null,
       mfa: DEFAULT_MFA,
+      lockout: INITIAL_LOCKOUT_STATE,
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -154,6 +158,10 @@ export class User {
     return this.props.mfa;
   }
 
+  get lockout(): LockoutState {
+    return this.props.lockout;
+  }
+
   get createdAt(): Instant {
     return this.props.createdAt;
   }
@@ -188,6 +196,11 @@ export class User {
       avatarUrl: input.avatarUrl === undefined ? this.props.avatarUrl : input.avatarUrl,
       updatedAt: now,
     });
+  }
+
+  /** Applies a new `LockoutState` computed by `LockoutPolicy` (design D18) — the aggregate stays policy-free. */
+  withLockout(lockout: LockoutState, now: Instant): User {
+    return new User({ ...this.props, lockout, updatedAt: now });
   }
 
   transitionTo(next: LifecycleStatus, actor: TransitionActor, now: Instant): User {

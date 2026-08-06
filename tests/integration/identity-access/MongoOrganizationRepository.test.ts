@@ -8,6 +8,8 @@ import { MongoUnitOfWork } from '../../../src/modules/identity-access/infrastruc
 import { Organization } from '../../../src/modules/identity-access/domain/model/aggregates/Organization.js';
 import { createOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createSlug } from '../../../src/modules/identity-access/domain/model/value-objects/Slug.js';
+import { createEmail } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
+import { createPasswordCredential } from '../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import { IdentityAccessError } from '../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
 import type { OrganizationDocument } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/documents/OrganizationDocument.js';
@@ -134,6 +136,37 @@ describe('MongoOrganizationRepository (integration, real replica-set Mongo)', ()
    * Task 3.2 (PR3): re-targeted at the renamed `Organizations` collection
    * (design A2) — still asserting the exact same `_id` invariant.
    */
+  it('findByEmail() resolves an organization with a set Email (Phase 4, design D36 pulled forward)', async () => {
+    const withCredentials = Organization.create({
+      id: createOrganizationId('org-creds'),
+      name: 'Org creds',
+      slug: createSlug('org-creds'),
+      email: createEmail('org@acme.example.com'),
+      credential: createPasswordCredential('a-bcrypt-hash'),
+      now: NOW,
+    });
+    await repository.save(withCredentials);
+
+    const found = await repository.findByEmail(createEmail('org@acme.example.com'));
+
+    expect(found?.id).toBe('org-creds');
+    expect(found?.credential).toEqual({ passwordHash: 'a-bcrypt-hash' });
+  });
+
+  it('findByEmail() returns null for an unknown email, and never matches a null-Email row', async () => {
+    await repository.save(buildOrganization('org-no-creds', 'org-no-creds'));
+
+    const found = await repository.findByEmail(createEmail('nobody@example.com'));
+
+    expect(found).toBeNull();
+  });
+
+  it('allows two organizations to coexist with a null Email (partial unique index, design D38 general rule)', async () => {
+    await repository.save(buildOrganization('org-null-1', 'org-null-1'));
+
+    await expect(repository.save(buildOrganization('org-null-2', 'org-null-2'))).resolves.toBeUndefined();
+  });
+
   it('round-trips the raw document by _id (design A1 regression guard, renamed collection)', async () => {
     await repository.save(buildOrganization('org-id-guard', 'id-guard'));
 

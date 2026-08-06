@@ -17,6 +17,21 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .collection('Organizations')
     .createIndex({ Slug: 1 }, { unique: true, name: 'slug_unique' });
 
+  // PARTIAL unique index (Phase 4, design D36 pulled forward, D38's general
+  // rule: "any unique index over a nullable field must be partial with a
+  // $type predicate"). Most `Organization` rows have `Email: null` until
+  // Phase 7 wires self-credential bootstrap — a plain OR sparse unique index
+  // would collide on the second such row (see D38's reasoning, identical
+  // shape here).
+  await db.collection('Organizations').createIndex(
+    { Email: 1 },
+    {
+      unique: true,
+      name: 'organization_email_unique',
+      partialFilterExpression: { Email: { $exists: true, $type: 'string' } },
+    },
+  );
+
   await db
     .collection('Users')
     .createIndex({ OrganizationId: 1, Email: 1 }, { unique: true, name: 'user_email_unique' });

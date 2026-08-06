@@ -14,4 +14,10 @@ export const identityAccessErrorStatus: StatusByCode = {
   ORGANIZATION_NOT_FOUND: 404,
   USER_NOT_FOUND: 404,
   INVARIANT_VIOLATION: 400,
+  // Phase 4 (design D18, D19, D24, D29): login/logout/lockout.
+  INVALID_CREDENTIALS: 401,
+  ACCOUNT_LOCKED: 423,
+  SESSION_EXPIRED: 401,
+  SESSION_INVALID: 401,
+  ORGANIZATION_SUSPENDED: 403,
 };

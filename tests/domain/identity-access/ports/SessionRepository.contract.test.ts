@@ -125,6 +125,33 @@ describe('SessionRepository (port contract, via InMemorySessionRepository fake)'
     });
   });
 
+  describe('revokeSession', () => {
+    it('sets deletedAt on exactly the given session id (design Phase 4, Logout)', async () => {
+      const repository = new InMemorySessionRepository();
+      await repository.save(buildSession({ id: 'session-1' }));
+      await repository.save(buildSession({ id: 'session-2' }));
+
+      await repository.revokeSession(createSessionId('session-1'), LATER);
+
+      expect((await repository.findByTokenHash('token-hash-session-1'))?.deletedAt).toBe(LATER);
+      expect((await repository.findByTokenHash('token-hash-session-2'))?.deletedAt).toBeNull();
+    });
+
+    it('is a no-op for an unknown session id', async () => {
+      const repository = new InMemorySessionRepository();
+
+      await expect(repository.revokeSession(createSessionId('missing'), LATER)).resolves.toBeUndefined();
+    });
+
+    it('is idempotent — revoking an already-revoked session keeps the original deletedAt behavior a no-op-safe call', async () => {
+      const repository = new InMemorySessionRepository();
+      await repository.save(buildSession({ id: 'session-1' }));
+      await repository.revokeSession(createSessionId('session-1'), NOW);
+
+      await expect(repository.revokeSession(createSessionId('session-1'), LATER)).resolves.toBeUndefined();
+    });
+  });
+
   describe('revokeAllForActor', () => {
     it('revokes every session for a USER actor by userId', async () => {
       const repository = new InMemorySessionRepository();

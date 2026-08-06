@@ -139,6 +139,12 @@ describe('User.create', () => {
 
     expect(user.mfa).toEqual({ secret: null, enabled: false, recoveryCodes: [] });
   });
+
+  it('defaults lockout to zero failed attempts, never blocked (design D18)', () => {
+    const user = buildUser();
+
+    expect(user.lockout).toEqual({ loginAttempts: 0, blockedUntil: null });
+  });
 });
 
 describe('User.rehydrate', () => {
@@ -156,6 +162,7 @@ describe('User.rehydrate', () => {
       isPlatformAdmin: false,
       resetToken: { hash: 'reset-hash', expiresAt: LATER },
       mfa: { secret: 'otp-secret', enabled: true, recoveryCodes: ['code-1'] },
+      lockout: { loginAttempts: 2, blockedUntil: null },
       createdAt: NOW,
       updatedAt: LATER,
     });
@@ -165,6 +172,7 @@ describe('User.rehydrate', () => {
     expect(user.middleName).toBe('Marie');
     expect(user.resetToken).toEqual({ hash: 'reset-hash', expiresAt: LATER });
     expect(user.mfa).toEqual({ secret: 'otp-secret', enabled: true, recoveryCodes: ['code-1'] });
+    expect(user.lockout).toEqual({ loginAttempts: 2, blockedUntil: null });
     expect(user.updatedAt).toBe(LATER);
   });
 });
@@ -237,6 +245,20 @@ describe('User#patchIdentity', () => {
 
     expect(patched.resetToken).toBeNull();
     expect(patched.mfa).toEqual({ secret: null, enabled: false, recoveryCodes: [] });
+  });
+});
+
+describe('User#withLockout', () => {
+  it('returns a new instance with only lockout/updatedAt changed (design D18)', () => {
+    const user = buildUser();
+
+    const locked = user.withLockout({ loginAttempts: 3, blockedUntil: LATER }, LATER);
+
+    expect(locked).not.toBe(user);
+    expect(locked.lockout).toEqual({ loginAttempts: 3, blockedUntil: LATER });
+    expect(locked.updatedAt).toBe(LATER);
+    expect(locked.firstName).toBe('Alice');
+    expect(user.lockout).toEqual({ loginAttempts: 0, blockedUntil: null });
   });
 });
 
