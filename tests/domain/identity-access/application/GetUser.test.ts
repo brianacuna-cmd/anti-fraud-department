@@ -19,7 +19,7 @@ async function seedUser(userRepositoryFactory: InMemoryUserRepositoryFactory, or
     id: createUserId('user-1'),
     organizationId: org,
     email: createEmail('alice@example.com'),
-    credential: createPasswordCredential('hash', 'salt'),
+    credential: createPasswordCredential('hash'),
     firstName: 'Alice',
     lastName: 'Smith',
     now: NOW,

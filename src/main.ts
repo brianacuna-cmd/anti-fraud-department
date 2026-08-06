@@ -13,7 +13,7 @@ import { createAuthContextMiddleware } from './modules/identity-access/infrastru
 import { MongoOrganizationRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoOrganizationRepository.js';
 import { MongoUserRepositoryFactory } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUserRepositoryFactory.js';
 import { MongoUnitOfWork } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
-import { ScryptPasswordHasher } from './modules/identity-access/infrastructure/adapters/outbound/crypto/ScryptPasswordHasher.js';
+import { BcryptPasswordHasher } from './modules/identity-access/infrastructure/adapters/outbound/crypto/BcryptPasswordHasher.js';
 import { generateOrganizationId } from './modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { generateUserId } from './modules/identity-access/domain/model/value-objects/UserId.js';
 import { createGetOrganizationUseCase } from './modules/identity-access/application/GetOrganization.js';
@@ -45,7 +45,7 @@ async function bootstrap(): Promise<void> {
   const clock = new SystemClock();
   const organizations = new MongoOrganizationRepository(db);
   const userRepositoryFactory = new MongoUserRepositoryFactory(db);
-  const passwordHasher = new ScryptPasswordHasher();
+  const passwordHasher = new BcryptPasswordHasher();
   // Phase 3: a REAL Mongo-session-backed UnitOfWork — required for
   // CreateOrganizationWithAdmin's genuine cross-collection atomicity.
   // Phase 2's PassthroughUnitOfWork is deliberately NOT reused here.

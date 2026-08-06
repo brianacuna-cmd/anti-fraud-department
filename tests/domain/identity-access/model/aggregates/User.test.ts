@@ -9,7 +9,7 @@ import { fromDate } from '../../../../../src/shared/time/Instant.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const LATER = fromDate(new Date('2026-01-02T00:00:00.000Z'));
-const CREDENTIAL = createPasswordCredential('hash-value', 'salt-value');
+const CREDENTIAL = createPasswordCredential('hash-value');
 
 function buildUser(): User {
   return User.create({

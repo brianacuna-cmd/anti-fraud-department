@@ -7,7 +7,7 @@ import { createPasswordCredential } from '../../../../src/modules/identity-acces
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const CREDENTIAL = createPasswordCredential('hash', 'salt');
+const CREDENTIAL = createPasswordCredential('hash');
 const ORG_1 = createOrganizationId('org-1');
 const ORG_2 = createOrganizationId('org-2');
 

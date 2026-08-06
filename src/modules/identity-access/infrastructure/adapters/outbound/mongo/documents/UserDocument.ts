@@ -11,7 +11,6 @@ export interface UserDocument {
   readonly organizationId: string;
   readonly email: string;
   readonly passwordHash: string;
-  readonly passwordSalt: string;
   readonly firstName: string;
   readonly lastName: string;
   readonly avatarUrl: string | null;

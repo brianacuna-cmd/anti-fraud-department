@@ -16,7 +16,7 @@ function buildUser(id: string): User {
     id: createUserId(id),
     organizationId: createOrganizationId('org-1'),
     email: createEmail(`${id}@example.com`),
-    credential: createPasswordCredential('hash-value', 'salt-value'),
+    credential: createPasswordCredential('hash-value'),
     firstName: 'First',
     lastName: 'Last',
     now: NOW,

@@ -26,7 +26,7 @@ async function seedUser(
     id: createUserId(id),
     organizationId: org,
     email: createEmail(email),
-    credential: createPasswordCredential('hash', 'salt'),
+    credential: createPasswordCredential('hash'),
     firstName: 'First',
     lastName: 'Last',
     now: CREATED_AT,
