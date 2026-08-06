@@ -47,8 +47,8 @@ describe('CreateOrganizationWithAdmin bootstrap (integration, real replica-set M
   });
 
   afterEach(async () => {
-    await db.collection('organizations').deleteMany({});
-    await db.collection('users').deleteMany({});
+    await db.collection('Organizations').deleteMany({});
+    await db.collection('Users').deleteMany({});
   });
 
   function buildUseCase(passwordHasher: PasswordHasher = new BcryptPasswordHasher()) {

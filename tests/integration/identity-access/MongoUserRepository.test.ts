@@ -55,7 +55,7 @@ describe('MongoUserRepositoryFactory / MongoUserRepository (integration, real re
   });
 
   afterEach(async () => {
-    await db.collection('users').deleteMany({});
+    await db.collection('Users').deleteMany({});
   });
 
   it('persists a user and retrieves it by id, scoped to the bound tenant', async () => {

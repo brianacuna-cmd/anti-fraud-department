@@ -1,21 +1,21 @@
 /**
- * Mongo document shape for `users` (MODELO_DATOS_MONGO.md §3), scoped to
- * this slice's fields only. `roleIds`/`mfa`/`notificationPreferences`/
- * `loginAttempts`/`lockedUntil`/`lastLogin`/`resetTokenHash`/
- * `resetTokenExpires` belong to future auth/access-control work — they are
- * out of scope for the `User` aggregate here and are never read or written
- * by this repository.
+ * Mongo document shape for `Users` (design A2: PascalCase collection and
+ * field keys), scoped to this slice's fields only. `RoleIds`/`Mfa`/
+ * `NotificationPreferences`/`LoginAttempts`/`LockedUntil`/`LastLogin`/
+ * `ResetTokenHash`/`ResetTokenExpires` belong to future auth/access-control
+ * work — they are out of scope for the `User` aggregate here and are never
+ * read or written by this repository. `_id` stays lowercase (design A1).
  */
 export interface UserDocument {
   readonly _id: string;
-  readonly organizationId: string;
-  readonly email: string;
-  readonly passwordHash: string;
-  readonly firstName: string;
-  readonly lastName: string;
-  readonly avatarUrl: string | null;
-  readonly status: string;
-  readonly isPlatformAdmin: boolean;
-  readonly createdAt: string;
-  readonly updatedAt: string;
+  readonly OrganizationId: string;
+  readonly Email: string;
+  readonly PasswordHash: string;
+  readonly FirstName: string;
+  readonly LastName: string;
+  readonly AvatarUrl: string | null;
+  readonly Status: string;
+  readonly IsPlatformAdmin: boolean;
+  readonly CreatedAt: string;
+  readonly UpdatedAt: string;
 }

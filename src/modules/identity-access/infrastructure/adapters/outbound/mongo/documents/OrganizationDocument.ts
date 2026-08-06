@@ -1,17 +1,19 @@
 /**
- * Mongo document shape for `organizations` (MODELO_DATOS_MONGO.md §3).
- * `_id` is the aggregate's branded `OrganizationId` (a `crypto.randomUUID()`
- * string, proposal Approach) — never a driver-generated `ObjectId`.
+ * Mongo document shape for `Organizations` (design A2: PascalCase collection
+ * and field keys). `_id` is the aggregate's branded `OrganizationId` (a
+ * `crypto.randomUUID()` string, proposal Approach) — never a
+ * driver-generated `ObjectId`, and the single documented exception to the
+ * PascalCase rule (design A1).
  */
 export interface OrganizationDocument {
   readonly _id: string;
-  readonly name: string;
-  readonly slug: string;
-  readonly domain: string | null;
-  readonly status: string;
-  readonly logoUrl: string | null;
-  readonly createdAt: string;
-  readonly updatedAt: string;
+  readonly Name: string;
+  readonly Slug: string;
+  readonly Domain: string | null;
+  readonly Status: string;
+  readonly LogoUrl: string | null;
+  readonly CreatedAt: string;
+  readonly UpdatedAt: string;
   /** Set on transition to `CANCELLED` (design D10); written explicitly, never omitted. */
-  readonly deletedAt: string | null;
+  readonly DeletedAt: string | null;
 }

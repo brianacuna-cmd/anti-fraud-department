@@ -18,7 +18,7 @@ function toSession(tx: Transaction | undefined): ClientSession | undefined {
   return tx as unknown as ClientSession | undefined;
 }
 
-const COLLECTION_NAME = 'organizations';
+const COLLECTION_NAME = 'Organizations';
 const SLUG_UNIQUE_INDEX_NAME = 'slug_unique';
 
 /**
@@ -53,7 +53,7 @@ export class MongoOrganizationRepository implements OrganizationRepository {
   }
 
   async findBySlug(slug: Slug, tx?: Transaction): Promise<Organization | null> {
-    const document = await this.collection.findOne({ slug }, { session: toSession(tx) });
+    const document = await this.collection.findOne({ Slug: slug }, { session: toSession(tx) });
     return document ? toDomain(document) : null;
   }
 

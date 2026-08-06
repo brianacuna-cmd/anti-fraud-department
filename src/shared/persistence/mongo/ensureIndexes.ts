@@ -6,17 +6,22 @@ import type { Db } from 'mongodb';
  * Index Provisioning"). Named indexes so `duplicateKey.ts` (Phase 2) can
  * translate E11000 by index name, never by parsing the driver's message.
  * `createIndex` is idempotent — safe to call on every bootstrap.
+ *
+ * Design A2 (identity-access-schema-v2, PR3): collections and field KEYS are
+ * PascalCase (`Organizations`/`Users`, `Slug`/`OrganizationId`/`Email`/
+ * `Status`). Index NAMES stay snake_case (design A3) — only key casing
+ * moved, the shape and uniqueness semantics are byte-identical to before.
  */
 export async function ensureIndexes(db: Db): Promise<void> {
   await db
-    .collection('organizations')
-    .createIndex({ slug: 1 }, { unique: true, name: 'slug_unique' });
+    .collection('Organizations')
+    .createIndex({ Slug: 1 }, { unique: true, name: 'slug_unique' });
 
   await db
-    .collection('users')
-    .createIndex({ organizationId: 1, email: 1 }, { unique: true, name: 'user_email_unique' });
+    .collection('Users')
+    .createIndex({ OrganizationId: 1, Email: 1 }, { unique: true, name: 'user_email_unique' });
 
   await db
-    .collection('users')
-    .createIndex({ organizationId: 1, status: 1 }, { name: 'user_status_idx' });
+    .collection('Users')
+    .createIndex({ OrganizationId: 1, Status: 1 }, { name: 'user_status_idx' });
 }

@@ -23,32 +23,32 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     await replicaSet.stop();
   });
 
-  it('creates the three required indexes on a fresh database', async () => {
+  it('creates the three required indexes on a fresh database, with PascalCase keys (design A2/A3)', async () => {
     await ensureIndexes(db);
 
-    const organizationIndexes = await db.collection('organizations').indexes();
-    const userIndexes = await db.collection('users').indexes();
+    const organizationIndexes = await db.collection('Organizations').indexes();
+    const userIndexes = await db.collection('Users').indexes();
 
     const slugIndex = organizationIndexes.find((index) => index.name === 'slug_unique');
     expect(slugIndex).toBeDefined();
-    expect(slugIndex?.key).toEqual({ slug: 1 });
+    expect(slugIndex?.key).toEqual({ Slug: 1 });
     expect(slugIndex?.unique).toBe(true);
 
     const userEmailIndex = userIndexes.find((index) => index.name === 'user_email_unique');
     expect(userEmailIndex).toBeDefined();
-    expect(userEmailIndex?.key).toEqual({ organizationId: 1, email: 1 });
+    expect(userEmailIndex?.key).toEqual({ OrganizationId: 1, Email: 1 });
     expect(userEmailIndex?.unique).toBe(true);
 
     const userStatusIndex = userIndexes.find((index) => index.name === 'user_status_idx');
     expect(userStatusIndex).toBeDefined();
-    expect(userStatusIndex?.key).toEqual({ organizationId: 1, status: 1 });
+    expect(userStatusIndex?.key).toEqual({ OrganizationId: 1, Status: 1 });
   });
 
   it('is idempotent — running it twice does not throw or duplicate indexes', async () => {
     await ensureIndexes(db);
     await ensureIndexes(db);
 
-    const userIndexes = await db.collection('users').indexes();
+    const userIndexes = await db.collection('Users').indexes();
     const matchingNames = userIndexes.filter((index) => index.name === 'user_email_unique');
     expect(matchingNames).toHaveLength(1);
   });

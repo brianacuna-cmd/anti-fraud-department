@@ -44,7 +44,7 @@ describe('MongoOrganizationRepository (integration, real replica-set Mongo)', ()
   });
 
   afterEach(async () => {
-    await db.collection('organizations').deleteMany({});
+    await db.collection('Organizations').deleteMany({});
   });
 
   it('persists an organization and retrieves it by id', async () => {
@@ -131,12 +131,14 @@ describe('MongoOrganizationRepository (integration, real replica-set Mongo)', ()
    * upserts. This test reads the RAW document directly (bypassing the
    * mapper) so it fails if a later phase ever renames `_id` to `_Id`.
    * Re-run this exact assertion after every later PR in this change.
+   * Task 3.2 (PR3): re-targeted at the renamed `Organizations` collection
+   * (design A2) — still asserting the exact same `_id` invariant.
    */
-  it('round-trips the raw document by _id (design A1 regression guard)', async () => {
+  it('round-trips the raw document by _id (design A1 regression guard, renamed collection)', async () => {
     await repository.save(buildOrganization('org-id-guard', 'id-guard'));
 
     const rawDocument = await db
-      .collection<OrganizationDocument>('organizations')
+      .collection<OrganizationDocument>('Organizations')
       .findOne({ _id: 'org-id-guard' });
 
     expect(rawDocument).not.toBeNull();

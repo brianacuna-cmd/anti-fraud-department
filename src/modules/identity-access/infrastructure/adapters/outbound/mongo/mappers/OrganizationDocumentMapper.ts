@@ -5,30 +5,35 @@ import { createSlug } from '../../../../../domain/model/value-objects/Slug.js';
 import { createOrganizationStatus } from '../../../../../domain/model/value-objects/OrganizationStatus.js';
 import type { OrganizationDocument } from '../documents/OrganizationDocument.js';
 
+/**
+ * camelCase (domain) -> PascalCase (Mongo) translation seam (design A2).
+ * `_id` is the sole documented exception and stays lowercase (design A1).
+ */
 export function toDocument(organization: Organization): OrganizationDocument {
   return {
     _id: organization.id,
-    name: organization.name,
-    slug: organization.slug,
-    domain: organization.domain,
-    status: organization.status,
-    logoUrl: organization.logoUrl,
-    createdAt: organization.createdAt,
-    updatedAt: organization.updatedAt,
-    deletedAt: organization.deletedAt,
+    Name: organization.name,
+    Slug: organization.slug,
+    Domain: organization.domain,
+    Status: organization.status,
+    LogoUrl: organization.logoUrl,
+    CreatedAt: organization.createdAt,
+    UpdatedAt: organization.updatedAt,
+    DeletedAt: organization.deletedAt,
   };
 }
 
+/** PascalCase (Mongo) -> camelCase (domain) translation seam (design A2). */
 export function toDomain(document: OrganizationDocument): Organization {
   return Organization.rehydrate({
     id: createOrganizationId(document._id),
-    name: document.name,
-    slug: createSlug(document.slug),
-    domain: document.domain,
-    status: createOrganizationStatus(document.status),
-    logoUrl: document.logoUrl,
-    createdAt: brand<string, 'Instant'>(document.createdAt),
-    updatedAt: brand<string, 'Instant'>(document.updatedAt),
-    deletedAt: document.deletedAt === null ? null : brand<string, 'Instant'>(document.deletedAt),
+    name: document.Name,
+    slug: createSlug(document.Slug),
+    domain: document.Domain,
+    status: createOrganizationStatus(document.Status),
+    logoUrl: document.LogoUrl,
+    createdAt: brand<string, 'Instant'>(document.CreatedAt),
+    updatedAt: brand<string, 'Instant'>(document.UpdatedAt),
+    deletedAt: document.DeletedAt === null ? null : brand<string, 'Instant'>(document.DeletedAt),
   });
 }
