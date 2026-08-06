@@ -36,4 +36,44 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db
     .collection('adminOrganizations')
     .createIndex({ 'keys.keyId': 1 }, { name: 'admin_organization_keys_key_id_idx' });
+
+  // `Sessions` (identity-access-authentication, design D14/D15/D38).
+  await db
+    .collection('Sessions')
+    .createIndex({ TokenHash: 1 }, { unique: true, name: 'session_token_hash_unique' });
+
+  // PARTIAL unique index, not plain and not sparse (design D38): a plain
+  // unique index tolerates only ONE null/missing value across the whole
+  // collection, so a second refresh-less PLATFORM_ADMIN session would be
+  // rejected at insert with E11000. Sparse is also wrong here — this repo's
+  // mappers always write an explicit `null`, never omit the key, so a
+  // sparse index would still index every null and collide identically.
+  // `$type: 'string'` filters on TYPE, not presence, so explicit nulls are
+  // excluded either way — the only one of the three that is correct.
+  await db.collection('Sessions').createIndex(
+    { RefreshTokenHash: 1 },
+    {
+      unique: true,
+      name: 'session_refresh_token_hash_unique',
+      partialFilterExpression: { RefreshTokenHash: { $exists: true, $type: 'string' } },
+    },
+  );
+
+  await db.collection('Sessions').createIndex({ FamilyId: 1 }, { name: 'session_family_id_idx' });
+
+  // TTL sits on `FamilyExpiresAtDate` — a BSON Date MIRROR — never on the
+  // `FamilyExpiresAt` ISO-string `Instant` field (design D15). Mongo's TTL
+  // monitor acts only on a real BSON `Date`; a TTL index on the string field
+  // is created successfully and silently deletes nothing.
+  await db
+    .collection('Sessions')
+    .createIndex({ FamilyExpiresAtDate: 1 }, { name: 'session_family_expires_at_ttl_idx', expireAfterSeconds: 0 });
+
+  await db
+    .collection('Sessions')
+    .createIndex({ OrganizationId: 1 }, { name: 'session_organization_id_idx' });
+
+  await db
+    .collection('Sessions')
+    .createIndex({ ActorType: 1, UserId: 1 }, { name: 'session_actor_type_user_id_idx' });
 }
