@@ -3,8 +3,8 @@ import type { TransitionActor } from '../model/value-objects/TransitionActor.js'
 import type { TransitionTable } from './transitions.js';
 import { invalidTransition, forbiddenReactivation } from '../errors/IdentityAccessError.js';
 
-const REACTIVATION_FROM: LifecycleStatus = 'DESHABILITADO';
-const REACTIVATION_TO: LifecycleStatus = 'ACTIVO';
+const REACTIVATION_FROM: LifecycleStatus = 'DISABLED';
+const REACTIVATION_TO: LifecycleStatus = 'ACTIVE';
 
 /**
  * Table-driven transition guard shared by organizations and users (design

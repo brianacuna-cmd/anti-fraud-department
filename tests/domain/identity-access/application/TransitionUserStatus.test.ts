@@ -19,7 +19,7 @@ const PLATFORM_ADMIN = createAuthContext({ userId: 'u3', organizationId: 'org-1'
 
 async function seedUser(
   userRepositoryFactory: InMemoryUserRepositoryFactory,
-  status: 'ACTIVO' | 'DESHABILITADO' = 'ACTIVO',
+  status: 'ACTIVE' | 'DISABLED' = 'ACTIVE',
   organizationId = 'org-1',
 ): Promise<void> {
   const org = createOrganizationId(organizationId);
@@ -32,8 +32,8 @@ async function seedUser(
     lastName: 'Smith',
     now: CREATED_AT,
   });
-  if (status === 'DESHABILITADO') {
-    user = user.transitionTo('DESHABILITADO', { isPlatformAdmin: true }, CREATED_AT);
+  if (status === 'DISABLED') {
+    user = user.transitionTo('DISABLED', { isPlatformAdmin: true }, CREATED_AT);
   }
   await userRepositoryFactory.forTenant(org).save(user);
 }
@@ -53,9 +53,9 @@ describe('createTransitionUserStatusUseCase', () => {
     const unitOfWork = new InMemoryUnitOfWork();
     const transitionUserStatus = buildUseCase(userRepositoryFactory, unitOfWork);
 
-    const user = await transitionUserStatus({ auth: ORG_ADMIN, userId: 'user-1', next: 'SUSPENDIDO' });
+    const user = await transitionUserStatus({ auth: ORG_ADMIN, userId: 'user-1', next: 'SUSPENDED' });
 
-    expect(user.status).toBe('SUSPENDIDO');
+    expect(user.status).toBe('SUSPENDED');
     expect(unitOfWork.transactionCount).toBe(1);
   });
 
@@ -66,7 +66,7 @@ describe('createTransitionUserStatusUseCase', () => {
 
     expect.assertions(2);
     try {
-      await transitionUserStatus({ auth: ORG_ADMIN, userId: 'missing', next: 'SUSPENDIDO' });
+      await transitionUserStatus({ auth: ORG_ADMIN, userId: 'missing', next: 'SUSPENDED' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('USER_NOT_FOUND');
@@ -75,42 +75,42 @@ describe('createTransitionUserStatusUseCase', () => {
 
   it('rejects a cross-tenant transition with USER_NOT_FOUND', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
-    await seedUser(userRepositoryFactory, 'ACTIVO', 'org-1');
+    await seedUser(userRepositoryFactory, 'ACTIVE', 'org-1');
     const unitOfWork = new InMemoryUnitOfWork();
     const transitionUserStatus = buildUseCase(userRepositoryFactory, unitOfWork);
 
     expect.assertions(2);
     try {
-      await transitionUserStatus({ auth: OTHER_ORG_ADMIN, userId: 'user-1', next: 'SUSPENDIDO' });
+      await transitionUserStatus({ auth: OTHER_ORG_ADMIN, userId: 'user-1', next: 'SUSPENDED' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('USER_NOT_FOUND');
     }
   });
 
-  it('rejects an org-admin self-reactivating a DESHABILITADO user in their own org with FORBIDDEN_REACTIVATION', async () => {
+  it('rejects an org-admin self-reactivating a DISABLED user in their own org with FORBIDDEN_REACTIVATION', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
-    await seedUser(userRepositoryFactory, 'DESHABILITADO');
+    await seedUser(userRepositoryFactory, 'DISABLED');
     const unitOfWork = new InMemoryUnitOfWork();
     const transitionUserStatus = buildUseCase(userRepositoryFactory, unitOfWork);
 
     expect.assertions(2);
     try {
-      await transitionUserStatus({ auth: ORG_ADMIN, userId: 'user-1', next: 'ACTIVO' });
+      await transitionUserStatus({ auth: ORG_ADMIN, userId: 'user-1', next: 'ACTIVE' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('FORBIDDEN_REACTIVATION');
     }
   });
 
-  it('allows a platform-admin to reactivate a DESHABILITADO user', async () => {
+  it('allows a platform-admin to reactivate a DISABLED user', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
-    await seedUser(userRepositoryFactory, 'DESHABILITADO');
+    await seedUser(userRepositoryFactory, 'DISABLED');
     const unitOfWork = new InMemoryUnitOfWork();
     const transitionUserStatus = buildUseCase(userRepositoryFactory, unitOfWork);
 
-    const user = await transitionUserStatus({ auth: PLATFORM_ADMIN, userId: 'user-1', next: 'ACTIVO' });
+    const user = await transitionUserStatus({ auth: PLATFORM_ADMIN, userId: 'user-1', next: 'ACTIVE' });
 
-    expect(user.status).toBe('ACTIVO');
+    expect(user.status).toBe('ACTIVE');
   });
 });

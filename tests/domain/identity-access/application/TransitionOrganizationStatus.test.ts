@@ -16,7 +16,7 @@ const REGULAR_USER = createAuthContext({ userId: 'u2', organizationId: 'o1', isP
 
 async function seedOrganization(
   organizations: InMemoryOrganizationRepository,
-  status: 'ACTIVO' | 'DESHABILITADO' = 'ACTIVO',
+  status: 'ACTIVE' | 'DISABLED' = 'ACTIVE',
 ): Promise<void> {
   let organization = Organization.create({
     id: createOrganizationId('org-1'),
@@ -24,8 +24,8 @@ async function seedOrganization(
     slug: createSlug('acme'),
     now: CREATED_AT,
   });
-  if (status === 'DESHABILITADO') {
-    organization = organization.transitionTo('DESHABILITADO', { isPlatformAdmin: true }, CREATED_AT);
+  if (status === 'DISABLED') {
+    organization = organization.transitionTo('DISABLED', { isPlatformAdmin: true }, CREATED_AT);
   }
   await organizations.save(organization);
 }
@@ -48,13 +48,13 @@ describe('createTransitionOrganizationStatusUseCase', () => {
     const organization = await transitionOrganizationStatus({
       auth: PLATFORM_ADMIN,
       organizationId: 'org-1',
-      next: 'SUSPENDIDO',
+      next: 'SUSPENDED',
     });
 
-    expect(organization.status).toBe('SUSPENDIDO');
+    expect(organization.status).toBe('SUSPENDED');
     expect(unitOfWork.transactionCount).toBe(1);
     const persisted = await organizations.findById(createOrganizationId('org-1'));
-    expect(persisted?.status).toBe('SUSPENDIDO');
+    expect(persisted?.status).toBe('SUSPENDED');
   });
 
   it('rejects an unknown id with ORGANIZATION_NOT_FOUND', async () => {
@@ -64,28 +64,28 @@ describe('createTransitionOrganizationStatusUseCase', () => {
 
     expect.assertions(2);
     try {
-      await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: 'missing', next: 'SUSPENDIDO' });
+      await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: 'missing', next: 'SUSPENDED' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('ORGANIZATION_NOT_FOUND');
     }
   });
 
-  it('allows a platform-admin to reactivate a DESHABILITADO organization', async () => {
+  it('allows a platform-admin to reactivate a DISABLED organization', async () => {
     const organizations = new InMemoryOrganizationRepository();
-    await seedOrganization(organizations, 'DESHABILITADO');
+    await seedOrganization(organizations, 'DISABLED');
     const unitOfWork = new InMemoryUnitOfWork();
     const transitionOrganizationStatus = buildUseCase(organizations, unitOfWork);
 
     const organization = await transitionOrganizationStatus({
       auth: PLATFORM_ADMIN,
       organizationId: 'org-1',
-      next: 'ACTIVO',
+      next: 'ACTIVE',
     });
 
-    expect(organization.status).toBe('ACTIVO');
+    expect(organization.status).toBe('ACTIVE');
     const persisted = await organizations.findById(createOrganizationId('org-1'));
-    expect(persisted?.status).toBe('ACTIVO');
+    expect(persisted?.status).toBe('ACTIVE');
   });
 
   it('rejects a non-platform-admin caller with FORBIDDEN_CROSS_TENANT before touching the aggregate', async () => {
@@ -96,7 +96,7 @@ describe('createTransitionOrganizationStatusUseCase', () => {
 
     expect.assertions(3);
     try {
-      await transitionOrganizationStatus({ auth: REGULAR_USER, organizationId: 'org-1', next: 'SUSPENDIDO' });
+      await transitionOrganizationStatus({ auth: REGULAR_USER, organizationId: 'org-1', next: 'SUSPENDED' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('FORBIDDEN_CROSS_TENANT');

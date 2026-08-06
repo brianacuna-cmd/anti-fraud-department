@@ -8,15 +8,15 @@ export type TransitionTable = Readonly<Record<LifecycleStatus, readonly Lifecycl
 
 /**
  * Organization status edges (organization-lifecycle spec: "Organization
- * Status Transition Matrix"). `DESHABILITADO` is a cul-de-sac except for
- * `ACTIVO` reactivation, which is further actor-gated by
+ * Status Transition Matrix"). `DISABLED` is a cul-de-sac except for
+ * `ACTIVE` reactivation, which is further actor-gated by
  * `StatusTransitionPolicy` (platform-admin only).
  */
 export const ORGANIZATION_TRANSITIONS: TransitionTable = {
-  ACTIVO: ['INACTIVO', 'SUSPENDIDO', 'DESHABILITADO'],
-  INACTIVO: ['ACTIVO', 'SUSPENDIDO', 'DESHABILITADO'],
-  SUSPENDIDO: ['ACTIVO', 'INACTIVO', 'DESHABILITADO'],
-  DESHABILITADO: ['ACTIVO'],
+  ACTIVE: ['INACTIVE', 'SUSPENDED', 'DISABLED'],
+  INACTIVE: ['ACTIVE', 'SUSPENDED', 'DISABLED'],
+  SUSPENDED: ['ACTIVE', 'INACTIVE', 'DISABLED'],
+  DISABLED: ['ACTIVE'],
 };
 
 /**
@@ -27,8 +27,8 @@ export const ORGANIZATION_TRANSITIONS: TransitionTable = {
  * gets `FORBIDDEN_REACTIVATION`, never a silent success.
  */
 export const USER_TRANSITIONS: TransitionTable = {
-  ACTIVO: ['INACTIVO', 'SUSPENDIDO', 'DESHABILITADO'],
-  INACTIVO: ['ACTIVO', 'SUSPENDIDO', 'DESHABILITADO'],
-  SUSPENDIDO: ['ACTIVO', 'INACTIVO', 'DESHABILITADO'],
-  DESHABILITADO: ['ACTIVO'],
+  ACTIVE: ['INACTIVE', 'SUSPENDED', 'DISABLED'],
+  INACTIVE: ['ACTIVE', 'SUSPENDED', 'DISABLED'],
+  SUSPENDED: ['ACTIVE', 'INACTIVE', 'DISABLED'],
+  DISABLED: ['ACTIVE'],
 };

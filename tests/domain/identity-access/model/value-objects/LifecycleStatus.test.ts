@@ -1,7 +1,7 @@
 import { createLifecycleStatus } from '../../../../../src/modules/identity-access/domain/model/value-objects/LifecycleStatus.js';
 
 describe('createLifecycleStatus', () => {
-  it.each(['ACTIVO', 'INACTIVO', 'SUSPENDIDO', 'DESHABILITADO'] as const)(
+  it.each(['ACTIVE', 'INACTIVE', 'SUSPENDED', 'DISABLED'] as const)(
     'accepts the valid status %s and returns it unchanged',
     (status) => {
       expect(createLifecycleStatus(status)).toBe(status);

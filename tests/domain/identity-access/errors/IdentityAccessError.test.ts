@@ -36,19 +36,19 @@ describe('invariantViolation', () => {
 
 describe('invalidTransition', () => {
   it('builds an INVALID_TRANSITION error naming both statuses', () => {
-    const error = invalidTransition('INACTIVO', 'INACTIVO');
+    const error = invalidTransition('INACTIVE', 'INACTIVE');
 
     expect(error.code).toBe('INVALID_TRANSITION');
-    expect(error.metadata).toEqual({ current: 'INACTIVO', next: 'INACTIVO' });
+    expect(error.metadata).toEqual({ current: 'INACTIVE', next: 'INACTIVE' });
   });
 });
 
 describe('forbiddenReactivation', () => {
   it('builds a FORBIDDEN_REACTIVATION error naming both statuses', () => {
-    const error = forbiddenReactivation('DESHABILITADO', 'ACTIVO');
+    const error = forbiddenReactivation('DISABLED', 'ACTIVE');
 
     expect(error.code).toBe('FORBIDDEN_REACTIVATION');
-    expect(error.metadata).toEqual({ current: 'DESHABILITADO', next: 'ACTIVO' });
+    expect(error.metadata).toEqual({ current: 'DISABLED', next: 'ACTIVE' });
   });
 });
 

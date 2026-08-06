@@ -55,7 +55,7 @@ describe('createCreateOrganizationWithAdminUseCase', () => {
       adminLastName: 'Admin',
     });
 
-    expect(organization.status).toBe('ACTIVO');
+    expect(organization.status).toBe('ACTIVE');
     expect(unitOfWork.transactionCount).toBe(1);
     const persistedOrg = await organizations.findBySlug(createSlug('acme-corp'));
     expect(persistedOrg?.id).toBe(organization.id);

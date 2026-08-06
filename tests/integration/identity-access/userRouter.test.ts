@@ -71,7 +71,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
       email: 'alice@example.com',
       firstName: 'Alice',
       organizationId: 'org-1',
-      status: 'ACTIVO',
+      status: 'ACTIVE',
     });
     expect(response.body).not.toHaveProperty('passwordHash');
   });
@@ -137,10 +137,10 @@ describe('userRouter (e2e, in-memory repository)', () => {
 
     const response = await request(app)
       .post(`/api/v1/users/${created.body.id}/transition`)
-      .send({ next: 'SUSPENDIDO' });
+      .send({ next: 'SUSPENDED' });
 
     expect(response.status).toBe(200);
-    expect(response.body.status).toBe('SUSPENDIDO');
+    expect(response.body.status).toBe('SUSPENDED');
   });
 
   it('POST /users/:id/transition rejects an invalid transition with 422', async () => {
@@ -151,13 +151,13 @@ describe('userRouter (e2e, in-memory repository)', () => {
 
     const response = await request(app)
       .post(`/api/v1/users/${created.body.id}/transition`)
-      .send({ next: 'ACTIVO' });
+      .send({ next: 'ACTIVE' });
 
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe('INVALID_TRANSITION');
   });
 
-  it('an org-admin cannot reactivate a DESHABILITADO user in their own org (FORBIDDEN_REACTIVATION)', async () => {
+  it('an org-admin cannot reactivate a DISABLED user in their own org (FORBIDDEN_REACTIVATION)', async () => {
     const { app } = buildApp(() => ORG_1_USER);
     const created = await request(app)
       .post('/api/v1/users')
@@ -166,13 +166,13 @@ describe('userRouter (e2e, in-memory repository)', () => {
 
     const response = await request(app)
       .post(`/api/v1/users/${created.body.id}/transition`)
-      .send({ next: 'ACTIVO' });
+      .send({ next: 'ACTIVE' });
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe('FORBIDDEN_REACTIVATION');
   });
 
-  it('DELETE /users/:id behaves identically to transition to DESHABILITADO', async () => {
+  it('DELETE /users/:id behaves identically to transition to DISABLED', async () => {
     const { app } = buildApp(() => ORG_1_USER);
     const created = await request(app)
       .post('/api/v1/users')
@@ -181,7 +181,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
     const response = await request(app).delete(`/api/v1/users/${created.body.id}`);
 
     expect(response.status).toBe(200);
-    expect(response.body.status).toBe('DESHABILITADO');
+    expect(response.body.status).toBe('DISABLED');
   });
 
   it('a platform-admin shares the ordinary tenant-scoped path — no special cross-tenant bypass exists', async () => {

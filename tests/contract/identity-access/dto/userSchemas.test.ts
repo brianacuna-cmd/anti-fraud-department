@@ -58,7 +58,7 @@ describe('patchUserSchema (allow-list)', () => {
 });
 
 describe('transitionUserSchema', () => {
-  it.each(['ACTIVO', 'INACTIVO', 'SUSPENDIDO', 'DESHABILITADO'])('accepts the valid status %s', (next) => {
+  it.each(['ACTIVE', 'INACTIVE', 'SUSPENDED', 'DISABLED'])('accepts the valid status %s', (next) => {
     const result = transitionUserSchema.safeParse({ next });
 
     expect(result.success).toBe(true);

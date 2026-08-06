@@ -31,7 +31,7 @@ export type PatchUserBody = z.infer<typeof patchUserSchema>;
 
 /** POST /users/:id/transition body. */
 export const transitionUserSchema = z.object({
-  next: z.enum(['ACTIVO', 'INACTIVO', 'SUSPENDIDO', 'DESHABILITADO']),
+  next: z.enum(['ACTIVE', 'INACTIVE', 'SUSPENDED', 'DISABLED']),
 });
 
 export type TransitionUserBody = z.infer<typeof transitionUserSchema>;

@@ -18,10 +18,10 @@ function buildOrganization(): Organization {
 }
 
 describe('Organization.create', () => {
-  it('starts a new organization ACTIVO with matching created/updated timestamps', () => {
+  it('starts a new organization ACTIVE with matching created/updated timestamps', () => {
     const organization = buildOrganization();
 
-    expect(organization.status).toBe('ACTIVO');
+    expect(organization.status).toBe('ACTIVE');
     expect(organization.name).toBe('Acme Corp');
     expect(organization.slug).toBe('acme-corp');
     expect(organization.domain).toBeNull();
@@ -65,13 +65,13 @@ describe('Organization.rehydrate', () => {
       name: 'Acme Corp',
       slug: createSlug('acme-corp'),
       domain: 'acme.com',
-      status: 'SUSPENDIDO',
+      status: 'SUSPENDED',
       logoUrl: 'https://acme.com/logo.png',
       createdAt: NOW,
       updatedAt: LATER,
     });
 
-    expect(organization.status).toBe('SUSPENDIDO');
+    expect(organization.status).toBe('SUSPENDED');
     expect(organization.domain).toBe('acme.com');
     expect(organization.updatedAt).toBe(LATER);
   });
@@ -108,28 +108,28 @@ describe('Organization#transitionTo', () => {
   it('delegates to StatusTransitionPolicy and returns a new instance on a valid transition', () => {
     const organization = buildOrganization();
 
-    const transitioned = organization.transitionTo('SUSPENDIDO', createTransitionActor(true), LATER);
+    const transitioned = organization.transitionTo('SUSPENDED', createTransitionActor(true), LATER);
 
     expect(transitioned).not.toBe(organization);
-    expect(transitioned.status).toBe('SUSPENDIDO');
+    expect(transitioned.status).toBe('SUSPENDED');
     expect(transitioned.updatedAt).toBe(LATER);
-    expect(organization.status).toBe('ACTIVO');
+    expect(organization.status).toBe('ACTIVE');
   });
 
   it('rejects an invalid transition, leaving the original instance untouched', () => {
     const organization = buildOrganization();
 
-    expect(() => organization.transitionTo('ACTIVO', createTransitionActor(true), LATER)).toThrow(
+    expect(() => organization.transitionTo('ACTIVE', createTransitionActor(true), LATER)).toThrow(
       IdentityAccessError,
     );
-    expect(organization.status).toBe('ACTIVO');
+    expect(organization.status).toBe('ACTIVE');
   });
 
-  it('rejects a non-platform-admin reactivating a DESHABILITADO organization', () => {
-    const organization = buildOrganization().transitionTo('DESHABILITADO', createTransitionActor(true), LATER);
+  it('rejects a non-platform-admin reactivating a DISABLED organization', () => {
+    const organization = buildOrganization().transitionTo('DISABLED', createTransitionActor(true), LATER);
 
     expect(() =>
-      organization.transitionTo('ACTIVO', createTransitionActor(false), LATER),
+      organization.transitionTo('ACTIVE', createTransitionActor(false), LATER),
     ).toThrow(IdentityAccessError);
   });
 });

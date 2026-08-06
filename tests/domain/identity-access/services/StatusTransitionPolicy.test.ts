@@ -6,10 +6,10 @@ import { IdentityAccessError } from '../../../../src/modules/identity-access/dom
 describe('ORGANIZATION_TRANSITIONS', () => {
   it('is a lookup table, not an if/switch cascade — every status has an explicit edge list', () => {
     expect(ORGANIZATION_TRANSITIONS).toEqual({
-      ACTIVO: ['INACTIVO', 'SUSPENDIDO', 'DESHABILITADO'],
-      INACTIVO: ['ACTIVO', 'SUSPENDIDO', 'DESHABILITADO'],
-      SUSPENDIDO: ['ACTIVO', 'INACTIVO', 'DESHABILITADO'],
-      DESHABILITADO: ['ACTIVO'],
+      ACTIVE: ['INACTIVE', 'SUSPENDED', 'DISABLED'],
+      INACTIVE: ['ACTIVE', 'SUSPENDED', 'DISABLED'],
+      SUSPENDED: ['ACTIVE', 'INACTIVE', 'DISABLED'],
+      DISABLED: ['ACTIVE'],
     });
   });
 });
@@ -18,28 +18,28 @@ describe('assertTransitionAllowed (organizations)', () => {
   const platformAdmin = createTransitionActor(true);
   const regularActor = createTransitionActor(false);
 
-  it('(1) allows a valid ACTIVO -> SUSPENDIDO transition by a platform-admin', () => {
+  it('(1) allows a valid ACTIVE -> SUSPENDED transition by a platform-admin', () => {
     expect(() =>
-      assertTransitionAllowed(ORGANIZATION_TRANSITIONS, 'ACTIVO', 'SUSPENDIDO', platformAdmin),
+      assertTransitionAllowed(ORGANIZATION_TRANSITIONS, 'ACTIVE', 'SUSPENDED', platformAdmin),
     ).not.toThrow();
   });
 
-  it('(2) rejects a no-op INACTIVO -> INACTIVO transition as INVALID_TRANSITION', () => {
+  it('(2) rejects a no-op INACTIVE -> INACTIVE transition as INVALID_TRANSITION', () => {
     expect.assertions(2);
     try {
-      assertTransitionAllowed(ORGANIZATION_TRANSITIONS, 'INACTIVO', 'INACTIVO', platformAdmin);
+      assertTransitionAllowed(ORGANIZATION_TRANSITIONS, 'INACTIVE', 'INACTIVE', platformAdmin);
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('INVALID_TRANSITION');
     }
   });
 
-  it.each(['INACTIVO', 'SUSPENDIDO'] as const)(
-    '(3) rejects DESHABILITADO -> %s as INVALID_TRANSITION',
+  it.each(['INACTIVE', 'SUSPENDED'] as const)(
+    '(3) rejects DISABLED -> %s as INVALID_TRANSITION',
     (next) => {
       expect.assertions(2);
       try {
-        assertTransitionAllowed(ORGANIZATION_TRANSITIONS, 'DESHABILITADO', next, platformAdmin);
+        assertTransitionAllowed(ORGANIZATION_TRANSITIONS, 'DISABLED', next, platformAdmin);
       } catch (error) {
         expect(error).toBeInstanceOf(IdentityAccessError);
         expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('INVALID_TRANSITION');
@@ -47,16 +47,16 @@ describe('assertTransitionAllowed (organizations)', () => {
     },
   );
 
-  it('(4) allows a platform-admin to reactivate DESHABILITADO -> ACTIVO', () => {
+  it('(4) allows a platform-admin to reactivate DISABLED -> ACTIVE', () => {
     expect(() =>
-      assertTransitionAllowed(ORGANIZATION_TRANSITIONS, 'DESHABILITADO', 'ACTIVO', platformAdmin),
+      assertTransitionAllowed(ORGANIZATION_TRANSITIONS, 'DISABLED', 'ACTIVE', platformAdmin),
     ).not.toThrow();
   });
 
-  it('(5) rejects a non-platform-admin reactivating DESHABILITADO -> ACTIVO as FORBIDDEN_REACTIVATION', () => {
+  it('(5) rejects a non-platform-admin reactivating DISABLED -> ACTIVE as FORBIDDEN_REACTIVATION', () => {
     expect.assertions(2);
     try {
-      assertTransitionAllowed(ORGANIZATION_TRANSITIONS, 'DESHABILITADO', 'ACTIVO', regularActor);
+      assertTransitionAllowed(ORGANIZATION_TRANSITIONS, 'DISABLED', 'ACTIVE', regularActor);
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('FORBIDDEN_REACTIVATION');
