@@ -12,8 +12,11 @@ import { resolveAuthContextResolver } from './modules/identity-access/infrastruc
 import { createAuthContextMiddleware } from './modules/identity-access/infrastructure/adapters/inbound/http/auth/authContextMiddleware.js';
 import { MongoOrganizationRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoOrganizationRepository.js';
 import { MongoUserRepositoryFactory } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUserRepositoryFactory.js';
+import { MongoSessionRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoSessionRepository.js';
 import { MongoUnitOfWork } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { BcryptPasswordHasher } from './modules/identity-access/infrastructure/adapters/outbound/crypto/BcryptPasswordHasher.js';
+import { AesGcmSecretCipher } from './modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
+import { AesGcmSessionTokenService } from './modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSessionTokenService.js';
 import { generateOrganizationId } from './modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { generateUserId } from './modules/identity-access/domain/model/value-objects/UserId.js';
 import { createGetOrganizationUseCase } from './modules/identity-access/application/GetOrganization.js';
@@ -33,6 +36,14 @@ const PORT = Number(process.env.PORT ?? 3000);
 const MONGO_URI = process.env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/?replicaSet=rs0';
 const MONGO_DB_NAME = process.env.MONGO_DB_NAME ?? 'anti_fraud_department';
 const AUTH_MODE = process.env.AUTH_MODE ?? 'trusted-header';
+// Phase 3b (design D13): normalized via SHA-256 inside AesGcmSecretCipher —
+// any length is accepted, but a real deployment MUST override the dev
+// fallback. `TOKEN_KEY_VERSION` is a small integer (0-255, 1 byte on the
+// wire) so a future key rotation only needs to bump this and start a new
+// AesGcmSecretCipher instance; old tokens under the old version simply fail
+// to decrypt (`decrypt` returns null, never throws).
+const TOKEN_SECRET = process.env.TOKEN_SECRET ?? 'dev-only-insecure-token-secret';
+const TOKEN_KEY_VERSION = Number(process.env.TOKEN_KEY_VERSION ?? 1);
 
 async function bootstrap(): Promise<void> {
   // Fail-closed (design D4): AUTH_MODE=trusted-header trusts client headers
@@ -45,7 +56,12 @@ async function bootstrap(): Promise<void> {
   const clock = new SystemClock();
   const organizations = new MongoOrganizationRepository(db);
   const userRepositoryFactory = new MongoUserRepositoryFactory(db);
+  const sessions = new MongoSessionRepository(db);
   const passwordHasher = new BcryptPasswordHasher();
+  // Phase 3b (design D13): the ONE AES-256-GCM primitive, layered — also
+  // reused by MFA-secret encryption (mfa-totp spec) once that phase lands.
+  const secretCipher = new AesGcmSecretCipher(TOKEN_SECRET, TOKEN_KEY_VERSION);
+  const sessionTokenService = new AesGcmSessionTokenService(secretCipher);
   // Phase 3: a REAL Mongo-session-backed UnitOfWork — required for
   // CreateOrganizationWithAdmin's genuine cross-collection atomicity.
   // Phase 2's PassthroughUnitOfWork is deliberately NOT reused here.
@@ -84,7 +100,9 @@ async function bootstrap(): Promise<void> {
     deleteUser: createDeleteUserUseCase({ transitionUserStatus }),
   });
 
-  const authContextMiddleware = createAuthContextMiddleware(resolveAuthContextResolver(AUTH_MODE));
+  const authContextMiddleware = createAuthContextMiddleware(
+    resolveAuthContextResolver(AUTH_MODE, { sessionTokenService, sessionRepository: sessions }),
+  );
 
   const identityAccessRouter = Router();
   identityAccessRouter.use(authContextMiddleware);

@@ -66,4 +66,48 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     const matchingNames = userIndexes.filter((index) => index.name === 'user_email_unique');
     expect(matchingNames).toHaveLength(1);
   });
+
+  it('creates the required Sessions indexes, with a PARTIAL (not sparse) unique index on RefreshTokenHash (design D38) and a TTL on the Date mirror, never the Instant string field (design D15)', async () => {
+    await ensureIndexes(db);
+
+    const sessionIndexes = await db.collection('Sessions').indexes();
+
+    const tokenHashIndex = sessionIndexes.find((index) => index.name === 'session_token_hash_unique');
+    expect(tokenHashIndex).toBeDefined();
+    expect(tokenHashIndex?.key).toEqual({ TokenHash: 1 });
+    expect(tokenHashIndex?.unique).toBe(true);
+
+    const refreshTokenHashIndex = sessionIndexes.find(
+      (index) => index.name === 'session_refresh_token_hash_unique',
+    );
+    expect(refreshTokenHashIndex).toBeDefined();
+    expect(refreshTokenHashIndex?.key).toEqual({ RefreshTokenHash: 1 });
+    expect(refreshTokenHashIndex?.unique).toBe(true);
+    expect(refreshTokenHashIndex?.sparse).not.toBe(true);
+    expect(refreshTokenHashIndex?.partialFilterExpression).toEqual({
+      RefreshTokenHash: { $exists: true, $type: 'string' },
+    });
+
+    const familyIdIndex = sessionIndexes.find((index) => index.name === 'session_family_id_idx');
+    expect(familyIdIndex).toBeDefined();
+    expect(familyIdIndex?.key).toEqual({ FamilyId: 1 });
+
+    const familyExpiresAtTtlIndex = sessionIndexes.find(
+      (index) => index.name === 'session_family_expires_at_ttl_idx',
+    );
+    expect(familyExpiresAtTtlIndex).toBeDefined();
+    expect(familyExpiresAtTtlIndex?.key).toEqual({ FamilyExpiresAtDate: 1 });
+    expect(familyExpiresAtTtlIndex?.expireAfterSeconds).toBe(0);
+    // Regression guard (design D15): the TTL MUST sit on the Date mirror
+    // field name, never on the ISO-string `FamilyExpiresAt` field.
+    expect(familyExpiresAtTtlIndex?.key).not.toHaveProperty('FamilyExpiresAt');
+
+    const organizationIdIndex = sessionIndexes.find((index) => index.name === 'session_organization_id_idx');
+    expect(organizationIdIndex).toBeDefined();
+    expect(organizationIdIndex?.key).toEqual({ OrganizationId: 1 });
+
+    const actorTypeUserIdIndex = sessionIndexes.find((index) => index.name === 'session_actor_type_user_id_idx');
+    expect(actorTypeUserIdIndex).toBeDefined();
+    expect(actorTypeUserIdIndex?.key).toEqual({ ActorType: 1, UserId: 1 });
+  });
 });
