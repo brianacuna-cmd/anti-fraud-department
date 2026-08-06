@@ -13,6 +13,7 @@ export interface CreateUserInput {
   readonly email: string;
   readonly password: string;
   readonly firstName: string;
+  readonly middleName?: string | null;
   readonly lastName: string;
   readonly avatarUrl?: string | null;
 }
@@ -49,6 +50,7 @@ export function createCreateUserUseCase(deps: CreateUserDeps) {
       email,
       credential,
       firstName: input.firstName,
+      middleName: input.middleName,
       lastName: input.lastName,
       avatarUrl: input.avatarUrl,
       now: deps.clock.now(),

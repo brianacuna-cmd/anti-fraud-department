@@ -25,10 +25,15 @@ describe('Organization.create', () => {
     expect(organization.name).toBe('Acme Corp');
     expect(organization.slug).toBe('acme-corp');
     expect(organization.domain).toBeNull();
-    expect(organization.logoUrl).toBeNull();
     expect(organization.createdAt).toBe(NOW);
     expect(organization.updatedAt).toBe(NOW);
     expect(organization.deletedAt).toBeNull();
+  });
+
+  it('defaults configuration to an empty object (design A11 — not exposed, not patchable this slice)', () => {
+    const organization = buildOrganization();
+
+    expect(organization.configuration).toEqual({});
   });
 
   it('rejects an empty name as an invariant violation', () => {
@@ -42,20 +47,26 @@ describe('Organization.create', () => {
     ).toThrow(IdentityAccessError);
   });
 
-  it.each(['domain', 'logoUrl'] as const)('rejects a blank %s as an invariant violation', (field) => {
+  it('rejects a blank domain as an invariant violation', () => {
     expect(() =>
       Organization.create({
         id: createOrganizationId('org-1'),
         name: 'Acme Corp',
         slug: createSlug('acme-corp'),
-        [field]: '   ',
+        domain: '   ',
         now: NOW,
       }),
     ).toThrow(IdentityAccessError);
   });
 
-  it('allows domain/logoUrl to be omitted (null), only rejects present-but-blank', () => {
+  it('allows domain to be omitted (null), only rejects present-but-blank', () => {
     expect(() => buildOrganization()).not.toThrow();
+  });
+
+  it('no longer exposes a logoUrl getter (design D8/A11 — dropped in favor of configuration)', () => {
+    const organization = buildOrganization();
+
+    expect((organization as unknown as Record<string, unknown>).logoUrl).toBeUndefined();
   });
 });
 
@@ -67,7 +78,7 @@ describe('Organization.rehydrate', () => {
       slug: createSlug('acme-corp'),
       domain: 'acme.com',
       status: 'SUSPENDED',
-      logoUrl: 'https://acme.com/logo.png',
+      configuration: { theme: 'dark' },
       createdAt: NOW,
       updatedAt: LATER,
       deletedAt: null,
@@ -77,6 +88,7 @@ describe('Organization.rehydrate', () => {
     expect(organization.domain).toBe('acme.com');
     expect(organization.updatedAt).toBe(LATER);
     expect(organization.deletedAt).toBeNull();
+    expect(organization.configuration).toEqual({ theme: 'dark' });
   });
 
   it('reconstructs a CANCELLED organization with its stored deletedAt', () => {
@@ -86,7 +98,7 @@ describe('Organization.rehydrate', () => {
       slug: createSlug('acme-corp'),
       domain: null,
       status: 'CANCELLED',
-      logoUrl: null,
+      configuration: {},
       createdAt: NOW,
       updatedAt: LATER,
       deletedAt: LATER,
@@ -101,14 +113,21 @@ describe('Organization#patchIdentity', () => {
   it('returns a new instance with only the given fields changed, slug untouched', () => {
     const organization = buildOrganization();
 
-    const patched = organization.patchIdentity({ name: 'Acme Corp Inc', logoUrl: 'https://acme.com/logo.png' }, LATER);
+    const patched = organization.patchIdentity({ name: 'Acme Corp Inc' }, LATER);
 
     expect(patched).not.toBe(organization);
     expect(patched.name).toBe('Acme Corp Inc');
-    expect(patched.logoUrl).toBe('https://acme.com/logo.png');
     expect(patched.slug).toBe('acme-corp');
     expect(patched.updatedAt).toBe(LATER);
     expect(organization.name).toBe('Acme Corp');
+  });
+
+  it('leaves configuration untouched by patchIdentity (design A11 — not patchable this slice)', () => {
+    const organization = buildOrganization();
+
+    const patched = organization.patchIdentity({ name: 'Acme Corp Inc' }, LATER);
+
+    expect(patched.configuration).toEqual(organization.configuration);
   });
 
   it('rejects patching the name to an empty string as an invariant violation', () => {
@@ -117,10 +136,10 @@ describe('Organization#patchIdentity', () => {
     expect(() => organization.patchIdentity({ name: '' }, LATER)).toThrow(IdentityAccessError);
   });
 
-  it.each(['domain', 'logoUrl'] as const)('rejects patching %s to a blank string', (field) => {
+  it('rejects patching domain to a blank string', () => {
     const organization = buildOrganization();
 
-    expect(() => organization.patchIdentity({ [field]: '  ' }, LATER)).toThrow(IdentityAccessError);
+    expect(() => organization.patchIdentity({ domain: '  ' }, LATER)).toThrow(IdentityAccessError);
   });
 });
 

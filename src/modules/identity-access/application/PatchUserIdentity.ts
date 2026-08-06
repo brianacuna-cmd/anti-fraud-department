@@ -13,6 +13,7 @@ export interface PatchUserIdentityInput {
   readonly firstName?: string;
   readonly lastName?: string;
   readonly email?: string;
+  readonly middleName?: string | null;
   readonly avatarUrl?: string | null;
 }
 
@@ -41,7 +42,13 @@ export function createPatchUserIdentityUseCase(deps: PatchUserIdentityDeps) {
     }
 
     const updated = user.patchIdentity(
-      { firstName: input.firstName, lastName: input.lastName, email, avatarUrl: input.avatarUrl },
+      {
+        firstName: input.firstName,
+        lastName: input.lastName,
+        email,
+        middleName: input.middleName,
+        avatarUrl: input.avatarUrl,
+      },
       deps.clock.now(),
     );
     await repository.save(updated);

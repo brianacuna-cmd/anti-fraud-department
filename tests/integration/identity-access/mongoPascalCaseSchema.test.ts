@@ -69,7 +69,6 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
       name: 'Acme Corp',
       slug: createSlug('acme-corp-pascal'),
       domain: 'acme.example.com',
-      logoUrl: null,
       now: NOW,
     });
     await organizations.save(organization);
@@ -83,7 +82,7 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
       Slug: 'acme-corp-pascal',
       Domain: 'acme.example.com',
       Status: 'ACTIVE',
-      LogoUrl: null,
+      Configuration: {},
       DeletedAt: null,
     });
     expect(typeof rawDocument?.CreatedAt).toBe('string');
@@ -91,7 +90,9 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
     // No stray camelCase leftovers and no `_Id` shadow field (A1).
     expect(rawDocument).not.toHaveProperty('name');
     expect(rawDocument).not.toHaveProperty('slug');
+    expect(rawDocument).not.toHaveProperty('configuration');
     expect(rawDocument).not.toHaveProperty('logoUrl');
+    expect(rawDocument).not.toHaveProperty('LogoUrl');
     expect(rawDocument).not.toHaveProperty('createdAt');
     expect(rawDocument).not.toHaveProperty('_Id');
   });
@@ -104,6 +105,7 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
       email: createEmail('pascal@example.com'),
       credential: createPasswordCredential('a-bcrypt-hash'),
       firstName: 'Pascal',
+      middleName: 'Middle',
       lastName: 'Case',
       now: NOW,
     });
@@ -118,10 +120,13 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
       Email: 'pascal@example.com',
       PasswordHash: 'a-bcrypt-hash',
       FirstName: 'Pascal',
+      MiddleName: 'Middle',
       LastName: 'Case',
       AvatarUrl: null,
       Status: 'ACTIVE',
       IsPlatformAdmin: false,
+      ResetToken: null,
+      Mfa: { Secret: null, Enabled: false, RecoveryCodes: [] },
     });
     expect(typeof rawDocument?.CreatedAt).toBe('string');
     expect(typeof rawDocument?.UpdatedAt).toBe('string');
@@ -130,7 +135,48 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
     expect(rawDocument).not.toHaveProperty('email');
     expect(rawDocument).not.toHaveProperty('passwordHash');
     expect(rawDocument).not.toHaveProperty('firstName');
+    expect(rawDocument).not.toHaveProperty('middleName');
+    expect(rawDocument).not.toHaveProperty('resetToken');
+    expect(rawDocument).not.toHaveProperty('mfa');
     expect(rawDocument).not.toHaveProperty('_Id');
+  });
+
+  /**
+   * Task 5.7/5.8 (schema-v2 PR5) — net-new fields round-trip through the
+   * mapper (`toDocument`/`toDomain`), not just the raw document shape. Pins
+   * that a NON-default `MiddleName`/`ResetToken`/`Mfa`/`Configuration` value
+   * survives a full save→findById round trip, and confirms the `_id` guard
+   * (task 1.7) still holds end-to-end with the extended field set.
+   */
+  it('round-trips MiddleName/ResetToken/Mfa (User) and Configuration (Organization) through the mapper', async () => {
+    const organization = Organization.create({
+      id: ORG_ID,
+      name: 'Acme Corp',
+      slug: createSlug('acme-corp-roundtrip'),
+      now: NOW,
+    });
+    await organizations.save(organization);
+    const persistedOrganization = await organizations.findById(ORG_ID);
+    expect(persistedOrganization?.configuration).toEqual({});
+
+    const userId = createUserId('user-roundtrip-1');
+    const user = User.create({
+      id: userId,
+      organizationId: ORG_ID,
+      email: createEmail('roundtrip@example.com'),
+      credential: createPasswordCredential('hash'),
+      firstName: 'Round',
+      middleName: 'Trip',
+      lastName: 'Case',
+      now: NOW,
+    });
+    await userRepositoryFactory.forTenant(ORG_ID).save(user);
+
+    const persistedUser = await userRepositoryFactory.forTenant(ORG_ID).findById(userId);
+    expect(persistedUser?.id).toBe(userId);
+    expect(persistedUser?.middleName).toBe('Trip');
+    expect(persistedUser?.resetToken).toBeNull();
+    expect(persistedUser?.mfa).toEqual({ secret: null, enabled: false, recoveryCodes: [] });
   });
 
   /**

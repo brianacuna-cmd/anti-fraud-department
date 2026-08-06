@@ -138,7 +138,7 @@ describe('organizationRouter (e2e, in-memory repository)', () => {
     expect(secondPage.body.items[0].slug).toBe('globex');
   });
 
-  it('PATCH /organizations/:id updates name/logoUrl and leaves slug unchanged', async () => {
+  it('PATCH /organizations/:id updates name and leaves slug unchanged', async () => {
     const { app } = buildApp(() => PLATFORM_ADMIN);
     const created = await request(app)
       .post('/api/v1/organizations')

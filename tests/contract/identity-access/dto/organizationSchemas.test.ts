@@ -38,11 +38,10 @@ describe('createOrganizationSchema', () => {
 });
 
 describe('patchOrganizationSchema (allow-list)', () => {
-  it('accepts name, domain, and logoUrl', () => {
+  it('accepts name and domain', () => {
     const result = patchOrganizationSchema.safeParse({
       name: 'Acme Corp',
       domain: 'acme.com',
-      logoUrl: 'https://acme.com/logo.png',
     });
 
     expect(result.success).toBe(true);
@@ -62,6 +61,18 @@ describe('patchOrganizationSchema (allow-list)', () => {
 
   it('rejects a payload attempting to set an unknown field', () => {
     const result = patchOrganizationSchema.safeParse({ status: 'ACTIVE' });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects logoUrl — removed with no replacement DTO field (design D8/A11, task 5.6)', () => {
+    const result = patchOrganizationSchema.safeParse({ logoUrl: 'https://acme.com/logo.png' });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects configuration — persistence/domain-only, not exposed over HTTP (design A11, task 5.6)', () => {
+    const result = patchOrganizationSchema.safeParse({ configuration: { theme: 'dark' } });
 
     expect(result.success).toBe(false);
   });

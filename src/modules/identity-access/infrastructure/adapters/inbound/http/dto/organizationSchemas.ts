@@ -11,7 +11,6 @@ export const createOrganizationSchema = z.object({
   name: z.string().min(1),
   slug: z.string().min(1),
   domain: z.string().min(1).nullish(),
-  logoUrl: z.string().min(1).nullish(),
   adminEmail: z.string().min(1),
   adminPassword: z.string().min(1),
   adminFirstName: z.string().min(1),
@@ -23,13 +22,14 @@ export type CreateOrganizationBody = z.infer<typeof createOrganizationSchema>;
 /**
  * PATCH /organizations/:id body. `.strict()` enforces the allow-list at the
  * transport boundary (organization-lifecycle spec: "Organization Identity
- * Patch" — slug immutable, only name/domain/logoUrl may change).
+ * Patch" — slug immutable, only name/domain may change). `logoUrl` is
+ * removed with no replacement DTO field (design D8); `configuration` is
+ * persistence/domain-only and never exposed over HTTP (design A11).
  */
 export const patchOrganizationSchema = z
   .object({
     name: z.string().min(1).optional(),
     domain: z.string().min(1).nullish(),
-    logoUrl: z.string().min(1).nullish(),
   })
   .strict();
 

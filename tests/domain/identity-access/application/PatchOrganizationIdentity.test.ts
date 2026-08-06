@@ -24,7 +24,7 @@ async function seedOrganization(organizations: InMemoryOrganizationRepository): 
 }
 
 describe('createPatchOrganizationIdentityUseCase', () => {
-  it('updates name and logoUrl while leaving slug unchanged', async () => {
+  it('updates name and domain while leaving slug unchanged', async () => {
     const organizations = new InMemoryOrganizationRepository();
     await seedOrganization(organizations);
     const patchOrganizationIdentity = createPatchOrganizationIdentityUseCase({
@@ -36,11 +36,11 @@ describe('createPatchOrganizationIdentityUseCase', () => {
       auth: PLATFORM_ADMIN,
       organizationId: 'org-1',
       name: 'Acme Corp',
-      logoUrl: 'https://acme.com/logo.png',
+      domain: 'acme.com',
     });
 
     expect(updated.name).toBe('Acme Corp');
-    expect(updated.logoUrl).toBe('https://acme.com/logo.png');
+    expect(updated.domain).toBe('acme.com');
     expect(updated.slug).toBe('acme');
     expect(updated.updatedAt).toBe(PATCHED_AT);
   });
