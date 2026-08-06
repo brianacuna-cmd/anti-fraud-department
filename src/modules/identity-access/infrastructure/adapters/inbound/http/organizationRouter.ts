@@ -10,7 +10,7 @@ import type { createDeleteOrganizationUseCase } from '../../../../application/De
 import {
   createOrganizationSchema,
   patchOrganizationSchema,
-  transitionOrganizationSchema,
+  updateOrganizationStatusSchema,
 } from './dto/organizationSchemas.js';
 import { toOrganizationListResponse, toOrganizationResponse } from './mappers/OrganizationHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
@@ -63,13 +63,13 @@ export function organizationRouter(deps: OrganizationRouterDeps): Router {
     res.status(200).json(toOrganizationResponse(organization));
   });
 
-  router.post('/organizations/:id/transition', async (req, res) => {
+  router.patch('/organizations/:id/status', async (req, res) => {
     const auth = requireAuthContext(req);
-    const { next } = parseRequest(transitionOrganizationSchema, req.body);
+    const { status } = parseRequest(updateOrganizationStatusSchema, req.body);
     const organization = await deps.transitionOrganizationStatus({
       auth,
       organizationId: req.params.id!,
-      next,
+      next: status,
     });
     res.status(200).json(toOrganizationResponse(organization));
   });

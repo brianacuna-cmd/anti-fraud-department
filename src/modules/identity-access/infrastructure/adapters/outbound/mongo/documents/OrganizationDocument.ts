@@ -12,4 +12,6 @@ export interface OrganizationDocument {
   readonly logoUrl: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** Set on transition to `CANCELLED` (design D10); written explicitly, never omitted. */
+  readonly deletedAt: string | null;
 }

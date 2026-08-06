@@ -1,8 +1,11 @@
 import { invariantViolation } from '../../errors/IdentityAccessError.js';
 
 /**
- * One status union shared by both `Organization` and `User` (design D9) —
- * identical value sets, distinct transition tables (`transitions.ts`).
+ * `User`-only status union (design D10, supersedes D9). Previously shared
+ * with `Organization`; D10 split that off into its own `OrganizationStatus`
+ * (`OrganizationStatus.ts`) with its own 3-value set and transition table
+ * (`ORGANIZATION_STATUS_TRANSITIONS`) — `Organization` no longer uses this
+ * type at all.
  */
 export type LifecycleStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'DISABLED';
 

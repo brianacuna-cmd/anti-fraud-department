@@ -33,17 +33,18 @@ function buildUseCases(organizations: InMemoryOrganizationRepository) {
 }
 
 describe('createDeleteOrganizationUseCase', () => {
-  it('transitions the organization to DISABLED', async () => {
+  it('transitions the organization to CANCELLED and sets DeletedAt', async () => {
     const organizations = new InMemoryOrganizationRepository();
     await seedOrganization(organizations);
     const { deleteOrganization } = buildUseCases(organizations);
 
     const organization = await deleteOrganization({ auth: PLATFORM_ADMIN, organizationId: 'org-1' });
 
-    expect(organization.status).toBe('DISABLED');
+    expect(organization.status).toBe('CANCELLED');
+    expect(organization.deletedAt).toBe(DELETED_AT);
   });
 
-  it('produces the exact same result as calling transitionOrganizationStatus with next=DISABLED', async () => {
+  it('produces the exact same result as calling transitionOrganizationStatus with next=CANCELLED', async () => {
     const organizationsForDelete = new InMemoryOrganizationRepository();
     await seedOrganization(organizationsForDelete, 'org-1');
     const organizationsForTransition = new InMemoryOrganizationRepository();
@@ -55,14 +56,14 @@ describe('createDeleteOrganizationUseCase', () => {
     const viaTransition = await transitionOrganizationStatus({
       auth: PLATFORM_ADMIN,
       organizationId: 'org-1',
-      next: 'DISABLED',
+      next: 'CANCELLED',
     });
 
     expect(viaDelete.status).toBe(viaTransition.status);
     expect(viaDelete.updatedAt).toBe(viaTransition.updatedAt);
   });
 
-  it('fails identically to /transition when the organization is already DISABLED', async () => {
+  it('fails identically to PATCH .../status when the organization is already CANCELLED', async () => {
     const organizations = new InMemoryOrganizationRepository();
     await seedOrganization(organizations);
     const { deleteOrganization } = buildUseCases(organizations);

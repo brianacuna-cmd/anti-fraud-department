@@ -13,16 +13,16 @@ export interface DeleteOrganizationDeps {
 
 /**
  * HTTP sugar (organization-lifecycle spec: "Soft Delete as Status
- * Transition"). Calls the exact same use case as `/transition` with
- * `next=DISABLED` — never a parallel implementation, so results and
- * errors are byte-for-byte identical by construction.
+ * Transition"). Calls the exact same use case as `PATCH .../status` with
+ * `next=CANCELLED` (design D10, D21) — never a parallel implementation, so
+ * results and errors are byte-for-byte identical by construction.
  */
 export function createDeleteOrganizationUseCase(deps: DeleteOrganizationDeps) {
   return async function deleteOrganization(input: DeleteOrganizationInput): Promise<Organization> {
     return deps.transitionOrganizationStatus({
       auth: input.auth,
       organizationId: input.organizationId,
-      next: 'DISABLED',
+      next: 'CANCELLED',
     });
   };
 }

@@ -18,7 +18,7 @@ function buildOrganization(): Organization {
 }
 
 describe('Organization.create', () => {
-  it('starts a new organization ACTIVE with matching created/updated timestamps', () => {
+  it('starts a new organization ACTIVE with matching created/updated timestamps and no deletedAt', () => {
     const organization = buildOrganization();
 
     expect(organization.status).toBe('ACTIVE');
@@ -28,6 +28,7 @@ describe('Organization.create', () => {
     expect(organization.logoUrl).toBeNull();
     expect(organization.createdAt).toBe(NOW);
     expect(organization.updatedAt).toBe(NOW);
+    expect(organization.deletedAt).toBeNull();
   });
 
   it('rejects an empty name as an invariant violation', () => {
@@ -69,11 +70,30 @@ describe('Organization.rehydrate', () => {
       logoUrl: 'https://acme.com/logo.png',
       createdAt: NOW,
       updatedAt: LATER,
+      deletedAt: null,
     });
 
     expect(organization.status).toBe('SUSPENDED');
     expect(organization.domain).toBe('acme.com');
     expect(organization.updatedAt).toBe(LATER);
+    expect(organization.deletedAt).toBeNull();
+  });
+
+  it('reconstructs a CANCELLED organization with its stored deletedAt', () => {
+    const organization = Organization.rehydrate({
+      id: createOrganizationId('org-1'),
+      name: 'Acme Corp',
+      slug: createSlug('acme-corp'),
+      domain: null,
+      status: 'CANCELLED',
+      logoUrl: null,
+      createdAt: NOW,
+      updatedAt: LATER,
+      deletedAt: LATER,
+    });
+
+    expect(organization.status).toBe('CANCELLED');
+    expect(organization.deletedAt).toBe(LATER);
   });
 });
 
@@ -113,10 +133,11 @@ describe('Organization#transitionTo', () => {
     expect(transitioned).not.toBe(organization);
     expect(transitioned.status).toBe('SUSPENDED');
     expect(transitioned.updatedAt).toBe(LATER);
+    expect(transitioned.deletedAt).toBeNull();
     expect(organization.status).toBe('ACTIVE');
   });
 
-  it('rejects an invalid transition, leaving the original instance untouched', () => {
+  it('rejects an invalid (no-op) transition, leaving the original instance untouched', () => {
     const organization = buildOrganization();
 
     expect(() => organization.transitionTo('ACTIVE', createTransitionActor(true), LATER)).toThrow(
@@ -125,11 +146,32 @@ describe('Organization#transitionTo', () => {
     expect(organization.status).toBe('ACTIVE');
   });
 
-  it('rejects a non-platform-admin reactivating a DISABLED organization', () => {
-    const organization = buildOrganization().transitionTo('DISABLED', createTransitionActor(true), LATER);
+  it('sets deletedAt to the transition instant when transitioning to CANCELLED', () => {
+    const organization = buildOrganization();
+
+    const cancelled = organization.transitionTo('CANCELLED', createTransitionActor(true), LATER);
+
+    expect(cancelled.status).toBe('CANCELLED');
+    expect(cancelled.deletedAt).toBe(LATER);
+    expect(organization.deletedAt).toBeNull();
+  });
+
+  it('rejects any transition out of CANCELLED, for any actor including a platform-admin — terminal by table alone', () => {
+    const cancelled = buildOrganization().transitionTo('CANCELLED', createTransitionActor(true), LATER);
+
+    expect(() => cancelled.transitionTo('ACTIVE', createTransitionActor(true), LATER)).toThrow(
+      IdentityAccessError,
+    );
+    expect(() => cancelled.transitionTo('SUSPENDED', createTransitionActor(true), LATER)).toThrow(
+      IdentityAccessError,
+    );
+  });
+
+  it('allows a non-platform-admin actor to reactivate SUSPENDED -> ACTIVE — no gate on this edge (design D10)', () => {
+    const suspended = buildOrganization().transitionTo('SUSPENDED', createTransitionActor(true), LATER);
 
     expect(() =>
-      organization.transitionTo('ACTIVE', createTransitionActor(false), LATER),
-    ).toThrow(IdentityAccessError);
+      suspended.transitionTo('ACTIVE', createTransitionActor(false), LATER),
+    ).not.toThrow();
   });
 });
