@@ -167,7 +167,52 @@ describe('organizationRouter (e2e, in-memory repository)', () => {
     expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
   });
 
-  it('POST /organizations/:id/transition changes status on a valid transition', async () => {
+  it('PATCH /organizations/:id/status changes status on a valid transition', async () => {
+    const { app } = buildApp(() => PLATFORM_ADMIN);
+    const created = await request(app)
+      .post('/api/v1/organizations')
+      .send({ name: 'Acme', slug: 'acme', ...ADMIN_BOOTSTRAP_FIELDS });
+
+    const response = await request(app)
+      .patch(`/api/v1/organizations/${created.body.id}/status`)
+      .send({ status: 'SUSPENDED' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe('SUSPENDED');
+  });
+
+  it('PATCH /organizations/:id/status rejects a no-op transition with 422 INVALID_TRANSITION', async () => {
+    const { app } = buildApp(() => PLATFORM_ADMIN);
+    const created = await request(app)
+      .post('/api/v1/organizations')
+      .send({ name: 'Acme', slug: 'acme', ...ADMIN_BOOTSTRAP_FIELDS });
+
+    const response = await request(app)
+      .patch(`/api/v1/organizations/${created.body.id}/status`)
+      .send({ status: 'ACTIVE' });
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe('INVALID_TRANSITION');
+  });
+
+  it('PATCH /organizations/:id/status rejects any transition out of CANCELLED for any actor as INVALID_TRANSITION', async () => {
+    const { app } = buildApp(() => PLATFORM_ADMIN);
+    const created = await request(app)
+      .post('/api/v1/organizations')
+      .send({ name: 'Acme', slug: 'acme', ...ADMIN_BOOTSTRAP_FIELDS });
+    await request(app)
+      .patch(`/api/v1/organizations/${created.body.id}/status`)
+      .send({ status: 'CANCELLED' });
+
+    const response = await request(app)
+      .patch(`/api/v1/organizations/${created.body.id}/status`)
+      .send({ status: 'ACTIVE' });
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe('INVALID_TRANSITION');
+  });
+
+  it('POST /organizations/:id/transition (removed route) no longer resolves', async () => {
     const { app } = buildApp(() => PLATFORM_ADMIN);
     const created = await request(app)
       .post('/api/v1/organizations')
@@ -177,25 +222,10 @@ describe('organizationRouter (e2e, in-memory repository)', () => {
       .post(`/api/v1/organizations/${created.body.id}/transition`)
       .send({ next: 'SUSPENDED' });
 
-    expect(response.status).toBe(200);
-    expect(response.body.status).toBe('SUSPENDED');
+    expect([404, 405]).toContain(response.status);
   });
 
-  it('POST /organizations/:id/transition rejects an invalid transition with 422', async () => {
-    const { app } = buildApp(() => PLATFORM_ADMIN);
-    const created = await request(app)
-      .post('/api/v1/organizations')
-      .send({ name: 'Acme', slug: 'acme', ...ADMIN_BOOTSTRAP_FIELDS });
-
-    const response = await request(app)
-      .post(`/api/v1/organizations/${created.body.id}/transition`)
-      .send({ next: 'ACTIVE' });
-
-    expect(response.status).toBe(422);
-    expect(response.body.error.code).toBe('INVALID_TRANSITION');
-  });
-
-  it('DELETE /organizations/:id behaves identically to transition to DISABLED', async () => {
+  it('DELETE /organizations/:id behaves identically to a transition to CANCELLED, sets deletedAt', async () => {
     const { app } = buildApp(() => PLATFORM_ADMIN);
     const created = await request(app)
       .post('/api/v1/organizations')
@@ -204,7 +234,8 @@ describe('organizationRouter (e2e, in-memory repository)', () => {
     const response = await request(app).delete(`/api/v1/organizations/${created.body.id}`);
 
     expect(response.status).toBe(200);
-    expect(response.body.status).toBe('DISABLED');
+    expect(response.body.status).toBe('CANCELLED');
+    expect(response.body.deletedAt).not.toBeNull();
   });
 
   it('GET /organizations/unknown-route-suffix returns a plain 404 (no router claims it)', async () => {

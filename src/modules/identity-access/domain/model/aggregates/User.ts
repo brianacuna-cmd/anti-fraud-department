@@ -6,8 +6,15 @@ import type { PasswordCredential } from '../value-objects/PasswordCredential.js'
 import type { LifecycleStatus } from '../value-objects/LifecycleStatus.js';
 import type { TransitionActor } from '../value-objects/TransitionActor.js';
 import { USER_TRANSITIONS } from '../../services/transitions.js';
-import { assertTransitionAllowed } from '../../services/StatusTransitionPolicy.js';
+import { assertTransitionAllowed, type ReactivationEdge } from '../../services/StatusTransitionPolicy.js';
 import { invariantViolation } from '../../errors/IdentityAccessError.js';
+
+/**
+ * The single actor-gated edge in `USER_TRANSITIONS` (design D9, unchanged
+ * by D10's generalization): reactivating a `DISABLED` user requires a
+ * platform administrator.
+ */
+const USER_REACTIVATION_EDGE: ReactivationEdge<LifecycleStatus> = { from: 'DISABLED', to: 'ACTIVE' };
 
 export interface UserProps {
   readonly id: UserId;
@@ -140,7 +147,7 @@ export class User {
   }
 
   transitionTo(next: LifecycleStatus, actor: TransitionActor, now: Instant): User {
-    assertTransitionAllowed(USER_TRANSITIONS, this.props.status, next, actor);
+    assertTransitionAllowed(USER_TRANSITIONS, this.props.status, next, actor, USER_REACTIVATION_EDGE);
     return new User({ ...this.props, status: next, updatedAt: now });
   }
 }

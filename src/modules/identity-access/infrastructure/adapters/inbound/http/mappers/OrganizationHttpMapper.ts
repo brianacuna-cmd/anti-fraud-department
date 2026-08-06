@@ -10,6 +10,7 @@ export interface OrganizationResponseDto {
   readonly logoUrl: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+  readonly deletedAt: string | null;
 }
 
 export interface OrganizationListResponseDto {
@@ -27,6 +28,7 @@ export function toOrganizationResponse(organization: Organization): Organization
     logoUrl: organization.logoUrl,
     createdAt: organization.createdAt,
     updatedAt: organization.updatedAt,
+    deletedAt: organization.deletedAt,
   };
 }
 

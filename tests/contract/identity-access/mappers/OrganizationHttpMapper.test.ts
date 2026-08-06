@@ -28,6 +28,7 @@ describe('toOrganizationResponse', () => {
       logoUrl: null,
       createdAt: NOW,
       updatedAt: NOW,
+      deletedAt: null,
     });
   });
 });

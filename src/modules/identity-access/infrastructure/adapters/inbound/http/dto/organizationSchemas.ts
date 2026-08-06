@@ -35,9 +35,13 @@ export const patchOrganizationSchema = z
 
 export type PatchOrganizationBody = z.infer<typeof patchOrganizationSchema>;
 
-/** POST /organizations/:id/transition body. */
-export const transitionOrganizationSchema = z.object({
-  next: z.enum(['ACTIVE', 'INACTIVE', 'SUSPENDED', 'DISABLED']),
+/**
+ * PATCH /organizations/:id/status body (design D10, D21 — supersedes
+ * `POST /organizations/:id/transition`'s `{ next }` shape). Organization's
+ * own 3-value status set, distinct from the shared `LifecycleStatus`.
+ */
+export const updateOrganizationStatusSchema = z.object({
+  status: z.enum(['ACTIVE', 'SUSPENDED', 'CANCELLED']),
 });
 
-export type TransitionOrganizationBody = z.infer<typeof transitionOrganizationSchema>;
+export type UpdateOrganizationStatusBody = z.infer<typeof updateOrganizationStatusSchema>;

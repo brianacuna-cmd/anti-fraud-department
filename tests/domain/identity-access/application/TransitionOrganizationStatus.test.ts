@@ -16,7 +16,7 @@ const REGULAR_USER = createAuthContext({ userId: 'u2', organizationId: 'o1', isP
 
 async function seedOrganization(
   organizations: InMemoryOrganizationRepository,
-  status: 'ACTIVE' | 'DISABLED' = 'ACTIVE',
+  status: 'ACTIVE' | 'CANCELLED' = 'ACTIVE',
 ): Promise<void> {
   let organization = Organization.create({
     id: createOrganizationId('org-1'),
@@ -24,8 +24,8 @@ async function seedOrganization(
     slug: createSlug('acme'),
     now: CREATED_AT,
   });
-  if (status === 'DISABLED') {
-    organization = organization.transitionTo('DISABLED', { isPlatformAdmin: true }, CREATED_AT);
+  if (status === 'CANCELLED') {
+    organization = organization.transitionTo('CANCELLED', { isPlatformAdmin: true }, CREATED_AT);
   }
   await organizations.save(organization);
 }
@@ -71,21 +71,52 @@ describe('createTransitionOrganizationStatusUseCase', () => {
     }
   });
 
-  it('allows a platform-admin to reactivate a DISABLED organization', async () => {
+  it('sets DeletedAt to the transition instant when transitioning to CANCELLED', async () => {
     const organizations = new InMemoryOrganizationRepository();
-    await seedOrganization(organizations, 'DISABLED');
+    await seedOrganization(organizations);
     const unitOfWork = new InMemoryUnitOfWork();
     const transitionOrganizationStatus = buildUseCase(organizations, unitOfWork);
 
     const organization = await transitionOrganizationStatus({
       auth: PLATFORM_ADMIN,
       organizationId: 'org-1',
-      next: 'ACTIVE',
+      next: 'CANCELLED',
     });
 
-    expect(organization.status).toBe('ACTIVE');
+    expect(organization.status).toBe('CANCELLED');
+    expect(organization.deletedAt).toBe(TRANSITIONED_AT);
     const persisted = await organizations.findById(createOrganizationId('org-1'));
-    expect(persisted?.status).toBe('ACTIVE');
+    expect(persisted?.deletedAt).toBe(TRANSITIONED_AT);
+  });
+
+  it('rejects any transition out of CANCELLED, by any actor, as INVALID_TRANSITION', async () => {
+    const organizations = new InMemoryOrganizationRepository();
+    await seedOrganization(organizations, 'CANCELLED');
+    const unitOfWork = new InMemoryUnitOfWork();
+    const transitionOrganizationStatus = buildUseCase(organizations, unitOfWork);
+
+    expect.assertions(2);
+    try {
+      await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: 'org-1', next: 'ACTIVE' });
+    } catch (error) {
+      expect(error).toBeInstanceOf(IdentityAccessError);
+      expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('INVALID_TRANSITION');
+    }
+  });
+
+  it('rejects a no-op transition (ACTIVE -> ACTIVE) as INVALID_TRANSITION', async () => {
+    const organizations = new InMemoryOrganizationRepository();
+    await seedOrganization(organizations);
+    const unitOfWork = new InMemoryUnitOfWork();
+    const transitionOrganizationStatus = buildUseCase(organizations, unitOfWork);
+
+    expect.assertions(2);
+    try {
+      await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: 'org-1', next: 'ACTIVE' });
+    } catch (error) {
+      expect(error).toBeInstanceOf(IdentityAccessError);
+      expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('INVALID_TRANSITION');
+    }
   });
 
   it('rejects a non-platform-admin caller with FORBIDDEN_CROSS_TENANT before touching the aggregate', async () => {

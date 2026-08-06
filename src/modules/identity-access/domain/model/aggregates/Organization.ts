@@ -1,9 +1,9 @@
 import type { Instant } from '../../../../../shared/time/Instant.js';
 import type { OrganizationId } from '../value-objects/OrganizationId.js';
 import type { Slug } from '../value-objects/Slug.js';
-import type { LifecycleStatus } from '../value-objects/LifecycleStatus.js';
+import type { OrganizationStatus } from '../value-objects/OrganizationStatus.js';
 import type { TransitionActor } from '../value-objects/TransitionActor.js';
-import { ORGANIZATION_TRANSITIONS } from '../../services/transitions.js';
+import { ORGANIZATION_STATUS_TRANSITIONS } from '../../services/transitions.js';
 import { assertTransitionAllowed } from '../../services/StatusTransitionPolicy.js';
 import { invariantViolation } from '../../errors/IdentityAccessError.js';
 
@@ -12,10 +12,12 @@ export interface OrganizationProps {
   readonly name: string;
   readonly slug: Slug;
   readonly domain: string | null;
-  readonly status: LifecycleStatus;
+  readonly status: OrganizationStatus;
   readonly logoUrl: string | null;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
+  /** Set to the transition instant on `CANCELLED` (design D10, organization-lifecycle spec). Never unset once written. */
+  readonly deletedAt: Instant | null;
 }
 
 export interface CreateOrganizationInput {
@@ -55,6 +57,7 @@ export class Organization {
       logoUrl: input.logoUrl ?? null,
       createdAt: input.now,
       updatedAt: input.now,
+      deletedAt: null,
     });
   }
 
@@ -79,7 +82,7 @@ export class Organization {
     return this.props.domain;
   }
 
-  get status(): LifecycleStatus {
+  get status(): OrganizationStatus {
     return this.props.status;
   }
 
@@ -93,6 +96,10 @@ export class Organization {
 
   get updatedAt(): Instant {
     return this.props.updatedAt;
+  }
+
+  get deletedAt(): Instant | null {
+    return this.props.deletedAt;
   }
 
   toProps(): OrganizationProps {
@@ -114,9 +121,22 @@ export class Organization {
     });
   }
 
-  transitionTo(next: LifecycleStatus, actor: TransitionActor, now: Instant): Organization {
-    assertTransitionAllowed(ORGANIZATION_TRANSITIONS, this.props.status, next, actor);
-    return new Organization({ ...this.props, status: next, updatedAt: now });
+  /**
+   * No `reactivationEdge` is passed (design D10): `ORGANIZATION_STATUS_TRANSITIONS`'s
+   * `CANCELLED: []` alone makes irreversibility hold for every actor, and
+   * `SUSPENDED -> ACTIVE` needs no extra gate beyond the table (unlike
+   * `User`'s `DISABLED -> ACTIVE`). A transition into `CANCELLED` stamps
+   * `deletedAt` at the transition instant (organization-lifecycle spec:
+   * "Organization Status Transition Matrix").
+   */
+  transitionTo(next: OrganizationStatus, actor: TransitionActor, now: Instant): Organization {
+    assertTransitionAllowed(ORGANIZATION_STATUS_TRANSITIONS, this.props.status, next, actor);
+    return new Organization({
+      ...this.props,
+      status: next,
+      updatedAt: now,
+      deletedAt: next === 'CANCELLED' ? now : this.props.deletedAt,
+    });
   }
 }
 
