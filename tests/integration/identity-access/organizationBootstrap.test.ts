@@ -118,6 +118,7 @@ describe('CreateOrganizationWithAdmin bootstrap (integration, real replica-set M
       hash: async () => {
         throw new Error('hashing failure mid-transaction');
       },
+      verify: async () => false,
     };
     const createOrganizationWithAdmin = buildUseCase(failingHasher);
 

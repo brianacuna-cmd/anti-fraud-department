@@ -10,6 +10,17 @@ import { createPasswordCredential, type PasswordCredential } from '../../../../d
 export const BCRYPT_COST = 12;
 
 /**
+ * A fixed, valid bcrypt hash (cost `BCRYPT_COST`) of an unrecoverable
+ * placeholder secret — no plaintext behind it is a real credential (design
+ * D24). Callers that cannot resolve a real account (e.g. an unknown email
+ * at login) run `verify(password, createPasswordCredential(DUMMY_PASSWORD_HASH))`
+ * so the full bcrypt comparison cost is paid regardless, keeping failure
+ * timing uniform between "unknown email" and "known email, wrong password"
+ * and making accounts non-enumerable via response latency.
+ */
+export const DUMMY_PASSWORD_HASH = '$2b$12$HJHxubAWYBl4ST.K.6ZPrORSKNgkdhgb2tk.roHNQ8hq/mCCcpqx.';
+
+/**
  * The only `PasswordHasher` implementation allowed to touch `bcryptjs`
  * (design A4). bcrypt hashes are self-salted — the same password produces a
  * different hash on every call — so `PasswordCredential` carries just the
@@ -20,5 +31,9 @@ export class BcryptPasswordHasher implements PasswordHasher {
   async hash(plainPassword: string): Promise<PasswordCredential> {
     const passwordHash = await bcrypt.hash(plainPassword, BCRYPT_COST);
     return createPasswordCredential(passwordHash);
+  }
+
+  async verify(plainPassword: string, credential: PasswordCredential): Promise<boolean> {
+    return bcrypt.compare(plainPassword, credential.passwordHash);
   }
 }

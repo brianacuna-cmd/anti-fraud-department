@@ -24,4 +24,16 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db
     .collection('Users')
     .createIndex({ OrganizationId: 1, Status: 1 }, { name: 'user_status_idx' });
+
+  // `AdminOrganization` (identity-access-super-admin-auth) is a separate
+  // aggregate not in scope for schema-v2's PascalCase migration (design D39:
+  // follow this repo's existing camelCase document convention) — deliberately
+  // NOT PascalCase, unlike Organizations/Users above.
+  await db
+    .collection('adminOrganizations')
+    .createIndex({ email: 1 }, { unique: true, name: 'admin_organization_email_unique' });
+
+  await db
+    .collection('adminOrganizations')
+    .createIndex({ 'keys.keyId': 1 }, { name: 'admin_organization_keys_key_id_idx' });
 }

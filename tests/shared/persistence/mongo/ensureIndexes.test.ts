@@ -23,11 +23,12 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     await replicaSet.stop();
   });
 
-  it('creates the three required indexes on a fresh database, with PascalCase keys (design A2/A3)', async () => {
+  it('creates the required indexes on a fresh database, with PascalCase keys for Organizations/Users (design A2/A3) and camelCase for AdminOrganization (design D39)', async () => {
     await ensureIndexes(db);
 
     const organizationIndexes = await db.collection('Organizations').indexes();
     const userIndexes = await db.collection('Users').indexes();
+    const adminOrganizationIndexes = await db.collection('adminOrganizations').indexes();
 
     const slugIndex = organizationIndexes.find((index) => index.name === 'slug_unique');
     expect(slugIndex).toBeDefined();
@@ -42,6 +43,19 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     const userStatusIndex = userIndexes.find((index) => index.name === 'user_status_idx');
     expect(userStatusIndex).toBeDefined();
     expect(userStatusIndex?.key).toEqual({ OrganizationId: 1, Status: 1 });
+
+    const adminEmailIndex = adminOrganizationIndexes.find(
+      (index) => index.name === 'admin_organization_email_unique',
+    );
+    expect(adminEmailIndex).toBeDefined();
+    expect(adminEmailIndex?.key).toEqual({ email: 1 });
+    expect(adminEmailIndex?.unique).toBe(true);
+
+    const adminKeysKeyIdIndex = adminOrganizationIndexes.find(
+      (index) => index.name === 'admin_organization_keys_key_id_idx',
+    );
+    expect(adminKeysKeyIdIndex).toBeDefined();
+    expect(adminKeysKeyIdIndex?.key).toEqual({ 'keys.keyId': 1 });
   });
 
   it('is idempotent — running it twice does not throw or duplicate indexes', async () => {
