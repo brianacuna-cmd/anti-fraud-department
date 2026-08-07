@@ -6,7 +6,7 @@ import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
 import { MongoUserRepository } from './MongoUserRepository.js';
 import type { UserDocument } from './documents/UserDocument.js';
 
-const COLLECTION_NAME = 'users';
+const COLLECTION_NAME = 'Users';
 
 function toSession(tx: Transaction | undefined): ClientSession | undefined {
   return tx as unknown as ClientSession | undefined;
@@ -31,7 +31,7 @@ export class MongoUserRepositoryFactory implements UserRepositoryFactory {
   }
 
   async existsByEmailAcrossTenants(email: Email, tx?: Transaction): Promise<boolean> {
-    const document = await this.collection.findOne({ email }, { session: toSession(tx) });
+    const document = await this.collection.findOne({ Email: email }, { session: toSession(tx) });
     return document !== null;
   }
 }

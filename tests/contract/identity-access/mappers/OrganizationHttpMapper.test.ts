@@ -25,10 +25,12 @@ describe('toOrganizationResponse', () => {
       slug: 'acme',
       domain: null,
       status: 'ACTIVE',
-      logoUrl: null,
       createdAt: NOW,
       updatedAt: NOW,
+      deletedAt: null,
     });
+    expect(dto).not.toHaveProperty('logoUrl');
+    expect(dto).not.toHaveProperty('configuration');
   });
 });
 

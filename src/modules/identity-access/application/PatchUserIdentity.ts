@@ -6,6 +6,7 @@ import { createOrganizationId } from '../domain/model/value-objects/Organization
 import { createUserId } from '../domain/model/value-objects/UserId.js';
 import { createEmail } from '../domain/model/value-objects/Email.js';
 import { userNotFound, userEmailTaken } from '../domain/errors/IdentityAccessError.js';
+import { requireTenantContext } from './authorization/requireTenantContext.js';
 
 export interface PatchUserIdentityInput {
   readonly auth: AuthContext;
@@ -13,6 +14,7 @@ export interface PatchUserIdentityInput {
   readonly firstName?: string;
   readonly lastName?: string;
   readonly email?: string;
+  readonly middleName?: string | null;
   readonly avatarUrl?: string | null;
 }
 
@@ -24,7 +26,7 @@ export interface PatchUserIdentityDeps {
 /** User Identity Patch (user-lifecycle spec) — only firstName/lastName/email/avatarUrl. */
 export function createPatchUserIdentityUseCase(deps: PatchUserIdentityDeps) {
   return async function patchUserIdentity(input: PatchUserIdentityInput): Promise<User> {
-    const repository = deps.userRepositoryFactory.forTenant(createOrganizationId(input.auth.organizationId));
+    const repository = deps.userRepositoryFactory.forTenant(createOrganizationId(requireTenantContext(input.auth)));
 
     const id = createUserId(input.userId);
     const user = await repository.findById(id);
@@ -41,7 +43,13 @@ export function createPatchUserIdentityUseCase(deps: PatchUserIdentityDeps) {
     }
 
     const updated = user.patchIdentity(
-      { firstName: input.firstName, lastName: input.lastName, email, avatarUrl: input.avatarUrl },
+      {
+        firstName: input.firstName,
+        lastName: input.lastName,
+        email,
+        middleName: input.middleName,
+        avatarUrl: input.avatarUrl,
+      },
       deps.clock.now(),
     );
     await repository.save(updated);

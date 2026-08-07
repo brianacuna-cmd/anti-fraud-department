@@ -1,21 +1,18 @@
 import { invariantViolation } from '../../errors/IdentityAccessError.js';
 
 /**
- * The two halves of a hashed password that must always travel together
- * (design: `ScryptPasswordHasher` produces both). Neither half may be blank
- * — a credential with a blank hash or salt is never a valid persisted state.
+ * A hashed password ready for persistence (design A4). `BcryptPasswordHasher`
+ * produces self-salted bcrypt hashes, so there is no separate salt half to
+ * carry alongside it — a vestigial salt field would just be a lie the
+ * mapper has to fabricate. The hash may never be blank.
  */
 export interface PasswordCredential {
   readonly passwordHash: string;
-  readonly passwordSalt: string;
 }
 
-export function createPasswordCredential(passwordHash: string, passwordSalt: string): PasswordCredential {
+export function createPasswordCredential(passwordHash: string): PasswordCredential {
   if (passwordHash.trim().length === 0) {
     throw invariantViolation('PasswordCredential passwordHash must be a non-empty string', { passwordHash });
   }
-  if (passwordSalt.trim().length === 0) {
-    throw invariantViolation('PasswordCredential passwordSalt must be a non-empty string', { passwordSalt });
-  }
-  return { passwordHash, passwordSalt };
+  return { passwordHash };
 }

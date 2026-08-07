@@ -9,7 +9,7 @@ import { fromDate } from '../../../../../src/shared/time/Instant.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const LATER = fromDate(new Date('2026-01-02T00:00:00.000Z'));
-const CREDENTIAL = createPasswordCredential('hash-value', 'salt-value');
+const CREDENTIAL = createPasswordCredential('hash-value');
 
 function buildUser(): User {
   return User.create({
@@ -91,6 +91,60 @@ describe('User.create', () => {
   it('allows avatarUrl to be omitted (null), only rejects present-but-blank', () => {
     expect(() => buildUser()).not.toThrow();
   });
+
+  it('defaults middleName to null when not provided', () => {
+    const user = buildUser();
+
+    expect(user.middleName).toBeNull();
+  });
+
+  it('accepts a provided middleName', () => {
+    const user = User.create({
+      id: createUserId('user-1'),
+      organizationId: createOrganizationId('org-1'),
+      email: createEmail('alice@example.com'),
+      credential: CREDENTIAL,
+      firstName: 'Alice',
+      lastName: 'Smith',
+      middleName: 'Marie',
+      now: NOW,
+    });
+
+    expect(user.middleName).toBe('Marie');
+  });
+
+  it('rejects a blank middleName as an invariant violation', () => {
+    expect(() =>
+      User.create({
+        id: createUserId('user-1'),
+        organizationId: createOrganizationId('org-1'),
+        email: createEmail('alice@example.com'),
+        credential: CREDENTIAL,
+        firstName: 'Alice',
+        lastName: 'Smith',
+        middleName: '   ',
+        now: NOW,
+      }),
+    ).toThrow(IdentityAccessError);
+  });
+
+  it('defaults resetToken to null (persistence/domain-only, design A11)', () => {
+    const user = buildUser();
+
+    expect(user.resetToken).toBeNull();
+  });
+
+  it('defaults mfa to a disabled, secret-less, empty-recovery-codes shape (persistence/domain-only, design A11)', () => {
+    const user = buildUser();
+
+    expect(user.mfa).toEqual({ secret: null, enabled: false, recoveryCodes: [] });
+  });
+
+  it('defaults lockout to zero failed attempts, never blocked (design D18)', () => {
+    const user = buildUser();
+
+    expect(user.lockout).toEqual({ loginAttempts: 0, blockedUntil: null });
+  });
 });
 
 describe('User.rehydrate', () => {
@@ -101,16 +155,24 @@ describe('User.rehydrate', () => {
       email: createEmail('alice@example.com'),
       credential: CREDENTIAL,
       firstName: 'Alice',
+      middleName: 'Marie',
       lastName: 'Smith',
       avatarUrl: 'https://example.com/a.png',
       status: 'SUSPENDED',
       isPlatformAdmin: false,
+      resetToken: { hash: 'reset-hash', expiresAt: LATER },
+      mfa: { secret: 'otp-secret', enabled: true, recoveryCodes: ['code-1'] },
+      lockout: { loginAttempts: 2, blockedUntil: null },
       createdAt: NOW,
       updatedAt: LATER,
     });
 
     expect(user.status).toBe('SUSPENDED');
     expect(user.avatarUrl).toBe('https://example.com/a.png');
+    expect(user.middleName).toBe('Marie');
+    expect(user.resetToken).toEqual({ hash: 'reset-hash', expiresAt: LATER });
+    expect(user.mfa).toEqual({ secret: 'otp-secret', enabled: true, recoveryCodes: ['code-1'] });
+    expect(user.lockout).toEqual({ loginAttempts: 2, blockedUntil: null });
     expect(user.updatedAt).toBe(LATER);
   });
 });
@@ -150,6 +212,53 @@ describe('User#patchIdentity', () => {
     const user = buildUser();
 
     expect(() => user.patchIdentity({ avatarUrl: '  ' }, LATER)).toThrow(IdentityAccessError);
+  });
+
+  it('accepts patching middleName to a string or null (design A12)', () => {
+    const user = buildUser();
+
+    const patchedToValue = user.patchIdentity({ middleName: 'Marie' }, LATER);
+    expect(patchedToValue.middleName).toBe('Marie');
+
+    const patchedBackToNull = patchedToValue.patchIdentity({ middleName: null }, LATER);
+    expect(patchedBackToNull.middleName).toBeNull();
+  });
+
+  it('leaves middleName untouched when omitted from the patch', () => {
+    const user = buildUser();
+
+    const patched = user.patchIdentity({ firstName: 'Alicia' }, LATER);
+
+    expect(patched.middleName).toBeNull();
+  });
+
+  it('rejects patching middleName to a blank string', () => {
+    const user = buildUser();
+
+    expect(() => user.patchIdentity({ middleName: '  ' }, LATER)).toThrow(IdentityAccessError);
+  });
+
+  it('leaves resetToken and mfa untouched by patchIdentity (persistence/domain-only, design A11)', () => {
+    const user = buildUser();
+
+    const patched = user.patchIdentity({ firstName: 'Alicia' }, LATER);
+
+    expect(patched.resetToken).toBeNull();
+    expect(patched.mfa).toEqual({ secret: null, enabled: false, recoveryCodes: [] });
+  });
+});
+
+describe('User#withLockout', () => {
+  it('returns a new instance with only lockout/updatedAt changed (design D18)', () => {
+    const user = buildUser();
+
+    const locked = user.withLockout({ loginAttempts: 3, blockedUntil: LATER }, LATER);
+
+    expect(locked).not.toBe(user);
+    expect(locked.lockout).toEqual({ loginAttempts: 3, blockedUntil: LATER });
+    expect(locked.updatedAt).toBe(LATER);
+    expect(locked.firstName).toBe('Alice');
+    expect(user.lockout).toEqual({ loginAttempts: 0, blockedUntil: null });
   });
 });
 

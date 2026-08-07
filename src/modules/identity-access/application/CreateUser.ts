@@ -7,12 +7,14 @@ import { User } from '../domain/model/aggregates/User.js';
 import { createOrganizationId } from '../domain/model/value-objects/OrganizationId.js';
 import { createEmail } from '../domain/model/value-objects/Email.js';
 import { userEmailTaken } from '../domain/errors/IdentityAccessError.js';
+import { requireTenantContext } from './authorization/requireTenantContext.js';
 
 export interface CreateUserInput {
   readonly auth: AuthContext;
   readonly email: string;
   readonly password: string;
   readonly firstName: string;
+  readonly middleName?: string | null;
   readonly lastName: string;
   readonly avatarUrl?: string | null;
 }
@@ -32,7 +34,7 @@ export interface CreateUserDeps {
  */
 export function createCreateUserUseCase(deps: CreateUserDeps) {
   return async function createUser(input: CreateUserInput): Promise<User> {
-    const organizationId = createOrganizationId(input.auth.organizationId);
+    const organizationId = createOrganizationId(requireTenantContext(input.auth));
     const repository = deps.userRepositoryFactory.forTenant(organizationId);
 
     const email = createEmail(input.email);
@@ -49,6 +51,7 @@ export function createCreateUserUseCase(deps: CreateUserDeps) {
       email,
       credential,
       firstName: input.firstName,
+      middleName: input.middleName,
       lastName: input.lastName,
       avatarUrl: input.avatarUrl,
       now: deps.clock.now(),

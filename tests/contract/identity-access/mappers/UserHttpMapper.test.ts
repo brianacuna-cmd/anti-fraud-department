@@ -11,13 +11,14 @@ import { fromDate } from '../../../../src/shared/time/Instant.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 
-function buildUser(id: string): User {
+function buildUser(id: string, middleName: string | null = null): User {
   return User.create({
     id: createUserId(id),
     organizationId: createOrganizationId('org-1'),
     email: createEmail(`${id}@example.com`),
-    credential: createPasswordCredential('hash-value', 'salt-value'),
+    credential: createPasswordCredential('hash-value'),
     firstName: 'First',
+    middleName,
     lastName: 'Last',
     now: NOW,
   });
@@ -34,6 +35,7 @@ describe('toUserResponse', () => {
       organizationId: 'org-1',
       email: 'user-1@example.com',
       firstName: 'First',
+      middleName: null,
       lastName: 'Last',
       avatarUrl: null,
       status: 'ACTIVE',
@@ -44,6 +46,24 @@ describe('toUserResponse', () => {
     expect(dto).not.toHaveProperty('passwordHash');
     expect(dto).not.toHaveProperty('passwordSalt');
     expect(dto).not.toHaveProperty('credential');
+  });
+
+  it('surfaces a provided middleName (design A12 — exposed on HTTP, camelCase)', () => {
+    const user = buildUser('user-2', 'Danger');
+
+    const dto = toUserResponse(user);
+
+    expect(dto.middleName).toBe('Danger');
+  });
+
+  it('excludes resetToken, mfa, and configuration — persistence/domain-only, never on a DTO (design A11)', () => {
+    const user = buildUser('user-1');
+
+    const dto = toUserResponse(user);
+
+    expect(dto).not.toHaveProperty('resetToken');
+    expect(dto).not.toHaveProperty('mfa');
+    expect(dto).not.toHaveProperty('configuration');
   });
 });
 

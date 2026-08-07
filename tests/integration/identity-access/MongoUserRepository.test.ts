@@ -24,7 +24,7 @@ function buildUser(id: string, organizationId = ORG_1, email = `${id}@example.co
     id: createUserId(id),
     organizationId,
     email: createEmail(email),
-    credential: createPasswordCredential('hash', 'salt'),
+    credential: createPasswordCredential('hash'),
     firstName: 'First',
     lastName: 'Last',
     now: NOW,
@@ -55,7 +55,7 @@ describe('MongoUserRepositoryFactory / MongoUserRepository (integration, real re
   });
 
   afterEach(async () => {
-    await db.collection('users').deleteMany({});
+    await db.collection('Users').deleteMany({});
   });
 
   it('persists a user and retrieves it by id, scoped to the bound tenant', async () => {

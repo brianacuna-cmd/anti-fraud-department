@@ -7,6 +7,7 @@ import type {
 } from '../../../../domain/ports/OrganizationRepository.js';
 import type { OrganizationId } from '../../../../domain/model/value-objects/OrganizationId.js';
 import type { Slug } from '../../../../domain/model/value-objects/Slug.js';
+import type { Email } from '../../../../domain/model/value-objects/Email.js';
 import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
 import { organizationSlugTaken } from '../../../../domain/errors/IdentityAccessError.js';
 import type { OrganizationDocument } from './documents/OrganizationDocument.js';
@@ -18,7 +19,7 @@ function toSession(tx: Transaction | undefined): ClientSession | undefined {
   return tx as unknown as ClientSession | undefined;
 }
 
-const COLLECTION_NAME = 'organizations';
+const COLLECTION_NAME = 'Organizations';
 const SLUG_UNIQUE_INDEX_NAME = 'slug_unique';
 
 /**
@@ -53,7 +54,12 @@ export class MongoOrganizationRepository implements OrganizationRepository {
   }
 
   async findBySlug(slug: Slug, tx?: Transaction): Promise<Organization | null> {
-    const document = await this.collection.findOne({ slug }, { session: toSession(tx) });
+    const document = await this.collection.findOne({ Slug: slug }, { session: toSession(tx) });
+    return document ? toDomain(document) : null;
+  }
+
+  async findByEmail(email: Email): Promise<Organization | null> {
+    const document = await this.collection.findOne({ Email: email });
     return document ? toDomain(document) : null;
   }
 

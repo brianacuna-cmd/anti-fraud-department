@@ -69,3 +69,32 @@ export function userEmailTaken(email: string): IdentityAccessError {
 export function userNotFound(id: string): IdentityAccessError {
   return new IdentityAccessError('USER_NOT_FOUND', `user "${id}" not found`, { id });
 }
+
+// Phase 4 (design D18, D19, D24, D29): login/logout/lockout.
+
+/**
+ * Deliberately generic (design account-lockout/authentication-session specs
+ * "Wrong password rejected uniformly" / "No Email-Existence Leak"): the same
+ * error for an unknown email, a wrong password on a known email, and a
+ * suspended/cancelled/not-found tenant slug — the response must never leak
+ * which of those actually happened.
+ */
+export function invalidCredentials(): IdentityAccessError {
+  return new IdentityAccessError('INVALID_CREDENTIALS', 'invalid email or password');
+}
+
+export function accountLocked(blockedUntil: string): IdentityAccessError {
+  return new IdentityAccessError('ACCOUNT_LOCKED', `account is locked until ${blockedUntil}`, { blockedUntil });
+}
+
+export function sessionExpired(): IdentityAccessError {
+  return new IdentityAccessError('SESSION_EXPIRED', 'session has expired');
+}
+
+export function sessionInvalid(): IdentityAccessError {
+  return new IdentityAccessError('SESSION_INVALID', 'session is invalid or has been revoked');
+}
+
+export function organizationSuspended(): IdentityAccessError {
+  return new IdentityAccessError('ORGANIZATION_SUSPENDED', 'organization is suspended');
+}

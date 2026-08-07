@@ -23,33 +23,104 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     await replicaSet.stop();
   });
 
-  it('creates the three required indexes on a fresh database', async () => {
+  it('creates the required indexes on a fresh database, with PascalCase keys for Organizations/Users (design A2/A3) and camelCase for AdminOrganization (design D39)', async () => {
     await ensureIndexes(db);
 
-    const organizationIndexes = await db.collection('organizations').indexes();
-    const userIndexes = await db.collection('users').indexes();
+    const organizationIndexes = await db.collection('Organizations').indexes();
+    const userIndexes = await db.collection('Users').indexes();
+    const adminOrganizationIndexes = await db.collection('adminOrganizations').indexes();
 
     const slugIndex = organizationIndexes.find((index) => index.name === 'slug_unique');
     expect(slugIndex).toBeDefined();
-    expect(slugIndex?.key).toEqual({ slug: 1 });
+    expect(slugIndex?.key).toEqual({ Slug: 1 });
     expect(slugIndex?.unique).toBe(true);
 
     const userEmailIndex = userIndexes.find((index) => index.name === 'user_email_unique');
     expect(userEmailIndex).toBeDefined();
-    expect(userEmailIndex?.key).toEqual({ organizationId: 1, email: 1 });
+    expect(userEmailIndex?.key).toEqual({ OrganizationId: 1, Email: 1 });
     expect(userEmailIndex?.unique).toBe(true);
 
     const userStatusIndex = userIndexes.find((index) => index.name === 'user_status_idx');
     expect(userStatusIndex).toBeDefined();
-    expect(userStatusIndex?.key).toEqual({ organizationId: 1, status: 1 });
+    expect(userStatusIndex?.key).toEqual({ OrganizationId: 1, Status: 1 });
+
+    const adminEmailIndex = adminOrganizationIndexes.find(
+      (index) => index.name === 'admin_organization_email_unique',
+    );
+    expect(adminEmailIndex).toBeDefined();
+    expect(adminEmailIndex?.key).toEqual({ email: 1 });
+    expect(adminEmailIndex?.unique).toBe(true);
+
+    const adminKeysKeyIdIndex = adminOrganizationIndexes.find(
+      (index) => index.name === 'admin_organization_keys_key_id_idx',
+    );
+    expect(adminKeysKeyIdIndex).toBeDefined();
+    expect(adminKeysKeyIdIndex?.key).toEqual({ 'keys.keyId': 1 });
   });
 
   it('is idempotent — running it twice does not throw or duplicate indexes', async () => {
     await ensureIndexes(db);
     await ensureIndexes(db);
 
-    const userIndexes = await db.collection('users').indexes();
+    const userIndexes = await db.collection('Users').indexes();
     const matchingNames = userIndexes.filter((index) => index.name === 'user_email_unique');
     expect(matchingNames).toHaveLength(1);
+  });
+
+  it('creates the required Sessions indexes, with a PARTIAL (not sparse) unique index on RefreshTokenHash (design D38) and a TTL on the Date mirror, never the Instant string field (design D15)', async () => {
+    await ensureIndexes(db);
+
+    const sessionIndexes = await db.collection('Sessions').indexes();
+
+    const tokenHashIndex = sessionIndexes.find((index) => index.name === 'session_token_hash_unique');
+    expect(tokenHashIndex).toBeDefined();
+    expect(tokenHashIndex?.key).toEqual({ TokenHash: 1 });
+    expect(tokenHashIndex?.unique).toBe(true);
+
+    const refreshTokenHashIndex = sessionIndexes.find(
+      (index) => index.name === 'session_refresh_token_hash_unique',
+    );
+    expect(refreshTokenHashIndex).toBeDefined();
+    expect(refreshTokenHashIndex?.key).toEqual({ RefreshTokenHash: 1 });
+    expect(refreshTokenHashIndex?.unique).toBe(true);
+    expect(refreshTokenHashIndex?.sparse).not.toBe(true);
+    expect(refreshTokenHashIndex?.partialFilterExpression).toEqual({
+      RefreshTokenHash: { $exists: true, $type: 'string' },
+    });
+
+    const familyIdIndex = sessionIndexes.find((index) => index.name === 'session_family_id_idx');
+    expect(familyIdIndex).toBeDefined();
+    expect(familyIdIndex?.key).toEqual({ FamilyId: 1 });
+
+    const familyExpiresAtTtlIndex = sessionIndexes.find(
+      (index) => index.name === 'session_family_expires_at_ttl_idx',
+    );
+    expect(familyExpiresAtTtlIndex).toBeDefined();
+    expect(familyExpiresAtTtlIndex?.key).toEqual({ FamilyExpiresAtDate: 1 });
+    expect(familyExpiresAtTtlIndex?.expireAfterSeconds).toBe(0);
+    // Regression guard (design D15): the TTL MUST sit on the Date mirror
+    // field name, never on the ISO-string `FamilyExpiresAt` field.
+    expect(familyExpiresAtTtlIndex?.key).not.toHaveProperty('FamilyExpiresAt');
+
+    const organizationIdIndex = sessionIndexes.find((index) => index.name === 'session_organization_id_idx');
+    expect(organizationIdIndex).toBeDefined();
+    expect(organizationIdIndex?.key).toEqual({ OrganizationId: 1 });
+
+    const actorTypeUserIdIndex = sessionIndexes.find((index) => index.name === 'session_actor_type_user_id_idx');
+    expect(actorTypeUserIdIndex).toBeDefined();
+    expect(actorTypeUserIdIndex?.key).toEqual({ ActorType: 1, UserId: 1 });
+  });
+
+  it('creates a PARTIAL (not sparse) unique index on Organizations.Email (Phase 4, design D36 pulled forward, D38 general rule)', async () => {
+    await ensureIndexes(db);
+
+    const organizationIndexes = await db.collection('Organizations').indexes();
+    const emailIndex = organizationIndexes.find((index) => index.name === 'organization_email_unique');
+
+    expect(emailIndex).toBeDefined();
+    expect(emailIndex?.key).toEqual({ Email: 1 });
+    expect(emailIndex?.unique).toBe(true);
+    expect(emailIndex?.sparse).not.toBe(true);
+    expect(emailIndex?.partialFilterExpression).toEqual({ Email: { $exists: true, $type: 'string' } });
   });
 });

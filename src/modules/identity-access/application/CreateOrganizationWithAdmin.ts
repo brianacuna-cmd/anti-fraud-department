@@ -18,7 +18,6 @@ export interface CreateOrganizationWithAdminInput {
   readonly name: string;
   readonly slug: string;
   readonly domain?: string | null;
-  readonly logoUrl?: string | null;
   readonly adminEmail: string;
   readonly adminPassword: string;
   readonly adminFirstName: string;
@@ -67,7 +66,6 @@ export function createCreateOrganizationWithAdminUseCase(deps: CreateOrganizatio
         name: input.name,
         slug,
         domain: input.domain,
-        logoUrl: input.logoUrl,
         now,
       });
       await deps.organizations.save(organization, tx);

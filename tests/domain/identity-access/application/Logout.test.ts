@@ -1,0 +1,70 @@
+import { createLogoutUseCase } from '../../../../src/modules/identity-access/application/auth/Logout.js';
+import { InMemorySessionRepository } from '../../../helpers/identity-access/InMemorySessionRepository.js';
+import { FixedClock } from '../../../helpers/FixedClock.js';
+import { Session } from '../../../../src/modules/identity-access/domain/model/aggregates/Session.js';
+import { createSessionId } from '../../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
+import { createFamilyId } from '../../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
+import { createOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
+import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
+import { fromDate } from '../../../../src/shared/time/Instant.js';
+
+const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
+const LATER = fromDate(new Date('2026-01-01T00:10:00.000Z'));
+
+function buildSession(id: string): Session {
+  return Session.create({
+    id: createSessionId(id),
+    userId: 'user-1',
+    organizationId: createOrganizationId('org-1'),
+    actorType: 'USER',
+    tokenHash: `token-hash-${id}`,
+    refreshTokenHash: `refresh-hash-${id}`,
+    expiresAt: LATER,
+    refreshExpiresAt: LATER,
+    familyId: createFamilyId('family-1'),
+    familyExpiresAt: LATER,
+    now: NOW,
+  });
+}
+
+function buildUseCase() {
+  const sessions = new InMemorySessionRepository();
+  const logout = createLogoutUseCase({ sessions, clock: new FixedClock(LATER) });
+  return { logout, sessions };
+}
+
+describe('createLogoutUseCase', () => {
+  it('sets deletedAt on the current session (design authentication-session spec: "Logout and Session Validation")', async () => {
+    const { logout, sessions } = buildUseCase();
+    await sessions.save(buildSession('session-1'));
+    const auth = createAuthContext({ userId: 'user-1', organizationId: 'org-1', sessionId: 'session-1' });
+
+    await logout({ auth });
+
+    const revoked = await sessions.findByTokenHash('token-hash-session-1');
+    expect(revoked?.deletedAt).toBe(LATER);
+  });
+
+  it('does not touch other sessions', async () => {
+    const { logout, sessions } = buildUseCase();
+    await sessions.save(buildSession('session-1'));
+    await sessions.save(buildSession('session-2'));
+    const auth = createAuthContext({ userId: 'user-1', organizationId: 'org-1', sessionId: 'session-1' });
+
+    await logout({ auth });
+
+    const other = await sessions.findByTokenHash('token-hash-session-2');
+    expect(other?.deletedAt).toBeNull();
+  });
+
+  it('is a no-op when AuthContext carries no sessionId (e.g. trusted-header dev mode)', async () => {
+    const { logout, sessions } = buildUseCase();
+    await sessions.save(buildSession('session-1'));
+    const auth = createAuthContext({ userId: 'user-1', organizationId: 'org-1' });
+
+    await expect(logout({ auth })).resolves.toBeUndefined();
+
+    const untouched = await sessions.findByTokenHash('token-hash-session-1');
+    expect(untouched?.deletedAt).toBeNull();
+  });
+});

@@ -1,7 +1,7 @@
 import {
   createOrganizationSchema,
   patchOrganizationSchema,
-  transitionOrganizationSchema,
+  updateOrganizationStatusSchema,
 } from '../../../../src/modules/identity-access/infrastructure/adapters/inbound/http/dto/organizationSchemas.js';
 
 const VALID_ADMIN_FIELDS = {
@@ -38,11 +38,10 @@ describe('createOrganizationSchema', () => {
 });
 
 describe('patchOrganizationSchema (allow-list)', () => {
-  it('accepts name, domain, and logoUrl', () => {
+  it('accepts name and domain', () => {
     const result = patchOrganizationSchema.safeParse({
       name: 'Acme Corp',
       domain: 'acme.com',
-      logoUrl: 'https://acme.com/logo.png',
     });
 
     expect(result.success).toBe(true);
@@ -65,17 +64,40 @@ describe('patchOrganizationSchema (allow-list)', () => {
 
     expect(result.success).toBe(false);
   });
+
+  it('rejects logoUrl — removed with no replacement DTO field (design D8/A11, task 5.6)', () => {
+    const result = patchOrganizationSchema.safeParse({ logoUrl: 'https://acme.com/logo.png' });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects configuration — persistence/domain-only, not exposed over HTTP (design A11, task 5.6)', () => {
+    const result = patchOrganizationSchema.safeParse({ configuration: { theme: 'dark' } });
+
+    expect(result.success).toBe(false);
+  });
 });
 
-describe('transitionOrganizationSchema', () => {
-  it.each(['ACTIVE', 'INACTIVE', 'SUSPENDED', 'DISABLED'])('accepts the valid status %s', (next) => {
-    const result = transitionOrganizationSchema.safeParse({ next });
+describe('updateOrganizationStatusSchema (PATCH /organizations/:id/status body, design D10, D21)', () => {
+  it.each(['ACTIVE', 'SUSPENDED', 'CANCELLED'])('accepts the valid status %s', (status) => {
+    const result = updateOrganizationStatusSchema.safeParse({ status });
 
     expect(result.success).toBe(true);
   });
 
+  it('rejects the old 4-value LifecycleStatus members INACTIVE/DISABLED — organizations no longer use them', () => {
+    expect(updateOrganizationStatusSchema.safeParse({ status: 'INACTIVE' }).success).toBe(false);
+    expect(updateOrganizationStatusSchema.safeParse({ status: 'DISABLED' }).success).toBe(false);
+  });
+
   it('rejects a status outside the closed set', () => {
-    const result = transitionOrganizationSchema.safeParse({ next: 'BORRADO' });
+    const result = updateOrganizationStatusSchema.safeParse({ status: 'BORRADO' });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a payload using the old {next} field name', () => {
+    const result = updateOrganizationStatusSchema.safeParse({ next: 'SUSPENDED' });
 
     expect(result.success).toBe(false);
   });

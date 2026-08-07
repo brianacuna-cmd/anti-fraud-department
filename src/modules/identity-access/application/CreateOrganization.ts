@@ -12,7 +12,6 @@ export interface CreateOrganizationInput {
   readonly name: string;
   readonly slug: string;
   readonly domain?: string | null;
-  readonly logoUrl?: string | null;
 }
 
 export interface CreateOrganizationDeps {
@@ -37,7 +36,6 @@ export function createCreateOrganizationUseCase(deps: CreateOrganizationDeps) {
       name: input.name,
       slug,
       domain: input.domain,
-      logoUrl: input.logoUrl,
       now: deps.clock.now(),
     });
 

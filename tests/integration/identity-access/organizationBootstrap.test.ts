@@ -6,7 +6,7 @@ import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
 import { MongoOrganizationRepository } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/MongoOrganizationRepository.js';
 import { MongoUserRepositoryFactory } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUserRepositoryFactory.js';
 import { MongoUnitOfWork } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
-import { ScryptPasswordHasher } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/ScryptPasswordHasher.js';
+import { BcryptPasswordHasher } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/BcryptPasswordHasher.js';
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
 import { createCreateOrganizationWithAdminUseCase } from '../../../src/modules/identity-access/application/CreateOrganizationWithAdmin.js';
 import type { PasswordHasher } from '../../../src/modules/identity-access/domain/ports/PasswordHasher.js';
@@ -47,11 +47,11 @@ describe('CreateOrganizationWithAdmin bootstrap (integration, real replica-set M
   });
 
   afterEach(async () => {
-    await db.collection('organizations').deleteMany({});
-    await db.collection('users').deleteMany({});
+    await db.collection('Organizations').deleteMany({});
+    await db.collection('Users').deleteMany({});
   });
 
-  function buildUseCase(passwordHasher: PasswordHasher = new ScryptPasswordHasher()) {
+  function buildUseCase(passwordHasher: PasswordHasher = new BcryptPasswordHasher()) {
     return createCreateOrganizationWithAdminUseCase({
       organizations,
       userRepositoryFactory,
@@ -118,6 +118,7 @@ describe('CreateOrganizationWithAdmin bootstrap (integration, real replica-set M
       hash: async () => {
         throw new Error('hashing failure mid-transaction');
       },
+      verify: async () => false,
     };
     const createOrganizationWithAdmin = buildUseCase(failingHasher);
 

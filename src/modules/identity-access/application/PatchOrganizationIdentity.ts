@@ -11,7 +11,6 @@ export interface PatchOrganizationIdentityInput {
   readonly organizationId: string;
   readonly name?: string;
   readonly domain?: string | null;
-  readonly logoUrl?: string | null;
 }
 
 export interface PatchOrganizationIdentityDeps {
@@ -19,7 +18,7 @@ export interface PatchOrganizationIdentityDeps {
   readonly clock: Clock;
 }
 
-/** Organization Identity Patch — only name/domain/logoUrl; slug stays immutable. */
+/** Organization Identity Patch — only name/domain; slug stays immutable, `configuration` is not patchable this slice (design A11). */
 export function createPatchOrganizationIdentityUseCase(deps: PatchOrganizationIdentityDeps) {
   return async function patchOrganizationIdentity(
     input: PatchOrganizationIdentityInput,
@@ -32,10 +31,7 @@ export function createPatchOrganizationIdentityUseCase(deps: PatchOrganizationId
       throw organizationNotFound(input.organizationId);
     }
 
-    const updated = organization.patchIdentity(
-      { name: input.name, domain: input.domain, logoUrl: input.logoUrl },
-      deps.clock.now(),
-    );
+    const updated = organization.patchIdentity({ name: input.name, domain: input.domain }, deps.clock.now());
     await deps.organizations.save(updated);
     return updated;
   };

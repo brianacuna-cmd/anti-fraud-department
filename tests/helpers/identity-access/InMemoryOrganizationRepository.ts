@@ -6,6 +6,7 @@ import type {
 } from '../../../src/modules/identity-access/domain/ports/OrganizationRepository.js';
 import type { OrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import type { Slug } from '../../../src/modules/identity-access/domain/model/value-objects/Slug.js';
+import type { Email } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 
 /**
  * In-memory `OrganizationRepository` fake — proves the port's contract
@@ -33,6 +34,15 @@ export class InMemoryOrganizationRepository implements OrganizationRepository {
   async findBySlug(slug: Slug): Promise<Organization | null> {
     for (const organization of this.byId.values()) {
       if ((organization.slug as string) === (slug as string)) {
+        return organization;
+      }
+    }
+    return null;
+  }
+
+  async findByEmail(email: Email): Promise<Organization | null> {
+    for (const organization of this.byId.values()) {
+      if (organization.email !== null && (organization.email as string) === (email as string)) {
         return organization;
       }
     }
