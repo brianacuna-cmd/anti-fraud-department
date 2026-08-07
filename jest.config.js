@@ -3,6 +3,11 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/src', '<rootDir>/tests'],
+  // Integration tests boot a real mongod (via mongodb-memory-server), including
+  // a single-node replica set for transactions. On slow CI runners that startup
+  // can exceed Jest's 5s default (applied to hooks too), so give tests and
+  // beforeAll/afterAll hooks a generous ceiling.
+  testTimeout: 60000,
   // Source uses NodeNext-style relative imports ending in .js (required by
   // tsconfig's "module": "NodeNext") even though the files on disk are .ts.
   // Jest's resolver doesn't know about that TS-specific convention, so strip

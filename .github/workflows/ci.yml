@@ -6,6 +6,14 @@ on:
   push:
     branches: [main, develop]
 
+env:
+  # Pin the mongod binary that mongodb-memory-server downloads so the cache key
+  # below is stable and integration tests are deterministic across runs.
+  MONGOMS_VERSION: 8.2.6
+  # Keep the binary outside node_modules (which `npm ci` wipes each run) so it
+  # survives and can be cached between workflow runs.
+  MONGOMS_DOWNLOAD_DIR: ${{ github.workspace }}/.cache/mongodb-binaries
+
 jobs:
   verify:
     name: verify
@@ -18,7 +26,19 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Cache mongodb-memory-server binary
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.MONGOMS_DOWNLOAD_DIR }}
+          key: mongodb-binaries-${{ runner.os }}-${{ env.MONGOMS_VERSION }}
+
       - run: npm ci
+
+      # Download the mongod binary once, serially, before Jest spins up its
+      # parallel workers. Without this, several workers race to download the same
+      # binary on a cold cache and the run can hang for many minutes.
+      - name: Pre-download mongod binary
+        run: node -e "require('mongodb-memory-server').MongoMemoryServer.create().then(s => s.stop()).then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); })"
 
       - run: npm run lint
 

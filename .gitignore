@@ -5,6 +5,7 @@ docs/
 node_modules/
 dist/
 coverage/
+.cache/
 .env
 .env.*
 *.log
