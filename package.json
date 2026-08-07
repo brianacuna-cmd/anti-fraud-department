@@ -4,6 +4,7 @@
   "private": true,
   "description": "Anti-fraud department backend — TypeScript modular monolith.",
   "main": "dist/main.js",
+  "packageManager": "pnpm@11.2.2",
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/main.ts",
