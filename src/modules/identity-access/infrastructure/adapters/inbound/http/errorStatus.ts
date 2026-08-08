@@ -23,4 +23,9 @@ export const identityAccessErrorStatus: StatusByCode = {
   // mfa-user-enrollment PR2: user MFA setup/activate/disable.
   MFA_ENROLLMENT_NOT_PENDING: 409,
   MFA_TOKEN_INVALID: 401,
+  // two-step-login PR1a (design D3): thrown by shared `AuthScopeError` — not
+  // an `IdentityAccessErrorCode` (it lives in `shared/kernel`, not this
+  // module's closed error set) but `errorHandler` matches any `DomainError`
+  // subclass by `code` string, so this entry maps it regardless of layer.
+  FORBIDDEN_AUTH_SCOPE: 403,
 };
