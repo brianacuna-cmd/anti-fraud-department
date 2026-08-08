@@ -27,6 +27,11 @@ export type IdentityAccessAuditAction =
   // super-admin-auth PR1 (design "Audit Vocabulary additions"): PLATFORM_ADMIN
   // challenge-login outcomes.
   | 'PLATFORM_ADMIN_LOGIN'
-  | 'PLATFORM_ADMIN_LOGIN_FAILED';
+  | 'PLATFORM_ADMIN_LOGIN_FAILED'
+  // super-admin-auth PR2 (design "Audit Vocabulary additions"): admin key
+  // lifecycle — one-time download, rotation, revocation.
+  | 'PLATFORM_ADMIN_PRIVATE_KEY_DOWNLOADED'
+  | 'PLATFORM_ADMIN_KEY_ROTATED'
+  | 'PLATFORM_ADMIN_KEY_REVOKED';
 
 export type IdentityAccessAuditResource = 'organizations' | 'users' | 'sessions' | 'adminOrganizations';

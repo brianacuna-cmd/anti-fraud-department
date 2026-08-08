@@ -3,6 +3,9 @@ import { requireAuthContext } from '../../../../../../shared/http/requestAuthCon
 import type { createProvisionAdminOrganizationUseCase } from '../../../../application/admin/ProvisionAdminOrganization.js';
 import type { createRequestAdminChallengeUseCase } from '../../../../application/admin/RequestAdminChallenge.js';
 import type { createVerifyAdminChallengeUseCase } from '../../../../application/admin/VerifyAdminChallenge.js';
+import type { createDownloadAdminPrivateKeyUseCase } from '../../../../application/admin/DownloadAdminPrivateKey.js';
+import type { createRotateAdminKeyUseCase } from '../../../../application/admin/RotateAdminKey.js';
+import type { createRevokeAdminKeyUseCase } from '../../../../application/admin/RevokeAdminKey.js';
 import {
   provisionAdminOrganizationSchema,
   requestAdminChallengeSchema,
@@ -17,20 +20,29 @@ export interface AdminOrganizationRouterDeps {
   readonly requestAdminChallenge: ReturnType<typeof createRequestAdminChallengeUseCase>;
   /** super-admin-auth PR1, step 2 — public, no `AuthContext` yet. */
   readonly verifyAdminChallenge: ReturnType<typeof createVerifyAdminChallengeUseCase>;
+  /** super-admin-auth PR2 — `requirePlatformAdmin`-gated, one-time download. */
+  readonly downloadAdminPrivateKey: ReturnType<typeof createDownloadAdminPrivateKeyUseCase>;
+  /** super-admin-auth PR2 — `requirePlatformAdmin`-gated. */
+  readonly rotateAdminKey: ReturnType<typeof createRotateAdminKeyUseCase>;
+  /** super-admin-auth PR2 — `requirePlatformAdmin`-gated. */
+  readonly revokeAdminKey: ReturnType<typeof createRevokeAdminKeyUseCase>;
 }
 
 /**
- * `/admin-organizations` routes (design D31/D32, super-admin-auth PR1).
+ * `/admin-organizations` routes (design D31/D32, super-admin-auth PR1+PR2).
  * Provisioning stays platform-admin-only (`requirePlatformAdmin`, enforced
  * inside the use case) — it genuinely cannot provision the FIRST
  * `AdminOrganization`, resolved out-of-band by the bootstrap script (design
- * D43). One-time private-key download, rotation, and revocation are added
- * in later PRs (2a/2b) on this same router.
+ * D43).
  *
  * The two challenge-login routes (`POST .../challenges`, `POST .../sessions`)
  * are deliberately PUBLIC — they ARE the login, exactly like `authRouter`'s
  * login routes — so they omit `requireAuthContext` entirely (design
  * "HTTP (public login routes on adminOrganizationRouter.ts)").
+ *
+ * The three PR2 key-lifecycle routes (download/rotate/revoke) are
+ * authenticated (`requireAuthContext` + `requirePlatformAdmin` inside the
+ * use case) — mirrors `provisionAdminOrganization`'s shape exactly.
  */
 export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Router {
   const router = Router();
@@ -56,6 +68,32 @@ export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Rout
       ipAddress: req.ip ?? null,
     });
     res.status(201).json({ accessToken: result.accessToken, expiresAt: result.expiresAt });
+  });
+
+  router.post('/admin-organizations/:adminOrganizationId/keys/:keyId/download', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const result = await deps.downloadAdminPrivateKey({
+      auth,
+      adminOrganizationId: req.params.adminOrganizationId!,
+      keyId: req.params.keyId!,
+    });
+    res.status(200).json({ privateKeyPkcs8Pem: result.privateKeyPkcs8Pem });
+  });
+
+  router.post('/admin-organizations/:adminOrganizationId/keys/rotate', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const admin = await deps.rotateAdminKey({ auth, adminOrganizationId: req.params.adminOrganizationId! });
+    res.status(200).json(toAdminOrganizationResponse(admin));
+  });
+
+  router.post('/admin-organizations/:adminOrganizationId/keys/:keyId/revoke', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const admin = await deps.revokeAdminKey({
+      auth,
+      adminOrganizationId: req.params.adminOrganizationId!,
+      keyId: req.params.keyId!,
+    });
+    res.status(200).json(toAdminOrganizationResponse(admin));
   });
 
   return router;

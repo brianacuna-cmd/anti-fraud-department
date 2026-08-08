@@ -2,7 +2,9 @@ import type { ClientSession, Collection, Db } from 'mongodb';
 import type { AdminOrganization } from '../../../../domain/model/aggregates/AdminOrganization.js';
 import type { AdminOrganizationRepository } from '../../../../domain/ports/AdminOrganizationRepository.js';
 import type { AdminOrganizationId } from '../../../../domain/model/value-objects/AdminOrganizationId.js';
+import type { AdminKeyId } from '../../../../domain/model/value-objects/AdminKeyId.js';
 import type { Email } from '../../../../domain/model/value-objects/Email.js';
+import type { Instant } from '../../../../../../shared/time/Instant.js';
 import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
 import type { AdminOrganizationDocument } from './documents/AdminOrganizationDocument.js';
 import { toDocument, toDomain } from './mappers/AdminOrganizationDocumentMapper.js';
@@ -15,9 +17,7 @@ function toSession(tx: Transaction | undefined): ClientSession | undefined {
 const COLLECTION_NAME = 'adminOrganizations';
 
 /**
- * Mongo adapter for `AdminOrganizationRepository` — PR 1b scope only (design
- * D31/D39). The atomic `claimPrivateKey` CAS (design D32a) is added in
- * PR 2a; this class does not implement it yet.
+ * Mongo adapter for `AdminOrganizationRepository` (design D31/D39/D32a).
  */
 export class MongoAdminOrganizationRepository implements AdminOrganizationRepository {
   private readonly collection: Collection<AdminOrganizationDocument>;
@@ -47,5 +47,33 @@ export class MongoAdminOrganizationRepository implements AdminOrganizationReposi
   /** Exact document count — backs the D43c bootstrap-script guard (`countAll() > 0`). */
   async countAll(): Promise<number> {
     return this.collection.countDocuments({});
+  }
+
+  /**
+   * Atomic one-time-download claim (design D32a). The filter's `$elemMatch`
+   * only matches a document that STILL has a non-null `encryptedPrivateKey`
+   * for this exact `keyId` — so a document with an already-claimed (null)
+   * ciphertext, or with no such `keyId` at all, never matches, and the
+   * `$set` never runs. `returnDocument: 'before'` hands back the ciphertext
+   * exactly as it stood immediately prior to this atomic write — the ONE
+   * winning concurrent caller gets it; every loser (including an unknown
+   * admin/key) gets `null` from a `null` `findOneAndUpdate` result.
+   */
+  async claimPrivateKey(
+    id: AdminOrganizationId,
+    keyId: AdminKeyId,
+    now: Instant,
+    tx?: Transaction,
+  ): Promise<string | null> {
+    const before = await this.collection.findOneAndUpdate(
+      { _id: id, keys: { $elemMatch: { keyId, encryptedPrivateKey: { $ne: null } } } },
+      { $set: { 'keys.$.privateKeyDownloadedAt': now, 'keys.$.encryptedPrivateKey': null, updatedAt: now } },
+      { returnDocument: 'before', session: toSession(tx) },
+    );
+    if (!before) {
+      return null;
+    }
+    const claimedKey = before.keys.find((key) => key.keyId === keyId);
+    return claimedKey?.encryptedPrivateKey ?? null;
   }
 }

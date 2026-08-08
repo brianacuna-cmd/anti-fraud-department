@@ -33,4 +33,10 @@ export type IdentityAccessErrorCode =
   // rejection mode of the PLATFORM_ADMIN challenge-login uniformly — no
   // active key, unknown/expired/replayed challengeId, and a forged/invalid
   // signature all reject with this ONE code (no oracle for which failed).
-  | 'ADMIN_CHALLENGE_INVALID';
+  | 'ADMIN_CHALLENGE_INVALID'
+  // super-admin-auth PR2 (design "PR-2 key lifecycle"): authenticated
+  // (requirePlatformAdmin-gated) key-lifecycle rejections — these are NOT
+  // opaque like ADMIN_CHALLENGE_INVALID because the caller is already an
+  // authenticated platform admin, so there is no enumeration oracle to hide.
+  | 'ADMIN_ORGANIZATION_NOT_FOUND'
+  | 'ADMIN_PRIVATE_KEY_UNAVAILABLE';

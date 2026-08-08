@@ -137,6 +137,78 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
     expect(await repository.countAll()).toBe(2);
   });
 
+  describe('claimPrivateKey (design D32a — atomic one-time-download CAS)', () => {
+    it('claims the ciphertext once and nulls it out for the next call', async () => {
+      await repository.save(buildAdminOrganization('admin-claim-1', 'claim1@platform.test'));
+
+      const first = await repository.claimPrivateKey(
+        createAdminOrganizationId('admin-claim-1'),
+        createAdminKeyId('key-1'),
+        LATER,
+      );
+      expect(first).toBe('cipher-key-1');
+
+      const second = await repository.claimPrivateKey(
+        createAdminOrganizationId('admin-claim-1'),
+        createAdminKeyId('key-1'),
+        LATER,
+      );
+      expect(second).toBeNull();
+
+      const found = await repository.findById(createAdminOrganizationId('admin-claim-1'));
+      const key = found?.findKey(createAdminKeyId('key-1'));
+      expect(key?.encryptedPrivateKey).toBeNull();
+      expect(key?.privateKeyDownloadedAt).toBe(LATER);
+    });
+
+    it('returns null for an unknown admin organization id', async () => {
+      const result = await repository.claimPrivateKey(
+        createAdminOrganizationId('missing-admin'),
+        createAdminKeyId('key-1'),
+        LATER,
+      );
+      expect(result).toBeNull();
+    });
+
+    it('returns null for an unknown keyId on a real admin organization', async () => {
+      await repository.save(buildAdminOrganization('admin-claim-2', 'claim2@platform.test'));
+
+      const result = await repository.claimPrivateKey(
+        createAdminOrganizationId('admin-claim-2'),
+        createAdminKeyId('nonexistent-key'),
+        LATER,
+      );
+      expect(result).toBeNull();
+    });
+
+    it('two concurrent claims on the same key: exactly one winner gets the ciphertext, the other gets null', async () => {
+      await repository.save(buildAdminOrganization('admin-claim-race', 'race@platform.test'));
+
+      const [resultA, resultB] = await Promise.all([
+        repository.claimPrivateKey(
+          createAdminOrganizationId('admin-claim-race'),
+          createAdminKeyId('key-1'),
+          LATER,
+        ),
+        repository.claimPrivateKey(
+          createAdminOrganizationId('admin-claim-race'),
+          createAdminKeyId('key-1'),
+          LATER,
+        ),
+      ]);
+
+      const results = [resultA, resultB];
+      const winners = results.filter((r) => r !== null);
+      const losers = results.filter((r) => r === null);
+      expect(winners).toHaveLength(1);
+      expect(losers).toHaveLength(1);
+      expect(winners[0]).toBe('cipher-key-1');
+
+      const found = await repository.findById(createAdminOrganizationId('admin-claim-race'));
+      expect(found?.findKey(createAdminKeyId('key-1'))?.encryptedPrivateKey).toBeNull();
+    });
+  });
+
   /**
    * Regression guard for design D39/A1 (mirrors
    * MongoOrganizationRepository.test.ts's identical guard): `_id` MUST stay

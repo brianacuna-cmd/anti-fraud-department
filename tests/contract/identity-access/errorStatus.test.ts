@@ -27,6 +27,10 @@ describe('identityAccessErrorStatus', () => {
       // super-admin-auth PR1 (design "VerifyAdminChallenge"): PLATFORM_ADMIN
       // challenge-login rejection.
       ADMIN_CHALLENGE_INVALID: 401,
+      // super-admin-auth PR2 (design "PR-2 key lifecycle"): authenticated
+      // key-lifecycle rejections.
+      ADMIN_ORGANIZATION_NOT_FOUND: 404,
+      ADMIN_PRIVATE_KEY_UNAVAILABLE: 409,
     });
   });
 });
