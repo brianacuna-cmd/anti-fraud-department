@@ -24,6 +24,9 @@ describe('identityAccessErrorStatus', () => {
       FORBIDDEN_AUTH_SCOPE: 403,
       // two-step-login PR2 (design "IssueSession flow"): challenge-token rejection.
       MFA_CHALLENGE_INVALID: 401,
+      // super-admin-auth PR1 (design "VerifyAdminChallenge"): PLATFORM_ADMIN
+      // challenge-login rejection.
+      ADMIN_CHALLENGE_INVALID: 401,
     });
   });
 });

@@ -25,6 +25,9 @@ export const identityAccessErrorStatus: StatusByCode = {
   MFA_TOKEN_INVALID: 401,
   // two-step-login PR2 (design "IssueSession flow"): challenge-token rejection.
   MFA_CHALLENGE_INVALID: 401,
+  // super-admin-auth PR1 (design "VerifyAdminChallenge"): PLATFORM_ADMIN
+  // challenge-login rejection — same 401 shape as MFA_CHALLENGE_INVALID.
+  ADMIN_CHALLENGE_INVALID: 401,
   // two-step-login PR1a (design D3): thrown by shared `AuthScopeError` — not
   // an `IdentityAccessErrorCode` (it lives in `shared/kernel`, not this
   // module's closed error set) but `errorHandler` matches any `DomainError`
