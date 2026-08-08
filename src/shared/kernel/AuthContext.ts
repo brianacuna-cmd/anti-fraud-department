@@ -8,6 +8,17 @@
 export type ActorType = 'USER' | 'ORGANIZATION' | 'PLATFORM_ADMIN';
 
 /**
+ * The scope a resolved `AuthContext` is authorized for (design D3,
+ * two-step-login). `'full'` is a real `Sessions`-backed login — every
+ * protected (non-MFA) route requires it. `'challenge'`/`'enrollment'` are
+ * single-use, short-lived MFA tokens (design D2) that carry no `Sessions`
+ * row of their own and MUST NOT pass `requireAuthContext`'s default-deny
+ * check — only the routes that explicitly opt in via
+ * `requireScopedAuthContext` may accept them.
+ */
+export type AuthContextPurpose = 'full' | 'challenge' | 'enrollment';
+
+/**
  * The authenticated caller for the current request, resolved by whichever
  * `AuthContextResolver` is active (design D4, D12). Real session-backed
  * resolution later swaps the resolver only — the shape stays the same.
@@ -30,6 +41,14 @@ export interface AuthContext {
    * populated it, or `req.ip` itself is unavailable).
    */
   readonly ipAddress: string | null;
+  /**
+   * The token scope this context was resolved from (design D3,
+   * two-step-login). Additive, like `roleId`/`sessionId` before it — absent
+   * on every pre-existing call site defaults to `'full'` via
+   * `createAuthContext`, so this change touches no existing behavior beyond
+   * `requireAuthContext`'s new default-deny check.
+   */
+  readonly purpose: AuthContextPurpose;
 }
 
 export interface CreateAuthContextInput {
@@ -40,6 +59,7 @@ export interface CreateAuthContextInput {
   readonly roleId?: string | null;
   readonly sessionId?: string | null;
   readonly ipAddress?: string | null;
+  readonly purpose?: AuthContextPurpose;
 }
 
 /**
@@ -56,6 +76,10 @@ export interface CreateAuthContextInput {
  *
  * `ipAddress` absent => `null` (design D-A7 — additive, optional field;
  * every pre-existing call site keeps working unchanged).
+ *
+ * `purpose` absent => `'full'` (design D3, two-step-login — additive,
+ * optional field; every pre-existing call site keeps resolving a full-scope
+ * context unchanged).
  */
 export function createAuthContext(input: CreateAuthContextInput): AuthContext {
   const isPlatformAdmin = input.isPlatformAdmin ?? false;
@@ -67,5 +91,6 @@ export function createAuthContext(input: CreateAuthContextInput): AuthContext {
     roleId: input.roleId ?? null,
     sessionId: input.sessionId ?? null,
     ipAddress: input.ipAddress ?? null,
+    purpose: input.purpose ?? 'full',
   };
 }

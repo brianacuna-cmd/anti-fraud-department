@@ -20,6 +20,8 @@ describe('identityAccessErrorStatus', () => {
       // mfa-user-enrollment PR2: user MFA setup/activate/disable.
       MFA_ENROLLMENT_NOT_PENDING: 409,
       MFA_TOKEN_INVALID: 401,
+      // two-step-login PR1a (design D3): shared AuthScopeError's code.
+      FORBIDDEN_AUTH_SCOPE: 403,
     });
   });
 });

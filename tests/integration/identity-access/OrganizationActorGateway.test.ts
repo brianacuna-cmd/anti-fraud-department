@@ -67,6 +67,7 @@ describe('OrganizationActorGateway (integration, real replica-set Mongo)', () =>
       credential: { passwordHash: 'a-bcrypt-hash' },
       lockout: { loginAttempts: 0, blockedUntil: null },
       status: 'ACTIVE',
+      mfa: { enabled: false, secret: null },
     });
   });
 

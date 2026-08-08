@@ -73,6 +73,17 @@ const TRUST_PROXY = parseTrustProxy(process.env.TRUST_PROXY);
 // mfa-user-enrollment PR2: otpauth issuer name shown in the user's
 // authenticator app — a plain env-overridable constant, not secret.
 const AUTH_TOTP_ISSUER = process.env.AUTH_TOTP_ISSUER ?? 'AntiFraud';
+// two-step-login PR1a (design "TTLs"): short-lived single-use MFA token
+// TTLs, parsed here (TOKEN_SECRET pattern) so the env contract exists from
+// this PR onward. Not yet consumed by a use case — `BeginUserLogin`/
+// `IssueSession` (PR1b/PR2) are the first real callers; wiring
+// `MongoMfaChallengeRepository` with no caller yet would be dead code
+// (this same file's existing precedent: "construction was deferred ... to
+// avoid dead code with no caller yet"), so PR1a only establishes and logs
+// the parsed values — the collection/index/repository are already fully
+// exercised by PR1a's own integration tests.
+const AUTH_MFA_CHALLENGE_TTL_SECONDS = Number(process.env.AUTH_MFA_CHALLENGE_TTL_SECONDS ?? 300);
+const AUTH_MFA_ENROLLMENT_TTL_SECONDS = Number(process.env.AUTH_MFA_ENROLLMENT_TTL_SECONDS ?? 900);
 
 async function bootstrap(): Promise<void> {
   // Fail-closed (design D4): AUTH_MODE=trusted-header trusts client headers
@@ -234,6 +245,13 @@ async function bootstrap(): Promise<void> {
     errorHandler: createErrorHandler(identityAccessErrorStatus),
     trustProxy: TRUST_PROXY,
   });
+
+  // two-step-login PR1a: visibility into the parsed TTL env contract before
+  // any route consumes it (PR1b/PR2 wire BeginUserLogin/IssueSession against
+  // these same values).
+  console.log(
+    `MFA challenge TTLs configured: challenge=${AUTH_MFA_CHALLENGE_TTL_SECONDS}s enrollment=${AUTH_MFA_ENROLLMENT_TTL_SECONDS}s`,
+  );
 
   app.listen(PORT, () => {
     console.log(`anti-fraud-department listening on port ${PORT}`);

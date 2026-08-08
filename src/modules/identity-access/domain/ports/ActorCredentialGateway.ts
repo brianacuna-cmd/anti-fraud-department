@@ -29,6 +29,15 @@ export interface ActorCredentialRecord {
   readonly lockout: LockoutState;
   /** Raw `LifecycleStatus` (User) or `OrganizationStatus` (Organization) string — tier-specific gating stays in `AuthenticateActor`, not here. */
   readonly status: string;
+  /**
+   * MFA enrollment state (design D-A11/two-step-login) — lets a future
+   * step-1 login wrapper (`BeginUserLogin`, PR2) branch on `enabled` without
+   * pulling the full `User`/`Organization` aggregate. `secret` is the
+   * ENCRYPTED TOTP secret (never plaintext), mirroring `User.mfa.secret`.
+   * `ORGANIZATION` hardcodes `{enabled:false, secret:null}` (design: MFA is
+   * a USER-tier-only concern — an Organization actor never branches on it).
+   */
+  readonly mfa: { readonly enabled: boolean; readonly secret: string | null };
 }
 
 /**

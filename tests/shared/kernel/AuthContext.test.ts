@@ -20,12 +20,14 @@ describe('AuthContext', () => {
       roleId: 'role-1',
       sessionId: 'session-1',
       ipAddress: '203.0.113.1',
+      purpose: 'full',
     });
     expect(Object.keys(auth).sort()).toEqual([
       'actorType',
       'ipAddress',
       'isPlatformAdmin',
       'organizationId',
+      'purpose',
       'roleId',
       'sessionId',
       'userId',
@@ -69,5 +71,19 @@ describe('AuthContext', () => {
     const auth = createAuthContext({ userId: 'user-6', organizationId: 'org-6', ipAddress: '198.51.100.7' });
 
     expect(auth.ipAddress).toBe('198.51.100.7');
+  });
+
+  it('defaults purpose to "full" when omitted (design D3 — additive, optional field)', () => {
+    const auth = createAuthContext({ userId: 'user-7', organizationId: 'org-7' });
+
+    expect(auth.purpose).toBe('full');
+  });
+
+  it('accepts an explicit challenge/enrollment purpose', () => {
+    const challenge = createAuthContext({ userId: 'user-8', organizationId: 'org-8', purpose: 'challenge' });
+    const enrollment = createAuthContext({ userId: 'user-9', organizationId: 'org-9', purpose: 'enrollment' });
+
+    expect(challenge.purpose).toBe('challenge');
+    expect(enrollment.purpose).toBe('enrollment');
   });
 });

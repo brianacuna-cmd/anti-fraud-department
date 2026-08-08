@@ -22,6 +22,7 @@ function toRecord(user: User): ActorCredentialRecord {
     credential: user.credential,
     lockout: user.lockout,
     status: user.status,
+    mfa: { enabled: user.mfa.enabled, secret: user.mfa.secret },
   };
 }
 

@@ -92,6 +92,16 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .collection('Sessions')
     .createIndex({ ActorType: 1, UserId: 1 }, { name: 'session_actor_type_user_id_idx' });
 
+  // `MfaChallenges` (two-step-login PR1a, design D1). `_id` = jti — the
+  // atomic CAS `consume` matches on {_id, ConsumedAt:null, ExpiresAt:{$gt:
+  // now}}, so no additional unique index is needed beyond the implicit _id
+  // index. TTL sits on `ExpiresAtDate` — a BSON Date MIRROR of the ISO-8601
+  // `ExpiresAt` Instant, identical pattern to `Sessions.FamilyExpiresAtDate`
+  // (design D15): Mongo's TTL monitor only acts on a real BSON Date field.
+  await db
+    .collection('MfaChallenges')
+    .createIndex({ ExpiresAtDate: 1 }, { name: 'mfa_challenge_expires_at_ttl_idx', expireAfterSeconds: 0 });
+
   // `AuditLogs` (audit-logs-foundation, design D-A8). Append-only — no
   // uniqueness constraints, only lookup indexes for the timelines the
   // module is built to serve (tenant, actor, and action-type timelines).
