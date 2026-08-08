@@ -4,6 +4,7 @@ import type { OrganizationRepository } from '../domain/ports/OrganizationReposit
 import type { UserRepositoryFactory } from '../domain/ports/UserRepositoryFactory.js';
 import type { PasswordHasher } from '../domain/ports/PasswordHasher.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
+import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { OrganizationId } from '../domain/model/value-objects/OrganizationId.js';
 import type { UserId } from '../domain/model/value-objects/UserId.js';
 import { Organization } from '../domain/model/aggregates/Organization.js';
@@ -32,6 +33,8 @@ export interface CreateOrganizationWithAdminDeps {
   readonly clock: Clock;
   readonly generateOrganizationId: () => OrganizationId;
   readonly generateUserId: () => UserId;
+  /** NEW (audit-logs-foundation Phase 4): emits ORGANIZATION_CREATED. */
+  readonly auditRecorder: AuditRecorder;
 }
 
 /**
@@ -83,6 +86,20 @@ export function createCreateOrganizationWithAdminUseCase(deps: CreateOrganizatio
       });
       const userRepository = deps.userRepositoryFactory.forTenant(organization.id);
       await userRepository.save(adminUser, tx);
+
+      await deps.auditRecorder.record(
+        {
+          organizationId: organization.id,
+          actorType: input.auth.actorType,
+          actorId: input.auth.userId,
+          action: 'ORGANIZATION_CREATED',
+          resource: 'organizations',
+          resourceId: organization.id,
+          detail: { name: organization.name, slug: organization.slug, adminEmail: input.adminEmail },
+          ipAddress: input.auth.ipAddress,
+        },
+        tx,
+      );
 
       return organization;
     });

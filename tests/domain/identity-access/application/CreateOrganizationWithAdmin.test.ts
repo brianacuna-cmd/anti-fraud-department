@@ -2,6 +2,7 @@ import { createCreateOrganizationWithAdminUseCase } from '../../../../src/module
 import { InMemoryOrganizationRepository } from '../../../helpers/identity-access/InMemoryOrganizationRepository.js';
 import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
 import { InMemoryUnitOfWork } from '../../../helpers/identity-access/InMemoryUnitOfWork.js';
+import { InMemoryAuditRecorder } from '../../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FakePasswordHasher } from '../../../helpers/identity-access/FakePasswordHasher.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
@@ -13,13 +14,19 @@ import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { IdentityAccessError } from '../../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const PLATFORM_ADMIN = createAuthContext({ userId: 'u1', organizationId: 'o0', isPlatformAdmin: true });
+const PLATFORM_ADMIN = createAuthContext({
+  userId: 'u1',
+  organizationId: 'o0',
+  isPlatformAdmin: true,
+  ipAddress: '203.0.113.10',
+});
 const REGULAR_USER = createAuthContext({ userId: 'u2', organizationId: 'o1', isPlatformAdmin: false });
 
 function buildUseCase() {
   const organizations = new InMemoryOrganizationRepository();
   const userRepositoryFactory = new InMemoryUserRepositoryFactory();
   const unitOfWork = new InMemoryUnitOfWork();
+  const auditRecorder = new InMemoryAuditRecorder();
   const passwordHasher = new FakePasswordHasher();
   let nextOrgId = 0;
   let nextUserId = 0;
@@ -37,8 +44,9 @@ function buildUseCase() {
       nextUserId += 1;
       return createUserId(`user-${nextUserId}`);
     },
+    auditRecorder,
   });
-  return { createOrganizationWithAdmin, organizations, userRepositoryFactory, unitOfWork };
+  return { createOrganizationWithAdmin, organizations, userRepositoryFactory, unitOfWork, auditRecorder };
 }
 
 describe('createCreateOrganizationWithAdminUseCase', () => {
@@ -166,5 +174,32 @@ describe('createCreateOrganizationWithAdminUseCase', () => {
     expect(callerOrgUsers.items).toHaveLength(0);
     const newOrgUsers = await userRepositoryFactory.forTenant(organization.id).list(10);
     expect(newOrgUsers.items).toHaveLength(1);
+  });
+
+  it('emits exactly one ORGANIZATION_CREATED audit event, threaded with the tx', async () => {
+    const { createOrganizationWithAdmin, auditRecorder } = buildUseCase();
+
+    const organization = await createOrganizationWithAdmin({
+      auth: PLATFORM_ADMIN,
+      name: 'Acme Corp',
+      slug: 'acme-corp',
+      adminEmail: 'admin@acme.com',
+      adminPassword: 'super-secret',
+      adminFirstName: 'Root',
+      adminLastName: 'Admin',
+    });
+
+    expect(auditRecorder.all()).toHaveLength(1);
+    const [event] = auditRecorder.all();
+    expect(event).toMatchObject({
+      organizationId: organization.id,
+      actorType: 'PLATFORM_ADMIN',
+      actorId: 'u1',
+      action: 'ORGANIZATION_CREATED',
+      resource: 'organizations',
+      resourceId: organization.id,
+      ipAddress: '203.0.113.10',
+    });
+    expect(auditRecorder.calls()[0]?.tx).toBeDefined();
   });
 });
