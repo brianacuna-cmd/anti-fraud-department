@@ -65,7 +65,7 @@ export function toMfaSetupResponse(result: SetupMfaResult): MfaSetupResponseDto 
  */
 export interface ActivateMfaResponseDto {
   readonly user: UserResponseDto;
-  readonly session: { readonly accessToken: string; readonly refreshToken: string; readonly expiresAt: string } | null;
+  readonly session: { readonly accessToken: string; readonly refreshToken: string | null; readonly expiresAt: string } | null;
 }
 
 export function toActivateMfaResponse(result: ActivateMfaResult): ActivateMfaResponseDto {
