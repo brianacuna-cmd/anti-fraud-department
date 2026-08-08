@@ -78,7 +78,27 @@ describe('UserActorGateway (integration, real replica-set Mongo)', () => {
       credential: { passwordHash: 'a-bcrypt-hash' },
       lockout: { loginAttempts: 0, blockedUntil: null },
       status: 'ACTIVE',
+      mfa: { enabled: false, secret: null },
     });
+  });
+
+  it('maps mfa.enabled/secret from the User aggregate when MFA is enrolled (design D-A11/two-step-login)', async () => {
+    const enrolled = User.create({
+      id: createUserId('user-mfa'),
+      organizationId: ORG_ID,
+      email: createEmail('mfa@example.com'),
+      credential: createPasswordCredential('a-bcrypt-hash'),
+      firstName: 'Mfa',
+      lastName: 'User',
+      now: NOW,
+    })
+      .startMfaEnrollment('encrypted-secret', NOW)
+      .confirmMfaEnrollment(NOW);
+    await userRepositoryFactory.forTenant(ORG_ID).save(enrolled);
+
+    const record = await gateway.findByEmail({ email: 'mfa@example.com', organizationSlug: 'acme' });
+
+    expect(record?.mfa).toEqual({ enabled: true, secret: 'encrypted-secret' });
   });
 
   it('returns null when organizationSlug is missing (design D29 — required)', async () => {

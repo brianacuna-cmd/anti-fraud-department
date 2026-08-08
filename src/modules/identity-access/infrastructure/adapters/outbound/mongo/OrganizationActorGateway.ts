@@ -30,6 +30,9 @@ function toRecord(organization: Organization): ActorCredentialRecord | null {
     credential: organization.credential,
     lockout: organization.lockout,
     status: organization.status,
+    // MFA is a USER-tier-only concern (design D-A11/two-step-login) — an
+    // ORGANIZATION actor's step-1 login never branches on it.
+    mfa: { enabled: false, secret: null },
   };
 }
 

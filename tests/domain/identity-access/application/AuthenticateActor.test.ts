@@ -20,6 +20,7 @@ const USER_RECORD: ActorCredentialRecord = {
   credential: createPasswordCredential('hashed:correct-password'),
   lockout: { loginAttempts: 0, blockedUntil: null },
   status: 'ACTIVE',
+  mfa: { enabled: false, secret: null },
 };
 
 function buildUseCase() {
