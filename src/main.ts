@@ -10,7 +10,7 @@ import { organizationRouter } from './modules/identity-access/infrastructure/ada
 import { userRouter } from './modules/identity-access/infrastructure/adapters/inbound/http/userRouter.js';
 import { adminOrganizationRouter } from './modules/identity-access/infrastructure/adapters/inbound/http/adminOrganizationRouter.js';
 import { authRouter } from './modules/identity-access/infrastructure/adapters/inbound/http/authRouter.js';
-import { assertAuthModeSafeForProduction } from './modules/identity-access/infrastructure/adapters/inbound/http/auth/assertAuthModeSafeForProduction.js';
+import { assertAuthConfigSafeForProduction } from './modules/identity-access/infrastructure/adapters/inbound/http/auth/assertAuthConfigSafeForProduction.js';
 import { resolveAuthContextResolver } from './modules/identity-access/infrastructure/adapters/inbound/http/auth/resolveAuthContextResolver.js';
 import { createAuthContextMiddleware } from './modules/identity-access/infrastructure/adapters/inbound/http/auth/authContextMiddleware.js';
 import { MongoOrganizationRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoOrganizationRepository.js';
@@ -58,6 +58,15 @@ const PORT = Number(process.env.PORT ?? 3000);
 const MONGO_URI = process.env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/?replicaSet=rs0';
 const MONGO_DB_NAME = process.env.MONGO_DB_NAME ?? 'anti_fraud_department';
 const AUTH_MODE = process.env.AUTH_MODE ?? 'trusted-header';
+// two-step-login PR1b (design D6): PLATFORM_ADMIN has no session-issuing
+// login yet, so its auth availability is decoupled from AUTH_MODE and
+// governed by its own env — default 'disabled' is prod-safe (a
+// PLATFORM_ADMIN request 401s explicitly instead of silently trusting
+// headers); 'trusted-header' is a non-prod-only interim path until
+// identity-access-super-admin-auth ships a real admin login.
+// `assertAuthConfigSafeForProduction` refuses to start with
+// PLATFORM_ADMIN_AUTH=trusted-header in production.
+const PLATFORM_ADMIN_AUTH = process.env.PLATFORM_ADMIN_AUTH ?? 'disabled';
 // Phase 3b (design D13): normalized via SHA-256 inside AesGcmSecretCipher —
 // any length is accepted, but a real deployment MUST override the dev
 // fallback. `TOKEN_KEY_VERSION` is a small integer (0-255, 1 byte on the
@@ -86,9 +95,10 @@ const AUTH_MFA_CHALLENGE_TTL_SECONDS = Number(process.env.AUTH_MFA_CHALLENGE_TTL
 const AUTH_MFA_ENROLLMENT_TTL_SECONDS = Number(process.env.AUTH_MFA_ENROLLMENT_TTL_SECONDS ?? 900);
 
 async function bootstrap(): Promise<void> {
-  // Fail-closed (design D4): AUTH_MODE=trusted-header trusts client headers
-  // verbatim and must never run in production.
-  assertAuthModeSafeForProduction(process.env.NODE_ENV, AUTH_MODE);
+  // Fail-closed (design D4, D6): AUTH_MODE=trusted-header trusts client
+  // headers verbatim and must never run in production; PLATFORM_ADMIN_AUTH=
+  // trusted-header is likewise production-forbidden for every tier.
+  assertAuthConfigSafeForProduction(process.env.NODE_ENV, AUTH_MODE, PLATFORM_ADMIN_AUTH);
 
   const { client, db } = await connectMongo(MONGO_URI, MONGO_DB_NAME);
   await ensureIndexes(db);
@@ -230,7 +240,11 @@ async function bootstrap(): Promise<void> {
   });
 
   const authContextMiddleware = createAuthContextMiddleware(
-    resolveAuthContextResolver(AUTH_MODE, { sessionTokenService, sessionRepository: sessions }),
+    resolveAuthContextResolver(AUTH_MODE, {
+      sessionTokenService,
+      sessionRepository: sessions,
+      platformAdminAuth: PLATFORM_ADMIN_AUTH,
+    }),
   );
 
   const identityAccessRouter = Router();
@@ -251,6 +265,14 @@ async function bootstrap(): Promise<void> {
   // these same values).
   console.log(
     `MFA challenge TTLs configured: challenge=${AUTH_MFA_CHALLENGE_TTL_SECONDS}s enrollment=${AUTH_MFA_ENROLLMENT_TTL_SECONDS}s`,
+  );
+
+  // two-step-login PR1b (design D6): make PLATFORM_ADMIN auth availability
+  // explicit at startup — a configured, logged state, never a silent 401.
+  console.log(
+    PLATFORM_ADMIN_AUTH === 'trusted-header'
+      ? 'PLATFORM_ADMIN auth: trusted-header (non-prod interim path — forbidden in production)'
+      : 'PLATFORM_ADMIN auth: disabled until identity-access-super-admin-auth ships a real admin login',
   );
 
   app.listen(PORT, () => {
