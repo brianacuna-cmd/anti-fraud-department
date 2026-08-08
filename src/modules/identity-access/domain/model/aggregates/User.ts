@@ -8,7 +8,7 @@ import type { TransitionActor } from '../value-objects/TransitionActor.js';
 import { INITIAL_LOCKOUT_STATE, type LockoutState } from '../value-objects/LockoutState.js';
 import { USER_TRANSITIONS } from '../../services/transitions.js';
 import { assertTransitionAllowed, type ReactivationEdge } from '../../services/StatusTransitionPolicy.js';
-import { invariantViolation } from '../../errors/IdentityAccessError.js';
+import { invariantViolation, mfaEnrollmentNotPending } from '../../errors/IdentityAccessError.js';
 
 /**
  * The single actor-gated edge in `USER_TRANSITIONS` (design D9, unchanged
@@ -23,7 +23,12 @@ export interface ResetToken {
   readonly expiresAt: Instant;
 }
 
-/** Persistence/domain-only MFA state (design A11) — never surfaces on a DTO; no use case reads or writes it in this slice. */
+/**
+ * Persistence/domain-only MFA state (design A11) — never surfaces on a DTO.
+ * `secret` holds the ENCRYPTED TOTP secret (never plaintext, mfa-user-enrollment
+ * PR2): set (enabled=false) by `startMfaEnrollment`, kept as-is and flipped to
+ * enabled=true by `confirmMfaEnrollment`, cleared by `disableMfa`.
+ */
 export interface MfaSettings {
   readonly secret: string | null;
   readonly enabled: boolean;
@@ -201,6 +206,45 @@ export class User {
   /** Applies a new `LockoutState` computed by `LockoutPolicy` (design D18) — the aggregate stays policy-free. */
   withLockout(lockout: LockoutState, now: Instant): User {
     return new User({ ...this.props, lockout, updatedAt: now });
+  }
+
+  /**
+   * Records a fresh (encrypted) TOTP secret as pending, `enabled=false`
+   * (mfa-user-enrollment PR2 — encrypt+store-at-setup design decision).
+   * Restarting an enrollment overwrites any previously-pending secret.
+   */
+  startMfaEnrollment(encryptedSecret: string, now: Instant): User {
+    return new User({
+      ...this.props,
+      mfa: { ...this.props.mfa, secret: encryptedSecret, enabled: false },
+      updatedAt: now,
+    });
+  }
+
+  /**
+   * Flips a pending enrollment to `enabled=true`. Requires a pending
+   * (non-null) secret that isn't already confirmed — the use case verifies
+   * the submitted TOTP token BEFORE calling this; this is defense-in-depth
+   * against calling it out of order.
+   */
+  confirmMfaEnrollment(now: Instant): User {
+    if (this.props.mfa.secret === null || this.props.mfa.enabled) {
+      throw mfaEnrollmentNotPending();
+    }
+    return new User({
+      ...this.props,
+      mfa: { ...this.props.mfa, enabled: true },
+      updatedAt: now,
+    });
+  }
+
+  /** Clears the secret and disables MFA. Idempotent — no error when already disabled. */
+  disableMfa(now: Instant): User {
+    return new User({
+      ...this.props,
+      mfa: { ...this.props.mfa, secret: null, enabled: false },
+      updatedAt: now,
+    });
   }
 
   transitionTo(next: LifecycleStatus, actor: TransitionActor, now: Instant): User {
