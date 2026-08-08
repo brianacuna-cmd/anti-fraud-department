@@ -44,6 +44,10 @@ import { createDeleteUserUseCase } from './modules/identity-access/application/D
 import { createAuthenticateActorUseCase } from './modules/identity-access/application/auth/AuthenticateActor.js';
 import { createLogoutUseCase } from './modules/identity-access/application/auth/Logout.js';
 import { createPasswordCredential } from './modules/identity-access/domain/model/value-objects/PasswordCredential.js';
+import { MongoAuditLogRepository } from './modules/audit/infrastructure/adapters/outbound/mongo/MongoAuditLogRepository.js';
+import { createRecordAuditLogUseCase } from './modules/audit/application/RecordAuditLog.js';
+import { generateAuditLogId } from './modules/audit/domain/model/value-objects/AuditLogId.js';
+import { createAuditRecorderAdapter } from './composition/auditRecorderAdapter.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const MONGO_URI = process.env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/?replicaSet=rs0';
@@ -87,10 +91,19 @@ async function bootstrap(): Promise<void> {
   // Phase 2's PassthroughUnitOfWork is deliberately NOT reused here.
   const unitOfWork = new MongoUnitOfWork(client);
 
+  // audit-logs-foundation Phase 4 (design D-A2/D-A4, task 4.0): first real
+  // consumer of the `audit` module — construction was deferred out of PR2
+  // (feat/audit-recorder-wiring) to avoid dead code with no caller yet.
+  const auditLogs = new MongoAuditLogRepository(db);
+  const recordAuditLog = createRecordAuditLogUseCase({ auditLogs, clock, generateAuditLogId });
+  const auditRecorder = createAuditRecorderAdapter(recordAuditLog);
+
   const transitionOrganizationStatus = createTransitionOrganizationStatusUseCase({
     organizations,
+    sessions,
     unitOfWork,
     clock,
+    auditRecorder,
   });
   const transitionUserStatus = createTransitionUserStatusUseCase({ userRepositoryFactory, unitOfWork, clock });
 
@@ -103,10 +116,11 @@ async function bootstrap(): Promise<void> {
       clock,
       generateOrganizationId,
       generateUserId,
+      auditRecorder,
     }),
     getOrganization: createGetOrganizationUseCase({ organizations }),
     listOrganizations: createListOrganizationsUseCase({ organizations }),
-    patchOrganizationIdentity: createPatchOrganizationIdentityUseCase({ organizations, clock }),
+    patchOrganizationIdentity: createPatchOrganizationIdentityUseCase({ organizations, unitOfWork, clock, auditRecorder }),
     transitionOrganizationStatus,
     deleteOrganization: createDeleteOrganizationUseCase({ transitionOrganizationStatus }),
   });
@@ -127,9 +141,11 @@ async function bootstrap(): Promise<void> {
       admins,
       keyPairs: adminKeyPairGenerator,
       cipher: secretCipher,
+      unitOfWork,
       clock,
       generateAdminOrganizationId,
       generateAdminKeyId,
+      auditRecorder,
     }),
   });
 
