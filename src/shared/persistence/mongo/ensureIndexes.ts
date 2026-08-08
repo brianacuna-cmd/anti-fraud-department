@@ -102,6 +102,15 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .collection('MfaChallenges')
     .createIndex({ ExpiresAtDate: 1 }, { name: 'mfa_challenge_expires_at_ttl_idx', expireAfterSeconds: 0 });
 
+  // `AdminChallenges` (super-admin-auth PR-1). `_id` = challengeId — the
+  // atomic CAS `consume` matches on {_id, ConsumedAt:null, ExpiresAt:{$gt:
+  // now}}, so no additional unique index is needed beyond the implicit _id
+  // index. TTL sits on `ExpiresAtDate` — a BSON Date MIRROR of the ISO-8601
+  // `ExpiresAt` Instant, identical pattern to `MfaChallenges.ExpiresAtDate`.
+  await db
+    .collection('AdminChallenges')
+    .createIndex({ ExpiresAtDate: 1 }, { name: 'admin_challenge_expires_at_ttl_idx', expireAfterSeconds: 0 });
+
   // `AuditLogs` (audit-logs-foundation, design D-A8). Append-only — no
   // uniqueness constraints, only lookup indexes for the timelines the
   // module is built to serve (tenant, actor, and action-type timelines).
