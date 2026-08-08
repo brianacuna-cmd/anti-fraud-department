@@ -1,5 +1,7 @@
 import { createCreateUserUseCase } from '../../../../src/modules/identity-access/application/CreateUser.js';
 import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
+import { InMemoryUnitOfWork } from '../../../helpers/identity-access/InMemoryUnitOfWork.js';
+import { InMemoryAuditRecorder } from '../../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FakePasswordHasher } from '../../../helpers/identity-access/FakePasswordHasher.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
@@ -14,17 +16,21 @@ const ORG_2_ADMIN = createAuthContext({ userId: 'u2', organizationId: 'org-2', i
 function buildUseCase() {
   const userRepositoryFactory = new InMemoryUserRepositoryFactory();
   const passwordHasher = new FakePasswordHasher();
+  const unitOfWork = new InMemoryUnitOfWork();
+  const auditRecorder = new InMemoryAuditRecorder();
   let nextId = 0;
   const createUser = createCreateUserUseCase({
     userRepositoryFactory,
     passwordHasher,
+    unitOfWork,
     clock: new FixedClock(NOW),
     generateId: () => {
       nextId += 1;
       return createUserId(`user-${nextId}`);
     },
+    auditRecorder,
   });
-  return { createUser, userRepositoryFactory, passwordHasher };
+  return { createUser, userRepositoryFactory, passwordHasher, unitOfWork, auditRecorder };
 }
 
 describe('createCreateUserUseCase', () => {
@@ -74,5 +80,37 @@ describe('createCreateUserUseCase', () => {
 
     expect(secondOrgUser.email).toBe('shared@example.com');
     expect(secondOrgUser.organizationId).toBe('org-2');
+  });
+
+  it('emits exactly one USER_CREATED audit event inside the transaction', async () => {
+    const { createUser, auditRecorder } = buildUseCase();
+
+    const user = await createUser({
+      auth: ORG_1_ADMIN,
+      email: 'alice@example.com',
+      password: 'super-secret',
+      firstName: 'Alice',
+      lastName: 'Smith',
+    });
+
+    const calls = auditRecorder.calls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].tx).toBeDefined();
+    expect(calls[0].event.action).toBe('USER_CREATED');
+    expect(calls[0].event.resource).toBe('users');
+    expect(calls[0].event.resourceId).toBe(user.id);
+    expect(calls[0].event.organizationId).toBe('org-1');
+  });
+
+  it('records no audit event when the create fails (duplicate email)', async () => {
+    const { createUser, auditRecorder } = buildUseCase();
+    await createUser({ auth: ORG_1_ADMIN, email: 'dup@example.com', password: 'pw', firstName: 'A', lastName: 'S' });
+    auditRecorder.calls(); // first create recorded one event
+
+    await expect(
+      createUser({ auth: ORG_1_ADMIN, email: 'dup@example.com', password: 'pw2', firstName: 'A2', lastName: 'S2' }),
+    ).rejects.toBeInstanceOf(IdentityAccessError);
+
+    expect(auditRecorder.all().filter((e) => e.action === 'USER_CREATED')).toHaveLength(1);
   });
 });

@@ -1,6 +1,7 @@
 import { createTransitionUserStatusUseCase } from '../../../../src/modules/identity-access/application/TransitionUserStatus.js';
 import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
 import { InMemoryUnitOfWork } from '../../../helpers/identity-access/InMemoryUnitOfWork.js';
+import { InMemoryAuditRecorder } from '../../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { User } from '../../../../src/modules/identity-access/domain/model/aggregates/User.js';
@@ -38,11 +39,16 @@ async function seedUser(
   await userRepositoryFactory.forTenant(org).save(user);
 }
 
-function buildUseCase(userRepositoryFactory: InMemoryUserRepositoryFactory, unitOfWork: InMemoryUnitOfWork) {
+function buildUseCase(
+  userRepositoryFactory: InMemoryUserRepositoryFactory,
+  unitOfWork: InMemoryUnitOfWork,
+  auditRecorder: InMemoryAuditRecorder = new InMemoryAuditRecorder(),
+) {
   return createTransitionUserStatusUseCase({
     userRepositoryFactory,
     unitOfWork,
     clock: new FixedClock(TRANSITIONED_AT),
+    auditRecorder,
   });
 }
 
@@ -112,5 +118,36 @@ describe('createTransitionUserStatusUseCase', () => {
     const user = await transitionUserStatus({ auth: PLATFORM_ADMIN, userId: 'user-1', next: 'ACTIVE' });
 
     expect(user.status).toBe('ACTIVE');
+  });
+
+  it('emits exactly one USER_STATUS_CHANGED audit event inside the transaction', async () => {
+    const userRepositoryFactory = new InMemoryUserRepositoryFactory();
+    await seedUser(userRepositoryFactory);
+    const unitOfWork = new InMemoryUnitOfWork();
+    const auditRecorder = new InMemoryAuditRecorder();
+    const transitionUserStatus = buildUseCase(userRepositoryFactory, unitOfWork, auditRecorder);
+
+    await transitionUserStatus({ auth: ORG_ADMIN, userId: 'user-1', next: 'SUSPENDED' });
+
+    const calls = auditRecorder.calls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].tx).toBeDefined();
+    expect(calls[0].event.action).toBe('USER_STATUS_CHANGED');
+    expect(calls[0].event.resource).toBe('users');
+    expect(calls[0].event.resourceId).toBe('user-1');
+    expect(calls[0].event.detail).toEqual({ from: 'ACTIVE', to: 'SUSPENDED' });
+  });
+
+  it('records no audit event when the transition fails (unknown id)', async () => {
+    const userRepositoryFactory = new InMemoryUserRepositoryFactory();
+    const unitOfWork = new InMemoryUnitOfWork();
+    const auditRecorder = new InMemoryAuditRecorder();
+    const transitionUserStatus = buildUseCase(userRepositoryFactory, unitOfWork, auditRecorder);
+
+    await expect(
+      transitionUserStatus({ auth: ORG_ADMIN, userId: 'missing', next: 'SUSPENDED' }),
+    ).rejects.toBeInstanceOf(IdentityAccessError);
+
+    expect(auditRecorder.all()).toHaveLength(0);
   });
 });

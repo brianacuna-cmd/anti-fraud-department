@@ -2,6 +2,7 @@ import { createDeleteUserUseCase } from '../../../../src/modules/identity-access
 import { createTransitionUserStatusUseCase } from '../../../../src/modules/identity-access/application/TransitionUserStatus.js';
 import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
 import { InMemoryUnitOfWork } from '../../../helpers/identity-access/InMemoryUnitOfWork.js';
+import { InMemoryAuditRecorder } from '../../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { User } from '../../../../src/modules/identity-access/domain/model/aggregates/User.js';
@@ -34,7 +35,13 @@ async function seedUser(userRepositoryFactory: InMemoryUserRepositoryFactory, id
 function buildUseCases(userRepositoryFactory: InMemoryUserRepositoryFactory) {
   const unitOfWork = new InMemoryUnitOfWork();
   const clock = new FixedClock(DELETED_AT);
-  const transitionUserStatus = createTransitionUserStatusUseCase({ userRepositoryFactory, unitOfWork, clock });
+  const auditRecorder = new InMemoryAuditRecorder();
+  const transitionUserStatus = createTransitionUserStatusUseCase({
+    userRepositoryFactory,
+    unitOfWork,
+    clock,
+    auditRecorder,
+  });
   const deleteUser = createDeleteUserUseCase({ transitionUserStatus });
   return { transitionUserStatus, deleteUser };
 }
