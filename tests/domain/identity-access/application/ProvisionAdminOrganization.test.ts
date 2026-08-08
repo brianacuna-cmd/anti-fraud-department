@@ -1,5 +1,7 @@
 import { createProvisionAdminOrganizationUseCase } from '../../../../src/modules/identity-access/application/admin/ProvisionAdminOrganization.js';
 import { InMemoryAdminOrganizationRepository } from '../../../helpers/identity-access/InMemoryAdminOrganizationRepository.js';
+import { InMemoryUnitOfWork } from '../../../helpers/identity-access/InMemoryUnitOfWork.js';
+import { InMemoryAuditRecorder } from '../../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FakeAdminKeyPairGenerator } from '../../../helpers/identity-access/FakeAdminKeyPairGenerator.js';
 import { AesGcmSecretCipher } from '../../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
@@ -10,13 +12,20 @@ import { createAdminKeyId } from '../../../../src/modules/identity-access/domain
 import { IdentityAccessError } from '../../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const PLATFORM_ADMIN = createAuthContext({ userId: 'admin-1', organizationId: null, isPlatformAdmin: true });
+const PLATFORM_ADMIN = createAuthContext({
+  userId: 'admin-1',
+  organizationId: null,
+  isPlatformAdmin: true,
+  ipAddress: '203.0.113.10',
+});
 const REGULAR_USER = createAuthContext({ userId: 'user-1', organizationId: 'o1', isPlatformAdmin: false });
 
 function buildUseCase() {
   const admins = new InMemoryAdminOrganizationRepository();
   const keyPairs = new FakeAdminKeyPairGenerator();
   const cipher = new AesGcmSecretCipher('provision-test-secret', 1);
+  const unitOfWork = new InMemoryUnitOfWork();
+  const auditRecorder = new InMemoryAuditRecorder();
   const clock = new FixedClock(NOW);
   let nextOrgIdSeq = 0;
   let nextKeyIdSeq = 0;
@@ -24,6 +33,7 @@ function buildUseCase() {
     admins,
     keyPairs,
     cipher,
+    unitOfWork,
     clock,
     generateAdminOrganizationId: () => {
       nextOrgIdSeq += 1;
@@ -33,8 +43,9 @@ function buildUseCase() {
       nextKeyIdSeq += 1;
       return createAdminKeyId(`admin-key-${nextKeyIdSeq}`);
     },
+    auditRecorder,
   });
-  return { provisionAdminOrganization, admins, cipher };
+  return { provisionAdminOrganization, admins, cipher, unitOfWork, auditRecorder };
 }
 
 describe('createProvisionAdminOrganizationUseCase', () => {
@@ -64,14 +75,35 @@ describe('createProvisionAdminOrganizationUseCase', () => {
   });
 
   it('rejects a non-platform-admin actor with FORBIDDEN_CROSS_TENANT', async () => {
-    const { provisionAdminOrganization } = buildUseCase();
+    const { provisionAdminOrganization, unitOfWork } = buildUseCase();
 
-    expect.assertions(2);
+    expect.assertions(3);
     try {
       await provisionAdminOrganization({ auth: REGULAR_USER, email: 'root@platform.internal' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('FORBIDDEN_CROSS_TENANT');
     }
+    expect(unitOfWork.transactionCount).toBe(0);
+  });
+
+  it('emits exactly one PLATFORM_ADMIN_PROVISIONED audit event with no organizationId, threaded with the tx', async () => {
+    const { provisionAdminOrganization, auditRecorder } = buildUseCase();
+
+    const admin = await provisionAdminOrganization({ auth: PLATFORM_ADMIN, email: 'root@platform.internal' });
+
+    expect(auditRecorder.all()).toHaveLength(1);
+    const [event] = auditRecorder.all();
+    expect(event).toMatchObject({
+      organizationId: null,
+      actorType: 'PLATFORM_ADMIN',
+      actorId: 'admin-1',
+      action: 'PLATFORM_ADMIN_PROVISIONED',
+      resource: 'adminOrganizations',
+      resourceId: admin.id,
+      detail: { email: 'root@platform.internal' },
+      ipAddress: '203.0.113.10',
+    });
+    expect(auditRecorder.calls()[0]?.tx).toBeDefined();
   });
 });
