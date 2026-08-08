@@ -39,6 +39,9 @@ import { createCreateOrganizationWithAdminUseCase } from './modules/identity-acc
 import { createProvisionAdminOrganizationUseCase } from './modules/identity-access/application/admin/ProvisionAdminOrganization.js';
 import { createRequestAdminChallengeUseCase } from './modules/identity-access/application/admin/RequestAdminChallenge.js';
 import { createVerifyAdminChallengeUseCase } from './modules/identity-access/application/admin/VerifyAdminChallenge.js';
+import { createDownloadAdminPrivateKeyUseCase } from './modules/identity-access/application/admin/DownloadAdminPrivateKey.js';
+import { createRotateAdminKeyUseCase } from './modules/identity-access/application/admin/RotateAdminKey.js';
+import { createRevokeAdminKeyUseCase } from './modules/identity-access/application/admin/RevokeAdminKey.js';
 import { createCreateUserUseCase } from './modules/identity-access/application/CreateUser.js';
 import { createGetUserUseCase } from './modules/identity-access/application/GetUser.js';
 import { createListUsersUseCase } from './modules/identity-access/application/ListUsers.js';
@@ -244,8 +247,9 @@ async function bootstrap(): Promise<void> {
 
   // Phase 3 (PR 1c, design D31/D32) + super-admin-auth PR1 (design
   // "Use cases"): provisioning (platform-admin-gated) plus the two public
-  // challenge-login routes. Download/rotate/revoke land on this same router
-  // in later PRs (2a/2b).
+  // challenge-login routes. super-admin-auth PR2 (design "PR-2 key
+  // lifecycle") adds the three `requirePlatformAdmin`-gated key-lifecycle
+  // routes on this same router — one-time download, rotation, revocation.
   const identityAccessAdminOrganizationsRouter = adminOrganizationRouter({
     provisionAdminOrganization: createProvisionAdminOrganizationUseCase({
       admins,
@@ -270,6 +274,30 @@ async function bootstrap(): Promise<void> {
       unitOfWork,
       clock,
       issueSessionFor: sessionIssuer,
+      auditRecorder,
+    }),
+    downloadAdminPrivateKey: createDownloadAdminPrivateKeyUseCase({
+      admins,
+      cipher: secretCipher,
+      unitOfWork,
+      clock,
+      auditRecorder,
+    }),
+    rotateAdminKey: createRotateAdminKeyUseCase({
+      admins,
+      sessions,
+      keyPairs: adminKeyPairGenerator,
+      cipher: secretCipher,
+      unitOfWork,
+      clock,
+      generateAdminKeyId,
+      auditRecorder,
+    }),
+    revokeAdminKey: createRevokeAdminKeyUseCase({
+      admins,
+      sessions,
+      unitOfWork,
+      clock,
       auditRecorder,
     }),
   });

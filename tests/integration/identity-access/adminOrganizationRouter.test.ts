@@ -10,6 +10,9 @@ import { adminOrganizationRouter } from '../../../src/modules/identity-access/in
 import { createProvisionAdminOrganizationUseCase } from '../../../src/modules/identity-access/application/admin/ProvisionAdminOrganization.js';
 import { createRequestAdminChallengeUseCase } from '../../../src/modules/identity-access/application/admin/RequestAdminChallenge.js';
 import { createVerifyAdminChallengeUseCase } from '../../../src/modules/identity-access/application/admin/VerifyAdminChallenge.js';
+import { createDownloadAdminPrivateKeyUseCase } from '../../../src/modules/identity-access/application/admin/DownloadAdminPrivateKey.js';
+import { createRotateAdminKeyUseCase } from '../../../src/modules/identity-access/application/admin/RotateAdminKey.js';
+import { createRevokeAdminKeyUseCase } from '../../../src/modules/identity-access/application/admin/RevokeAdminKey.js';
 import { createSessionIssuer } from '../../../src/modules/identity-access/application/auth/SessionIssuer.js';
 import { InMemoryAdminOrganizationRepository } from '../../helpers/identity-access/InMemoryAdminOrganizationRepository.js';
 import { InMemoryAdminChallengeStore } from '../../helpers/identity-access/InMemoryAdminChallengeStore.js';
@@ -27,6 +30,9 @@ import { createAdminOrganizationId, generateAdminOrganizationId } from '../../..
 import { createAdminKeyId, generateAdminKeyId } from '../../../src/modules/identity-access/domain/model/value-objects/AdminKeyId.js';
 import { createAdminKey } from '../../../src/modules/identity-access/domain/model/value-objects/AdminKey.js';
 import { createEmail } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
+import { Session } from '../../../src/modules/identity-access/domain/model/aggregates/Session.js';
+import { createSessionId } from '../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
+import { createFamilyId } from '../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
 
@@ -51,11 +57,16 @@ function signChallenge(challenge: string, privateKeyPkcs8Pem: string): string {
 function buildApp(actorPerRequest: () => AuthContext): {
   app: Express;
   admins: InMemoryAdminOrganizationRepository;
+  sessions: InMemorySessionRepository;
+  auditRecorder: InMemoryAuditRecorder;
+  cipher: AesGcmSecretCipher;
 } {
   const admins = new InMemoryAdminOrganizationRepository();
+  const sessions = new InMemorySessionRepository();
   const keyPairs = new FakeAdminKeyPairGenerator();
   const cipher = new AesGcmSecretCipher('router-test-secret', 1);
   const clock = new SystemClock();
+  const auditRecorder = new InMemoryAuditRecorder();
 
   const router = adminOrganizationRouter({
     provisionAdminOrganization: createProvisionAdminOrganizationUseCase({
@@ -88,6 +99,30 @@ function buildApp(actorPerRequest: () => AuthContext): {
       }),
       auditRecorder: new InMemoryAuditRecorder(),
     }),
+    downloadAdminPrivateKey: createDownloadAdminPrivateKeyUseCase({
+      admins,
+      cipher,
+      unitOfWork: new InMemoryUnitOfWork(),
+      clock,
+      auditRecorder,
+    }),
+    rotateAdminKey: createRotateAdminKeyUseCase({
+      admins,
+      sessions,
+      keyPairs,
+      cipher,
+      unitOfWork: new InMemoryUnitOfWork(),
+      clock,
+      generateAdminKeyId,
+      auditRecorder,
+    }),
+    revokeAdminKey: createRevokeAdminKeyUseCase({
+      admins,
+      sessions,
+      unitOfWork: new InMemoryUnitOfWork(),
+      clock,
+      auditRecorder,
+    }),
   });
 
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {
@@ -104,7 +139,7 @@ function buildApp(actorPerRequest: () => AuthContext): {
     errorHandler: createErrorHandler(identityAccessErrorStatus),
   });
 
-  return { app, admins };
+  return { app, admins, sessions, auditRecorder, cipher };
 }
 
 /**
@@ -161,6 +196,30 @@ function buildChallengeLoginApp(): {
         tokenKeyVersion: 1,
         ttls: { sessionSeconds: 900, refreshSeconds: 1_209_600, familySeconds: 2_592_000 },
       }),
+      auditRecorder: new InMemoryAuditRecorder(),
+    }),
+    downloadAdminPrivateKey: createDownloadAdminPrivateKeyUseCase({
+      admins,
+      cipher,
+      unitOfWork: new InMemoryUnitOfWork(),
+      clock,
+      auditRecorder: new InMemoryAuditRecorder(),
+    }),
+    rotateAdminKey: createRotateAdminKeyUseCase({
+      admins,
+      sessions,
+      keyPairs: new FakeAdminKeyPairGenerator(),
+      cipher,
+      unitOfWork: new InMemoryUnitOfWork(),
+      clock,
+      generateAdminKeyId,
+      auditRecorder: new InMemoryAuditRecorder(),
+    }),
+    revokeAdminKey: createRevokeAdminKeyUseCase({
+      admins,
+      sessions,
+      unitOfWork: new InMemoryUnitOfWork(),
+      clock,
       auditRecorder: new InMemoryAuditRecorder(),
     }),
   });
@@ -432,5 +491,189 @@ describe('PLATFORM_ADMIN challenge-login (e2e, super-admin-auth PR1)', () => {
 
     expect(response.status).toBe(401);
     expect(response.body.error.code).toBe('ADMIN_CHALLENGE_INVALID');
+  });
+});
+
+describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
+  it('POST .../keys/:keyId/download returns the plaintext PEM exactly once, then 409 on retry', async () => {
+    const { app, admins, cipher } = buildApp(() => PLATFORM_ADMIN);
+    const plaintextPem = '-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n';
+    const admin = AdminOrganization.create({
+      id: createAdminOrganizationId('admin-download-1'),
+      email: createEmail('download@platform.internal'),
+      keys: [
+        createAdminKey({
+          keyId: createAdminKeyId('key-1'),
+          publicKey: '-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----\n',
+          status: 'ACTIVE',
+          encryptedPrivateKey: cipher.encrypt(plaintextPem),
+          createdAt: NOW,
+        }),
+      ],
+      now: NOW,
+    });
+    await admins.save(admin);
+
+    const first = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/key-1/download`).send();
+    expect(first.status).toBe(200);
+    expect(first.body.privateKeyPkcs8Pem).toBe(plaintextPem);
+
+    const second = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/key-1/download`).send();
+    expect(second.status).toBe(409);
+    expect(second.body.error.code).toBe('ADMIN_PRIVATE_KEY_UNAVAILABLE');
+  });
+
+  it('download response never contains the ciphertext field name', async () => {
+    const { app, admins, cipher } = buildApp(() => PLATFORM_ADMIN);
+    const admin = AdminOrganization.create({
+      id: createAdminOrganizationId('admin-download-2'),
+      email: createEmail('download2@platform.internal'),
+      keys: [
+        createAdminKey({
+          keyId: createAdminKeyId('key-1'),
+          publicKey: '-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----\n',
+          status: 'ACTIVE',
+          encryptedPrivateKey: cipher.encrypt('-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n'),
+          createdAt: NOW,
+        }),
+      ],
+      now: NOW,
+    });
+    await admins.save(admin);
+
+    const response = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/key-1/download`).send();
+
+    expect(response.status).toBe(200);
+    expect(JSON.stringify(response.body)).not.toContain('encryptedPrivateKey');
+  });
+
+  it('rejects a non-platform-admin download attempt with 403', async () => {
+    const { app, admins } = buildApp(() => REGULAR_USER);
+    const admin = AdminOrganization.create({
+      id: createAdminOrganizationId('admin-download-3'),
+      email: createEmail('download3@platform.internal'),
+      keys: [
+        createAdminKey({
+          keyId: createAdminKeyId('key-1'),
+          publicKey: '-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----\n',
+          status: 'ACTIVE',
+          encryptedPrivateKey: 'ciphertext',
+          createdAt: NOW,
+        }),
+      ],
+      now: NOW,
+    });
+    await admins.save(admin);
+
+    const response = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/key-1/download`).send();
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN_CROSS_TENANT');
+  });
+
+  it('POST .../keys/rotate demotes the old key and activates a new one, cascading session revocation', async () => {
+    const { app, admins, sessions } = buildApp(() => PLATFORM_ADMIN);
+    const admin = AdminOrganization.create({
+      id: createAdminOrganizationId('admin-rotate-1'),
+      email: createEmail('rotate@platform.internal'),
+      keys: [
+        createAdminKey({
+          keyId: createAdminKeyId('key-old'),
+          publicKey: '-----BEGIN PUBLIC KEY-----\nold\n-----END PUBLIC KEY-----\n',
+          status: 'ACTIVE',
+          encryptedPrivateKey: 'ciphertext',
+          createdAt: NOW,
+        }),
+      ],
+      now: NOW,
+    });
+    await admins.save(admin);
+    await sessions.save(
+      Session.create({
+        id: createSessionId('session-rotate-1'),
+        familyId: createFamilyId('family-1'),
+        userId: admin.id,
+        organizationId: null,
+        actorType: 'PLATFORM_ADMIN',
+        tokenHash: 'rotate-token-hash',
+        refreshTokenHash: null,
+        expiresAt: fromDate(new Date('2026-02-01T00:00:00.000Z')),
+        refreshExpiresAt: null,
+        familyExpiresAt: fromDate(new Date('2026-03-01T00:00:00.000Z')),
+        now: NOW,
+      }),
+    );
+
+    const response = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/rotate`).send();
+
+    expect(response.status).toBe(200);
+    expect(response.body.keys).toHaveLength(2);
+    const oldKey = response.body.keys.find((k: { keyId: string }) => k.keyId === 'key-old');
+    expect(oldKey.status).toBe('DEPRECATED');
+    const activeKeys = response.body.keys.filter((k: { status: string }) => k.status === 'ACTIVE');
+    expect(activeKeys).toHaveLength(1);
+
+    const cascadedSession = await sessions.findByTokenHash('rotate-token-hash');
+    expect(cascadedSession?.deletedAt).not.toBeNull();
+  });
+
+  it('rejects rotate for an unknown adminOrganizationId with 404', async () => {
+    const { app } = buildApp(() => PLATFORM_ADMIN);
+
+    const response = await request(app).post('/api/v1/admin-organizations/never-provisioned/keys/rotate').send();
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe('ADMIN_ORGANIZATION_NOT_FOUND');
+  });
+
+  it('POST .../keys/:keyId/revoke marks the key REVOKED (terminal) and rejects a second revoke', async () => {
+    const { app, admins } = buildApp(() => PLATFORM_ADMIN);
+    const admin = AdminOrganization.create({
+      id: createAdminOrganizationId('admin-revoke-1'),
+      email: createEmail('revoke@platform.internal'),
+      keys: [
+        createAdminKey({
+          keyId: createAdminKeyId('key-1'),
+          publicKey: '-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----\n',
+          status: 'ACTIVE',
+          encryptedPrivateKey: 'ciphertext',
+          createdAt: NOW,
+        }),
+      ],
+      now: NOW,
+    });
+    await admins.save(admin);
+
+    const first = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/key-1/revoke`).send();
+    expect(first.status).toBe(200);
+    expect(first.body.keys[0].status).toBe('REVOKED');
+
+    const second = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/key-1/revoke`).send();
+    expect(second.status).toBe(400);
+    expect(second.body.error.code).toBe('INVARIANT_VIOLATION');
+  });
+
+  it('rejects a non-platform-admin revoke attempt with 403', async () => {
+    const { app, admins } = buildApp(() => REGULAR_USER);
+    const admin = AdminOrganization.create({
+      id: createAdminOrganizationId('admin-revoke-2'),
+      email: createEmail('revoke2@platform.internal'),
+      keys: [
+        createAdminKey({
+          keyId: createAdminKeyId('key-1'),
+          publicKey: '-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----\n',
+          status: 'ACTIVE',
+          encryptedPrivateKey: 'ciphertext',
+          createdAt: NOW,
+        }),
+      ],
+      now: NOW,
+    });
+    await admins.save(admin);
+
+    const response = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/key-1/revoke`).send();
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN_CROSS_TENANT');
   });
 });
