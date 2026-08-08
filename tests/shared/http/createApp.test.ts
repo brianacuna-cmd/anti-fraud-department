@@ -55,4 +55,28 @@ describe('createApp', () => {
 
     expect(response.status).toBe(404);
   });
+
+  it('defaults trust proxy to false (fail-safe: req.ip ignores X-Forwarded-For)', async () => {
+    const router = Router();
+    router.get('/ip', (req, res) => res.json({ ip: req.ip }));
+    const app = createApp({ routers: [{ path: '/', router }], errorHandler: createErrorHandler({}) });
+
+    const response = await request(app).get('/ip').set('X-Forwarded-For', '203.0.113.9');
+
+    expect(response.body.ip).not.toBe('203.0.113.9');
+  });
+
+  it('honors X-Forwarded-For for req.ip when trustProxy is configured (design D-A7)', async () => {
+    const router = Router();
+    router.get('/ip', (req, res) => res.json({ ip: req.ip }));
+    const app = createApp({
+      routers: [{ path: '/', router }],
+      errorHandler: createErrorHandler({}),
+      trustProxy: true,
+    });
+
+    const response = await request(app).get('/ip').set('X-Forwarded-For', '203.0.113.9');
+
+    expect(response.body.ip).toBe('203.0.113.9');
+  });
 });
