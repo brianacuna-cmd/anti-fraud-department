@@ -1,7 +1,9 @@
 import { createDeleteOrganizationUseCase } from '../../../../src/modules/identity-access/application/DeleteOrganization.js';
 import { createTransitionOrganizationStatusUseCase } from '../../../../src/modules/identity-access/application/TransitionOrganizationStatus.js';
 import { InMemoryOrganizationRepository } from '../../../helpers/identity-access/InMemoryOrganizationRepository.js';
+import { InMemorySessionRepository } from '../../../helpers/identity-access/InMemorySessionRepository.js';
 import { InMemoryUnitOfWork } from '../../../helpers/identity-access/InMemoryUnitOfWork.js';
+import { InMemoryAuditRecorder } from '../../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { Organization } from '../../../../src/modules/identity-access/domain/model/aggregates/Organization.js';
@@ -25,8 +27,10 @@ function buildUseCases(organizations: InMemoryOrganizationRepository) {
   const clock = new FixedClock(DELETED_AT);
   const transitionOrganizationStatus = createTransitionOrganizationStatusUseCase({
     organizations,
+    sessions: new InMemorySessionRepository(),
     unitOfWork,
     clock,
+    auditRecorder: new InMemoryAuditRecorder(),
   });
   const deleteOrganization = createDeleteOrganizationUseCase({ transitionOrganizationStatus });
   return { transitionOrganizationStatus, deleteOrganization };

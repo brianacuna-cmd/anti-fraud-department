@@ -1,17 +1,27 @@
 import { createTransitionOrganizationStatusUseCase } from '../../../../src/modules/identity-access/application/TransitionOrganizationStatus.js';
 import { InMemoryOrganizationRepository } from '../../../helpers/identity-access/InMemoryOrganizationRepository.js';
+import { InMemorySessionRepository } from '../../../helpers/identity-access/InMemorySessionRepository.js';
 import { InMemoryUnitOfWork } from '../../../helpers/identity-access/InMemoryUnitOfWork.js';
+import { InMemoryAuditRecorder } from '../../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { Organization } from '../../../../src/modules/identity-access/domain/model/aggregates/Organization.js';
+import { Session } from '../../../../src/modules/identity-access/domain/model/aggregates/Session.js';
 import { createOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createSlug } from '../../../../src/modules/identity-access/domain/model/value-objects/Slug.js';
+import { createSessionId } from '../../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
+import { createFamilyId } from '../../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { IdentityAccessError } from '../../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
 
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const TRANSITIONED_AT = fromDate(new Date('2026-01-02T00:00:00.000Z'));
-const PLATFORM_ADMIN = createAuthContext({ userId: 'u1', organizationId: 'o0', isPlatformAdmin: true });
+const PLATFORM_ADMIN = createAuthContext({
+  userId: 'u1',
+  organizationId: 'o0',
+  isPlatformAdmin: true,
+  ipAddress: '203.0.113.10',
+});
 const REGULAR_USER = createAuthContext({ userId: 'u2', organizationId: 'o1', isPlatformAdmin: false });
 
 async function seedOrganization(
@@ -30,11 +40,34 @@ async function seedOrganization(
   await organizations.save(organization);
 }
 
-function buildUseCase(organizations: InMemoryOrganizationRepository, unitOfWork: InMemoryUnitOfWork) {
+function buildSession(id: string): Session {
+  return Session.create({
+    id: createSessionId(id),
+    userId: 'org-user-1',
+    organizationId: createOrganizationId('org-1'),
+    actorType: 'USER',
+    tokenHash: `token-hash-${id}`,
+    refreshTokenHash: `refresh-hash-${id}`,
+    expiresAt: TRANSITIONED_AT,
+    refreshExpiresAt: TRANSITIONED_AT,
+    familyId: createFamilyId('family-1'),
+    familyExpiresAt: TRANSITIONED_AT,
+    now: CREATED_AT,
+  });
+}
+
+function buildUseCase(
+  organizations: InMemoryOrganizationRepository,
+  unitOfWork: InMemoryUnitOfWork,
+  sessions: InMemorySessionRepository = new InMemorySessionRepository(),
+  auditRecorder: InMemoryAuditRecorder = new InMemoryAuditRecorder(),
+) {
   return createTransitionOrganizationStatusUseCase({
     organizations,
+    sessions,
     unitOfWork,
     clock: new FixedClock(TRANSITIONED_AT),
+    auditRecorder,
   });
 }
 
@@ -133,5 +166,76 @@ describe('createTransitionOrganizationStatusUseCase', () => {
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('FORBIDDEN_CROSS_TENANT');
     }
     expect(unitOfWork.transactionCount).toBe(0);
+  });
+
+  it('emits exactly one ORGANIZATION_STATUS_CHANGED audit event, threaded with the tx, for a non-CANCELLED transition', async () => {
+    const organizations = new InMemoryOrganizationRepository();
+    await seedOrganization(organizations);
+    const unitOfWork = new InMemoryUnitOfWork();
+    const auditRecorder = new InMemoryAuditRecorder();
+    const transitionOrganizationStatus = buildUseCase(organizations, unitOfWork, new InMemorySessionRepository(), auditRecorder);
+
+    await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: 'org-1', next: 'SUSPENDED' });
+
+    expect(auditRecorder.all()).toHaveLength(1);
+    const [event] = auditRecorder.all();
+    expect(event).toMatchObject({
+      organizationId: 'org-1',
+      actorType: 'PLATFORM_ADMIN',
+      actorId: 'u1',
+      action: 'ORGANIZATION_STATUS_CHANGED',
+      resource: 'organizations',
+      resourceId: 'org-1',
+      detail: { from: 'ACTIVE', to: 'SUSPENDED' },
+      ipAddress: '203.0.113.10',
+    });
+    expect(auditRecorder.calls()[0]?.tx).toBeDefined();
+  });
+
+  it('on CANCELLED, revokes all sessions for the organization and emits ORGANIZATION_SESSIONS_REVOKED + ORGANIZATION_STATUS_CHANGED', async () => {
+    const organizations = new InMemoryOrganizationRepository();
+    await seedOrganization(organizations);
+    const unitOfWork = new InMemoryUnitOfWork();
+    const sessions = new InMemorySessionRepository();
+    await sessions.save(buildSession('session-1'));
+    await sessions.save(buildSession('session-2'));
+    const auditRecorder = new InMemoryAuditRecorder();
+    const transitionOrganizationStatus = buildUseCase(organizations, unitOfWork, sessions, auditRecorder);
+
+    await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: 'org-1', next: 'CANCELLED' });
+
+    const revokedSession1 = await sessions.findByTokenHash('token-hash-session-1');
+    const revokedSession2 = await sessions.findByTokenHash('token-hash-session-2');
+    expect(revokedSession1?.deletedAt).toBe(TRANSITIONED_AT);
+    expect(revokedSession2?.deletedAt).toBe(TRANSITIONED_AT);
+
+    expect(auditRecorder.all()).toHaveLength(2);
+    const [sessionsRevoked, statusChanged] = auditRecorder.all();
+    expect(sessionsRevoked).toMatchObject({
+      organizationId: 'org-1',
+      action: 'ORGANIZATION_SESSIONS_REVOKED',
+      resource: 'sessions',
+      resourceId: null,
+      detail: { revokedCount: 2 },
+    });
+    expect(statusChanged).toMatchObject({
+      organizationId: 'org-1',
+      action: 'ORGANIZATION_STATUS_CHANGED',
+      resource: 'organizations',
+      resourceId: 'org-1',
+      detail: { from: 'ACTIVE', to: 'CANCELLED' },
+    });
+  });
+
+  it('does not emit ORGANIZATION_SESSIONS_REVOKED for a non-CANCELLED transition', async () => {
+    const organizations = new InMemoryOrganizationRepository();
+    await seedOrganization(organizations);
+    const unitOfWork = new InMemoryUnitOfWork();
+    const auditRecorder = new InMemoryAuditRecorder();
+    const transitionOrganizationStatus = buildUseCase(organizations, unitOfWork, new InMemorySessionRepository(), auditRecorder);
+
+    await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: 'org-1', next: 'SUSPENDED' });
+
+    expect(auditRecorder.all().some((event) => event.action === 'ORGANIZATION_SESSIONS_REVOKED')).toBe(false);
   });
 });
