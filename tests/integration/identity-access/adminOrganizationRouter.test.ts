@@ -1,3 +1,4 @@
+import { generateKeyPairSync, sign } from 'node:crypto';
 import { Router, type Express, type Request, type Response, type NextFunction } from 'express';
 import request from 'supertest';
 import { createApp } from '../../../src/shared/http/createApp.js';
@@ -7,17 +8,45 @@ import { createAuthContext, type AuthContext } from '../../../src/shared/kernel/
 import { identityAccessErrorStatus } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/errorStatus.js';
 import { adminOrganizationRouter } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/adminOrganizationRouter.js';
 import { createProvisionAdminOrganizationUseCase } from '../../../src/modules/identity-access/application/admin/ProvisionAdminOrganization.js';
+import { createRequestAdminChallengeUseCase } from '../../../src/modules/identity-access/application/admin/RequestAdminChallenge.js';
+import { createVerifyAdminChallengeUseCase } from '../../../src/modules/identity-access/application/admin/VerifyAdminChallenge.js';
+import { createSessionIssuer } from '../../../src/modules/identity-access/application/auth/SessionIssuer.js';
 import { InMemoryAdminOrganizationRepository } from '../../helpers/identity-access/InMemoryAdminOrganizationRepository.js';
+import { InMemoryAdminChallengeStore } from '../../helpers/identity-access/InMemoryAdminChallengeStore.js';
+import { InMemorySessionRepository } from '../../helpers/identity-access/InMemorySessionRepository.js';
 import { InMemoryUnitOfWork } from '../../helpers/identity-access/InMemoryUnitOfWork.js';
 import { InMemoryAuditRecorder } from '../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FakeAdminKeyPairGenerator } from '../../helpers/identity-access/FakeAdminKeyPairGenerator.js';
 import { AesGcmSecretCipher } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
+import { AesGcmSessionTokenService } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSessionTokenService.js';
+import { NodeAdminSignatureVerifier } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/NodeAdminSignatureVerifier.js';
+import { SessionTokenAuthContextResolver } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/SessionTokenAuthContextResolver.js';
+import { createAuthContextMiddleware } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/authContextMiddleware.js';
+import { AdminOrganization } from '../../../src/modules/identity-access/domain/model/aggregates/AdminOrganization.js';
+import { createAdminOrganizationId, generateAdminOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/AdminOrganizationId.js';
+import { createAdminKeyId, generateAdminKeyId } from '../../../src/modules/identity-access/domain/model/value-objects/AdminKeyId.js';
+import { createAdminKey } from '../../../src/modules/identity-access/domain/model/value-objects/AdminKey.js';
+import { createEmail } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
+import { fromDate } from '../../../src/shared/time/Instant.js';
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
-import { generateAdminOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/AdminOrganizationId.js';
-import { generateAdminKeyId } from '../../../src/modules/identity-access/domain/model/value-objects/AdminKeyId.js';
 
 const PLATFORM_ADMIN = createAuthContext({ userId: 'admin-1', organizationId: null, isPlatformAdmin: true });
 const REGULAR_USER = createAuthContext({ userId: 'user-1', organizationId: 'o1', isPlatformAdmin: false });
+const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
+const CANONICAL_PREFIX = 'AFD-ADMIN-CHALLENGE-V1\n';
+
+function generateEd25519KeyPair(): { publicKeySpkiPem: string; privateKeyPkcs8Pem: string } {
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519', {
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  });
+  return { publicKeySpkiPem: publicKey as unknown as string, privateKeyPkcs8Pem: privateKey as unknown as string };
+}
+
+function signChallenge(challenge: string, privateKeyPkcs8Pem: string): string {
+  const message = Buffer.from(CANONICAL_PREFIX + challenge, 'utf8');
+  return sign(null, message, privateKeyPkcs8Pem).toString('base64');
+}
 
 function buildApp(actorPerRequest: () => AuthContext): {
   app: Express;
@@ -39,6 +68,26 @@ function buildApp(actorPerRequest: () => AuthContext): {
       generateAdminKeyId,
       auditRecorder: new InMemoryAuditRecorder(),
     }),
+    requestAdminChallenge: createRequestAdminChallengeUseCase({
+      admins,
+      adminChallenges: new InMemoryAdminChallengeStore(),
+      clock,
+      challengeTtlSeconds: 86_400,
+    }),
+    verifyAdminChallenge: createVerifyAdminChallengeUseCase({
+      admins,
+      adminChallenges: new InMemoryAdminChallengeStore(),
+      signatureVerifier: new NodeAdminSignatureVerifier(),
+      unitOfWork: new InMemoryUnitOfWork(),
+      clock,
+      issueSessionFor: createSessionIssuer({
+        sessionTokenService: new AesGcmSessionTokenService(cipher),
+        sessions: new InMemorySessionRepository(),
+        tokenKeyVersion: 1,
+        ttls: { sessionSeconds: 900, refreshSeconds: 1_209_600, familySeconds: 2_592_000 },
+      }),
+      auditRecorder: new InMemoryAuditRecorder(),
+    }),
   });
 
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {
@@ -56,6 +105,103 @@ function buildApp(actorPerRequest: () => AuthContext): {
   });
 
   return { app, admins };
+}
+
+/**
+ * Full-stack challenge-login harness (no shortcut `testAuthMiddleware`): the
+ * router's own `requestAdminChallenge`/`verifyAdminChallenge` use cases mint
+ * a REAL `Sessions` row, and a REAL `SessionTokenAuthContextResolver` +
+ * `authContextMiddleware` resolve the returned bearer token — proving the
+ * spec's "Authenticated request after login" scenario end-to-end, with no
+ * new resolver logic (design "No change to prod-gate / resolver").
+ */
+function buildChallengeLoginApp(): {
+  app: Express;
+  admins: InMemoryAdminOrganizationRepository;
+  adminChallenges: InMemoryAdminChallengeStore;
+  sessions: InMemorySessionRepository;
+} {
+  const admins = new InMemoryAdminOrganizationRepository();
+  const adminChallenges = new InMemoryAdminChallengeStore();
+  const sessions = new InMemorySessionRepository();
+  const cipher = new AesGcmSecretCipher('challenge-login-test-secret', 1);
+  const sessionTokenService = new AesGcmSessionTokenService(cipher);
+  // Real `SystemClock` (not `FixedClock`) — `SessionTokenAuthContextResolver`
+  // checks `Session.expiresAt` against the REAL `Date.now()` (design: it has
+  // no injected clock), so a minted session must be expiry-relative to real
+  // wall-clock time for the protected-route round-trip below to resolve.
+  const clock = new SystemClock();
+
+  const router = adminOrganizationRouter({
+    provisionAdminOrganization: createProvisionAdminOrganizationUseCase({
+      admins,
+      keyPairs: new FakeAdminKeyPairGenerator(),
+      cipher,
+      unitOfWork: new InMemoryUnitOfWork(),
+      clock,
+      generateAdminOrganizationId,
+      generateAdminKeyId,
+      auditRecorder: new InMemoryAuditRecorder(),
+    }),
+    requestAdminChallenge: createRequestAdminChallengeUseCase({
+      admins,
+      adminChallenges,
+      clock,
+      challengeTtlSeconds: 86_400,
+    }),
+    verifyAdminChallenge: createVerifyAdminChallengeUseCase({
+      admins,
+      adminChallenges,
+      signatureVerifier: new NodeAdminSignatureVerifier(),
+      unitOfWork: new InMemoryUnitOfWork(),
+      clock,
+      issueSessionFor: createSessionIssuer({
+        sessionTokenService,
+        sessions,
+        tokenKeyVersion: 1,
+        ttls: { sessionSeconds: 900, refreshSeconds: 1_209_600, familySeconds: 2_592_000 },
+      }),
+      auditRecorder: new InMemoryAuditRecorder(),
+    }),
+  });
+
+  const authContextMiddleware = createAuthContextMiddleware(
+    new SessionTokenAuthContextResolver(sessionTokenService, sessions),
+  );
+
+  const mounted = Router();
+  mounted.use(authContextMiddleware);
+  mounted.use(router);
+
+  const app = createApp({
+    routers: [{ path: '/api/v1', router: mounted }],
+    errorHandler: createErrorHandler(identityAccessErrorStatus),
+  });
+
+  return { app, admins, adminChallenges, sessions };
+}
+
+async function seedAdminWithActiveKey(
+  admins: InMemoryAdminOrganizationRepository,
+  keyPair: { publicKeySpkiPem: string },
+  id = 'admin-challenge-1',
+) {
+  const admin = AdminOrganization.create({
+    id: createAdminOrganizationId(id),
+    email: createEmail('root@platform.internal'),
+    keys: [
+      createAdminKey({
+        keyId: createAdminKeyId('key-1'),
+        publicKey: keyPair.publicKeySpkiPem,
+        status: 'ACTIVE',
+        encryptedPrivateKey: 'ciphertext',
+        createdAt: NOW,
+      }),
+    ],
+    now: NOW,
+  });
+  await admins.save(admin);
+  return admin;
 }
 
 describe('adminOrganizationRouter (e2e, in-memory repository)', () => {
@@ -104,5 +250,187 @@ describe('adminOrganizationRouter (e2e, in-memory repository)', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
+  });
+});
+
+describe('PLATFORM_ADMIN challenge-login (e2e, super-admin-auth PR1)', () => {
+  it('full round-trip: request-challenge -> sign with real Ed25519 key -> verify-challenge -> access a platform-admin-gated route', async () => {
+    const { app, admins } = buildChallengeLoginApp();
+    const keyPair = generateEd25519KeyPair();
+    const admin = await seedAdminWithActiveKey(admins, keyPair);
+
+    const challengeResponse = await request(app)
+      .post('/api/v1/admin-organizations/challenges')
+      .send({ adminOrganizationId: admin.id });
+    expect(challengeResponse.status).toBe(201);
+    expect(typeof challengeResponse.body.challengeId).toBe('string');
+    expect(typeof challengeResponse.body.challenge).toBe('string');
+    expect(challengeResponse.body.challengeId).not.toBe(challengeResponse.body.challenge);
+
+    const signature = signChallenge(challengeResponse.body.challenge, keyPair.privateKeyPkcs8Pem);
+    const sessionResponse = await request(app)
+      .post('/api/v1/admin-organizations/sessions')
+      .send({ challengeId: challengeResponse.body.challengeId, signature });
+
+    expect(sessionResponse.status).toBe(201);
+    expect(typeof sessionResponse.body.accessToken).toBe('string');
+    expect(sessionResponse.body.refreshToken).toBeUndefined();
+
+    // The minted PLATFORM_ADMIN access token authorizes on the existing
+    // platform-admin-gated route (spec "Authenticated request after login")
+    // through the UNCHANGED SessionTokenAuthContextResolver — no new
+    // resolver logic.
+    const protectedResponse = await request(app)
+      .post('/api/v1/admin-organizations')
+      .set('Authorization', `Bearer ${sessionResponse.body.accessToken}`)
+      .send({ email: 'second-admin@platform.internal' });
+
+    expect(protectedResponse.status).toBe(201);
+    expect(protectedResponse.body.email).toBe('second-admin@platform.internal');
+  });
+
+  it('rejects a forged signature with 401, and the challenge remains usable for a retry', async () => {
+    const { app, admins } = buildChallengeLoginApp();
+    const keyPair = generateEd25519KeyPair();
+    const forgerKeyPair = generateEd25519KeyPair();
+    const admin = await seedAdminWithActiveKey(admins, keyPair);
+
+    const challengeResponse = await request(app)
+      .post('/api/v1/admin-organizations/challenges')
+      .send({ adminOrganizationId: admin.id });
+    const { challengeId, challenge } = challengeResponse.body;
+
+    const forgedSignature = signChallenge(challenge, forgerKeyPair.privateKeyPkcs8Pem);
+    const forgedResponse = await request(app)
+      .post('/api/v1/admin-organizations/sessions')
+      .send({ challengeId, signature: forgedSignature });
+
+    expect(forgedResponse.status).toBe(401);
+    expect(forgedResponse.body.error.code).toBe('ADMIN_CHALLENGE_INVALID');
+
+    // Retry with the correct signature against the SAME challenge succeeds
+    // (design "Bad signature does NOT consume the challenge").
+    const validSignature = signChallenge(challenge, keyPair.privateKeyPkcs8Pem);
+    const retryResponse = await request(app)
+      .post('/api/v1/admin-organizations/sessions')
+      .send({ challengeId, signature: validSignature });
+
+    expect(retryResponse.status).toBe(201);
+    expect(typeof retryResponse.body.accessToken).toBe('string');
+  });
+
+  it('rejects an expired challenge with 401 (spec "Expired challenge")', async () => {
+    const { app, admins, adminChallenges } = buildChallengeLoginApp();
+    const keyPair = generateEd25519KeyPair();
+    const admin = await seedAdminWithActiveKey(admins, keyPair);
+    const challengeId = 'expired-challenge-id';
+    const challenge = 'a-known-raw-challenge-value';
+    await adminChallenges.append({
+      challengeId,
+      adminOrganizationId: admin.id,
+      challenge,
+      expiresAt: fromDate(new Date('2025-12-31T23:59:00.000Z')), // before FixedClock's NOW
+      now: fromDate(new Date('2025-12-31T00:00:00.000Z')),
+    });
+    const signature = signChallenge(challenge, keyPair.privateKeyPkcs8Pem);
+
+    const response = await request(app)
+      .post('/api/v1/admin-organizations/sessions')
+      .send({ challengeId, signature });
+
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe('ADMIN_CHALLENGE_INVALID');
+  });
+
+  it('rejects a replayed (already-consumed) challenge with 401, no second session (spec "Replayed challenge")', async () => {
+    const { app, admins } = buildChallengeLoginApp();
+    const keyPair = generateEd25519KeyPair();
+    const admin = await seedAdminWithActiveKey(admins, keyPair);
+
+    const challengeResponse = await request(app)
+      .post('/api/v1/admin-organizations/challenges')
+      .send({ adminOrganizationId: admin.id });
+    const { challengeId, challenge } = challengeResponse.body;
+    const signature = signChallenge(challenge, keyPair.privateKeyPkcs8Pem);
+
+    const first = await request(app)
+      .post('/api/v1/admin-organizations/sessions')
+      .send({ challengeId, signature });
+    expect(first.status).toBe(201);
+
+    const replay = await request(app)
+      .post('/api/v1/admin-organizations/sessions')
+      .send({ challengeId, signature });
+
+    expect(replay.status).toBe(401);
+    expect(replay.body.error.code).toBe('ADMIN_CHALLENGE_INVALID');
+  });
+
+  it('rejects a signature from a DEPRECATED key with 401 (spec "Signature by a non-ACTIVE key")', async () => {
+    const { app, admins, adminChallenges } = buildChallengeLoginApp();
+    const deprecatedKeyPair = generateEd25519KeyPair();
+    const activeKeyPair = generateEd25519KeyPair();
+    const admin = AdminOrganization.create({
+      id: createAdminOrganizationId('admin-rotated-e2e'),
+      email: createEmail('rotated-e2e@platform.internal'),
+      keys: [
+        createAdminKey({
+          keyId: createAdminKeyId('key-old'),
+          publicKey: deprecatedKeyPair.publicKeySpkiPem,
+          status: 'DEPRECATED',
+          encryptedPrivateKey: null,
+          createdAt: NOW,
+          rotatedAt: NOW,
+        }),
+        createAdminKey({
+          keyId: createAdminKeyId('key-new'),
+          publicKey: activeKeyPair.publicKeySpkiPem,
+          status: 'ACTIVE',
+          encryptedPrivateKey: 'ciphertext',
+          createdAt: NOW,
+        }),
+      ],
+      now: NOW,
+    });
+    await admins.save(admin);
+    const challengeId = 'deprecated-key-challenge-id';
+    const challenge = 'another-known-raw-challenge-value';
+    await adminChallenges.append({
+      challengeId,
+      adminOrganizationId: admin.id,
+      challenge,
+      expiresAt: fromDate(new Date('2026-01-02T00:00:00.000Z')),
+      now: NOW,
+    });
+    const signatureFromDeprecatedKey = signChallenge(challenge, deprecatedKeyPair.privateKeyPkcs8Pem);
+
+    const response = await request(app)
+      .post('/api/v1/admin-organizations/sessions')
+      .send({ challengeId, signature: signatureFromDeprecatedKey });
+
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe('ADMIN_CHALLENGE_INVALID');
+  });
+
+  it('rejects request-challenge for an unknown adminOrganizationId with the same opaque error (no enumeration oracle)', async () => {
+    const { app } = buildChallengeLoginApp();
+
+    const response = await request(app)
+      .post('/api/v1/admin-organizations/challenges')
+      .send({ adminOrganizationId: 'never-provisioned' });
+
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe('ADMIN_CHALLENGE_INVALID');
+  });
+
+  it('rejects verify-challenge for an unknown challengeId with 401 (spec "Unknown challenge")', async () => {
+    const { app } = buildChallengeLoginApp();
+
+    const response = await request(app)
+      .post('/api/v1/admin-organizations/sessions')
+      .send({ challengeId: 'never-appended', signature: 'irrelevant' });
+
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe('ADMIN_CHALLENGE_INVALID');
   });
 });

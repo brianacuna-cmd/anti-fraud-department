@@ -24,6 +24,8 @@ import { BcryptPasswordHasher, DUMMY_PASSWORD_HASH } from './modules/identity-ac
 import { AesGcmSecretCipher } from './modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
 import { AesGcmSessionTokenService } from './modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSessionTokenService.js';
 import { NodeAdminKeyPairGenerator } from './modules/identity-access/infrastructure/adapters/outbound/crypto/NodeAdminKeyPairGenerator.js';
+import { NodeAdminSignatureVerifier } from './modules/identity-access/infrastructure/adapters/outbound/crypto/NodeAdminSignatureVerifier.js';
+import { MongoAdminChallengeRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoAdminChallengeRepository.js';
 import { generateOrganizationId } from './modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { generateUserId } from './modules/identity-access/domain/model/value-objects/UserId.js';
 import { generateAdminOrganizationId } from './modules/identity-access/domain/model/value-objects/AdminOrganizationId.js';
@@ -35,6 +37,8 @@ import { createTransitionOrganizationStatusUseCase } from './modules/identity-ac
 import { createDeleteOrganizationUseCase } from './modules/identity-access/application/DeleteOrganization.js';
 import { createCreateOrganizationWithAdminUseCase } from './modules/identity-access/application/CreateOrganizationWithAdmin.js';
 import { createProvisionAdminOrganizationUseCase } from './modules/identity-access/application/admin/ProvisionAdminOrganization.js';
+import { createRequestAdminChallengeUseCase } from './modules/identity-access/application/admin/RequestAdminChallenge.js';
+import { createVerifyAdminChallengeUseCase } from './modules/identity-access/application/admin/VerifyAdminChallenge.js';
 import { createCreateUserUseCase } from './modules/identity-access/application/CreateUser.js';
 import { createGetUserUseCase } from './modules/identity-access/application/GetUser.js';
 import { createListUsersUseCase } from './modules/identity-access/application/ListUsers.js';
@@ -100,6 +104,10 @@ const AUTH_MFA_ENROLLMENT_TTL_SECONDS = Number(process.env.AUTH_MFA_ENROLLMENT_T
 const AUTH_SESSION_TTL_SECONDS = Number(process.env.AUTH_SESSION_TTL_SECONDS ?? 900);
 const AUTH_REFRESH_TTL_SECONDS = Number(process.env.AUTH_REFRESH_TTL_SECONDS ?? 1_209_600);
 const AUTH_FAMILY_TTL_SECONDS = Number(process.env.AUTH_FAMILY_TTL_SECONDS ?? 2_592_000);
+// super-admin-auth PR1 (design "AdminChallengeStore", TTL): ~24h single-use
+// PLATFORM_ADMIN login challenge TTL. Deferred from PR 1b (`ensureIndexes.ts`'s
+// TTL index) to this PR — `RequestAdminChallenge` is the first real consumer.
+const AUTH_ADMIN_CHALLENGE_TTL_SECONDS = Number(process.env.AUTH_ADMIN_CHALLENGE_TTL_SECONDS ?? 86_400);
 
 async function bootstrap(): Promise<void> {
   // Fail-closed (design D4, D6): AUTH_MODE=trusted-header trusts client
@@ -122,6 +130,9 @@ async function bootstrap(): Promise<void> {
   const secretCipher = new AesGcmSecretCipher(TOKEN_SECRET, TOKEN_KEY_VERSION);
   const sessionTokenService = new AesGcmSessionTokenService(secretCipher);
   const adminKeyPairGenerator = new NodeAdminKeyPairGenerator();
+  // super-admin-auth PR1 (design "Ed25519 SignatureVerifier"): the only
+  // adapter allowed to call `node:crypto`'s `verify` for the admin tier.
+  const adminSignatureVerifier = new NodeAdminSignatureVerifier();
   // mfa-user-enrollment PR2: the same otplib/qrcode adapters wired to their
   // real ports (identical shape to `secretCipher` above).
   const totpService = new OtplibTotpService();
@@ -138,6 +149,10 @@ async function bootstrap(): Promise<void> {
   // of PR1a to avoid dead code with no caller yet (this same file's
   // existing precedent).
   const mfaChallenges = new MongoMfaChallengeRepository(db);
+  // super-admin-auth PR1 (design "AdminChallengeStore"): first real consumer
+  // — construction was deferred out of PR 1b to avoid dead code with no
+  // caller yet (this same file's existing precedent, see `mfaChallenges`).
+  const adminChallenges = new MongoAdminChallengeRepository(db);
 
   const auditLogs = new MongoAuditLogRepository(db);
   const recordAuditLog = createRecordAuditLogUseCase({ auditLogs, clock, generateAuditLogId });
@@ -227,8 +242,10 @@ async function bootstrap(): Promise<void> {
     disableMfa: createDisableMfaUseCase({ userRepositoryFactory, unitOfWork, clock, auditRecorder }),
   });
 
-  // Phase 3 (PR 1c, design D31/D32): provisioning only. Download/rotate/
-  // revoke land on this same router in later PRs (2a/2c).
+  // Phase 3 (PR 1c, design D31/D32) + super-admin-auth PR1 (design
+  // "Use cases"): provisioning (platform-admin-gated) plus the two public
+  // challenge-login routes. Download/rotate/revoke land on this same router
+  // in later PRs (2a/2b).
   const identityAccessAdminOrganizationsRouter = adminOrganizationRouter({
     provisionAdminOrganization: createProvisionAdminOrganizationUseCase({
       admins,
@@ -238,6 +255,21 @@ async function bootstrap(): Promise<void> {
       clock,
       generateAdminOrganizationId,
       generateAdminKeyId,
+      auditRecorder,
+    }),
+    requestAdminChallenge: createRequestAdminChallengeUseCase({
+      admins,
+      adminChallenges,
+      clock,
+      challengeTtlSeconds: AUTH_ADMIN_CHALLENGE_TTL_SECONDS,
+    }),
+    verifyAdminChallenge: createVerifyAdminChallengeUseCase({
+      admins,
+      adminChallenges,
+      signatureVerifier: adminSignatureVerifier,
+      unitOfWork,
+      clock,
+      issueSessionFor: sessionIssuer,
       auditRecorder,
     }),
   });
@@ -315,6 +347,10 @@ async function bootstrap(): Promise<void> {
   console.log(
     `MFA challenge TTLs configured: challenge=${AUTH_MFA_CHALLENGE_TTL_SECONDS}s enrollment=${AUTH_MFA_ENROLLMENT_TTL_SECONDS}s`,
   );
+
+  // super-admin-auth PR1: visibility into the PLATFORM_ADMIN challenge TTL,
+  // same precedent as the MFA challenge TTL log above.
+  console.log(`Admin challenge TTL configured: ${AUTH_ADMIN_CHALLENGE_TTL_SECONDS}s`);
 
   // two-step-login PR1b (design D6): make PLATFORM_ADMIN auth availability
   // explicit at startup — a configured, logged state, never a silent 401.

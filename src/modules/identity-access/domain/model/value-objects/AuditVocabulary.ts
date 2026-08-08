@@ -23,6 +23,10 @@ export type IdentityAccessAuditAction =
   | 'PLATFORM_ADMIN_PROVISIONED'
   // mfa-user-enrollment PR2: user MFA setup/activate/disable.
   | 'MFA_ENABLED'
-  | 'MFA_DISABLED';
+  | 'MFA_DISABLED'
+  // super-admin-auth PR1 (design "Audit Vocabulary additions"): PLATFORM_ADMIN
+  // challenge-login outcomes.
+  | 'PLATFORM_ADMIN_LOGIN'
+  | 'PLATFORM_ADMIN_LOGIN_FAILED';
 
 export type IdentityAccessAuditResource = 'organizations' | 'users' | 'sessions' | 'adminOrganizations';
