@@ -24,4 +24,8 @@ export type IdentityAccessErrorCode =
   | 'ORGANIZATION_SUSPENDED'
   // mfa-user-enrollment PR2: user MFA setup/activate/disable.
   | 'MFA_ENROLLMENT_NOT_PENDING'
-  | 'MFA_TOKEN_INVALID';
+  | 'MFA_TOKEN_INVALID'
+  // two-step-login PR2 (design "IssueSession flow"): challenge-token
+  // rejection — malformed/wrong-type/expired/unknown-jti/replayed. Wrong
+  // TOTP reuses MFA_TOKEN_INVALID (same failure shape as ActivateMfa).
+  | 'MFA_CHALLENGE_INVALID';

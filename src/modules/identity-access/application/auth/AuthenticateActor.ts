@@ -31,6 +31,15 @@ export interface AuthenticatedActor {
   readonly actorId: string;
   readonly actorType: 'USER' | 'ORGANIZATION';
   readonly organizationId: OrganizationId | null;
+  /**
+   * MFA enrollment state (design D-A11/two-step-login PR2) — lets
+   * `BeginUserLogin` branch on `enabled` without re-querying the gateway a
+   * second time (which would risk observing a DIFFERENT state than the one
+   * this exact login just resolved). Deliberately just `enabled`, never the
+   * encrypted `secret` — nothing past this point needs it (the secret is
+   * re-read from the `User` aggregate itself in `IssueSession`, step 2).
+   */
+  readonly mfa: { readonly enabled: boolean };
 }
 
 export interface AuthenticateActorDeps {
@@ -155,6 +164,11 @@ export function createAuthenticateActorUseCase(deps: AuthenticateActorDeps) {
       ipAddress,
     });
 
-    return { actorId: actor.actorId, actorType: actor.actorType, organizationId: actor.organizationId };
+    return {
+      actorId: actor.actorId,
+      actorType: actor.actorType,
+      organizationId: actor.organizationId,
+      mfa: { enabled: actor.mfa.enabled },
+    };
   };
 }
