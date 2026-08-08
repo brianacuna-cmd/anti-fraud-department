@@ -2,19 +2,41 @@ import { createHash } from 'node:crypto';
 import type { SecretCipher } from '../../../../domain/ports/SecretCipher.js';
 import type { SessionTokenPayload, SessionTokenService } from '../../../../domain/ports/SessionTokenService.js';
 
-const VALID_TOKEN_TYPES = new Set(['ACCESS', 'REFRESH']);
+const POINTER_TOKEN_TYPES = new Set(['ACCESS', 'REFRESH']);
+const SCOPED_MFA_TOKEN_TYPES = new Set(['mfa_challenge', 'mfa_enrollment']);
+
+function isSessionPointerPayload(candidate: Record<string, unknown>): boolean {
+  return (
+    typeof candidate.sessionId === 'string' &&
+    typeof candidate.tokenType === 'string' &&
+    POINTER_TOKEN_TYPES.has(candidate.tokenType) &&
+    typeof candidate.keyVersion === 'number'
+  );
+}
+
+/**
+ * Two-step-login PR1a (design D2): validates the discriminated union's other
+ * arm — a self-contained scoped MFA claim, never a `Sessions` pointer.
+ */
+function isScopedMfaPayload(candidate: Record<string, unknown>): boolean {
+  return (
+    typeof candidate.tokenType === 'string' &&
+    SCOPED_MFA_TOKEN_TYPES.has(candidate.tokenType) &&
+    typeof candidate.keyVersion === 'number' &&
+    typeof candidate.jti === 'string' &&
+    typeof candidate.userId === 'string' &&
+    (candidate.organizationId === null || typeof candidate.organizationId === 'string') &&
+    candidate.actorType === 'USER' &&
+    typeof candidate.expiresAt === 'string'
+  );
+}
 
 function isSessionTokenPayload(value: unknown): value is SessionTokenPayload {
   if (typeof value !== 'object' || value === null) {
     return false;
   }
   const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.sessionId === 'string' &&
-    typeof candidate.tokenType === 'string' &&
-    VALID_TOKEN_TYPES.has(candidate.tokenType) &&
-    typeof candidate.keyVersion === 'number'
-  );
+  return isSessionPointerPayload(candidate) || isScopedMfaPayload(candidate);
 }
 
 /**
