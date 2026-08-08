@@ -13,11 +13,19 @@ import type { AuthContextResolver } from './AuthContextResolver.js';
  * and forwards a rejected async request handler's promise to the error
  * middleware, so no manual `try/catch` + `next(err)` is needed here.
  */
+/**
+ * `ipAddress` is populated HERE, not by each `AuthContextResolver` (design
+ * D-A7/§4a) — it comes from `req.ip`, which honors Express's `trust proxy`
+ * setting (`createApp`), and is identical regardless of which resolver is
+ * active. `req.ip` is `undefined` when unresolvable (e.g. `trust proxy`
+ * misconfigured for the deployment topology) => `null`, never a raw,
+ * unvalidated header value.
+ */
 export function createAuthContextMiddleware(resolver: AuthContextResolver): RequestHandler {
   return async (req, _res, next) => {
     const auth = await resolver.resolve(req);
     if (auth) {
-      attachAuthContext(req, auth);
+      attachAuthContext(req, { ...auth, ipAddress: req.ip ?? null });
     }
     next();
   };
