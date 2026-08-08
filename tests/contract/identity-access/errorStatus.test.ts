@@ -17,6 +17,9 @@ describe('identityAccessErrorStatus', () => {
       SESSION_EXPIRED: 401,
       SESSION_INVALID: 401,
       ORGANIZATION_SUSPENDED: 403,
+      // mfa-user-enrollment PR2: user MFA setup/activate/disable.
+      MFA_ENROLLMENT_NOT_PENDING: 409,
+      MFA_TOKEN_INVALID: 401,
     });
   });
 });
