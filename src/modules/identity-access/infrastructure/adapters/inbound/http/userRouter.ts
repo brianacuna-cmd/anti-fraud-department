@@ -7,8 +7,11 @@ import type { createListUsersUseCase } from '../../../../application/ListUsers.j
 import type { createPatchUserIdentityUseCase } from '../../../../application/PatchUserIdentity.js';
 import type { createTransitionUserStatusUseCase } from '../../../../application/TransitionUserStatus.js';
 import type { createDeleteUserUseCase } from '../../../../application/DeleteUser.js';
-import { createUserSchema, patchUserSchema, transitionUserSchema } from './dto/userSchemas.js';
-import { toUserListResponse, toUserResponse } from './mappers/UserHttpMapper.js';
+import type { createSetupMfaUseCase } from '../../../../application/SetupMfa.js';
+import type { createActivateMfaUseCase } from '../../../../application/ActivateMfa.js';
+import type { createDisableMfaUseCase } from '../../../../application/DisableMfa.js';
+import { createUserSchema, patchUserSchema, transitionUserSchema, activateMfaSchema } from './dto/userSchemas.js';
+import { toUserListResponse, toUserResponse, toMfaSetupResponse } from './mappers/UserHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
 
 export interface UserRouterDeps {
@@ -18,6 +21,9 @@ export interface UserRouterDeps {
   readonly patchUserIdentity: ReturnType<typeof createPatchUserIdentityUseCase>;
   readonly transitionUserStatus: ReturnType<typeof createTransitionUserStatusUseCase>;
   readonly deleteUser: ReturnType<typeof createDeleteUserUseCase>;
+  readonly setupMfa: ReturnType<typeof createSetupMfaUseCase>;
+  readonly activateMfa: ReturnType<typeof createActivateMfaUseCase>;
+  readonly disableMfa: ReturnType<typeof createDisableMfaUseCase>;
 }
 
 /**
@@ -66,6 +72,28 @@ export function userRouter(deps: UserRouterDeps): Router {
   router.delete('/users/:id', async (req, res) => {
     const auth = requireAuthContext(req);
     const user = await deps.deleteUser({ auth, userId: req.params.id! });
+    res.status(200).json(toUserResponse(user));
+  });
+
+  // mfa-user-enrollment PR2: act on the AUTHENTICATED user only — no :id
+  // param, `auth.userId` is the target. `/users/me/...` never collides with
+  // `/users/:id` (different segment counts).
+  router.post('/users/me/mfa/setup', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const result = await deps.setupMfa({ auth });
+    res.status(200).json(toMfaSetupResponse(result));
+  });
+
+  router.post('/users/me/mfa/activate', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const { token } = parseRequest(activateMfaSchema, req.body);
+    const user = await deps.activateMfa({ auth, token });
+    res.status(200).json(toUserResponse(user));
+  });
+
+  router.delete('/users/me/mfa', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const user = await deps.disableMfa({ auth });
     res.status(200).json(toUserResponse(user));
   });
 

@@ -1,5 +1,6 @@
 import type { User } from '../../../../../domain/model/aggregates/User.js';
 import type { UserListPage } from '../../../../../domain/ports/UserRepository.js';
+import type { SetupMfaResult } from '../../../../../application/SetupMfa.js';
 
 /** `resetToken`/`mfa` are persistence/domain-only and never appear here (design A11). */
 export interface UserResponseDto {
@@ -43,4 +44,14 @@ export function toUserListResponse(page: UserListPage): UserListResponseDto {
     items: page.items.map(toUserResponse),
     nextCursor: page.nextCursor,
   };
+}
+
+/** POST /users/me/mfa/setup response body (mfa-user-enrollment PR2). No raw secret — the QR/otpauth URI carry it. */
+export interface MfaSetupResponseDto {
+  readonly qrCodeDataUrl: string;
+  readonly otpauthUri: string;
+}
+
+export function toMfaSetupResponse(result: SetupMfaResult): MfaSetupResponseDto {
+  return { qrCodeDataUrl: result.qrCodeDataUrl, otpauthUri: result.otpauthUri };
 }

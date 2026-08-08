@@ -262,6 +262,71 @@ describe('User#withLockout', () => {
   });
 });
 
+describe('User#startMfaEnrollment', () => {
+  it('stores the encrypted secret with enabled=false', () => {
+    const user = buildUser();
+
+    const enrolling = user.startMfaEnrollment('encrypted-secret', LATER);
+
+    expect(enrolling).not.toBe(user);
+    expect(enrolling.mfa).toEqual({ secret: 'encrypted-secret', enabled: false, recoveryCodes: [] });
+    expect(enrolling.updatedAt).toBe(LATER);
+    expect(user.mfa).toEqual({ secret: null, enabled: false, recoveryCodes: [] });
+  });
+
+  it('overwrites a previously pending secret when enrollment is restarted', () => {
+    const user = buildUser().startMfaEnrollment('first-secret', NOW);
+
+    const restarted = user.startMfaEnrollment('second-secret', LATER);
+
+    expect(restarted.mfa).toEqual({ secret: 'second-secret', enabled: false, recoveryCodes: [] });
+  });
+});
+
+describe('User#confirmMfaEnrollment', () => {
+  it('enables MFA when a secret is pending', () => {
+    const user = buildUser().startMfaEnrollment('encrypted-secret', NOW);
+
+    const confirmed = user.confirmMfaEnrollment(LATER);
+
+    expect(confirmed).not.toBe(user);
+    expect(confirmed.mfa).toEqual({ secret: 'encrypted-secret', enabled: true, recoveryCodes: [] });
+    expect(confirmed.updatedAt).toBe(LATER);
+  });
+
+  it('rejects confirmation when no secret is pending', () => {
+    const user = buildUser();
+
+    expect(() => user.confirmMfaEnrollment(LATER)).toThrow(IdentityAccessError);
+  });
+
+  it('rejects confirmation when MFA is already enabled', () => {
+    const user = buildUser().startMfaEnrollment('encrypted-secret', NOW).confirmMfaEnrollment(NOW);
+
+    expect(() => user.confirmMfaEnrollment(LATER)).toThrow(IdentityAccessError);
+  });
+});
+
+describe('User#disableMfa', () => {
+  it('clears the secret and disables MFA', () => {
+    const user = buildUser().startMfaEnrollment('encrypted-secret', NOW).confirmMfaEnrollment(NOW);
+
+    const disabled = user.disableMfa(LATER);
+
+    expect(disabled).not.toBe(user);
+    expect(disabled.mfa).toEqual({ secret: null, enabled: false, recoveryCodes: [] });
+    expect(disabled.updatedAt).toBe(LATER);
+  });
+
+  it('is idempotent when MFA is already disabled', () => {
+    const user = buildUser();
+
+    const disabled = user.disableMfa(LATER);
+
+    expect(disabled.mfa).toEqual({ secret: null, enabled: false, recoveryCodes: [] });
+  });
+});
+
 describe('User#transitionTo', () => {
   it('delegates to StatusTransitionPolicy and returns a new instance on a valid transition', () => {
     const user = buildUser();

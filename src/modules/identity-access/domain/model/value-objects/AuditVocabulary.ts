@@ -20,6 +20,9 @@ export type IdentityAccessAuditAction =
   | 'USER_CREATED'
   | 'USER_IDENTITY_UPDATED'
   | 'USER_STATUS_CHANGED'
-  | 'PLATFORM_ADMIN_PROVISIONED';
+  | 'PLATFORM_ADMIN_PROVISIONED'
+  // mfa-user-enrollment PR2: user MFA setup/activate/disable.
+  | 'MFA_ENABLED'
+  | 'MFA_DISABLED';
 
 export type IdentityAccessAuditResource = 'organizations' | 'users' | 'sessions' | 'adminOrganizations';

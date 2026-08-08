@@ -17,7 +17,14 @@ import { createListUsersUseCase } from '../../../src/modules/identity-access/app
 import { createPatchUserIdentityUseCase } from '../../../src/modules/identity-access/application/PatchUserIdentity.js';
 import { createTransitionUserStatusUseCase } from '../../../src/modules/identity-access/application/TransitionUserStatus.js';
 import { createDeleteUserUseCase } from '../../../src/modules/identity-access/application/DeleteUser.js';
+import { createSetupMfaUseCase } from '../../../src/modules/identity-access/application/SetupMfa.js';
+import { createActivateMfaUseCase } from '../../../src/modules/identity-access/application/ActivateMfa.js';
+import { createDisableMfaUseCase } from '../../../src/modules/identity-access/application/DisableMfa.js';
 import { generateUserId } from '../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
+import { OtplibTotpService } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mfa/OtplibTotpService.js';
+import { AesGcmSecretCipher } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
+import { FakeQrCodeGenerator } from '../../helpers/identity-access/FakeQrCodeGenerator.js';
+import { authenticator } from 'otplib';
 
 const ORG_1_USER = createAuthContext({ userId: 'u1', organizationId: 'org-1', isPlatformAdmin: false });
 const ORG_2_USER = createAuthContext({ userId: 'u2', organizationId: 'org-2', isPlatformAdmin: false });
@@ -53,6 +60,24 @@ function buildApp(
     patchUserIdentity: createPatchUserIdentityUseCase({ userRepositoryFactory, unitOfWork, clock, auditRecorder }),
     transitionUserStatus,
     deleteUser: createDeleteUserUseCase({ transitionUserStatus }),
+    setupMfa: createSetupMfaUseCase({
+      userRepositoryFactory,
+      unitOfWork,
+      clock,
+      totpService: new OtplibTotpService(),
+      qrCodeGenerator: new FakeQrCodeGenerator(),
+      secretCipher: new AesGcmSecretCipher('test-secret', 1),
+      issuer: 'AntiFraud',
+    }),
+    activateMfa: createActivateMfaUseCase({
+      userRepositoryFactory,
+      unitOfWork,
+      clock,
+      totpService: new OtplibTotpService(),
+      secretCipher: new AesGcmSecretCipher('test-secret', 1),
+      auditRecorder,
+    }),
+    disableMfa: createDisableMfaUseCase({ userRepositoryFactory, unitOfWork, clock, auditRecorder }),
   });
 
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {
@@ -223,5 +248,69 @@ describe('userRouter (e2e, in-memory repository)', () => {
     const response = await request(app).get('/api/v1/unknown');
 
     expect(response.status).toBe(404);
+  });
+
+  describe('MFA (mfa-user-enrollment PR2)', () => {
+    /** Seeds a user via the real route, then returns an auth-context factory acting AS that user. */
+    async function seedActingUser(app: Express): Promise<() => AuthContext> {
+      const created = await request(app)
+        .post('/api/v1/users')
+        .send({ email: 'mfa-user@example.com', password: 'pw', firstName: 'Mfa', lastName: 'User' });
+      const userId = created.body.id as string;
+      return () => createAuthContext({ userId, organizationId: 'org-1', isPlatformAdmin: false });
+    }
+
+    it('POST /users/me/mfa/setup returns a QR data URL and otpauth URI, storing an encrypted (disabled) secret', async () => {
+      const sharedFactory = new InMemoryUserRepositoryFactory();
+      const { app: seedApp } = buildApp(() => ORG_1_USER, sharedFactory);
+      const actingAuth = await seedActingUser(seedApp);
+      const { app } = buildApp(actingAuth, sharedFactory);
+
+      const response = await request(app).post('/api/v1/users/me/mfa/setup');
+
+      expect(response.status).toBe(200);
+      expect(response.body.qrCodeDataUrl).toMatch(/^data:image\/png;base64,/);
+      expect(response.body.otpauthUri).toContain('otpauth://totp/');
+    });
+
+    it('full setup -> activate flow enables MFA', async () => {
+      const sharedFactory = new InMemoryUserRepositoryFactory();
+      const { app: setupApp } = buildApp(() => ORG_1_USER, sharedFactory);
+      const actingAuth = await seedActingUser(setupApp);
+      const { app } = buildApp(actingAuth, sharedFactory);
+
+      const setupResponse = await request(app).post('/api/v1/users/me/mfa/setup');
+      const secretParam = new URL(setupResponse.body.otpauthUri).searchParams.get('secret')!;
+      const token = authenticator.generate(secretParam);
+
+      const activateResponse = await request(app).post('/api/v1/users/me/mfa/activate').send({ token });
+
+      expect(activateResponse.status).toBe(200);
+    });
+
+    it('POST /users/me/mfa/activate rejects a wrong token with 401 MFA_TOKEN_INVALID', async () => {
+      const sharedFactory = new InMemoryUserRepositoryFactory();
+      const { app: setupApp } = buildApp(() => ORG_1_USER, sharedFactory);
+      const actingAuth = await seedActingUser(setupApp);
+      const { app } = buildApp(actingAuth, sharedFactory);
+
+      await request(app).post('/api/v1/users/me/mfa/setup');
+      const response = await request(app).post('/api/v1/users/me/mfa/activate').send({ token: '000000' });
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.code).toBe('MFA_TOKEN_INVALID');
+    });
+
+    it('DELETE /users/me/mfa disables MFA', async () => {
+      const sharedFactory = new InMemoryUserRepositoryFactory();
+      const { app: setupApp } = buildApp(() => ORG_1_USER, sharedFactory);
+      const actingAuth = await seedActingUser(setupApp);
+      const { app } = buildApp(actingAuth, sharedFactory);
+
+      await request(app).post('/api/v1/users/me/mfa/setup');
+      const response = await request(app).delete('/api/v1/users/me/mfa');
+
+      expect(response.status).toBe(200);
+    });
   });
 });

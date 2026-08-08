@@ -21,4 +21,7 @@ export type IdentityAccessErrorCode =
   | 'ACCOUNT_LOCKED'
   | 'SESSION_EXPIRED'
   | 'SESSION_INVALID'
-  | 'ORGANIZATION_SUSPENDED';
+  | 'ORGANIZATION_SUSPENDED'
+  // mfa-user-enrollment PR2: user MFA setup/activate/disable.
+  | 'MFA_ENROLLMENT_NOT_PENDING'
+  | 'MFA_TOKEN_INVALID';

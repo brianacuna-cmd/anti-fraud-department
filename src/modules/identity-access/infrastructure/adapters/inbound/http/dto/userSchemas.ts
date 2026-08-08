@@ -39,3 +39,10 @@ export const transitionUserSchema = z.object({
 });
 
 export type TransitionUserBody = z.infer<typeof transitionUserSchema>;
+
+/** POST /users/me/mfa/activate body (mfa-user-enrollment PR2). */
+export const activateMfaSchema = z.object({
+  token: z.string().min(1),
+});
+
+export type ActivateMfaBody = z.infer<typeof activateMfaSchema>;

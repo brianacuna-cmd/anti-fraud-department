@@ -98,3 +98,15 @@ export function sessionInvalid(): IdentityAccessError {
 export function organizationSuspended(): IdentityAccessError {
   return new IdentityAccessError('ORGANIZATION_SUSPENDED', 'organization is suspended');
 }
+
+// mfa-user-enrollment PR2: user MFA setup/activate/disable.
+
+/** No pending TOTP secret to confirm — enrollment was never started, or is already enabled. */
+export function mfaEnrollmentNotPending(): IdentityAccessError {
+  return new IdentityAccessError('MFA_ENROLLMENT_NOT_PENDING', 'no pending MFA enrollment to confirm');
+}
+
+/** The submitted TOTP token failed verification against the pending/enabled secret. */
+export function mfaTokenInvalid(): IdentityAccessError {
+  return new IdentityAccessError('MFA_TOKEN_INVALID', 'MFA token is invalid or expired');
+}

@@ -41,6 +41,11 @@ import { createListUsersUseCase } from './modules/identity-access/application/Li
 import { createPatchUserIdentityUseCase } from './modules/identity-access/application/PatchUserIdentity.js';
 import { createTransitionUserStatusUseCase } from './modules/identity-access/application/TransitionUserStatus.js';
 import { createDeleteUserUseCase } from './modules/identity-access/application/DeleteUser.js';
+import { createSetupMfaUseCase } from './modules/identity-access/application/SetupMfa.js';
+import { createActivateMfaUseCase } from './modules/identity-access/application/ActivateMfa.js';
+import { createDisableMfaUseCase } from './modules/identity-access/application/DisableMfa.js';
+import { OtplibTotpService } from './modules/identity-access/infrastructure/adapters/outbound/mfa/OtplibTotpService.js';
+import { QrCodeDataUrlGenerator } from './modules/identity-access/infrastructure/adapters/outbound/mfa/QrCodeDataUrlGenerator.js';
 import { createAuthenticateActorUseCase } from './modules/identity-access/application/auth/AuthenticateActor.js';
 import { createLogoutUseCase } from './modules/identity-access/application/auth/Logout.js';
 import { createPasswordCredential } from './modules/identity-access/domain/model/value-objects/PasswordCredential.js';
@@ -65,6 +70,9 @@ const TOKEN_KEY_VERSION = Number(process.env.TOKEN_KEY_VERSION ?? 1);
 // behind a real reverse proxy MUST set TRUST_PROXY explicitly, or `req.ip`
 // stays the raw socket peer and never honors a spoofable `X-Forwarded-For`.
 const TRUST_PROXY = parseTrustProxy(process.env.TRUST_PROXY);
+// mfa-user-enrollment PR2: otpauth issuer name shown in the user's
+// authenticator app — a plain env-overridable constant, not secret.
+const AUTH_TOTP_ISSUER = process.env.AUTH_TOTP_ISSUER ?? 'AntiFraud';
 
 async function bootstrap(): Promise<void> {
   // Fail-closed (design D4): AUTH_MODE=trusted-header trusts client headers
@@ -86,6 +94,10 @@ async function bootstrap(): Promise<void> {
   const secretCipher = new AesGcmSecretCipher(TOKEN_SECRET, TOKEN_KEY_VERSION);
   const sessionTokenService = new AesGcmSessionTokenService(secretCipher);
   const adminKeyPairGenerator = new NodeAdminKeyPairGenerator();
+  // mfa-user-enrollment PR2: the same otplib/qrcode adapters wired to their
+  // real ports (identical shape to `secretCipher` above).
+  const totpService = new OtplibTotpService();
+  const qrCodeGenerator = new QrCodeDataUrlGenerator();
   // Phase 3: a REAL Mongo-session-backed UnitOfWork — required for
   // CreateOrganizationWithAdmin's genuine cross-collection atomicity.
   // Phase 2's PassthroughUnitOfWork is deliberately NOT reused here.
@@ -144,6 +156,24 @@ async function bootstrap(): Promise<void> {
     patchUserIdentity: createPatchUserIdentityUseCase({ userRepositoryFactory, unitOfWork, clock, auditRecorder }),
     transitionUserStatus,
     deleteUser: createDeleteUserUseCase({ transitionUserStatus }),
+    setupMfa: createSetupMfaUseCase({
+      userRepositoryFactory,
+      unitOfWork,
+      clock,
+      totpService,
+      qrCodeGenerator,
+      secretCipher,
+      issuer: AUTH_TOTP_ISSUER,
+    }),
+    activateMfa: createActivateMfaUseCase({
+      userRepositoryFactory,
+      unitOfWork,
+      clock,
+      totpService,
+      secretCipher,
+      auditRecorder,
+    }),
+    disableMfa: createDisableMfaUseCase({ userRepositoryFactory, unitOfWork, clock, auditRecorder }),
   });
 
   // Phase 3 (PR 1c, design D31/D32): provisioning only. Download/rotate/
