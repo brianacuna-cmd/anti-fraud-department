@@ -24,6 +24,7 @@ describe('TrustedHeaderAuthContextResolver', () => {
       actorType: 'PLATFORM_ADMIN',
       roleId: null,
       sessionId: null,
+      ipAddress: null,
     });
   });
 

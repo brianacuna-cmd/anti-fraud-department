@@ -24,6 +24,12 @@ export interface AuthContext {
   readonly actorType: ActorType;
   readonly roleId: string | null;
   readonly sessionId: string | null;
+  /**
+   * The caller's IP address, sourced from `req.ip` via `authContextMiddleware`
+   * (design D-A7/§4a) — `null` when unresolved (e.g. no upstream middleware
+   * populated it, or `req.ip` itself is unavailable).
+   */
+  readonly ipAddress: string | null;
 }
 
 export interface CreateAuthContextInput {
@@ -33,6 +39,7 @@ export interface CreateAuthContextInput {
   readonly actorType?: ActorType;
   readonly roleId?: string | null;
   readonly sessionId?: string | null;
+  readonly ipAddress?: string | null;
 }
 
 /**
@@ -46,6 +53,9 @@ export interface CreateAuthContextInput {
  *
  * `roleId`/`sessionId` absent => `null` (design D11 — populated once
  * `Roles`/`Sessions` exist, in later phases of this change).
+ *
+ * `ipAddress` absent => `null` (design D-A7 — additive, optional field;
+ * every pre-existing call site keeps working unchanged).
  */
 export function createAuthContext(input: CreateAuthContextInput): AuthContext {
   const isPlatformAdmin = input.isPlatformAdmin ?? false;
@@ -56,5 +66,6 @@ export function createAuthContext(input: CreateAuthContextInput): AuthContext {
     actorType: input.actorType ?? (isPlatformAdmin ? 'PLATFORM_ADMIN' : 'USER'),
     roleId: input.roleId ?? null,
     sessionId: input.sessionId ?? null,
+    ipAddress: input.ipAddress ?? null,
   };
 }

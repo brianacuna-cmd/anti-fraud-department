@@ -32,13 +32,15 @@ export function authRouter(deps: AuthRouterDeps): Router {
 
   router.post('/auth/users/login', async (req, res) => {
     const body = parseRequest(usersLoginSchema, req.body);
-    await deps.authenticateUser(body);
+    // ipAddress is injected OUTSIDE the parsed body (design D-A7/§4a) — it
+    // is not user input, it comes from `req.ip` (honors `trust proxy`).
+    await deps.authenticateUser({ ...body, ipAddress: req.ip ?? null });
     res.status(200).json({ status: 'AUTHENTICATED' });
   });
 
   router.post('/auth/organizations/login', async (req, res) => {
     const body = parseRequest(organizationsLoginSchema, req.body);
-    await deps.authenticateOrganization(body);
+    await deps.authenticateOrganization({ ...body, ipAddress: req.ip ?? null });
     res.status(200).json({ status: 'AUTHENTICATED' });
   });
 

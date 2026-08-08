@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { createApp } from './shared/http/createApp.js';
+import { parseTrustProxy } from './shared/http/parseTrustProxy.js';
 import { createErrorHandler } from './shared/http/errorHandler.js';
 import { connectMongo } from './shared/persistence/mongo/connect.js';
 import { ensureIndexes } from './shared/persistence/mongo/ensureIndexes.js';
@@ -56,6 +57,10 @@ const AUTH_MODE = process.env.AUTH_MODE ?? 'trusted-header';
 // to decrypt (`decrypt` returns null, never throws).
 const TOKEN_SECRET = process.env.TOKEN_SECRET ?? 'dev-only-insecure-token-secret';
 const TOKEN_KEY_VERSION = Number(process.env.TOKEN_KEY_VERSION ?? 1);
+// Fail-safe default `false` (design D-A7/§4a): a production deployment
+// behind a real reverse proxy MUST set TRUST_PROXY explicitly, or `req.ip`
+// stays the raw socket peer and never honors a spoofable `X-Forwarded-For`.
+const TRUST_PROXY = parseTrustProxy(process.env.TRUST_PROXY);
 
 async function bootstrap(): Promise<void> {
   // Fail-closed (design D4): AUTH_MODE=trusted-header trusts client headers
@@ -165,6 +170,7 @@ async function bootstrap(): Promise<void> {
   const app = createApp({
     routers: [{ path: '/api/v1', router: identityAccessRouter }],
     errorHandler: createErrorHandler(identityAccessErrorStatus),
+    trustProxy: TRUST_PROXY,
   });
 
   app.listen(PORT, () => {

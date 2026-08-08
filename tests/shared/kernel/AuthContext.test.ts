@@ -9,6 +9,7 @@ describe('AuthContext', () => {
       actorType: 'PLATFORM_ADMIN',
       roleId: 'role-1',
       sessionId: 'session-1',
+      ipAddress: '203.0.113.1',
     });
 
     expect(auth).toEqual({
@@ -18,9 +19,11 @@ describe('AuthContext', () => {
       actorType: 'PLATFORM_ADMIN',
       roleId: 'role-1',
       sessionId: 'session-1',
+      ipAddress: '203.0.113.1',
     });
     expect(Object.keys(auth).sort()).toEqual([
       'actorType',
+      'ipAddress',
       'isPlatformAdmin',
       'organizationId',
       'roleId',
@@ -54,5 +57,17 @@ describe('AuthContext', () => {
     const auth = createAuthContext({ userId: 'admin-2', organizationId: null, isPlatformAdmin: true });
 
     expect(auth.organizationId).toBeNull();
+  });
+
+  it('defaults ipAddress to null when omitted (design D-A7: additive, optional field)', () => {
+    const auth = createAuthContext({ userId: 'user-5', organizationId: 'org-5' });
+
+    expect(auth.ipAddress).toBeNull();
+  });
+
+  it('accepts an explicit ipAddress', () => {
+    const auth = createAuthContext({ userId: 'user-6', organizationId: 'org-6', ipAddress: '198.51.100.7' });
+
+    expect(auth.ipAddress).toBe('198.51.100.7');
   });
 });

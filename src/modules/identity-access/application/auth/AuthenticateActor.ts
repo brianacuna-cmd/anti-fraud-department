@@ -11,6 +11,14 @@ export interface AuthenticateActorInput {
   readonly password: string;
   /** REQUIRED by the Users tier (design D29); ignored by the Organizations tier. */
   readonly organizationSlug?: string;
+  /**
+   * Sourced from `req.ip` at the HTTP edge (design D-A7/§4a: "Login captures
+   * IP from input" — no `AuthContext` exists pre-authentication, unlike
+   * every post-auth use case). Plumbing only in this PR: no audit emission
+   * reads it yet (`AuthenticateActor` gains `auditRecorder` in a later
+   * stacked PR, design "Login atomicity caveat").
+   */
+  readonly ipAddress?: string | null;
 }
 
 /**

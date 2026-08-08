@@ -12,7 +12,7 @@ describe('createAuthContextMiddleware', () => {
   it('attaches the resolved AuthContext to the request and calls next()', async () => {
     const auth = createAuthContext({ userId: 'user-1', organizationId: 'org-1' });
     const middleware = createAuthContextMiddleware(buildResolver(auth));
-    const request = {} as Request;
+    const request = { ip: undefined } as Request;
     const next = jest.fn();
 
     await middleware(request, {} as Response, next);
@@ -23,12 +23,34 @@ describe('createAuthContextMiddleware', () => {
 
   it('calls next() without attaching anything when the resolver finds no AuthContext', async () => {
     const middleware = createAuthContextMiddleware(buildResolver(null));
-    const request = {} as Request;
+    const request = { ip: undefined } as Request;
     const next = jest.fn();
 
     await middleware(request, {} as Response, next);
 
     expect(() => requireAuthContext(request)).toThrow();
     expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('populates ipAddress from req.ip (design D-A7)', async () => {
+    const auth = createAuthContext({ userId: 'user-1', organizationId: 'org-1' });
+    const middleware = createAuthContextMiddleware(buildResolver(auth));
+    const request = { ip: '203.0.113.5' } as Request;
+    const next = jest.fn();
+
+    await middleware(request, {} as Response, next);
+
+    expect(requireAuthContext(request).ipAddress).toBe('203.0.113.5');
+  });
+
+  it('resolves ipAddress to null when req.ip is undefined (e.g. trust proxy not configured)', async () => {
+    const auth = createAuthContext({ userId: 'user-1', organizationId: 'org-1' });
+    const middleware = createAuthContextMiddleware(buildResolver(auth));
+    const request = { ip: undefined } as Request;
+    const next = jest.fn();
+
+    await middleware(request, {} as Response, next);
+
+    expect(requireAuthContext(request).ipAddress).toBeNull();
   });
 });
