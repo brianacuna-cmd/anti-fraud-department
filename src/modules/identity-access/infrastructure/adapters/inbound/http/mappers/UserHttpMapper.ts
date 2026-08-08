@@ -1,6 +1,7 @@
 import type { User } from '../../../../../domain/model/aggregates/User.js';
 import type { UserListPage } from '../../../../../domain/ports/UserRepository.js';
 import type { SetupMfaResult } from '../../../../../application/SetupMfa.js';
+import type { ActivateMfaResult } from '../../../../../application/ActivateMfa.js';
 
 /** `resetToken`/`mfa` are persistence/domain-only and never appear here (design A11). */
 export interface UserResponseDto {
@@ -54,4 +55,24 @@ export interface MfaSetupResponseDto {
 
 export function toMfaSetupResponse(result: SetupMfaResult): MfaSetupResponseDto {
   return { qrCodeDataUrl: result.qrCodeDataUrl, otpauthUri: result.otpauthUri };
+}
+
+/**
+ * POST /users/me/mfa/activate response body (two-step-login PR3, design D4).
+ * `session` is non-null ONLY for the forced-enrollment hand-off — a
+ * self-service `'full'`-scope caller already has a session, so it stays
+ * `null` and the shape matches PR2's plain-user response in substance.
+ */
+export interface ActivateMfaResponseDto {
+  readonly user: UserResponseDto;
+  readonly session: { readonly accessToken: string; readonly refreshToken: string; readonly expiresAt: string } | null;
+}
+
+export function toActivateMfaResponse(result: ActivateMfaResult): ActivateMfaResponseDto {
+  return {
+    user: toUserResponse(result.user),
+    session: result.session
+      ? { accessToken: result.session.accessToken, refreshToken: result.session.refreshToken, expiresAt: result.session.expiresAt }
+      : null,
+  };
 }

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { parsePaginationParams } from '../../../../../../shared/http/pagination.js';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
+import { requireScopedAuthContext } from '../../../../application/authorization/requireScopedAuthContext.js';
 import type { createCreateUserUseCase } from '../../../../application/CreateUser.js';
 import type { createGetUserUseCase } from '../../../../application/GetUser.js';
 import type { createListUsersUseCase } from '../../../../application/ListUsers.js';
@@ -11,7 +12,7 @@ import type { createSetupMfaUseCase } from '../../../../application/SetupMfa.js'
 import type { createActivateMfaUseCase } from '../../../../application/ActivateMfa.js';
 import type { createDisableMfaUseCase } from '../../../../application/DisableMfa.js';
 import { createUserSchema, patchUserSchema, transitionUserSchema, activateMfaSchema } from './dto/userSchemas.js';
-import { toUserListResponse, toUserResponse, toMfaSetupResponse } from './mappers/UserHttpMapper.js';
+import { toUserListResponse, toUserResponse, toMfaSetupResponse, toActivateMfaResponse } from './mappers/UserHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
 
 export interface UserRouterDeps {
@@ -78,17 +79,25 @@ export function userRouter(deps: UserRouterDeps): Router {
   // mfa-user-enrollment PR2: act on the AUTHENTICATED user only — no :id
   // param, `auth.userId` is the target. `/users/me/...` never collides with
   // `/users/:id` (different segment counts).
+  //
+  // two-step-login PR3 (design D3/D5, tasks 3.1): setup/activate are the
+  // ONLY routes that accept a scoped `'enrollment'` AuthContext alongside a
+  // real `'full'` session — `requireScopedAuthContext`'s explicit allow-list
+  // is the deliberate, narrow opt-in `requireAuthContext`'s default-deny
+  // otherwise blocks everywhere. This is what lets `BeginUserLogin`'s
+  // `mfa_enrollment` token (minted PR2, unenforced until now) actually
+  // complete forced enrollment.
   router.post('/users/me/mfa/setup', async (req, res) => {
-    const auth = requireAuthContext(req);
+    const auth = requireScopedAuthContext(req, { allow: ['full', 'enrollment'] });
     const result = await deps.setupMfa({ auth });
     res.status(200).json(toMfaSetupResponse(result));
   });
 
   router.post('/users/me/mfa/activate', async (req, res) => {
-    const auth = requireAuthContext(req);
+    const auth = requireScopedAuthContext(req, { allow: ['full', 'enrollment'] });
     const { token } = parseRequest(activateMfaSchema, req.body);
-    const user = await deps.activateMfa({ auth, token });
-    res.status(200).json(toUserResponse(user));
+    const result = await deps.activateMfa({ auth, token });
+    res.status(200).json(toActivateMfaResponse(result));
   });
 
   router.delete('/users/me/mfa', async (req, res) => {
