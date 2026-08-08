@@ -3,6 +3,7 @@ import type { ActorCredentialGateway } from '../../domain/ports/ActorCredentialG
 import type { PasswordHasher } from '../../domain/ports/PasswordHasher.js';
 import type { PasswordCredential } from '../../domain/model/value-objects/PasswordCredential.js';
 import type { OrganizationId } from '../../domain/model/value-objects/OrganizationId.js';
+import type { AuditRecorder, AuditEvent } from '../../domain/ports/AuditRecorder.js';
 import { isLocked, registerFailure } from '../../domain/services/LockoutPolicy.js';
 import { accountLocked, invalidCredentials } from '../../domain/errors/IdentityAccessError.js';
 
@@ -44,6 +45,15 @@ export interface AuthenticateActorDeps {
    * `main.ts` constructs this once via `createPasswordCredential(DUMMY_PASSWORD_HASH)`.
    */
   readonly dummyCredential: PasswordCredential;
+  /**
+   * The tier this instance authenticates ('USER' or 'ORGANIZATION'), supplied
+   * at the composition root. Needed to stamp `ActorType` on a `LOGIN_FAILED`
+   * audit event when the email/organization is unknown and no actor was ever
+   * resolved (design "audit every failed login").
+   */
+  readonly actorType: 'USER' | 'ORGANIZATION';
+  /** Emits LOGIN / LOGIN_FAILED audit events (best-effort, non-transactional). */
+  readonly auditRecorder: AuditRecorder;
 }
 
 /**
@@ -54,8 +64,25 @@ export interface AuthenticateActorDeps {
  * `SessionRepository`.
  */
 export function createAuthenticateActorUseCase(deps: AuthenticateActorDeps) {
+  /**
+   * Best-effort, NON-transactional audit emission (design "Login atomicity
+   * caveat"): login/failed-login run before any `AuthContext` or transaction
+   * exists, and a failed attempt THROWS — so wrapping the audit write in the
+   * caller's transaction would roll the `LOGIN_FAILED` row back. A failed
+   * audit write must NEVER turn a valid login (or a correct rejection) into a
+   * different outcome, so any error here is swallowed.
+   */
+  async function emit(event: AuditEvent): Promise<void> {
+    try {
+      await deps.auditRecorder.record(event);
+    } catch {
+      // best-effort: never let an audit failure change the authentication result
+    }
+  }
+
   return async function authenticateActor(input: AuthenticateActorInput): Promise<AuthenticatedActor> {
     const now = deps.clock.now();
+    const ipAddress = input.ipAddress ?? null;
     const actor = await deps.gateway.findByEmail({
       email: input.email,
       organizationSlug: input.organizationSlug,
@@ -66,12 +93,32 @@ export function createAuthenticateActorUseCase(deps: AuthenticateActorDeps) {
       // against a fixed dummy hash so failure timing is uniform and the
       // response is non-enumerable (design D24, "No Email-Existence Leak").
       await deps.passwordHasher.verify(input.password, deps.dummyCredential);
+      await emit({
+        organizationId: null,
+        actorType: deps.actorType,
+        actorId: null,
+        action: 'LOGIN_FAILED',
+        resource: 'sessions',
+        resourceId: null,
+        detail: { reason: 'INVALID_CREDENTIALS', email: input.email },
+        ipAddress,
+      });
       throw invalidCredentials();
     }
 
     if (isLocked(actor.lockout, now)) {
       // Blocked account skips the password check entirely (account-lockout
       // spec: "Blocked account rejects without checking the password").
+      await emit({
+        organizationId: actor.organizationId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        action: 'LOGIN_FAILED',
+        resource: 'sessions',
+        resourceId: null,
+        detail: { reason: 'ACCOUNT_LOCKED', email: input.email },
+        ipAddress,
+      });
       throw accountLocked(actor.lockout.blockedUntil as string);
     }
 
@@ -79,13 +126,34 @@ export function createAuthenticateActorUseCase(deps: AuthenticateActorDeps) {
     if (!passwordValid) {
       const nextLockout = registerFailure(actor.lockout, now);
       await deps.gateway.registerLoginFailure(actor, nextLockout, now);
-      if (isLocked(nextLockout, now)) {
+      const nowLocked = isLocked(nextLockout, now);
+      await emit({
+        organizationId: actor.organizationId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        action: 'LOGIN_FAILED',
+        resource: 'sessions',
+        resourceId: null,
+        detail: { reason: nowLocked ? 'ACCOUNT_LOCKED' : 'INVALID_CREDENTIALS', email: input.email },
+        ipAddress,
+      });
+      if (nowLocked) {
         throw accountLocked(nextLockout.blockedUntil as string);
       }
       throw invalidCredentials();
     }
 
     await deps.gateway.registerLoginSuccess(actor, now);
+    await emit({
+      organizationId: actor.organizationId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      action: 'LOGIN',
+      resource: 'sessions',
+      resourceId: null,
+      detail: {},
+      ipAddress,
+    });
 
     return { actorId: actor.actorId, actorType: actor.actorType, organizationId: actor.organizationId };
   };

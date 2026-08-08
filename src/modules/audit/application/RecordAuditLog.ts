@@ -8,7 +8,7 @@ import { AuditLog } from '../domain/model/aggregates/AuditLog.js';
 export interface RecordAuditLogCommand {
   readonly organizationId: string | null;
   readonly actorType: ActorType;
-  readonly actorId: string;
+  readonly actorId: string | null;
   readonly action: string;
   readonly resource: string;
   readonly resourceId: string | null;

@@ -8,7 +8,7 @@ export interface AuditLogDocument {
   readonly _id: string;
   readonly OrganizationId: string | null;
   readonly ActorType: string;
-  readonly ActorId: string;
+  readonly ActorId: string | null;
   readonly Action: string;
   readonly Resource: string;
   readonly ResourceId: string | null;

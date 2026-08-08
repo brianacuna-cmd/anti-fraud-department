@@ -7,8 +7,12 @@ export interface AuditLogProps {
   /** `null` for a PLATFORM_ADMIN actor operating outside any tenant (design D-A6 — no sentinel). */
   readonly organizationId: string | null;
   readonly actorType: ActorType;
-  /** Plain string — cross-module id, not branded (design D-A9). */
-  readonly actorId: string;
+  /**
+   * Plain string — cross-module id, not branded (design D-A9). `null` for a
+   * failed login against an unknown email/organization, where no actor was
+   * ever resolved (audit-logs-foundation Phase 6: "audit every failed login").
+   */
+  readonly actorId: string | null;
   readonly action: string;
   readonly resource: string;
   readonly resourceId: string | null;
@@ -47,7 +51,7 @@ export class AuditLog {
     return this.props.actorType;
   }
 
-  get actorId(): string {
+  get actorId(): string | null {
     return this.props.actorId;
   }
 

@@ -16,6 +16,7 @@ import { createSlug } from '../../../src/modules/identity-access/domain/model/va
 import { createEmail } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 import { createPasswordCredential } from '../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
 import { FakePasswordHasher } from '../../helpers/identity-access/FakePasswordHasher.js';
+import { InMemoryAuditRecorder } from '../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FixedClock } from '../../helpers/FixedClock.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import { IdentityAccessError } from '../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
@@ -103,12 +104,16 @@ describe('Login lockout — identical across Users and Organizations (integratio
       passwordHasher: new FakePasswordHasher(),
       clock: new FixedClock(NOW),
       dummyCredential,
+      actorType: 'USER',
+      auditRecorder: new InMemoryAuditRecorder(),
     });
     const authenticateOrganization = createAuthenticateActorUseCase({
       gateway: new OrganizationActorGateway(organizations),
       passwordHasher: new FakePasswordHasher(),
       clock: new FixedClock(NOW),
       dummyCredential,
+      actorType: 'ORGANIZATION',
+      auditRecorder: new InMemoryAuditRecorder(),
     });
 
     const userLoginAttempt = () =>
@@ -142,12 +147,16 @@ describe('Login lockout — identical across Users and Organizations (integratio
       passwordHasher,
       clock: new FixedClock(NOW),
       dummyCredential,
+      actorType: 'USER',
+      auditRecorder: new InMemoryAuditRecorder(),
     });
     const authenticateOrganization = createAuthenticateActorUseCase({
       gateway: new OrganizationActorGateway(organizations),
       passwordHasher,
       clock: new FixedClock(NOW),
       dummyCredential,
+      actorType: 'ORGANIZATION',
+      auditRecorder: new InMemoryAuditRecorder(),
     });
 
     for (let i = 0; i < 3; i += 1) {

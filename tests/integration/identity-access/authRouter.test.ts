@@ -11,6 +11,7 @@ import { createLogoutUseCase } from '../../../src/modules/identity-access/applic
 import { InMemoryActorCredentialGateway } from '../../helpers/identity-access/InMemoryActorCredentialGateway.js';
 import { InMemorySessionRepository } from '../../helpers/identity-access/InMemorySessionRepository.js';
 import { FakePasswordHasher } from '../../helpers/identity-access/FakePasswordHasher.js';
+import { InMemoryAuditRecorder } from '../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FixedClock } from '../../helpers/FixedClock.js';
 import { Session } from '../../../src/modules/identity-access/domain/model/aggregates/Session.js';
 import { createSessionId } from '../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
@@ -53,6 +54,7 @@ function buildApp(): {
   const passwordHasher = new FakePasswordHasher();
   const clock = new FixedClock(NOW);
   const dummyCredential = createPasswordCredential('hashed:dummy-password');
+  const auditRecorder = new InMemoryAuditRecorder();
 
   const router = authRouter({
     authenticateUser: createAuthenticateActorUseCase({
@@ -60,14 +62,18 @@ function buildApp(): {
       passwordHasher,
       clock,
       dummyCredential,
+      actorType: 'USER',
+      auditRecorder,
     }),
     authenticateOrganization: createAuthenticateActorUseCase({
       gateway: organizationGateway,
       passwordHasher,
       clock,
       dummyCredential,
+      actorType: 'ORGANIZATION',
+      auditRecorder,
     }),
-    logout: createLogoutUseCase({ sessions, clock }),
+    logout: createLogoutUseCase({ sessions, clock, auditRecorder }),
   });
 
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {

@@ -1,5 +1,6 @@
 import { createLogoutUseCase } from '../../../../src/modules/identity-access/application/auth/Logout.js';
 import { InMemorySessionRepository } from '../../../helpers/identity-access/InMemorySessionRepository.js';
+import { InMemoryAuditRecorder } from '../../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { Session } from '../../../../src/modules/identity-access/domain/model/aggregates/Session.js';
 import { createSessionId } from '../../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
@@ -29,8 +30,9 @@ function buildSession(id: string): Session {
 
 function buildUseCase() {
   const sessions = new InMemorySessionRepository();
-  const logout = createLogoutUseCase({ sessions, clock: new FixedClock(LATER) });
-  return { logout, sessions };
+  const auditRecorder = new InMemoryAuditRecorder();
+  const logout = createLogoutUseCase({ sessions, clock: new FixedClock(LATER), auditRecorder });
+  return { logout, sessions, auditRecorder };
 }
 
 describe('createLogoutUseCase', () => {
@@ -66,5 +68,30 @@ describe('createLogoutUseCase', () => {
 
     const untouched = await sessions.findByTokenHash('token-hash-session-1');
     expect(untouched?.deletedAt).toBeNull();
+  });
+
+  it('emits a LOGOUT audit event when a session is revoked', async () => {
+    const { logout, sessions, auditRecorder } = buildUseCase();
+    await sessions.save(buildSession('session-1'));
+    const auth = createAuthContext({ userId: 'user-1', organizationId: 'org-1', sessionId: 'session-1' });
+
+    await logout({ auth });
+
+    const calls = auditRecorder.calls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].tx).toBeUndefined();
+    expect(calls[0].event.action).toBe('LOGOUT');
+    expect(calls[0].event.actorId).toBe('user-1');
+    expect(calls[0].event.resourceId).toBe('session-1');
+  });
+
+  it('emits no audit event on the no-op path (no sessionId)', async () => {
+    const { logout, sessions, auditRecorder } = buildUseCase();
+    await sessions.save(buildSession('session-1'));
+    const auth = createAuthContext({ userId: 'user-1', organizationId: 'org-1' });
+
+    await logout({ auth });
+
+    expect(auditRecorder.all()).toHaveLength(0);
   });
 });
