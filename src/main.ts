@@ -47,7 +47,11 @@ import { createDisableMfaUseCase } from './modules/identity-access/application/D
 import { OtplibTotpService } from './modules/identity-access/infrastructure/adapters/outbound/mfa/OtplibTotpService.js';
 import { QrCodeDataUrlGenerator } from './modules/identity-access/infrastructure/adapters/outbound/mfa/QrCodeDataUrlGenerator.js';
 import { createAuthenticateActorUseCase } from './modules/identity-access/application/auth/AuthenticateActor.js';
+import { createBeginUserLoginUseCase } from './modules/identity-access/application/auth/BeginUserLogin.js';
+import { createSessionIssuer } from './modules/identity-access/application/auth/SessionIssuer.js';
+import { createIssueSessionUseCase } from './modules/identity-access/application/auth/IssueSession.js';
 import { createLogoutUseCase } from './modules/identity-access/application/auth/Logout.js';
+import { MongoMfaChallengeRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoMfaChallengeRepository.js';
 import { createPasswordCredential } from './modules/identity-access/domain/model/value-objects/PasswordCredential.js';
 import { MongoAuditLogRepository } from './modules/audit/infrastructure/adapters/outbound/mongo/MongoAuditLogRepository.js';
 import { createRecordAuditLogUseCase } from './modules/audit/application/RecordAuditLog.js';
@@ -84,15 +88,18 @@ const TRUST_PROXY = parseTrustProxy(process.env.TRUST_PROXY);
 const AUTH_TOTP_ISSUER = process.env.AUTH_TOTP_ISSUER ?? 'AntiFraud';
 // two-step-login PR1a (design "TTLs"): short-lived single-use MFA token
 // TTLs, parsed here (TOKEN_SECRET pattern) so the env contract exists from
-// this PR onward. Not yet consumed by a use case — `BeginUserLogin`/
-// `IssueSession` (PR1b/PR2) are the first real callers; wiring
-// `MongoMfaChallengeRepository` with no caller yet would be dead code
-// (this same file's existing precedent: "construction was deferred ... to
-// avoid dead code with no caller yet"), so PR1a only establishes and logs
-// the parsed values — the collection/index/repository are already fully
-// exercised by PR1a's own integration tests.
+// this PR onward. two-step-login PR2: `BeginUserLogin`/`IssueSession` are
+// now the first real callers — `MongoMfaChallengeRepository` is
+// constructed below (no longer dead code).
 const AUTH_MFA_CHALLENGE_TTL_SECONDS = Number(process.env.AUTH_MFA_CHALLENGE_TTL_SECONDS ?? 300);
 const AUTH_MFA_ENROLLMENT_TTL_SECONDS = Number(process.env.AUTH_MFA_ENROLLMENT_TTL_SECONDS ?? 900);
+// two-step-login PR2 (design "TTLs"): the real `Sessions` row TTLs a minted
+// ACCESS/REFRESH pair carries — first consumed by `SessionIssuer` in this
+// PR (`IssueSession`'s challenge path); PR3's `ActivateMfa` reuses the same
+// collaborator/TTLs for the enrollment hand-off.
+const AUTH_SESSION_TTL_SECONDS = Number(process.env.AUTH_SESSION_TTL_SECONDS ?? 900);
+const AUTH_REFRESH_TTL_SECONDS = Number(process.env.AUTH_REFRESH_TTL_SECONDS ?? 1_209_600);
+const AUTH_FAMILY_TTL_SECONDS = Number(process.env.AUTH_FAMILY_TTL_SECONDS ?? 2_592_000);
 
 async function bootstrap(): Promise<void> {
   // Fail-closed (design D4, D6): AUTH_MODE=trusted-header trusts client
@@ -127,6 +134,11 @@ async function bootstrap(): Promise<void> {
   // audit-logs-foundation Phase 4 (design D-A2/D-A4, task 4.0): first real
   // consumer of the `audit` module — construction was deferred out of PR2
   // (feat/audit-recorder-wiring) to avoid dead code with no caller yet.
+  // two-step-login PR2: first real consumer — construction was deferred out
+  // of PR1a to avoid dead code with no caller yet (this same file's
+  // existing precedent).
+  const mfaChallenges = new MongoMfaChallengeRepository(db);
+
   const auditLogs = new MongoAuditLogRepository(db);
   const recordAuditLog = createRecordAuditLogUseCase({ auditLogs, clock, generateAuditLogId });
   const auditRecorder = createAuditRecorderAdapter(recordAuditLog);
@@ -219,14 +231,35 @@ async function bootstrap(): Promise<void> {
   // Constructed here, not imported into `application/`, because `application`
   // may only depend on its own module's `domain` (eslint `boundaries`).
   const dummyCredential = createPasswordCredential(DUMMY_PASSWORD_HASH);
+  // two-step-login PR2 (design "IssueSession flow", "PR Slicing" Slice 2):
+  // the shared session-minting collaborator — `IssueSession` (this PR) and
+  // `ActivateMfa` (PR3) both call it inside their own transaction.
+  const sessionIssuer = createSessionIssuer({
+    sessionTokenService,
+    sessions,
+    tokenKeyVersion: TOKEN_KEY_VERSION,
+    ttls: {
+      sessionSeconds: AUTH_SESSION_TTL_SECONDS,
+      refreshSeconds: AUTH_REFRESH_TTL_SECONDS,
+      familySeconds: AUTH_FAMILY_TTL_SECONDS,
+    },
+  });
   const identityAccessAuthRouter = authRouter({
-    authenticateUser: createAuthenticateActorUseCase({
-      gateway: new UserActorGateway(organizations, userRepositoryFactory),
-      passwordHasher,
+    beginUserLogin: createBeginUserLoginUseCase({
+      authenticateActor: createAuthenticateActorUseCase({
+        gateway: new UserActorGateway(organizations, userRepositoryFactory),
+        passwordHasher,
+        clock,
+        dummyCredential,
+        actorType: 'USER',
+        auditRecorder,
+      }),
+      sessionTokenService,
+      mfaChallenges,
       clock,
-      dummyCredential,
-      actorType: 'USER',
-      auditRecorder,
+      tokenKeyVersion: TOKEN_KEY_VERSION,
+      challengeTtlSeconds: AUTH_MFA_CHALLENGE_TTL_SECONDS,
+      enrollmentTtlSeconds: AUTH_MFA_ENROLLMENT_TTL_SECONDS,
     }),
     authenticateOrganization: createAuthenticateActorUseCase({
       gateway: new OrganizationActorGateway(organizations),
@@ -234,6 +267,17 @@ async function bootstrap(): Promise<void> {
       clock,
       dummyCredential,
       actorType: 'ORGANIZATION',
+      auditRecorder,
+    }),
+    issueSession: createIssueSessionUseCase({
+      sessionTokenService,
+      mfaChallenges,
+      userRepositoryFactory,
+      totpService,
+      secretCipher,
+      unitOfWork,
+      clock,
+      issueSessionFor: sessionIssuer,
       auditRecorder,
     }),
     logout: createLogoutUseCase({ sessions, clock, auditRecorder }),

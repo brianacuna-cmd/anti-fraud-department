@@ -4,6 +4,8 @@ import { createErrorHandler } from '../../../src/shared/http/errorHandler.js';
 import { identityAccessErrorStatus } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/errorStatus.js';
 import { authRouter } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/authRouter.js';
 import type { createAuthenticateActorUseCase } from '../../../src/modules/identity-access/application/auth/AuthenticateActor.js';
+import type { createBeginUserLoginUseCase } from '../../../src/modules/identity-access/application/auth/BeginUserLogin.js';
+import type { createIssueSessionUseCase } from '../../../src/modules/identity-access/application/auth/IssueSession.js';
 import type { createLogoutUseCase } from '../../../src/modules/identity-access/application/auth/Logout.js';
 
 /**
@@ -16,14 +18,25 @@ import type { createLogoutUseCase } from '../../../src/modules/identity-access/a
 describe('authRouter IP capture (design D-A7)', () => {
   it('injects req.ip as ipAddress into the login Input, outside the parsed body', async () => {
     const calls: unknown[] = [];
-    const authenticateUser = (async (input: unknown) => {
+    const beginUserLogin = (async (input: unknown) => {
       calls.push(input);
-      return { actorId: 'user-1', actorType: 'USER', organizationId: null };
-    }) as unknown as ReturnType<typeof createAuthenticateActorUseCase>;
+      return { kind: 'enrollment', token: 'enrollment-token' };
+    }) as unknown as ReturnType<typeof createBeginUserLoginUseCase>;
+    const authenticateOrganization = (async () => ({
+      actorId: 'org-1',
+      actorType: 'ORGANIZATION',
+      organizationId: null,
+      mfa: { enabled: false },
+    })) as unknown as ReturnType<typeof createAuthenticateActorUseCase>;
 
     const router = authRouter({
-      authenticateUser,
-      authenticateOrganization: authenticateUser,
+      beginUserLogin,
+      authenticateOrganization,
+      issueSession: (async () => ({
+        accessToken: 'a',
+        refreshToken: 'r',
+        expiresAt: '2026-01-01T00:00:00.000Z',
+      })) as unknown as ReturnType<typeof createIssueSessionUseCase>,
       logout: (async () => undefined) as unknown as ReturnType<typeof createLogoutUseCase>,
     });
 
@@ -53,12 +66,19 @@ describe('authRouter IP capture (design D-A7)', () => {
     const calls: unknown[] = [];
     const authenticateOrganization = (async (input: unknown) => {
       calls.push(input);
-      return { actorId: 'org-1', actorType: 'ORGANIZATION', organizationId: null };
+      return { actorId: 'org-1', actorType: 'ORGANIZATION', organizationId: null, mfa: { enabled: false } };
     }) as unknown as ReturnType<typeof createAuthenticateActorUseCase>;
 
     const router = authRouter({
-      authenticateUser: authenticateOrganization,
+      beginUserLogin: (async () => ({ kind: 'enrollment', token: 'x' })) as unknown as ReturnType<
+        typeof createBeginUserLoginUseCase
+      >,
       authenticateOrganization,
+      issueSession: (async () => ({
+        accessToken: 'a',
+        refreshToken: 'r',
+        expiresAt: '2026-01-01T00:00:00.000Z',
+      })) as unknown as ReturnType<typeof createIssueSessionUseCase>,
       logout: (async () => undefined) as unknown as ReturnType<typeof createLogoutUseCase>,
     });
 

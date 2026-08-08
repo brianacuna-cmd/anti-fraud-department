@@ -22,6 +22,8 @@ describe('identityAccessErrorStatus', () => {
       MFA_TOKEN_INVALID: 401,
       // two-step-login PR1a (design D3): shared AuthScopeError's code.
       FORBIDDEN_AUTH_SCOPE: 403,
+      // two-step-login PR2 (design "IssueSession flow"): challenge-token rejection.
+      MFA_CHALLENGE_INVALID: 401,
     });
   });
 });

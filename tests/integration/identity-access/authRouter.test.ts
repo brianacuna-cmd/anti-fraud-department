@@ -7,12 +7,24 @@ import { createAuthContext } from '../../../src/shared/kernel/AuthContext.js';
 import { identityAccessErrorStatus } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/errorStatus.js';
 import { authRouter } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/authRouter.js';
 import { createAuthenticateActorUseCase } from '../../../src/modules/identity-access/application/auth/AuthenticateActor.js';
+import { createBeginUserLoginUseCase } from '../../../src/modules/identity-access/application/auth/BeginUserLogin.js';
+import { createIssueSessionUseCase } from '../../../src/modules/identity-access/application/auth/IssueSession.js';
+import { createSessionIssuer } from '../../../src/modules/identity-access/application/auth/SessionIssuer.js';
 import { createLogoutUseCase } from '../../../src/modules/identity-access/application/auth/Logout.js';
 import { InMemoryActorCredentialGateway } from '../../helpers/identity-access/InMemoryActorCredentialGateway.js';
 import { InMemorySessionRepository } from '../../helpers/identity-access/InMemorySessionRepository.js';
+import { InMemoryUserRepositoryFactory } from '../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
+import { InMemoryUnitOfWork } from '../../helpers/identity-access/InMemoryUnitOfWork.js';
+import { InMemoryMfaChallengeStore } from '../../helpers/identity-access/InMemoryMfaChallengeStore.js';
 import { FakePasswordHasher } from '../../helpers/identity-access/FakePasswordHasher.js';
 import { InMemoryAuditRecorder } from '../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FixedClock } from '../../helpers/FixedClock.js';
+import { AesGcmSessionTokenService } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSessionTokenService.js';
+import { AesGcmSecretCipher } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
+import { OtplibTotpService } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mfa/OtplibTotpService.js';
+import { User } from '../../../src/modules/identity-access/domain/model/aggregates/User.js';
+import { createUserId } from '../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
+import { createEmail } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 import { Session } from '../../../src/modules/identity-access/domain/model/aggregates/Session.js';
 import { createSessionId } from '../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
 import { createFamilyId } from '../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
@@ -44,28 +56,52 @@ const ORG_RECORD: ActorCredentialRecord = {
   mfa: { enabled: false, secret: null },
 };
 
+const SECRET_CIPHER = new AesGcmSecretCipher('test-secret', 1);
+const TOTP_SERVICE = new OtplibTotpService();
+const TOKEN_SERVICE = new AesGcmSessionTokenService(SECRET_CIPHER);
+
 function buildApp(): {
   app: Express;
   userGateway: InMemoryActorCredentialGateway;
   organizationGateway: InMemoryActorCredentialGateway;
   sessions: InMemorySessionRepository;
+  userRepositoryFactory: InMemoryUserRepositoryFactory;
+  mfaChallenges: InMemoryMfaChallengeStore;
 } {
   const userGateway = new InMemoryActorCredentialGateway();
   const organizationGateway = new InMemoryActorCredentialGateway();
   const sessions = new InMemorySessionRepository();
+  const userRepositoryFactory = new InMemoryUserRepositoryFactory();
+  const mfaChallenges = new InMemoryMfaChallengeStore();
   const passwordHasher = new FakePasswordHasher();
   const clock = new FixedClock(NOW);
   const dummyCredential = createPasswordCredential('hashed:dummy-password');
   const auditRecorder = new InMemoryAuditRecorder();
 
+  const authenticateUser = createAuthenticateActorUseCase({
+    gateway: userGateway,
+    passwordHasher,
+    clock,
+    dummyCredential,
+    actorType: 'USER',
+    auditRecorder,
+  });
+  const sessionIssuer = createSessionIssuer({
+    sessionTokenService: TOKEN_SERVICE,
+    sessions,
+    tokenKeyVersion: 1,
+    ttls: { sessionSeconds: 900, refreshSeconds: 1_209_600, familySeconds: 2_592_000 },
+  });
+
   const router = authRouter({
-    authenticateUser: createAuthenticateActorUseCase({
-      gateway: userGateway,
-      passwordHasher,
+    beginUserLogin: createBeginUserLoginUseCase({
+      authenticateActor: authenticateUser,
+      sessionTokenService: TOKEN_SERVICE,
+      mfaChallenges,
       clock,
-      dummyCredential,
-      actorType: 'USER',
-      auditRecorder,
+      tokenKeyVersion: 1,
+      challengeTtlSeconds: 300,
+      enrollmentTtlSeconds: 900,
     }),
     authenticateOrganization: createAuthenticateActorUseCase({
       gateway: organizationGateway,
@@ -73,6 +109,17 @@ function buildApp(): {
       clock,
       dummyCredential,
       actorType: 'ORGANIZATION',
+      auditRecorder,
+    }),
+    issueSession: createIssueSessionUseCase({
+      sessionTokenService: TOKEN_SERVICE,
+      mfaChallenges,
+      userRepositoryFactory,
+      totpService: TOTP_SERVICE,
+      secretCipher: SECRET_CIPHER,
+      unitOfWork: new InMemoryUnitOfWork(),
+      clock,
+      issueSessionFor: sessionIssuer,
       auditRecorder,
     }),
     logout: createLogoutUseCase({ sessions, clock, auditRecorder }),
@@ -95,7 +142,7 @@ function buildApp(): {
     errorHandler: createErrorHandler(identityAccessErrorStatus),
   });
 
-  return { app, userGateway, organizationGateway, sessions };
+  return { app, userGateway, organizationGateway, sessions, userRepositoryFactory, mfaChallenges };
 }
 
 describe('authRouter (e2e, in-memory gateways)', () => {
@@ -111,7 +158,7 @@ describe('authRouter (e2e, in-memory gateways)', () => {
       expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
     });
 
-    it('returns 200 AUTHENTICATED on correct credentials', async () => {
+    it('returns an mfa_enrollment token (not a session) when mfa.enabled=false', async () => {
       const { app, userGateway } = buildApp();
       userGateway.seed('alice@example.com', USER_RECORD, 'acme');
 
@@ -120,7 +167,21 @@ describe('authRouter (e2e, in-memory gateways)', () => {
         .send({ organizationSlug: 'acme', email: 'alice@example.com', password: 'correct-password' });
 
       expect(response.status).toBe(200);
-      expect(response.body).toEqual({ status: 'AUTHENTICATED' });
+      expect(response.body.status).toBe('MFA_ENROLLMENT_REQUIRED');
+      expect(typeof response.body.enrollmentToken).toBe('string');
+    });
+
+    it('returns an mfa_challenge token (not a session) when mfa.enabled=true', async () => {
+      const { app, userGateway } = buildApp();
+      userGateway.seed('alice@example.com', { ...USER_RECORD, mfa: { enabled: true, secret: 'enc' } }, 'acme');
+
+      const response = await request(app)
+        .post('/api/v1/auth/users/login')
+        .send({ organizationSlug: 'acme', email: 'alice@example.com', password: 'correct-password' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe('MFA_CHALLENGE_REQUIRED');
+      expect(typeof response.body.challengeToken).toBe('string');
     });
 
     it('an unknown email and a wrong password return the IDENTICAL 401 shape', async () => {
@@ -172,6 +233,127 @@ describe('authRouter (e2e, in-memory gateways)', () => {
 
       expect(response.status).toBe(423);
       expect(response.body.error.code).toBe('ACCOUNT_LOCKED');
+    });
+  });
+
+  describe('POST /auth/users/mfa (challenge path, two-step-login PR2)', () => {
+    async function seedActivatedUser(
+      userRepositoryFactory: InMemoryUserRepositoryFactory,
+      plaintextSecret: string,
+    ): Promise<void> {
+      const user = User.create({
+        id: createUserId('user-1'),
+        organizationId: ORG_ID,
+        email: createEmail('alice@example.com'),
+        credential: createPasswordCredential('hash'),
+        firstName: 'Alice',
+        lastName: 'Smith',
+        now: NOW,
+      })
+        .startMfaEnrollment(SECRET_CIPHER.encrypt(plaintextSecret), NOW)
+        .confirmMfaEnrollment(NOW);
+      await userRepositoryFactory.forTenant(ORG_ID).save(user);
+    }
+
+    it('login -> mfa with a valid TOTP issues ACCESS+REFRESH tokens (e2e, task 2.6)', async () => {
+      const { app, userGateway, userRepositoryFactory } = buildApp();
+      const plaintextSecret = TOTP_SERVICE.generateSecret();
+      userGateway.seed('alice@example.com', { ...USER_RECORD, mfa: { enabled: true, secret: SECRET_CIPHER.encrypt(plaintextSecret) } }, 'acme');
+      await seedActivatedUser(userRepositoryFactory, plaintextSecret);
+
+      const loginResponse = await request(app)
+        .post('/api/v1/auth/users/login')
+        .send({ organizationSlug: 'acme', email: 'alice@example.com', password: 'correct-password' });
+      expect(loginResponse.body.status).toBe('MFA_CHALLENGE_REQUIRED');
+
+      const { authenticator } = await import('otplib');
+      const totp = authenticator.generate(plaintextSecret);
+      const mfaResponse = await request(app)
+        .post('/api/v1/auth/users/mfa')
+        .send({ challengeToken: loginResponse.body.challengeToken, totp });
+
+      expect(mfaResponse.status).toBe(200);
+      expect(typeof mfaResponse.body.accessToken).toBe('string');
+      expect(typeof mfaResponse.body.refreshToken).toBe('string');
+    });
+
+    it('rejects wrong TOTP, expired, replayed, and unknown-jti challenge tokens (task 2.7)', async () => {
+      const { app, userGateway, userRepositoryFactory, mfaChallenges } = buildApp();
+      const plaintextSecret = TOTP_SERVICE.generateSecret();
+      userGateway.seed('alice@example.com', { ...USER_RECORD, mfa: { enabled: true, secret: SECRET_CIPHER.encrypt(plaintextSecret) } }, 'acme');
+      await seedActivatedUser(userRepositoryFactory, plaintextSecret);
+
+      const loginResponse = await request(app)
+        .post('/api/v1/auth/users/login')
+        .send({ organizationSlug: 'acme', email: 'alice@example.com', password: 'correct-password' });
+      const challengeToken = loginResponse.body.challengeToken as string;
+
+      // Wrong TOTP: rejected, jti still unconsumed.
+      const wrongTotp = await request(app)
+        .post('/api/v1/auth/users/mfa')
+        .send({ challengeToken, totp: '000000' });
+      expect(wrongTotp.status).toBe(401);
+      expect(wrongTotp.body.error.code).toBe('MFA_TOKEN_INVALID');
+
+      // Unknown jti: a syntactically valid but never-appended challenge token.
+      const unknownJtiToken = TOKEN_SERVICE.issue({
+        tokenType: 'mfa_challenge',
+        keyVersion: 1,
+        jti: 'never-appended',
+        userId: 'user-1',
+        organizationId: 'org-1',
+        actorType: 'USER',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      });
+      const { authenticator } = await import('otplib');
+      const totp = authenticator.generate(plaintextSecret);
+      const unknownJti = await request(app)
+        .post('/api/v1/auth/users/mfa')
+        .send({ challengeToken: unknownJtiToken, totp });
+      expect(unknownJti.status).toBe(401);
+      expect(unknownJti.body.error.code).toBe('MFA_CHALLENGE_INVALID');
+
+      // Expired token: self-expiry check rejects before any store lookup.
+      const expiredToken = TOKEN_SERVICE.issue({
+        tokenType: 'mfa_challenge',
+        keyVersion: 1,
+        jti: 'expired-jti',
+        userId: 'user-1',
+        organizationId: 'org-1',
+        actorType: 'USER',
+        expiresAt: '2020-01-01T00:00:00.000Z',
+      });
+      const expired = await request(app)
+        .post('/api/v1/auth/users/mfa')
+        .send({ challengeToken: expiredToken, totp });
+      expect(expired.status).toBe(401);
+      expect(expired.body.error.code).toBe('MFA_CHALLENGE_INVALID');
+
+      // Replay: the valid token succeeds once, then is rejected on reuse.
+      const firstUse = await request(app)
+        .post('/api/v1/auth/users/mfa')
+        .send({ challengeToken, totp });
+      expect(firstUse.status).toBe(200);
+
+      const replayTotp = authenticator.generate(plaintextSecret);
+      const replay = await request(app)
+        .post('/api/v1/auth/users/mfa')
+        .send({ challengeToken, totp: replayTotp });
+      expect(replay.status).toBe(401);
+      expect(replay.body.error.code).toBe('MFA_CHALLENGE_INVALID');
+      expect(mfaChallenges).toBeDefined();
+    });
+
+    it('rejects an ACCESS-typed (or otherwise malformed) token at /mfa', async () => {
+      const { app } = buildApp();
+      const accessToken = TOKEN_SERVICE.issue({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+
+      const response = await request(app)
+        .post('/api/v1/auth/users/mfa')
+        .send({ challengeToken: accessToken, totp: '123456' });
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.code).toBe('MFA_CHALLENGE_INVALID');
     });
   });
 
