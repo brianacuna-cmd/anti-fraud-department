@@ -20,3 +20,16 @@ export const organizationsLoginSchema = z.object({
 });
 
 export type OrganizationsLoginBody = z.infer<typeof organizationsLoginSchema>;
+
+/**
+ * POST /auth/users/mfa body (two-step-login PR2, design "IssueSession
+ * flow") — the challenge token travels in the BODY, not as a Bearer header
+ * (design D5: this route is public like /login, no `AuthContext` exists
+ * yet).
+ */
+export const usersMfaSchema = z.object({
+  challengeToken: z.string().min(1),
+  totp: z.string().min(1),
+});
+
+export type UsersMfaBody = z.infer<typeof usersMfaSchema>;

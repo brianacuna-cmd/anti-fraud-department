@@ -60,8 +60,30 @@ describe('createAuthenticateActorUseCase', () => {
       organizationSlug: 'acme',
     });
 
-    expect(result).toEqual({ actorId: 'user-1', actorType: 'USER', organizationId: ORG_ID });
+    expect(result).toEqual({
+      actorId: 'user-1',
+      actorType: 'USER',
+      organizationId: ORG_ID,
+      mfa: { enabled: false },
+    });
     expect(gateway.registeredSuccesses).toEqual(['user-1']);
+  });
+
+  it('propagates mfa.enabled=true from the resolved actor record (two-step-login PR2)', async () => {
+    const { authenticateActor, gateway } = buildUseCase();
+    gateway.seed(
+      'alice@example.com',
+      { ...USER_RECORD, mfa: { enabled: true, secret: 'encrypted-secret' } },
+      'acme',
+    );
+
+    const result = await authenticateActor({
+      email: 'alice@example.com',
+      password: 'correct-password',
+      organizationSlug: 'acme',
+    });
+
+    expect(result.mfa).toEqual({ enabled: true });
   });
 
   it('rejects an unknown email with INVALID_CREDENTIALS, running a dummy verify for timing safety (design D24)', async () => {

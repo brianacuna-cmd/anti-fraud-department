@@ -110,3 +110,16 @@ export function mfaEnrollmentNotPending(): IdentityAccessError {
 export function mfaTokenInvalid(): IdentityAccessError {
   return new IdentityAccessError('MFA_TOKEN_INVALID', 'MFA token is invalid or expired');
 }
+
+// two-step-login PR2 (design "IssueSession flow"): challenge-token rejection.
+
+/**
+ * The submitted `mfa_challenge` token is malformed, the wrong token type,
+ * self-expired, references an unknown/expired/already-consumed jti, or the
+ * user it claims no longer resolves — every one of those failure modes must
+ * be INDISTINGUISHABLE to the caller (spec: replay/expired/unknown-jti all
+ * reject uniformly), so ONE error covers all of them.
+ */
+export function mfaChallengeInvalid(): IdentityAccessError {
+  return new IdentityAccessError('MFA_CHALLENGE_INVALID', 'MFA challenge is invalid, expired, or already used');
+}
