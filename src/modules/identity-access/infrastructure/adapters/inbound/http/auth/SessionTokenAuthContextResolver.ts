@@ -3,7 +3,7 @@ import type { AuthContext } from '../../../../../../../shared/kernel/AuthContext
 import { createAuthContext } from '../../../../../../../shared/kernel/AuthContext.js';
 import { toDate } from '../../../../../../../shared/time/Instant.js';
 import type { AuthContextResolver } from './AuthContextResolver.js';
-import type { SessionTokenService } from '../../../../../domain/ports/SessionTokenService.js';
+import type { ScopedMfaPayload, SessionTokenService } from '../../../../../domain/ports/SessionTokenService.js';
 import type { SessionRepository } from '../../../../../domain/ports/SessionRepository.js';
 
 const AUTHORIZATION_HEADER = 'authorization';
@@ -47,7 +47,15 @@ export class SessionTokenAuthContextResolver implements AuthContextResolver {
     }
 
     const payload = this.sessionTokenService.read(token);
-    if (!payload || payload.tokenType !== 'ACCESS') {
+    if (!payload) {
+      return null;
+    }
+
+    if (payload.tokenType === 'mfa_challenge' || payload.tokenType === 'mfa_enrollment') {
+      return this.resolveScoped(payload);
+    }
+
+    if (payload.tokenType !== 'ACCESS') {
       return null;
     }
 
@@ -67,6 +75,33 @@ export class SessionTokenAuthContextResolver implements AuthContextResolver {
       organizationId: session.organizationId,
       actorType: session.actorType,
       sessionId: session.id,
+    });
+  }
+
+  /**
+   * Scoped branch for `mfa_challenge`/`mfa_enrollment` tokens (design D5,
+   * two-step-login PR3) — these carry NO `Sessions` row of their own
+   * (design D2), so unlike ACCESS there is deliberately no repository
+   * lookup here: identity + expiry both ride in the token's own claims
+   * (`ScopedMfaPayload`), checked via self-expiry only. Consumption
+   * (`MfaChallengeStore.consume`) happens downstream, at the use case that
+   * actually spends the token (`IssueSession`/`ActivateMfa`) — a resolver
+   * is invoked on EVERY request an enrollment token is presented on
+   * (including ones it will be denied on by `requireAuthContext`'s
+   * default-deny), so consuming here would burn the single use on a
+   * request that never even reaches an authorized route.
+   */
+  private resolveScoped(payload: ScopedMfaPayload): AuthContext | null {
+    if (new Date(payload.expiresAt).getTime() <= Date.now()) {
+      return null;
+    }
+
+    return createAuthContext({
+      userId: payload.userId,
+      organizationId: payload.organizationId,
+      actorType: payload.actorType,
+      purpose: payload.tokenType === 'mfa_challenge' ? 'challenge' : 'enrollment',
+      mfaJti: payload.jti,
     });
   }
 }

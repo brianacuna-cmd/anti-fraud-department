@@ -21,11 +21,13 @@ describe('AuthContext', () => {
       sessionId: 'session-1',
       ipAddress: '203.0.113.1',
       purpose: 'full',
+      mfaJti: null,
     });
     expect(Object.keys(auth).sort()).toEqual([
       'actorType',
       'ipAddress',
       'isPlatformAdmin',
+      'mfaJti',
       'organizationId',
       'purpose',
       'roleId',
@@ -85,5 +87,17 @@ describe('AuthContext', () => {
 
     expect(challenge.purpose).toBe('challenge');
     expect(enrollment.purpose).toBe('enrollment');
+  });
+
+  it('defaults mfaJti to null when omitted (two-step-login PR3 — additive, optional field)', () => {
+    const auth = createAuthContext({ userId: 'user-10', organizationId: 'org-10' });
+
+    expect(auth.mfaJti).toBeNull();
+  });
+
+  it('accepts an explicit mfaJti', () => {
+    const auth = createAuthContext({ userId: 'user-11', organizationId: 'org-11', purpose: 'enrollment', mfaJti: 'jti-1' });
+
+    expect(auth.mfaJti).toBe('jti-1');
   });
 });
