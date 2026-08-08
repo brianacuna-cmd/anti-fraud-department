@@ -26,6 +26,7 @@ describe('TrustedHeaderAuthContextResolver', () => {
       sessionId: null,
       ipAddress: null,
       purpose: 'full',
+      mfaJti: null,
     });
   });
 

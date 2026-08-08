@@ -175,6 +175,22 @@ async function bootstrap(): Promise<void> {
     deleteOrganization: createDeleteOrganizationUseCase({ transitionOrganizationStatus }),
   });
 
+  // two-step-login PR2 (design "IssueSession flow", "PR Slicing" Slice 2):
+  // the shared session-minting collaborator — `IssueSession` and `ActivateMfa`
+  // (PR3, forced-enrollment hand-off) both call it inside their own
+  // transaction. Constructed here, ahead of `identityAccessUsersRouter`,
+  // because `ActivateMfa` (PR3) is now a real consumer.
+  const sessionIssuer = createSessionIssuer({
+    sessionTokenService,
+    sessions,
+    tokenKeyVersion: TOKEN_KEY_VERSION,
+    ttls: {
+      sessionSeconds: AUTH_SESSION_TTL_SECONDS,
+      refreshSeconds: AUTH_REFRESH_TTL_SECONDS,
+      familySeconds: AUTH_FAMILY_TTL_SECONDS,
+    },
+  });
+
   const identityAccessUsersRouter = userRouter({
     createUser: createCreateUserUseCase({
       userRepositoryFactory,
@@ -205,6 +221,8 @@ async function bootstrap(): Promise<void> {
       totpService,
       secretCipher,
       auditRecorder,
+      mfaChallenges,
+      issueSessionFor: sessionIssuer,
     }),
     disableMfa: createDisableMfaUseCase({ userRepositoryFactory, unitOfWork, clock, auditRecorder }),
   });
@@ -231,19 +249,6 @@ async function bootstrap(): Promise<void> {
   // Constructed here, not imported into `application/`, because `application`
   // may only depend on its own module's `domain` (eslint `boundaries`).
   const dummyCredential = createPasswordCredential(DUMMY_PASSWORD_HASH);
-  // two-step-login PR2 (design "IssueSession flow", "PR Slicing" Slice 2):
-  // the shared session-minting collaborator — `IssueSession` (this PR) and
-  // `ActivateMfa` (PR3) both call it inside their own transaction.
-  const sessionIssuer = createSessionIssuer({
-    sessionTokenService,
-    sessions,
-    tokenKeyVersion: TOKEN_KEY_VERSION,
-    ttls: {
-      sessionSeconds: AUTH_SESSION_TTL_SECONDS,
-      refreshSeconds: AUTH_REFRESH_TTL_SECONDS,
-      familySeconds: AUTH_FAMILY_TTL_SECONDS,
-    },
-  });
   const identityAccessAuthRouter = authRouter({
     beginUserLogin: createBeginUserLoginUseCase({
       authenticateActor: createAuthenticateActorUseCase({

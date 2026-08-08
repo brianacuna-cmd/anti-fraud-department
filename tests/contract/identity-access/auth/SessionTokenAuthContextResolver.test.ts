@@ -12,6 +12,8 @@ import { fromDate } from '../../../../src/shared/time/Instant.js';
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const FAR_FUTURE = fromDate(new Date('2099-01-01T00:00:00.000Z'));
 const PAST = fromDate(new Date('2020-01-01T00:00:00.000Z'));
+const FAR_FUTURE_ISO = '2099-01-01T00:00:00.000Z';
+const PAST_ISO = '2020-01-01T00:00:00.000Z';
 
 function buildRequest(bearerToken?: string): Request {
   return {
@@ -149,5 +151,62 @@ describe('SessionTokenAuthContextResolver', () => {
     });
 
     expect(await resolver.resolve(buildRequest(token))).toBeNull();
+  });
+
+  describe('scoped mfa_challenge/mfa_enrollment tokens (two-step-login PR3, design D5)', () => {
+    it('resolves a purpose:"enrollment" AuthContext for a valid mfa_enrollment token, with NO Sessions lookup', async () => {
+      const { tokenService, resolver } = buildFixture();
+      const token = tokenService.issue({
+        tokenType: 'mfa_enrollment',
+        keyVersion: 1,
+        jti: 'jti-1',
+        userId: 'user-1',
+        organizationId: 'org-1',
+        actorType: 'USER',
+        expiresAt: FAR_FUTURE_ISO,
+      });
+
+      const auth = await resolver.resolve(buildRequest(token));
+
+      expect(auth?.userId).toBe('user-1');
+      expect(auth?.organizationId).toBe('org-1');
+      expect(auth?.actorType).toBe('USER');
+      expect(auth?.purpose).toBe('enrollment');
+      expect(auth?.mfaJti).toBe('jti-1');
+      expect(auth?.sessionId).toBeNull();
+    });
+
+    it('resolves a purpose:"challenge" AuthContext for a valid mfa_challenge token (defense-in-depth — every route still denies it via default-deny)', async () => {
+      const { tokenService, resolver } = buildFixture();
+      const token = tokenService.issue({
+        tokenType: 'mfa_challenge',
+        keyVersion: 1,
+        jti: 'jti-2',
+        userId: 'user-1',
+        organizationId: 'org-1',
+        actorType: 'USER',
+        expiresAt: FAR_FUTURE_ISO,
+      });
+
+      const auth = await resolver.resolve(buildRequest(token));
+
+      expect(auth?.purpose).toBe('challenge');
+      expect(auth?.mfaJti).toBe('jti-2');
+    });
+
+    it('returns null for a self-expired mfa_enrollment token, without ever consulting a store', async () => {
+      const { tokenService, resolver } = buildFixture();
+      const token = tokenService.issue({
+        tokenType: 'mfa_enrollment',
+        keyVersion: 1,
+        jti: 'jti-3',
+        userId: 'user-1',
+        organizationId: 'org-1',
+        actorType: 'USER',
+        expiresAt: PAST_ISO,
+      });
+
+      expect(await resolver.resolve(buildRequest(token))).toBeNull();
+    });
   });
 });

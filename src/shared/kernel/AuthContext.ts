@@ -49,6 +49,18 @@ export interface AuthContext {
    * `requireAuthContext`'s new default-deny check.
    */
   readonly purpose: AuthContextPurpose;
+  /**
+   * The `jti` of the scoped `mfa_challenge`/`mfa_enrollment` token this
+   * context was resolved from (two-step-login PR3) — `null` for a `'full'`
+   * scope context (a real `Sessions` row has no jti of its own) and for any
+   * pre-existing call site (additive, like `purpose` before it).
+   * `ActivateMfa` reads this to atomically consume the enrollment token in
+   * the SAME transaction it mints the hand-off session in (design D4):
+   * the `AuthContext` is the only carrier from the HTTP layer down to the
+   * use case, since `ActivateMfa`'s input never re-reads the raw Bearer
+   * token.
+   */
+  readonly mfaJti: string | null;
 }
 
 export interface CreateAuthContextInput {
@@ -60,6 +72,7 @@ export interface CreateAuthContextInput {
   readonly sessionId?: string | null;
   readonly ipAddress?: string | null;
   readonly purpose?: AuthContextPurpose;
+  readonly mfaJti?: string | null;
 }
 
 /**
@@ -92,5 +105,6 @@ export function createAuthContext(input: CreateAuthContextInput): AuthContext {
     sessionId: input.sessionId ?? null,
     ipAddress: input.ipAddress ?? null,
     purpose: input.purpose ?? 'full',
+    mfaJti: input.mfaJti ?? null,
   };
 }

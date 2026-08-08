@@ -20,20 +20,32 @@ import { createDeleteUserUseCase } from '../../../src/modules/identity-access/ap
 import { createSetupMfaUseCase } from '../../../src/modules/identity-access/application/SetupMfa.js';
 import { createActivateMfaUseCase } from '../../../src/modules/identity-access/application/ActivateMfa.js';
 import { createDisableMfaUseCase } from '../../../src/modules/identity-access/application/DisableMfa.js';
+import { createSessionIssuer } from '../../../src/modules/identity-access/application/auth/SessionIssuer.js';
 import { generateUserId } from '../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
 import { OtplibTotpService } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mfa/OtplibTotpService.js';
 import { AesGcmSecretCipher } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
+import { AesGcmSessionTokenService } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSessionTokenService.js';
+import { InMemoryMfaChallengeStore } from '../../helpers/identity-access/InMemoryMfaChallengeStore.js';
+import { InMemorySessionRepository } from '../../helpers/identity-access/InMemorySessionRepository.js';
+import { SessionTokenAuthContextResolver } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/SessionTokenAuthContextResolver.js';
+import { createAuthContextMiddleware } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/authContextMiddleware.js';
 import { FakeQrCodeGenerator } from '../../helpers/identity-access/FakeQrCodeGenerator.js';
 import { authenticator } from 'otplib';
+import { fromDate } from '../../../src/shared/time/Instant.js';
 
 const ORG_1_USER = createAuthContext({ userId: 'u1', organizationId: 'org-1', isPlatformAdmin: false });
 const ORG_2_USER = createAuthContext({ userId: 'u2', organizationId: 'org-2', isPlatformAdmin: false });
 const PLATFORM_ADMIN_ORG_1 = createAuthContext({ userId: 'u3', organizationId: 'org-1', isPlatformAdmin: true });
 
+const SECRET_CIPHER_FIXTURE = new AesGcmSecretCipher('test-secret', 1);
+const TOKEN_SERVICE_FIXTURE = new AesGcmSessionTokenService(SECRET_CIPHER_FIXTURE);
+
 function buildApp(
   actorPerRequest: () => AuthContext,
   userRepositoryFactory: InMemoryUserRepositoryFactory = new InMemoryUserRepositoryFactory(),
-): { app: Express; userRepositoryFactory: InMemoryUserRepositoryFactory } {
+  mfaChallenges: InMemoryMfaChallengeStore = new InMemoryMfaChallengeStore(),
+  sessions: InMemorySessionRepository = new InMemorySessionRepository(),
+): { app: Express; userRepositoryFactory: InMemoryUserRepositoryFactory; mfaChallenges: InMemoryMfaChallengeStore; sessions: InMemorySessionRepository } {
   const unitOfWork = new InMemoryUnitOfWork();
   const passwordHasher = new FakePasswordHasher();
   const clock = new SystemClock();
@@ -74,8 +86,15 @@ function buildApp(
       unitOfWork,
       clock,
       totpService: new OtplibTotpService(),
-      secretCipher: new AesGcmSecretCipher('test-secret', 1),
+      secretCipher: SECRET_CIPHER_FIXTURE,
       auditRecorder,
+      mfaChallenges,
+      issueSessionFor: createSessionIssuer({
+        sessionTokenService: TOKEN_SERVICE_FIXTURE,
+        sessions,
+        tokenKeyVersion: 1,
+        ttls: { sessionSeconds: 900, refreshSeconds: 1_209_600, familySeconds: 2_592_000 },
+      }),
     }),
     disableMfa: createDisableMfaUseCase({ userRepositoryFactory, unitOfWork, clock, auditRecorder }),
   });
@@ -94,7 +113,81 @@ function buildApp(
     errorHandler: createErrorHandler(identityAccessErrorStatus),
   });
 
-  return { app, userRepositoryFactory };
+  return { app, userRepositoryFactory, mfaChallenges, sessions };
+}
+
+/**
+ * Builds the SAME `userRouter` but mounted behind the REAL
+ * `SessionTokenAuthContextResolver` (not the test-only `attachAuthContext`
+ * bypass) — needed to exercise an `mfa_enrollment` Bearer token end-to-end
+ * (two-step-login PR3, design D5: "resolver -> scoped ctx").
+ */
+function buildAppWithRealResolver(
+  userRepositoryFactory: InMemoryUserRepositoryFactory = new InMemoryUserRepositoryFactory(),
+  mfaChallenges: InMemoryMfaChallengeStore = new InMemoryMfaChallengeStore(),
+  sessions: InMemorySessionRepository = new InMemorySessionRepository(),
+): { app: Express; userRepositoryFactory: InMemoryUserRepositoryFactory; mfaChallenges: InMemoryMfaChallengeStore; sessions: InMemorySessionRepository } {
+  const unitOfWork = new InMemoryUnitOfWork();
+  const passwordHasher = new FakePasswordHasher();
+  const clock = new SystemClock();
+  const auditRecorder = new InMemoryAuditRecorder();
+
+  const transitionUserStatus = createTransitionUserStatusUseCase({ userRepositoryFactory, unitOfWork, clock, auditRecorder });
+
+  const router = userRouter({
+    createUser: createCreateUserUseCase({
+      userRepositoryFactory,
+      passwordHasher,
+      unitOfWork,
+      clock,
+      generateId: generateUserId,
+      auditRecorder,
+    }),
+    getUser: createGetUserUseCase({ userRepositoryFactory }),
+    listUsers: createListUsersUseCase({ userRepositoryFactory }),
+    patchUserIdentity: createPatchUserIdentityUseCase({ userRepositoryFactory, unitOfWork, clock, auditRecorder }),
+    transitionUserStatus,
+    deleteUser: createDeleteUserUseCase({ transitionUserStatus }),
+    setupMfa: createSetupMfaUseCase({
+      userRepositoryFactory,
+      unitOfWork,
+      clock,
+      totpService: new OtplibTotpService(),
+      qrCodeGenerator: new FakeQrCodeGenerator(),
+      secretCipher: SECRET_CIPHER_FIXTURE,
+      issuer: 'AntiFraud',
+    }),
+    activateMfa: createActivateMfaUseCase({
+      userRepositoryFactory,
+      unitOfWork,
+      clock,
+      totpService: new OtplibTotpService(),
+      secretCipher: SECRET_CIPHER_FIXTURE,
+      auditRecorder,
+      mfaChallenges,
+      issueSessionFor: createSessionIssuer({
+        sessionTokenService: TOKEN_SERVICE_FIXTURE,
+        sessions,
+        tokenKeyVersion: 1,
+        ttls: { sessionSeconds: 900, refreshSeconds: 1_209_600, familySeconds: 2_592_000 },
+      }),
+    }),
+    disableMfa: createDisableMfaUseCase({ userRepositoryFactory, unitOfWork, clock, auditRecorder }),
+  });
+
+  const resolver = new SessionTokenAuthContextResolver(TOKEN_SERVICE_FIXTURE, sessions);
+  const authContextMiddleware = createAuthContextMiddleware(resolver);
+
+  const mounted = Router();
+  mounted.use(authContextMiddleware);
+  mounted.use(router);
+
+  const app = createApp({
+    routers: [{ path: '/api/v1', router: mounted }],
+    errorHandler: createErrorHandler(identityAccessErrorStatus),
+  });
+
+  return { app, userRepositoryFactory, mfaChallenges, sessions };
 }
 
 describe('userRouter (e2e, in-memory repository)', () => {
@@ -311,6 +404,154 @@ describe('userRouter (e2e, in-memory repository)', () => {
       const response = await request(app).delete('/api/v1/users/me/mfa');
 
       expect(response.status).toBe(200);
+    });
+  });
+
+  describe('Forced enrollment + scoped authorization (two-step-login PR3, tasks 3.1/3.3/3.4/3.5)', () => {
+    function issueEnrollmentToken(userId: string, jti: string, expiresAt = '2099-01-01T00:00:00.000Z'): string {
+      return TOKEN_SERVICE_FIXTURE.issue({
+        tokenType: 'mfa_enrollment',
+        keyVersion: 1,
+        jti,
+        userId,
+        organizationId: 'org-1',
+        actorType: 'USER',
+        expiresAt,
+      });
+    }
+
+    async function appendEnrollment(
+      mfaChallenges: InMemoryMfaChallengeStore,
+      userId: string,
+      jti: string,
+      expiresAt = fromDate(new Date('2099-01-01T00:00:00.000Z')),
+    ): Promise<void> {
+      await mfaChallenges.append({
+        jti,
+        userId,
+        organizationId: 'org-1',
+        actorType: 'USER',
+        tokenType: 'mfa_enrollment',
+        expiresAt,
+        now: fromDate(new Date('2026-01-01T00:00:00.000Z')),
+      });
+    }
+
+    it('enrollment token -> setup -> activate (correct TOTP) -> full ACCESS+REFRESH session (task 3.3)', async () => {
+      const sharedFactory = new InMemoryUserRepositoryFactory();
+      const mfaChallenges = new InMemoryMfaChallengeStore();
+      const sessions = new InMemorySessionRepository();
+      const { app: seedApp } = buildApp(() => ORG_1_USER, sharedFactory, mfaChallenges, sessions);
+      const created = await request(seedApp)
+        .post('/api/v1/users')
+        .send({ email: 'enrollee@example.com', password: 'pw', firstName: 'En', lastName: 'Rollee' });
+      const userId = created.body.id as string;
+
+      const { app } = buildAppWithRealResolver(sharedFactory, mfaChallenges, sessions);
+      await appendEnrollment(mfaChallenges, userId, 'jti-enroll-1');
+      const enrollmentToken = issueEnrollmentToken(userId, 'jti-enroll-1');
+
+      const setupResponse = await request(app)
+        .post('/api/v1/users/me/mfa/setup')
+        .set('Authorization', `Bearer ${enrollmentToken}`);
+      expect(setupResponse.status).toBe(200);
+      const secretParam = new URL(setupResponse.body.otpauthUri).searchParams.get('secret')!;
+      const totp = authenticator.generate(secretParam);
+
+      const activateResponse = await request(app)
+        .post('/api/v1/users/me/mfa/activate')
+        .set('Authorization', `Bearer ${enrollmentToken}`)
+        .send({ token: totp });
+
+      expect(activateResponse.status).toBe(200);
+      expect(activateResponse.body.session).not.toBeNull();
+      expect(typeof activateResponse.body.session.accessToken).toBe('string');
+      expect(typeof activateResponse.body.session.refreshToken).toBe('string');
+      expect(activateResponse.body.user.id).toBe(userId);
+    });
+
+    it('rejects an mfa_enrollment token on any non-setup/activate route with 403 FORBIDDEN_AUTH_SCOPE (task 3.4)', async () => {
+      const sharedFactory = new InMemoryUserRepositoryFactory();
+      const mfaChallenges = new InMemoryMfaChallengeStore();
+      const sessions = new InMemorySessionRepository();
+      const { app: seedApp } = buildApp(() => ORG_1_USER, sharedFactory, mfaChallenges, sessions);
+      const created = await request(seedApp)
+        .post('/api/v1/users')
+        .send({ email: 'enrollee2@example.com', password: 'pw', firstName: 'En', lastName: 'Rollee' });
+      const userId = created.body.id as string;
+
+      const { app } = buildAppWithRealResolver(sharedFactory, mfaChallenges, sessions);
+      await appendEnrollment(mfaChallenges, userId, 'jti-enroll-2');
+      const enrollmentToken = issueEnrollmentToken(userId, 'jti-enroll-2');
+
+      const listResponse = await request(app).get('/api/v1/users').set('Authorization', `Bearer ${enrollmentToken}`);
+      expect(listResponse.status).toBe(403);
+      expect(listResponse.body.error.code).toBe('FORBIDDEN_AUTH_SCOPE');
+
+      const getResponse = await request(app)
+        .get(`/api/v1/users/${userId}`)
+        .set('Authorization', `Bearer ${enrollmentToken}`);
+      expect(getResponse.status).toBe(403);
+      expect(getResponse.body.error.code).toBe('FORBIDDEN_AUTH_SCOPE');
+
+      const disableResponse = await request(app)
+        .delete('/api/v1/users/me/mfa')
+        .set('Authorization', `Bearer ${enrollmentToken}`);
+      expect(disableResponse.status).toBe(403);
+      expect(disableResponse.body.error.code).toBe('FORBIDDEN_AUTH_SCOPE');
+    });
+
+    it('rejects a replayed enrollment token — activation already consumed, second activate fails (task 3.5)', async () => {
+      const sharedFactory = new InMemoryUserRepositoryFactory();
+      const mfaChallenges = new InMemoryMfaChallengeStore();
+      const sessions = new InMemorySessionRepository();
+      const { app: seedApp } = buildApp(() => ORG_1_USER, sharedFactory, mfaChallenges, sessions);
+      const created = await request(seedApp)
+        .post('/api/v1/users')
+        .send({ email: 'enrollee3@example.com', password: 'pw', firstName: 'En', lastName: 'Rollee' });
+      const userId = created.body.id as string;
+
+      const { app } = buildAppWithRealResolver(sharedFactory, mfaChallenges, sessions);
+      await appendEnrollment(mfaChallenges, userId, 'jti-enroll-3');
+      const enrollmentToken = issueEnrollmentToken(userId, 'jti-enroll-3');
+
+      const setupResponse = await request(app)
+        .post('/api/v1/users/me/mfa/setup')
+        .set('Authorization', `Bearer ${enrollmentToken}`);
+      const secretParam = new URL(setupResponse.body.otpauthUri).searchParams.get('secret')!;
+      const totp = authenticator.generate(secretParam);
+
+      const firstActivate = await request(app)
+        .post('/api/v1/users/me/mfa/activate')
+        .set('Authorization', `Bearer ${enrollmentToken}`)
+        .send({ token: totp });
+      expect(firstActivate.status).toBe(200);
+
+      const replayTotp = authenticator.generate(secretParam);
+      const replayedActivate = await request(app)
+        .post('/api/v1/users/me/mfa/activate')
+        .set('Authorization', `Bearer ${enrollmentToken}`)
+        .send({ token: replayTotp });
+
+      expect(replayedActivate.status).toBe(409);
+      expect(replayedActivate.body.error.code).toBe('MFA_ENROLLMENT_NOT_PENDING');
+    });
+
+    it('rejects an expired enrollment token before it ever reaches the route handler', async () => {
+      const sharedFactory = new InMemoryUserRepositoryFactory();
+      const mfaChallenges = new InMemoryMfaChallengeStore();
+      const sessions = new InMemorySessionRepository();
+      const { app } = buildAppWithRealResolver(sharedFactory, mfaChallenges, sessions);
+      const expiredToken = issueEnrollmentToken('user-x', 'jti-expired', '2020-01-01T00:00:00.000Z');
+
+      const response = await request(app)
+        .post('/api/v1/users/me/mfa/setup')
+        .set('Authorization', `Bearer ${expiredToken}`);
+
+      // No AuthContext was ever attached (self-expired token resolves to
+      // null) — `requireScopedAuthContext` throws the wiring error, which
+      // Express 5 forwards to the generic error handler.
+      expect(response.status).toBe(500);
     });
   });
 });
