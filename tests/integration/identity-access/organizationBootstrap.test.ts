@@ -9,6 +9,7 @@ import { MongoUnitOfWork } from '../../../src/modules/identity-access/infrastruc
 import { BcryptPasswordHasher } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/BcryptPasswordHasher.js';
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
 import { createCreateOrganizationWithAdminUseCase } from '../../../src/modules/identity-access/application/CreateOrganizationWithAdmin.js';
+import { InMemoryAuditRecorder } from '../../helpers/identity-access/InMemoryAuditRecorder.js';
 import type { PasswordHasher } from '../../../src/modules/identity-access/domain/ports/PasswordHasher.js';
 import { createAuthContext } from '../../../src/shared/kernel/AuthContext.js';
 import { createSlug } from '../../../src/modules/identity-access/domain/model/value-objects/Slug.js';
@@ -60,6 +61,7 @@ describe('CreateOrganizationWithAdmin bootstrap (integration, real replica-set M
       clock: new SystemClock(),
       generateOrganizationId,
       generateUserId,
+      auditRecorder: new InMemoryAuditRecorder(),
     });
   }
 

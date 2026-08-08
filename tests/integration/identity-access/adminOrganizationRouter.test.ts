@@ -8,6 +8,8 @@ import { identityAccessErrorStatus } from '../../../src/modules/identity-access/
 import { adminOrganizationRouter } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/adminOrganizationRouter.js';
 import { createProvisionAdminOrganizationUseCase } from '../../../src/modules/identity-access/application/admin/ProvisionAdminOrganization.js';
 import { InMemoryAdminOrganizationRepository } from '../../helpers/identity-access/InMemoryAdminOrganizationRepository.js';
+import { InMemoryUnitOfWork } from '../../helpers/identity-access/InMemoryUnitOfWork.js';
+import { InMemoryAuditRecorder } from '../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FakeAdminKeyPairGenerator } from '../../helpers/identity-access/FakeAdminKeyPairGenerator.js';
 import { AesGcmSecretCipher } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
@@ -31,9 +33,11 @@ function buildApp(actorPerRequest: () => AuthContext): {
       admins,
       keyPairs,
       cipher,
+      unitOfWork: new InMemoryUnitOfWork(),
       clock,
       generateAdminOrganizationId,
       generateAdminKeyId,
+      auditRecorder: new InMemoryAuditRecorder(),
     }),
   });
 

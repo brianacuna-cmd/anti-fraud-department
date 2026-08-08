@@ -3,6 +3,8 @@ import type { Clock } from '../../../../shared/time/Clock.js';
 import type { AdminOrganizationRepository } from '../../domain/ports/AdminOrganizationRepository.js';
 import type { AdminKeyPairGenerator } from '../../domain/ports/AdminKeyPairGenerator.js';
 import type { SecretCipher } from '../../domain/ports/SecretCipher.js';
+import type { UnitOfWork } from '../../domain/ports/UnitOfWork.js';
+import type { AuditRecorder } from '../../domain/ports/AuditRecorder.js';
 import type { AdminOrganizationId } from '../../domain/model/value-objects/AdminOrganizationId.js';
 import type { AdminKeyId } from '../../domain/model/value-objects/AdminKeyId.js';
 import { AdminOrganization } from '../../domain/model/aggregates/AdminOrganization.js';
@@ -19,9 +21,13 @@ export interface ProvisionAdminOrganizationDeps {
   readonly admins: AdminOrganizationRepository;
   readonly keyPairs: AdminKeyPairGenerator;
   readonly cipher: SecretCipher;
+  /** NEW (audit-logs-foundation Phase 4): wraps the write in a transaction so the PLATFORM_ADMIN_PROVISIONED audit row commits atomically with it. */
+  readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
   readonly generateAdminOrganizationId: () => AdminOrganizationId;
   readonly generateAdminKeyId: () => AdminKeyId;
+  /** NEW (audit-logs-foundation Phase 4): emits PLATFORM_ADMIN_PROVISIONED. */
+  readonly auditRecorder: AuditRecorder;
 }
 
 /**
@@ -38,26 +44,44 @@ export function createProvisionAdminOrganizationUseCase(deps: ProvisionAdminOrga
   ): Promise<AdminOrganization> {
     requirePlatformAdmin(input.auth);
 
-    const now = deps.clock.now();
-    const { publicKeySpkiPem, privateKeyPkcs8Pem } = deps.keyPairs.generate();
-    const encryptedPrivateKey = deps.cipher.encrypt(privateKeyPkcs8Pem);
+    return deps.unitOfWork.withTransaction(async (tx) => {
+      const now = deps.clock.now();
+      const { publicKeySpkiPem, privateKeyPkcs8Pem } = deps.keyPairs.generate();
+      const encryptedPrivateKey = deps.cipher.encrypt(privateKeyPkcs8Pem);
 
-    const key = createAdminKey({
-      keyId: deps.generateAdminKeyId(),
-      publicKey: publicKeySpkiPem,
-      status: 'ACTIVE',
-      encryptedPrivateKey,
-      createdAt: now,
+      const key = createAdminKey({
+        keyId: deps.generateAdminKeyId(),
+        publicKey: publicKeySpkiPem,
+        status: 'ACTIVE',
+        encryptedPrivateKey,
+        createdAt: now,
+      });
+
+      const admin = AdminOrganization.create({
+        id: deps.generateAdminOrganizationId(),
+        email: createEmail(input.email),
+        keys: [key],
+        now,
+      });
+
+      await deps.admins.save(admin, tx);
+
+      await deps.auditRecorder.record(
+        {
+          // Platform-level action, not tied to any tenant (design D-A6).
+          organizationId: null,
+          actorType: input.auth.actorType,
+          actorId: input.auth.userId,
+          action: 'PLATFORM_ADMIN_PROVISIONED',
+          resource: 'adminOrganizations',
+          resourceId: admin.id,
+          detail: { email: admin.email },
+          ipAddress: input.auth.ipAddress,
+        },
+        tx,
+      );
+
+      return admin;
     });
-
-    const admin = AdminOrganization.create({
-      id: deps.generateAdminOrganizationId(),
-      email: createEmail(input.email),
-      keys: [key],
-      now,
-    });
-
-    await deps.admins.save(admin);
-    return admin;
   };
 }

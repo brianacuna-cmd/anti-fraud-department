@@ -9,7 +9,9 @@ import { identityAccessErrorStatus } from '../../../src/modules/identity-access/
 import { organizationRouter } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/organizationRouter.js';
 import { InMemoryOrganizationRepository } from '../../helpers/identity-access/InMemoryOrganizationRepository.js';
 import { InMemoryUserRepositoryFactory } from '../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
+import { InMemorySessionRepository } from '../../helpers/identity-access/InMemorySessionRepository.js';
 import { InMemoryUnitOfWork } from '../../helpers/identity-access/InMemoryUnitOfWork.js';
+import { InMemoryAuditRecorder } from '../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FakePasswordHasher } from '../../helpers/identity-access/FakePasswordHasher.js';
 import { createGetOrganizationUseCase } from '../../../src/modules/identity-access/application/GetOrganization.js';
 import { createListOrganizationsUseCase } from '../../../src/modules/identity-access/application/ListOrganizations.js';
@@ -38,14 +40,18 @@ function buildApp(actorPerRequest: () => AuthContext): {
 } {
   const organizations = new InMemoryOrganizationRepository();
   const userRepositoryFactory = new InMemoryUserRepositoryFactory();
+  const sessions = new InMemorySessionRepository();
   const unitOfWork = new InMemoryUnitOfWork();
+  const auditRecorder = new InMemoryAuditRecorder();
   const passwordHasher = new FakePasswordHasher();
   const clock = new SystemClock();
 
   const transitionOrganizationStatus = createTransitionOrganizationStatusUseCase({
     organizations,
+    sessions,
     unitOfWork,
     clock,
+    auditRecorder,
   });
 
   const router = organizationRouter({
@@ -57,10 +63,11 @@ function buildApp(actorPerRequest: () => AuthContext): {
       clock,
       generateOrganizationId,
       generateUserId,
+      auditRecorder,
     }),
     getOrganization: createGetOrganizationUseCase({ organizations }),
     listOrganizations: createListOrganizationsUseCase({ organizations }),
-    patchOrganizationIdentity: createPatchOrganizationIdentityUseCase({ organizations, clock }),
+    patchOrganizationIdentity: createPatchOrganizationIdentityUseCase({ organizations, unitOfWork, clock, auditRecorder }),
     transitionOrganizationStatus,
     deleteOrganization: createDeleteOrganizationUseCase({ transitionOrganizationStatus }),
   });
