@@ -123,3 +123,19 @@ export function mfaTokenInvalid(): IdentityAccessError {
 export function mfaChallengeInvalid(): IdentityAccessError {
   return new IdentityAccessError('MFA_CHALLENGE_INVALID', 'MFA challenge is invalid, expired, or already used');
 }
+
+// super-admin-auth PR1 (design "VerifyAdminChallenge"): PLATFORM_ADMIN
+// challenge-login rejection.
+
+/**
+ * ONE opaque error for every way a PLATFORM_ADMIN challenge-login can fail:
+ * no `AdminOrganization`/no ACTIVE key for `RequestAdminChallenge`, and
+ * unknown/expired/already-consumed `challengeId` OR a forged/invalid
+ * signature for `VerifyAdminChallenge`. Deliberately indistinguishable
+ * (mirrors `mfaChallengeInvalid`'s "no oracle" precedent) — a caller must
+ * never be able to tell "wrong signature" from "challenge already used"
+ * from "admin has no active key".
+ */
+export function adminChallengeInvalid(): IdentityAccessError {
+  return new IdentityAccessError('ADMIN_CHALLENGE_INVALID', 'admin challenge is invalid, expired, or already used');
+}

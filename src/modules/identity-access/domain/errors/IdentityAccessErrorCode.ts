@@ -28,4 +28,9 @@ export type IdentityAccessErrorCode =
   // two-step-login PR2 (design "IssueSession flow"): challenge-token
   // rejection — malformed/wrong-type/expired/unknown-jti/replayed. Wrong
   // TOTP reuses MFA_TOKEN_INVALID (same failure shape as ActivateMfa).
-  | 'MFA_CHALLENGE_INVALID';
+  | 'MFA_CHALLENGE_INVALID'
+  // super-admin-auth PR1 (design "VerifyAdminChallenge"): covers every
+  // rejection mode of the PLATFORM_ADMIN challenge-login uniformly — no
+  // active key, unknown/expired/replayed challengeId, and a forged/invalid
+  // signature all reject with this ONE code (no oracle for which failed).
+  | 'ADMIN_CHALLENGE_INVALID';
