@@ -139,3 +139,26 @@ export function mfaChallengeInvalid(): IdentityAccessError {
 export function adminChallengeInvalid(): IdentityAccessError {
   return new IdentityAccessError('ADMIN_CHALLENGE_INVALID', 'admin challenge is invalid, expired, or already used');
 }
+
+// super-admin-auth PR2 (design "PR-2 key lifecycle"): download/rotate/revoke,
+// all `requirePlatformAdmin`-gated — callers are already-authenticated
+// platform admins, so these are ordinary (non-opaque) not-found/conflict
+// errors, unlike the public challenge-login errors above.
+
+export function adminOrganizationNotFound(id: string): IdentityAccessError {
+  return new IdentityAccessError('ADMIN_ORGANIZATION_NOT_FOUND', `admin organization "${id}" not found`, { id });
+}
+
+/**
+ * The one-time private-key download claim (design D32a `claimPrivateKey`)
+ * lost the CAS race, or the target key never had a downloadable ciphertext
+ * (unknown keyId, or already downloaded by a prior/concurrent caller) — all
+ * indistinguishable to the caller, since the CAS itself is the sole source
+ * of truth for "was this the winning claim".
+ */
+export function adminPrivateKeyUnavailable(): IdentityAccessError {
+  return new IdentityAccessError(
+    'ADMIN_PRIVATE_KEY_UNAVAILABLE',
+    'admin private key is unavailable for download (unknown key, or already downloaded)',
+  );
+}

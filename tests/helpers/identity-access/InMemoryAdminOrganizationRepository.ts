@@ -1,14 +1,18 @@
 import { AdminOrganization } from '../../../src/modules/identity-access/domain/model/aggregates/AdminOrganization.js';
 import type { AdminOrganizationRepository } from '../../../src/modules/identity-access/domain/ports/AdminOrganizationRepository.js';
 import type { AdminOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/AdminOrganizationId.js';
+import type { AdminKeyId } from '../../../src/modules/identity-access/domain/model/value-objects/AdminKeyId.js';
 import type { Email } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
+import type { Instant } from '../../../src/shared/time/Instant.js';
 
 /**
- * In-memory `AdminOrganizationRepository` fake — PR 1b scope only (design
- * Testing Strategy: "in-memory fakes for ports"). The `claimPrivateKey` CAS
- * (design D32a) is NOT implemented here yet: it lands in PR 2a, where this
- * fake must reproduce the same atomic-claim semantics the Mongo adapter
- * uses, not just plain storage.
+ * In-memory `AdminOrganizationRepository` fake (design Testing Strategy:
+ * "in-memory fakes for ports"). `claimPrivateKey` (design D32a) reproduces
+ * the Mongo adapter's atomic-claim semantics: only the key's own
+ * `encryptedPrivateKey`/`privateKeyDownloadedAt` are mutated (mirrors the
+ * Mongo positional `$set`), and — since Node is single-threaded — a plain
+ * synchronous check-then-set is already race-free for `Promise.all`-style
+ * concurrent callers awaiting the same microtask queue.
  */
 export class InMemoryAdminOrganizationRepository implements AdminOrganizationRepository {
   private readonly byId = new Map<string, AdminOrganization>();
@@ -32,5 +36,19 @@ export class InMemoryAdminOrganizationRepository implements AdminOrganizationRep
 
   async countAll(): Promise<number> {
     return this.byId.size;
+  }
+
+  async claimPrivateKey(id: AdminOrganizationId, keyId: AdminKeyId, now: Instant): Promise<string | null> {
+    const admin = this.byId.get(id);
+    if (!admin) {
+      return null;
+    }
+    const key = admin.findKey(keyId);
+    if (!key || key.encryptedPrivateKey === null) {
+      return null;
+    }
+    const claimed = key.encryptedPrivateKey;
+    this.byId.set(id, admin.markPrivateKeyDownloaded(keyId, now));
+    return claimed;
   }
 }
