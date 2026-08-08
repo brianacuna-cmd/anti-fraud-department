@@ -91,4 +91,19 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db
     .collection('Sessions')
     .createIndex({ ActorType: 1, UserId: 1 }, { name: 'session_actor_type_user_id_idx' });
+
+  // `AuditLogs` (audit-logs-foundation, design D-A8). Append-only — no
+  // uniqueness constraints, only lookup indexes for the timelines the
+  // module is built to serve (tenant, actor, and action-type timelines).
+  await db
+    .collection('AuditLogs')
+    .createIndex({ OrganizationId: 1, CreatedAt: -1 }, { name: 'audit_log_organization_created_idx' });
+
+  await db
+    .collection('AuditLogs')
+    .createIndex({ ActorType: 1, ActorId: 1, CreatedAt: -1 }, { name: 'audit_log_actor_created_idx' });
+
+  await db
+    .collection('AuditLogs')
+    .createIndex({ Action: 1, CreatedAt: -1 }, { name: 'audit_log_action_created_idx' });
 }
