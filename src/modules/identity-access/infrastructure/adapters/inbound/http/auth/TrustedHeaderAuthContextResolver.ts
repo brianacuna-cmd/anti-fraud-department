@@ -15,7 +15,7 @@ function headerValue(req: Request, name: string): string | undefined {
 /**
  * Dev/staging-only `AuthContextResolver` that trusts `x-actor-*` headers
  * verbatim (design D4) — enabled only when `AUTH_MODE=trusted-header`, and
- * `assertAuthModeSafeForProduction` refuses to let that mode start in
+ * `assertAuthConfigSafeForProduction` refuses to let that mode start in
  * production. A real session-backed resolver replaces this later (design
  * D12). `resolve` needs no I/O here but still returns a `Promise` to match
  * the shared `AuthContextResolver` signature.
