@@ -9,6 +9,7 @@ import { identityAccessErrorStatus } from '../../../src/modules/identity-access/
 import { userRouter } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/userRouter.js';
 import { InMemoryUserRepositoryFactory } from '../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
 import { InMemoryUnitOfWork } from '../../helpers/identity-access/InMemoryUnitOfWork.js';
+import { InMemoryAuditRecorder } from '../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FakePasswordHasher } from '../../helpers/identity-access/FakePasswordHasher.js';
 import { createCreateUserUseCase } from '../../../src/modules/identity-access/application/CreateUser.js';
 import { createGetUserUseCase } from '../../../src/modules/identity-access/application/GetUser.js';
@@ -29,14 +30,27 @@ function buildApp(
   const unitOfWork = new InMemoryUnitOfWork();
   const passwordHasher = new FakePasswordHasher();
   const clock = new SystemClock();
+  const auditRecorder = new InMemoryAuditRecorder();
 
-  const transitionUserStatus = createTransitionUserStatusUseCase({ userRepositoryFactory, unitOfWork, clock });
+  const transitionUserStatus = createTransitionUserStatusUseCase({
+    userRepositoryFactory,
+    unitOfWork,
+    clock,
+    auditRecorder,
+  });
 
   const router = userRouter({
-    createUser: createCreateUserUseCase({ userRepositoryFactory, passwordHasher, clock, generateId: generateUserId }),
+    createUser: createCreateUserUseCase({
+      userRepositoryFactory,
+      passwordHasher,
+      unitOfWork,
+      clock,
+      generateId: generateUserId,
+      auditRecorder,
+    }),
     getUser: createGetUserUseCase({ userRepositoryFactory }),
     listUsers: createListUsersUseCase({ userRepositoryFactory }),
-    patchUserIdentity: createPatchUserIdentityUseCase({ userRepositoryFactory, clock }),
+    patchUserIdentity: createPatchUserIdentityUseCase({ userRepositoryFactory, unitOfWork, clock, auditRecorder }),
     transitionUserStatus,
     deleteUser: createDeleteUserUseCase({ transitionUserStatus }),
   });

@@ -2,6 +2,7 @@ import type { AuthContext } from '../../../shared/kernel/AuthContext.js';
 import type { Clock } from '../../../shared/time/Clock.js';
 import type { UserRepositoryFactory } from '../domain/ports/UserRepositoryFactory.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
+import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { User } from '../domain/model/aggregates/User.js';
 import type { LifecycleStatus } from '../domain/model/value-objects/LifecycleStatus.js';
 import { createOrganizationId } from '../domain/model/value-objects/OrganizationId.js';
@@ -20,6 +21,8 @@ export interface TransitionUserStatusDeps {
   readonly userRepositoryFactory: UserRepositoryFactory;
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
+  /** NEW (audit-logs-foundation Phase 5): emits USER_STATUS_CHANGED. */
+  readonly auditRecorder: AuditRecorder;
 }
 
 /**
@@ -28,12 +31,20 @@ export interface TransitionUserStatusDeps {
  * `requirePlatformAdmin` gate here (users routes are tenant-scoped, not
  * platform-admin-gated) — the reactivation gate below is independent
  * defense-in-depth at the domain level (design D2).
+ *
+ * audit-logs-foundation Phase 5: NOW BINDS `tx` (previously the transaction
+ * callback param was dropped — `withTransaction(async () => {...})` — so
+ * `repository.save` never actually ran inside the opened transaction) and
+ * threads it to `repository.save` and the audit emission, so the status
+ * change and the `USER_STATUS_CHANGED` audit row commit or roll back
+ * together (spec "Atomic Emission").
  */
 export function createTransitionUserStatusUseCase(deps: TransitionUserStatusDeps) {
   return async function transitionUserStatus(input: TransitionUserStatusInput): Promise<User> {
-    const repository = deps.userRepositoryFactory.forTenant(createOrganizationId(requireTenantContext(input.auth)));
+    const organizationId = createOrganizationId(requireTenantContext(input.auth));
+    const repository = deps.userRepositoryFactory.forTenant(organizationId);
 
-    return deps.unitOfWork.withTransaction(async () => {
+    return deps.unitOfWork.withTransaction(async (tx) => {
       const id = createUserId(input.userId);
       const user = await repository.findById(id);
       if (!user) {
@@ -41,8 +52,24 @@ export function createTransitionUserStatusUseCase(deps: TransitionUserStatusDeps
       }
 
       const actor = createTransitionActor(input.auth.isPlatformAdmin);
+      const from = user.status;
       const transitioned = user.transitionTo(input.next, actor, deps.clock.now());
-      await repository.save(transitioned);
+      await repository.save(transitioned, tx);
+
+      await deps.auditRecorder.record(
+        {
+          organizationId,
+          actorType: input.auth.actorType,
+          actorId: input.auth.userId,
+          action: 'USER_STATUS_CHANGED',
+          resource: 'users',
+          resourceId: id,
+          detail: { from, to: input.next },
+          ipAddress: input.auth.ipAddress,
+        },
+        tx,
+      );
+
       return transitioned;
     });
   };

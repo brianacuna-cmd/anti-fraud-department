@@ -105,7 +105,12 @@ async function bootstrap(): Promise<void> {
     clock,
     auditRecorder,
   });
-  const transitionUserStatus = createTransitionUserStatusUseCase({ userRepositoryFactory, unitOfWork, clock });
+  const transitionUserStatus = createTransitionUserStatusUseCase({
+    userRepositoryFactory,
+    unitOfWork,
+    clock,
+    auditRecorder,
+  });
 
   const identityAccessOrganizationsRouter = organizationRouter({
     createOrganizationWithAdmin: createCreateOrganizationWithAdminUseCase({
@@ -126,10 +131,17 @@ async function bootstrap(): Promise<void> {
   });
 
   const identityAccessUsersRouter = userRouter({
-    createUser: createCreateUserUseCase({ userRepositoryFactory, passwordHasher, clock, generateId: generateUserId }),
+    createUser: createCreateUserUseCase({
+      userRepositoryFactory,
+      passwordHasher,
+      unitOfWork,
+      clock,
+      generateId: generateUserId,
+      auditRecorder,
+    }),
     getUser: createGetUserUseCase({ userRepositoryFactory }),
     listUsers: createListUsersUseCase({ userRepositoryFactory }),
-    patchUserIdentity: createPatchUserIdentityUseCase({ userRepositoryFactory, clock }),
+    patchUserIdentity: createPatchUserIdentityUseCase({ userRepositoryFactory, unitOfWork, clock, auditRecorder }),
     transitionUserStatus,
     deleteUser: createDeleteUserUseCase({ transitionUserStatus }),
   });
