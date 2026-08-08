@@ -1,6 +1,7 @@
 import type { AuthContext } from '../../../../shared/kernel/AuthContext.js';
 import type { Clock } from '../../../../shared/time/Clock.js';
 import type { SessionRepository } from '../../domain/ports/SessionRepository.js';
+import type { AuditRecorder, AuditEvent } from '../../domain/ports/AuditRecorder.js';
 import { createSessionId } from '../../domain/model/value-objects/SessionId.js';
 
 export interface LogoutInput {
@@ -10,6 +11,8 @@ export interface LogoutInput {
 export interface LogoutDeps {
   readonly sessions: SessionRepository;
   readonly clock: Clock;
+  /** Emits LOGOUT audit events (best-effort, consistent with the login path). */
+  readonly auditRecorder: AuditRecorder;
 }
 
 /**
@@ -26,5 +29,23 @@ export function createLogoutUseCase(deps: LogoutDeps) {
       return;
     }
     await deps.sessions.revokeSession(createSessionId(input.auth.sessionId), deps.clock.now());
+
+    const event: AuditEvent = {
+      organizationId: input.auth.organizationId,
+      actorType: input.auth.actorType,
+      actorId: input.auth.userId,
+      action: 'LOGOUT',
+      resource: 'sessions',
+      resourceId: input.auth.sessionId,
+      detail: {},
+      ipAddress: input.auth.ipAddress,
+    };
+    try {
+      // Best-effort, consistent with the login path: a failed audit write must
+      // not turn a completed logout into an error the client would retry.
+      await deps.auditRecorder.record(event);
+    } catch {
+      // swallow — logout already succeeded
+    }
   };
 }

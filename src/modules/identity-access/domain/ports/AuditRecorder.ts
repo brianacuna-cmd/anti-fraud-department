@@ -12,7 +12,8 @@ import type { ActorType } from '../model/value-objects/ActorType.js';
 export interface AuditEvent {
   readonly organizationId: string | null;
   readonly actorType: ActorType;
-  readonly actorId: string;
+  /** `null` for a failed login against an unknown email/organization (no actor resolved). */
+  readonly actorId: string | null;
   readonly action: IdentityAccessAuditAction;
   readonly resource: IdentityAccessAuditResource;
   readonly resourceId: string | null;

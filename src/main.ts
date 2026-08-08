@@ -174,14 +174,18 @@ async function bootstrap(): Promise<void> {
       passwordHasher,
       clock,
       dummyCredential,
+      actorType: 'USER',
+      auditRecorder,
     }),
     authenticateOrganization: createAuthenticateActorUseCase({
       gateway: new OrganizationActorGateway(organizations),
       passwordHasher,
       clock,
       dummyCredential,
+      actorType: 'ORGANIZATION',
+      auditRecorder,
     }),
-    logout: createLogoutUseCase({ sessions, clock }),
+    logout: createLogoutUseCase({ sessions, clock, auditRecorder }),
   });
 
   const authContextMiddleware = createAuthContextMiddleware(

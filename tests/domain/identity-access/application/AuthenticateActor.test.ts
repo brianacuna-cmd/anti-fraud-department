@@ -1,5 +1,6 @@
 import { createAuthenticateActorUseCase } from '../../../../src/modules/identity-access/application/auth/AuthenticateActor.js';
 import { InMemoryActorCredentialGateway } from '../../../helpers/identity-access/InMemoryActorCredentialGateway.js';
+import { InMemoryAuditRecorder } from '../../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FakePasswordHasher } from '../../../helpers/identity-access/FakePasswordHasher.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
@@ -24,13 +25,16 @@ const USER_RECORD: ActorCredentialRecord = {
 function buildUseCase() {
   const gateway = new InMemoryActorCredentialGateway();
   const passwordHasher = new FakePasswordHasher();
+  const auditRecorder = new InMemoryAuditRecorder();
   const authenticateActor = createAuthenticateActorUseCase({
     gateway,
     passwordHasher,
     clock: new FixedClock(NOW),
     dummyCredential: DUMMY_CREDENTIAL,
+    actorType: 'USER',
+    auditRecorder,
   });
-  return { authenticateActor, gateway, passwordHasher };
+  return { authenticateActor, gateway, passwordHasher, auditRecorder };
 }
 
 async function expectIdentityAccessError(promise: Promise<unknown>, code: string): Promise<void> {
@@ -128,6 +132,94 @@ describe('createAuthenticateActorUseCase', () => {
       { ...USER_RECORD, lockout: { loginAttempts: 3, blockedUntil: expiredBlockedUntil } },
       'acme',
     );
+
+    const result = await authenticateActor({
+      email: 'alice@example.com',
+      password: 'correct-password',
+      organizationSlug: 'acme',
+    });
+
+    expect(result.actorId).toBe('user-1');
+  });
+
+  it('emits a LOGIN audit event on success (best-effort, no transaction)', async () => {
+    const { authenticateActor, gateway, auditRecorder } = buildUseCase();
+    gateway.seed('alice@example.com', USER_RECORD, 'acme');
+
+    await authenticateActor({ email: 'alice@example.com', password: 'correct-password', organizationSlug: 'acme' });
+
+    const calls = auditRecorder.calls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].tx).toBeUndefined();
+    expect(calls[0].event.action).toBe('LOGIN');
+    expect(calls[0].event.actorId).toBe('user-1');
+    expect(calls[0].event.actorType).toBe('USER');
+  });
+
+  it('emits a LOGIN_FAILED event with a null actorId and the attempted email for an unknown login', async () => {
+    const { authenticateActor, auditRecorder } = buildUseCase();
+
+    await expectIdentityAccessError(
+      authenticateActor({ email: 'nobody@example.com', password: 'whatever', organizationSlug: 'acme' }),
+      'INVALID_CREDENTIALS',
+    );
+
+    const calls = auditRecorder.calls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].event.action).toBe('LOGIN_FAILED');
+    expect(calls[0].event.actorId).toBeNull();
+    expect(calls[0].event.organizationId).toBeNull();
+    expect(calls[0].event.actorType).toBe('USER');
+    expect(calls[0].event.detail).toEqual({ reason: 'INVALID_CREDENTIALS', email: 'nobody@example.com' });
+  });
+
+  it('emits a LOGIN_FAILED event for a wrong password against a known actor', async () => {
+    const { authenticateActor, gateway, auditRecorder } = buildUseCase();
+    gateway.seed('alice@example.com', USER_RECORD, 'acme');
+
+    await expectIdentityAccessError(
+      authenticateActor({ email: 'alice@example.com', password: 'wrong-password', organizationSlug: 'acme' }),
+      'INVALID_CREDENTIALS',
+    );
+
+    const calls = auditRecorder.calls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].event.action).toBe('LOGIN_FAILED');
+    expect(calls[0].event.actorId).toBe('user-1');
+    expect(calls[0].event.detail).toEqual({ reason: 'INVALID_CREDENTIALS', email: 'alice@example.com' });
+  });
+
+  it('emits a LOGIN_FAILED event with ACCOUNT_LOCKED reason for a blocked account', async () => {
+    const { authenticateActor, gateway, auditRecorder } = buildUseCase();
+    const blockedUntil = fromDate(new Date('2026-01-01T01:00:00.000Z'));
+    gateway.seed('alice@example.com', { ...USER_RECORD, lockout: { loginAttempts: 3, blockedUntil } }, 'acme');
+
+    await expectIdentityAccessError(
+      authenticateActor({ email: 'alice@example.com', password: 'correct-password', organizationSlug: 'acme' }),
+      'ACCOUNT_LOCKED',
+    );
+
+    const calls = auditRecorder.calls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].event.action).toBe('LOGIN_FAILED');
+    expect(calls[0].event.detail).toMatchObject({ reason: 'ACCOUNT_LOCKED' });
+  });
+
+  it('still authenticates when the audit write throws (best-effort emission)', async () => {
+    const gateway = new InMemoryActorCredentialGateway();
+    gateway.seed('alice@example.com', USER_RECORD, 'acme');
+    const authenticateActor = createAuthenticateActorUseCase({
+      gateway,
+      passwordHasher: new FakePasswordHasher(),
+      clock: new FixedClock(NOW),
+      dummyCredential: DUMMY_CREDENTIAL,
+      actorType: 'USER',
+      auditRecorder: {
+        record: async () => {
+          throw new Error('audit backend down');
+        },
+      },
+    });
 
     const result = await authenticateActor({
       email: 'alice@example.com',
