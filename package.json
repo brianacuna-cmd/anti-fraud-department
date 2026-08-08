@@ -10,7 +10,8 @@
     "dev": "tsx watch src/main.ts",
     "test": "jest",
     "lint": "eslint src",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bootstrap:admin": "tsx scripts/bootstrap-admin.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

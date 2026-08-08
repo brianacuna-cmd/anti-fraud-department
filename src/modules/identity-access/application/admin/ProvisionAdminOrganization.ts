@@ -5,12 +5,11 @@ import type { AdminKeyPairGenerator } from '../../domain/ports/AdminKeyPairGener
 import type { SecretCipher } from '../../domain/ports/SecretCipher.js';
 import type { UnitOfWork } from '../../domain/ports/UnitOfWork.js';
 import type { AuditRecorder } from '../../domain/ports/AuditRecorder.js';
+import type { AdminOrganization } from '../../domain/model/aggregates/AdminOrganization.js';
 import type { AdminOrganizationId } from '../../domain/model/value-objects/AdminOrganizationId.js';
 import type { AdminKeyId } from '../../domain/model/value-objects/AdminKeyId.js';
-import { AdminOrganization } from '../../domain/model/aggregates/AdminOrganization.js';
-import { createAdminKey } from '../../domain/model/value-objects/AdminKey.js';
-import { createEmail } from '../../domain/model/value-objects/Email.js';
 import { requirePlatformAdmin } from '../authorization/requirePlatformAdmin.js';
+import { provisionAdminOrganizationCore } from './provisionAdminOrganizationCore.js';
 
 export interface ProvisionAdminOrganizationInput {
   readonly auth: AuthContext;
@@ -46,23 +45,15 @@ export function createProvisionAdminOrganizationUseCase(deps: ProvisionAdminOrga
 
     return deps.unitOfWork.withTransaction(async (tx) => {
       const now = deps.clock.now();
-      const { publicKeySpkiPem, privateKeyPkcs8Pem } = deps.keyPairs.generate();
-      const encryptedPrivateKey = deps.cipher.encrypt(privateKeyPkcs8Pem);
-
-      const key = createAdminKey({
-        keyId: deps.generateAdminKeyId(),
-        publicKey: publicKeySpkiPem,
-        status: 'ACTIVE',
-        encryptedPrivateKey,
-        createdAt: now,
-      });
-
-      const admin = AdminOrganization.create({
-        id: deps.generateAdminOrganizationId(),
-        email: createEmail(input.email),
-        keys: [key],
-        now,
-      });
+      const { admin } = provisionAdminOrganizationCore(
+        {
+          keyPairs: deps.keyPairs,
+          cipher: deps.cipher,
+          generateAdminOrganizationId: deps.generateAdminOrganizationId,
+          generateAdminKeyId: deps.generateAdminKeyId,
+        },
+        { email: input.email, now },
+      );
 
       await deps.admins.save(admin, tx);
 

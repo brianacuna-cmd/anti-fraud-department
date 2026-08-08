@@ -32,7 +32,8 @@ export interface IssueForActorInput {
 
 export interface MintedSession {
   readonly accessToken: string;
-  readonly refreshToken: string;
+  /** Nullable — the `PLATFORM_ADMIN` tier issues no refresh token (design D38). Non-null for USER/ORGANIZATION. */
+  readonly refreshToken: string | null;
   readonly expiresAt: string;
 }
 
@@ -54,19 +55,25 @@ export function createSessionIssuer(deps: SessionIssuerDeps) {
     const sessionId = generateSessionId();
     const familyId = generateFamilyId();
     const expiresAt = addSeconds(input.now, deps.ttls.sessionSeconds);
-    const refreshExpiresAt = addSeconds(input.now, deps.ttls.refreshSeconds);
     const familyExpiresAt = addSeconds(input.now, deps.ttls.familySeconds);
+    // design D38: PLATFORM_ADMIN sessions issue NO refresh token — skip
+    // minting it entirely rather than minting-then-discarding, so a
+    // never-issued token can never accidentally leak.
+    const isAdmin = input.actorType === 'PLATFORM_ADMIN';
+    const refreshExpiresAt = isAdmin ? null : addSeconds(input.now, deps.ttls.refreshSeconds);
 
     const accessToken = deps.sessionTokenService.issue({
       sessionId,
       tokenType: 'ACCESS',
       keyVersion: deps.tokenKeyVersion,
     });
-    const refreshToken = deps.sessionTokenService.issue({
-      sessionId,
-      tokenType: 'REFRESH',
-      keyVersion: deps.tokenKeyVersion,
-    });
+    const refreshToken = isAdmin
+      ? null
+      : deps.sessionTokenService.issue({
+          sessionId,
+          tokenType: 'REFRESH',
+          keyVersion: deps.tokenKeyVersion,
+        });
 
     const session = Session.create({
       id: sessionId,
@@ -74,7 +81,7 @@ export function createSessionIssuer(deps: SessionIssuerDeps) {
       organizationId: input.organizationId,
       actorType: input.actorType,
       tokenHash: deps.sessionTokenService.fingerprint(accessToken),
-      refreshTokenHash: deps.sessionTokenService.fingerprint(refreshToken),
+      refreshTokenHash: refreshToken ? deps.sessionTokenService.fingerprint(refreshToken) : null,
       expiresAt,
       refreshExpiresAt,
       familyId,
