@@ -111,6 +111,22 @@ export function invalidCurrentPassword(): IdentityAccessError {
   return new IdentityAccessError('INVALID_CREDENTIALS', 'current password is incorrect');
 }
 
+// password-management PR-2a: reset-token rejection (consumed by PR-2c's
+// ConfirmPasswordReset).
+
+/**
+ * ONE opaque error for every way a password-reset confirmation can fail:
+ * malformed/wrong-type token, self-expired, wrong-tenant, jti mismatch
+ * (already-used/replayed, or superseded by a later reset/password change),
+ * or the user it claims no longer resolves — every one of those failure
+ * modes must be INDISTINGUISHABLE to the caller (spec: "All rejections
+ * assert uniform PASSWORD_RESET_INVALID 400"), same "no oracle" precedent
+ * as `mfaChallengeInvalid`/`adminChallengeInvalid`.
+ */
+export function passwordResetInvalid(): IdentityAccessError {
+  return new IdentityAccessError('PASSWORD_RESET_INVALID', 'password reset token is invalid, expired, or already used');
+}
+
 // mfa-user-enrollment PR2: user MFA setup/activate/disable.
 
 /** No pending TOTP secret to confirm — enrollment was never started, or is already enabled. */

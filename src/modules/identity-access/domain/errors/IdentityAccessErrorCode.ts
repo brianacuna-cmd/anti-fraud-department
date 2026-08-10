@@ -39,4 +39,8 @@ export type IdentityAccessErrorCode =
   // opaque like ADMIN_CHALLENGE_INVALID because the caller is already an
   // authenticated platform admin, so there is no enumeration oracle to hide.
   | 'ADMIN_ORGANIZATION_NOT_FOUND'
-  | 'ADMIN_PRIVATE_KEY_UNAVAILABLE';
+  | 'ADMIN_PRIVATE_KEY_UNAVAILABLE'
+  // password-management PR-2a (design "HTTP + DTOs + main.ts"): reset-token
+  // rejection — expired/replayed/mismatch/user-missing all reject with this
+  // ONE code (no oracle for which failed), consumed by PR-2c's confirm flow.
+  | 'PASSWORD_RESET_INVALID';
