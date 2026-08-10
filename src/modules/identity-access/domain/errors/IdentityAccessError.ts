@@ -99,6 +99,18 @@ export function organizationSuspended(): IdentityAccessError {
   return new IdentityAccessError('ORGANIZATION_SUSPENDED', 'organization is suspended');
 }
 
+// password-management PR-1: authenticated change-password.
+
+/**
+ * The submitted `currentPassword` did not match the stored credential.
+ * Reuses `INVALID_CREDENTIALS` (same code/status as a failed login) — the
+ * caller is already authenticated here, so there is no enumeration oracle
+ * to hide, but the credential-mismatch shape is identical to login's.
+ */
+export function invalidCurrentPassword(): IdentityAccessError {
+  return new IdentityAccessError('INVALID_CREDENTIALS', 'current password is incorrect');
+}
+
 // mfa-user-enrollment PR2: user MFA setup/activate/disable.
 
 /** No pending TOTP secret to confirm — enrollment was never started, or is already enabled. */

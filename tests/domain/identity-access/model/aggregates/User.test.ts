@@ -327,6 +327,21 @@ describe('User#disableMfa', () => {
   });
 });
 
+describe('User#changeCredential', () => {
+  it('replaces the credential and bumps updatedAt, leaving the original instance untouched', () => {
+    const user = buildUser();
+    const newCredential = createPasswordCredential('new-hash-value');
+
+    const changed = user.changeCredential(newCredential, LATER);
+
+    expect(changed).not.toBe(user);
+    expect(changed.credential).toEqual(newCredential);
+    expect(changed.updatedAt).toBe(LATER);
+    expect(user.credential).toEqual(CREDENTIAL);
+    expect(user.updatedAt).toBe(NOW);
+  });
+});
+
 describe('User#transitionTo', () => {
   it('delegates to StatusTransitionPolicy and returns a new instance on a valid transition', () => {
     const user = buildUser();

@@ -20,6 +20,7 @@ import { createDeleteUserUseCase } from '../../../src/modules/identity-access/ap
 import { createSetupMfaUseCase } from '../../../src/modules/identity-access/application/SetupMfa.js';
 import { createActivateMfaUseCase } from '../../../src/modules/identity-access/application/ActivateMfa.js';
 import { createDisableMfaUseCase } from '../../../src/modules/identity-access/application/DisableMfa.js';
+import { createChangePasswordUseCase } from '../../../src/modules/identity-access/application/ChangePassword.js';
 import { createSessionIssuer } from '../../../src/modules/identity-access/application/auth/SessionIssuer.js';
 import { generateUserId } from '../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
 import { OtplibTotpService } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mfa/OtplibTotpService.js';
@@ -97,6 +98,14 @@ function buildApp(
       }),
     }),
     disableMfa: createDisableMfaUseCase({ userRepositoryFactory, unitOfWork, clock, auditRecorder }),
+    changePassword: createChangePasswordUseCase({
+      userRepositoryFactory,
+      passwordHasher,
+      sessions,
+      unitOfWork,
+      clock,
+      auditRecorder,
+    }),
   });
 
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {
@@ -173,6 +182,14 @@ function buildAppWithRealResolver(
       }),
     }),
     disableMfa: createDisableMfaUseCase({ userRepositoryFactory, unitOfWork, clock, auditRecorder }),
+    changePassword: createChangePasswordUseCase({
+      userRepositoryFactory,
+      passwordHasher,
+      sessions,
+      unitOfWork,
+      clock,
+      auditRecorder,
+    }),
   });
 
   const resolver = new SessionTokenAuthContextResolver(TOKEN_SERVICE_FIXTURE, sessions);
@@ -404,6 +421,58 @@ describe('userRouter (e2e, in-memory repository)', () => {
       const response = await request(app).delete('/api/v1/users/me/mfa');
 
       expect(response.status).toBe(200);
+    });
+  });
+
+  describe('Change Password (password-management PR-1)', () => {
+    async function seedActingUser(app: Express, password: string): Promise<() => AuthContext> {
+      const created = await request(app)
+        .post('/api/v1/users')
+        .send({ email: 'pw-user@example.com', password, firstName: 'Pw', lastName: 'User' });
+      const userId = created.body.id as string;
+      return () => createAuthContext({ userId, organizationId: 'org-1', isPlatformAdmin: false });
+    }
+
+    it('POST /users/me/password replaces the credential and returns 204 on correct current password', async () => {
+      const sharedFactory = new InMemoryUserRepositoryFactory();
+      const { app: seedApp } = buildApp(() => ORG_1_USER, sharedFactory);
+      const actingAuth = await seedActingUser(seedApp, 'old-password');
+      const { app } = buildApp(actingAuth, sharedFactory);
+
+      const response = await request(app)
+        .post('/api/v1/users/me/password')
+        .send({ currentPassword: 'old-password', newPassword: 'new-password' });
+
+      expect(response.status).toBe(204);
+    });
+
+    it('POST /users/me/password rejects a wrong current password with 401 INVALID_CREDENTIALS', async () => {
+      const sharedFactory = new InMemoryUserRepositoryFactory();
+      const { app: seedApp } = buildApp(() => ORG_1_USER, sharedFactory);
+      const actingAuth = await seedActingUser(seedApp, 'old-password');
+      const { app } = buildApp(actingAuth, sharedFactory);
+
+      const response = await request(app)
+        .post('/api/v1/users/me/password')
+        .send({ currentPassword: 'wrong-password', newPassword: 'new-password' });
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.code).toBe('INVALID_CREDENTIALS');
+    });
+
+    it('POST /users/me/password requires authentication (no upstream AuthContext at all — a wiring error, same as every other route)', async () => {
+      const sharedFactory = new InMemoryUserRepositoryFactory();
+      const { app: seedApp } = buildApp(() => ORG_1_USER, sharedFactory);
+      const mfaChallenges = new InMemoryMfaChallengeStore();
+      const sessions = new InMemorySessionRepository();
+      await seedActingUser(seedApp, 'old-password');
+      const { app } = buildAppWithRealResolver(sharedFactory, mfaChallenges, sessions);
+
+      const response = await request(app)
+        .post('/api/v1/users/me/password')
+        .send({ currentPassword: 'old-password', newPassword: 'new-password' });
+
+      expect(response.status).toBe(500);
     });
   });
 

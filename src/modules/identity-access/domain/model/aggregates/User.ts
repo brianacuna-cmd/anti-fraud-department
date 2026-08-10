@@ -238,6 +238,17 @@ export class User {
     });
   }
 
+  /**
+   * Replaces the stored credential (password-management PR-1, "Change
+   * Password"). The use case is responsible for verifying the current
+   * password and hashing the new one BEFORE calling this — the mutator
+   * itself just swaps the value, same shape as every other immutable
+   * mutator on this aggregate.
+   */
+  changeCredential(newCredential: PasswordCredential, now: Instant): User {
+    return new User({ ...this.props, credential: newCredential, updatedAt: now });
+  }
+
   /** Clears the secret and disables MFA. Idempotent — no error when already disabled. */
   disableMfa(now: Instant): User {
     return new User({

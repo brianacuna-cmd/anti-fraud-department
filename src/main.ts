@@ -51,6 +51,7 @@ import { createDeleteUserUseCase } from './modules/identity-access/application/D
 import { createSetupMfaUseCase } from './modules/identity-access/application/SetupMfa.js';
 import { createActivateMfaUseCase } from './modules/identity-access/application/ActivateMfa.js';
 import { createDisableMfaUseCase } from './modules/identity-access/application/DisableMfa.js';
+import { createChangePasswordUseCase } from './modules/identity-access/application/ChangePassword.js';
 import { OtplibTotpService } from './modules/identity-access/infrastructure/adapters/outbound/mfa/OtplibTotpService.js';
 import { QrCodeDataUrlGenerator } from './modules/identity-access/infrastructure/adapters/outbound/mfa/QrCodeDataUrlGenerator.js';
 import { createAuthenticateActorUseCase } from './modules/identity-access/application/auth/AuthenticateActor.js';
@@ -243,6 +244,14 @@ async function bootstrap(): Promise<void> {
       issueSessionFor: sessionIssuer,
     }),
     disableMfa: createDisableMfaUseCase({ userRepositoryFactory, unitOfWork, clock, auditRecorder }),
+    changePassword: createChangePasswordUseCase({
+      userRepositoryFactory,
+      passwordHasher,
+      sessions,
+      unitOfWork,
+      clock,
+      auditRecorder,
+    }),
   });
 
   // Phase 3 (PR 1c, design D31/D32) + super-admin-auth PR1 (design

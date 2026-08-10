@@ -11,7 +11,8 @@ import type { createDeleteUserUseCase } from '../../../../application/DeleteUser
 import type { createSetupMfaUseCase } from '../../../../application/SetupMfa.js';
 import type { createActivateMfaUseCase } from '../../../../application/ActivateMfa.js';
 import type { createDisableMfaUseCase } from '../../../../application/DisableMfa.js';
-import { createUserSchema, patchUserSchema, transitionUserSchema, activateMfaSchema } from './dto/userSchemas.js';
+import type { createChangePasswordUseCase } from '../../../../application/ChangePassword.js';
+import { createUserSchema, patchUserSchema, transitionUserSchema, activateMfaSchema, changePasswordSchema } from './dto/userSchemas.js';
 import { toUserListResponse, toUserResponse, toMfaSetupResponse, toActivateMfaResponse } from './mappers/UserHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
 
@@ -25,6 +26,7 @@ export interface UserRouterDeps {
   readonly setupMfa: ReturnType<typeof createSetupMfaUseCase>;
   readonly activateMfa: ReturnType<typeof createActivateMfaUseCase>;
   readonly disableMfa: ReturnType<typeof createDisableMfaUseCase>;
+  readonly changePassword: ReturnType<typeof createChangePasswordUseCase>;
 }
 
 /**
@@ -104,6 +106,15 @@ export function userRouter(deps: UserRouterDeps): Router {
     const auth = requireAuthContext(req);
     const user = await deps.disableMfa({ auth });
     res.status(200).json(toUserResponse(user));
+  });
+
+  // password-management PR-1: acts on the AUTHENTICATED user only, same
+  // `/users/me/...` no-:id shape as the mfa routes above.
+  router.post('/users/me/password', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(changePasswordSchema, req.body);
+    await deps.changePassword({ auth, ...body });
+    res.status(204).end();
   });
 
   return router;
