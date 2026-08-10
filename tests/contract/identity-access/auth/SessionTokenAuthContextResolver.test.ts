@@ -209,4 +209,21 @@ describe('SessionTokenAuthContextResolver', () => {
       expect(await resolver.resolve(buildRequest(token))).toBeNull();
     });
   });
+
+  describe('password_reset tokens (password-management PR-2a) are never accepted as an auth context', () => {
+    it('returns null for a valid, unexpired password_reset token — it is a reset token, not a session', async () => {
+      const { tokenService, resolver } = buildFixture();
+      const token = tokenService.issue({
+        tokenType: 'password_reset',
+        keyVersion: 1,
+        jti: 'jti-reset-1',
+        userId: 'user-1',
+        organizationId: 'org-1',
+        actorType: 'USER',
+        expiresAt: FAR_FUTURE_ISO,
+      });
+
+      expect(await resolver.resolve(buildRequest(token))).toBeNull();
+    });
+  });
 });

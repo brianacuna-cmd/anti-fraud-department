@@ -1,5 +1,6 @@
 export type SessionTokenType = 'ACCESS' | 'REFRESH';
 export type ScopedMfaTokenType = 'mfa_challenge' | 'mfa_enrollment';
+export type PasswordResetTokenType = 'password_reset';
 
 /**
  * Pointer payload for a real `Sessions` row (design D13). The `Sessions` row
@@ -33,11 +34,31 @@ export interface ScopedMfaPayload {
 }
 
 /**
- * What an opaque token actually carries (design D2/D13, two-step-login) — a
- * discriminated union on `tokenType`. `ACCESS`/`REFRESH` stay pointers;
- * `mfa_challenge`/`mfa_enrollment` are self-contained scoped claims.
+ * Self-contained claims payload for a single-use password-reset token
+ * (password-management PR-2a, design §2) — same lifecycle as
+ * `ScopedMfaPayload` (self-describing, jti-tracked, self-expiring), but
+ * `organizationId` is a required `string` here: unlike the mfa arms (which
+ * can be minted before a tenant is known), a reset is always issued for an
+ * already-resolved user+tenant pair.
  */
-export type SessionTokenPayload = SessionPointerPayload | ScopedMfaPayload;
+export interface ScopedPasswordResetPayload {
+  readonly tokenType: PasswordResetTokenType;
+  readonly keyVersion: number;
+  readonly jti: string;
+  readonly userId: string;
+  readonly organizationId: string;
+  readonly actorType: 'USER';
+  /** ISO-8601 `Instant` string. */
+  readonly expiresAt: string;
+}
+
+/**
+ * What an opaque token actually carries (design D2/D13, two-step-login;
+ * password-management PR-2a §2) — a discriminated union on `tokenType`.
+ * `ACCESS`/`REFRESH` stay pointers; `mfa_challenge`/`mfa_enrollment`/
+ * `password_reset` are self-contained scoped claims.
+ */
+export type SessionTokenPayload = SessionPointerPayload | ScopedMfaPayload | ScopedPasswordResetPayload;
 
 /**
  * Issues/reads/fingerprints opaque session tokens (design D13). COMPOSES a

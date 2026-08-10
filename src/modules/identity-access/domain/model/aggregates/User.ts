@@ -249,6 +249,25 @@ export class User {
     return new User({ ...this.props, credential: newCredential, updatedAt: now });
   }
 
+  /**
+   * Records a pending password-reset token (password-management PR-2a,
+   * "reset foundation"). Overwrites any previously-pending reset —
+   * latest-wins, same shape as `startMfaEnrollment`.
+   */
+  beginPasswordReset(resetToken: ResetToken, now: Instant): User {
+    return new User({ ...this.props, resetToken, updatedAt: now });
+  }
+
+  /**
+   * Replaces the stored credential AND clears `resetToken` in ONE
+   * immutable return (password-management PR-2a design §1) — this is the
+   * single-use pivot: credential-write and jti-clear are inseparable, so a
+   * replayed reset token can never succeed after this call.
+   */
+  completePasswordReset(newCredential: PasswordCredential, now: Instant): User {
+    return new User({ ...this.props, credential: newCredential, resetToken: null, updatedAt: now });
+  }
+
   /** Clears the secret and disables MFA. Idempotent — no error when already disabled. */
   disableMfa(now: Instant): User {
     return new User({
