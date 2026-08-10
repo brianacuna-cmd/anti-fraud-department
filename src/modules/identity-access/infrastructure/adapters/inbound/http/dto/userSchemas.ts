@@ -46,3 +46,11 @@ export const activateMfaSchema = z.object({
 });
 
 export type ActivateMfaBody = z.infer<typeof activateMfaSchema>;
+
+/** POST /users/me/password body (password-management PR-1). */
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(1),
+});
+
+export type ChangePasswordBody = z.infer<typeof changePasswordSchema>;

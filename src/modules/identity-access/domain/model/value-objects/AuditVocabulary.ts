@@ -24,6 +24,9 @@ export type IdentityAccessAuditAction =
   // mfa-user-enrollment PR2: user MFA setup/activate/disable.
   | 'MFA_ENABLED'
   | 'MFA_DISABLED'
+  // password-management PR-1 (design "Audit Vocabulary additions"):
+  // authenticated change-password.
+  | 'PASSWORD_CHANGED'
   // super-admin-auth PR1 (design "Audit Vocabulary additions"): PLATFORM_ADMIN
   // challenge-login outcomes.
   | 'PLATFORM_ADMIN_LOGIN'
