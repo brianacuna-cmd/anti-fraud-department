@@ -7,6 +7,7 @@ import type { createAuthenticateActorUseCase } from '../../../src/modules/identi
 import type { createBeginUserLoginUseCase } from '../../../src/modules/identity-access/application/auth/BeginUserLogin.js';
 import type { createIssueSessionUseCase } from '../../../src/modules/identity-access/application/auth/IssueSession.js';
 import type { createLogoutUseCase } from '../../../src/modules/identity-access/application/auth/Logout.js';
+import type { createRequestPasswordResetUseCase } from '../../../src/modules/identity-access/application/auth/RequestPasswordReset.js';
 
 /**
  * Focused e2e for design D-A7's "Login captures IP from input" scenario:
@@ -38,6 +39,9 @@ describe('authRouter IP capture (design D-A7)', () => {
         expiresAt: '2026-01-01T00:00:00.000Z',
       })) as unknown as ReturnType<typeof createIssueSessionUseCase>,
       logout: (async () => undefined) as unknown as ReturnType<typeof createLogoutUseCase>,
+      requestPasswordReset: (async () => ({ status: 'PASSWORD_RESET_REQUESTED' })) as unknown as ReturnType<
+        typeof createRequestPasswordResetUseCase
+      >,
     });
 
     const app = createApp({
@@ -80,6 +84,9 @@ describe('authRouter IP capture (design D-A7)', () => {
         expiresAt: '2026-01-01T00:00:00.000Z',
       })) as unknown as ReturnType<typeof createIssueSessionUseCase>,
       logout: (async () => undefined) as unknown as ReturnType<typeof createLogoutUseCase>,
+      requestPasswordReset: (async () => ({ status: 'PASSWORD_RESET_REQUESTED' })) as unknown as ReturnType<
+        typeof createRequestPasswordResetUseCase
+      >,
     });
 
     const app = createApp({

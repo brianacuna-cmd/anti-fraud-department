@@ -33,3 +33,18 @@ export const usersMfaSchema = z.object({
 });
 
 export type UsersMfaBody = z.infer<typeof usersMfaSchema>;
+
+/**
+ * POST /auth/users/password-reset/request body (password-management PR-2b,
+ * design §6/§5). `organizationSlug` is deliberately OPTIONAL here, unlike
+ * `usersLoginSchema` — an absent slug must resolve to the SAME opaque
+ * no-match path as an unknown one (spec "Unknown email, unknown
+ * organizationSlug, or missing organizationSlug"), not a 400 at the DTO
+ * boundary, or the response shape would leak which case occurred.
+ */
+export const requestPasswordResetSchema = z.object({
+  organizationSlug: z.string().optional(),
+  email: z.string().min(1),
+});
+
+export type RequestPasswordResetBody = z.infer<typeof requestPasswordResetSchema>;

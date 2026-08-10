@@ -52,6 +52,9 @@ import { createSetupMfaUseCase } from './modules/identity-access/application/Set
 import { createActivateMfaUseCase } from './modules/identity-access/application/ActivateMfa.js';
 import { createDisableMfaUseCase } from './modules/identity-access/application/DisableMfa.js';
 import { createChangePasswordUseCase } from './modules/identity-access/application/ChangePassword.js';
+import { createRequestPasswordResetUseCase } from './modules/identity-access/application/auth/RequestPasswordReset.js';
+import { ResendEmailSender } from './modules/identity-access/infrastructure/adapters/outbound/email/ResendEmailSender.js';
+import { LogEmailSender } from './modules/identity-access/infrastructure/adapters/outbound/email/LogEmailSender.js';
 import { OtplibTotpService } from './modules/identity-access/infrastructure/adapters/outbound/mfa/OtplibTotpService.js';
 import { QrCodeDataUrlGenerator } from './modules/identity-access/infrastructure/adapters/outbound/mfa/QrCodeDataUrlGenerator.js';
 import { createAuthenticateActorUseCase } from './modules/identity-access/application/auth/AuthenticateActor.js';
@@ -112,6 +115,17 @@ const AUTH_FAMILY_TTL_SECONDS = Number(process.env.AUTH_FAMILY_TTL_SECONDS ?? 2_
 // PLATFORM_ADMIN login challenge TTL. Deferred from PR 1b (`ensureIndexes.ts`'s
 // TTL index) to this PR — `RequestAdminChallenge` is the first real consumer.
 const AUTH_ADMIN_CHALLENGE_TTL_SECONDS = Number(process.env.AUTH_ADMIN_CHALLENGE_TTL_SECONDS ?? 86_400);
+// password-management PR-2b (design §6 "HTTP + DTOs + main.ts"): reset
+// token TTL (15 min default, spec "Request Password Reset"), the outbound
+// address `EmailSender` stamps on every reset email, and the base URL the
+// reset link is built against (`?token=...`, design §5). `RESEND_API_KEY`
+// selects which `EmailSender` adapter is constructed — set -> `ResendEmailSender`,
+// unset (local/dev/CI default) -> `LogEmailSender` (spec "Adapter fallback
+// with no API key").
+const AUTH_PASSWORD_RESET_TTL_SECONDS = Number(process.env.AUTH_PASSWORD_RESET_TTL_SECONDS ?? 900);
+const PASSWORD_RESET_EMAIL_FROM = process.env.PASSWORD_RESET_EMAIL_FROM ?? 'fraud@backendstudio.tech';
+const PASSWORD_RESET_LINK_BASE_URL = process.env.PASSWORD_RESET_LINK_BASE_URL ?? 'http://localhost:3000/reset-password';
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
 async function bootstrap(): Promise<void> {
   // Fail-closed (design D4, D6): AUTH_MODE=trusted-header trusts client
@@ -145,6 +159,10 @@ async function bootstrap(): Promise<void> {
   // CreateOrganizationWithAdmin's genuine cross-collection atomicity.
   // Phase 2's PassthroughUnitOfWork is deliberately NOT reused here.
   const unitOfWork = new MongoUnitOfWork(client);
+  // password-management PR-2b (design §4): first real consumer of the
+  // `EmailSender` port constructed in PR-2a — `RESEND_API_KEY` set selects
+  // the real Resend-backed adapter, otherwise the log/no-op fallback.
+  const emailSender = RESEND_API_KEY ? new ResendEmailSender(RESEND_API_KEY) : new LogEmailSender();
 
   // audit-logs-foundation Phase 4 (design D-A2/D-A4, task 4.0): first real
   // consumer of the `audit` module — construction was deferred out of PR2
@@ -355,6 +373,19 @@ async function bootstrap(): Promise<void> {
       auditRecorder,
     }),
     logout: createLogoutUseCase({ sessions, clock, auditRecorder }),
+    requestPasswordReset: createRequestPasswordResetUseCase({
+      organizations,
+      userRepositoryFactory,
+      sessionTokenService,
+      unitOfWork,
+      emailSender,
+      auditRecorder,
+      clock,
+      tokenKeyVersion: TOKEN_KEY_VERSION,
+      resetTtlSeconds: AUTH_PASSWORD_RESET_TTL_SECONDS,
+      emailFrom: PASSWORD_RESET_EMAIL_FROM,
+      resetLinkBaseUrl: PASSWORD_RESET_LINK_BASE_URL,
+    }),
   });
 
   const authContextMiddleware = createAuthContextMiddleware(
