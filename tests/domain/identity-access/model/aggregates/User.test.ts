@@ -342,6 +342,58 @@ describe('User#changeCredential', () => {
   });
 });
 
+describe('User#beginPasswordReset', () => {
+  it('sets resetToken and bumps updatedAt, leaving the original instance untouched', () => {
+    const user = buildUser();
+    const resetToken = { hash: 'reset-hash-1', expiresAt: LATER };
+
+    const withReset = user.beginPasswordReset(resetToken, LATER);
+
+    expect(withReset).not.toBe(user);
+    expect(withReset.resetToken).toEqual(resetToken);
+    expect(withReset.updatedAt).toBe(LATER);
+    expect(user.resetToken).toBeNull();
+    expect(user.updatedAt).toBe(NOW);
+  });
+
+  it('overwrites a prior pending resetToken (latest-wins)', () => {
+    const user = buildUser();
+    const firstToken = { hash: 'reset-hash-1', expiresAt: LATER };
+    const withFirst = user.beginPasswordReset(firstToken, LATER);
+    const secondToken = { hash: 'reset-hash-2', expiresAt: LATER };
+
+    const withSecond = withFirst.beginPasswordReset(secondToken, LATER);
+
+    expect(withSecond.resetToken).toEqual(secondToken);
+  });
+});
+
+describe('User#completePasswordReset', () => {
+  it('replaces the credential and clears resetToken in one immutable return', () => {
+    const user = buildUser().beginPasswordReset({ hash: 'reset-hash-1', expiresAt: LATER }, LATER);
+    const newCredential = createPasswordCredential('new-hash-value');
+
+    const completed = user.completePasswordReset(newCredential, LATER);
+
+    expect(completed).not.toBe(user);
+    expect(completed.credential).toEqual(newCredential);
+    expect(completed.resetToken).toBeNull();
+    expect(completed.updatedAt).toBe(LATER);
+    expect(user.resetToken).toEqual({ hash: 'reset-hash-1', expiresAt: LATER });
+    expect(user.credential).toEqual(CREDENTIAL);
+  });
+
+  it('is a no-op on resetToken when there was no pending reset (still clears/stays null)', () => {
+    const user = buildUser();
+    const newCredential = createPasswordCredential('new-hash-value');
+
+    const completed = user.completePasswordReset(newCredential, LATER);
+
+    expect(completed.resetToken).toBeNull();
+    expect(completed.credential).toEqual(newCredential);
+  });
+});
+
 describe('User#transitionTo', () => {
   it('delegates to StatusTransitionPolicy and returns a new instance on a valid transition', () => {
     const user = buildUser();

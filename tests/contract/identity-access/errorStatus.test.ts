@@ -31,6 +31,9 @@ describe('identityAccessErrorStatus', () => {
       // key-lifecycle rejections.
       ADMIN_ORGANIZATION_NOT_FOUND: 404,
       ADMIN_PRIVATE_KEY_UNAVAILABLE: 409,
+      // password-management PR-2a (design "HTTP + DTOs + main.ts"): uniform
+      // reset-token rejection (expired/replayed/mismatch/user-missing).
+      PASSWORD_RESET_INVALID: 400,
     });
   });
 });

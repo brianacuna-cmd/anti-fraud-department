@@ -120,4 +120,70 @@ describe('AesGcmSessionTokenService', () => {
       expect(payload).toEqual({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
     });
   });
+
+  describe('scoped password_reset payload (password-management PR-2a, design §2)', () => {
+    const resetPayload = {
+      tokenType: 'password_reset' as const,
+      keyVersion: 1,
+      jti: 'jti-reset-1',
+      userId: 'user-1',
+      organizationId: 'org-1',
+      actorType: 'USER' as const,
+      expiresAt: '2026-01-01T00:15:00.000Z',
+    };
+
+    it('round-trips a password_reset payload', () => {
+      const service = buildService();
+
+      const token = service.issue(resetPayload);
+
+      expect(service.read(token)).toEqual(resetPayload);
+    });
+
+    it('returns null when reading a tampered password_reset token', () => {
+      const service = buildService();
+      const token = service.issue(resetPayload);
+      const raw = Buffer.from(token, 'base64url');
+      raw[raw.length - 1] = (raw[raw.length - 1]! ^ 0xff) & 0xff;
+
+      expect(service.read(raw.toString('base64url'))).toBeNull();
+    });
+
+    it('returns null for a payload missing jti (wrong-shape reject)', () => {
+      const cipher = new AesGcmSecretCipher('token-secret', 1);
+      const service = new AesGcmSessionTokenService(cipher);
+      const { jti, ...withoutJti } = resetPayload;
+      void jti;
+      const badToken = cipher.encrypt(JSON.stringify(withoutJti));
+
+      expect(service.read(badToken)).toBeNull();
+    });
+
+    it('rejects a password_reset payload with a null organizationId (unlike scoped MFA, this arm requires a string)', () => {
+      const cipher = new AesGcmSecretCipher('token-secret', 1);
+      const service = new AesGcmSessionTokenService(cipher);
+      const badToken = cipher.encrypt(JSON.stringify({ ...resetPayload, organizationId: null }));
+
+      expect(service.read(badToken)).toBeNull();
+    });
+
+    it('an ACCESS/mfa payload is never misidentified as password_reset, and vice versa (regression guard, PR-2a task 7)', () => {
+      const service = buildService();
+      const accessToken = service.issue({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+      const mfaToken = service.issue({
+        tokenType: 'mfa_challenge',
+        keyVersion: 1,
+        jti: 'jti-mfa-1',
+        userId: 'user-1',
+        organizationId: 'org-1',
+        actorType: 'USER',
+        expiresAt: '2026-01-01T00:05:00.000Z',
+      });
+      const resetToken = service.issue(resetPayload);
+
+      expect(service.read(accessToken)).toEqual({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+      expect((service.read(mfaToken) as { tokenType: string }).tokenType).toBe('mfa_challenge');
+      expect((service.read(resetToken) as { tokenType: string }).tokenType).toBe('password_reset');
+    });
+  });
 });

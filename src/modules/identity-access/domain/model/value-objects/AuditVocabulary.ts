@@ -27,6 +27,10 @@ export type IdentityAccessAuditAction =
   // password-management PR-1 (design "Audit Vocabulary additions"):
   // authenticated change-password.
   | 'PASSWORD_CHANGED'
+  // password-management PR-2a (design "Audit Vocabulary additions"): reset
+  // request/confirm outcomes (wired to use cases in PR-2b/PR-2c).
+  | 'PASSWORD_RESET_REQUESTED'
+  | 'PASSWORD_RESET_COMPLETED'
   // super-admin-auth PR1 (design "Audit Vocabulary additions"): PLATFORM_ADMIN
   // challenge-login outcomes.
   | 'PLATFORM_ADMIN_LOGIN'
