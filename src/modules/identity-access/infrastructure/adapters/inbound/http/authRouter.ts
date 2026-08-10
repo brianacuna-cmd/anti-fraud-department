@@ -5,11 +5,13 @@ import type { createBeginUserLoginUseCase } from '../../../../application/auth/B
 import type { createIssueSessionUseCase } from '../../../../application/auth/IssueSession.js';
 import type { createLogoutUseCase } from '../../../../application/auth/Logout.js';
 import type { createRequestPasswordResetUseCase } from '../../../../application/auth/RequestPasswordReset.js';
+import type { createConfirmPasswordResetUseCase } from '../../../../application/auth/ConfirmPasswordReset.js';
 import {
   usersLoginSchema,
   organizationsLoginSchema,
   usersMfaSchema,
   requestPasswordResetSchema,
+  confirmPasswordResetSchema,
 } from './dto/authSchemas.js';
 import { parseRequest } from './parseRequest.js';
 
@@ -31,6 +33,8 @@ export interface AuthRouterDeps {
   readonly logout: ReturnType<typeof createLogoutUseCase>;
   /** Public, unauthenticated (password-management PR-2b, spec "Request Password Reset"). */
   readonly requestPasswordReset: ReturnType<typeof createRequestPasswordResetUseCase>;
+  /** Public, unauthenticated, token-only (password-management PR-2c, spec "Confirm Password Reset"). */
+  readonly confirmPasswordReset: ReturnType<typeof createConfirmPasswordResetUseCase>;
 }
 
 /**
@@ -92,6 +96,17 @@ export function authRouter(deps: AuthRouterDeps): Router {
     const body = parseRequest(requestPasswordResetSchema, req.body);
     const result = await deps.requestPasswordReset({ ...body, ipAddress: req.ip ?? null });
     res.status(200).json(result);
+  });
+
+  // password-management PR-2c (spec "Confirm Password Reset"): public, no
+  // `organizationSlug` — the token alone carries the tenant (design §6).
+  // Every rejection mode maps to the SAME opaque `PASSWORD_RESET_INVALID`
+  // 400 (thrown by the use case, mapped by `errorStatus.ts`), so no branch
+  // here distinguishes expired/replayed/malformed/etc.
+  router.post('/auth/users/password-reset/confirm', async (req, res) => {
+    const body = parseRequest(confirmPasswordResetSchema, req.body);
+    await deps.confirmPasswordReset({ ...body, ipAddress: req.ip ?? null });
+    res.status(204).send();
   });
 
   return router;
