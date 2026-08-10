@@ -11,13 +11,18 @@ import { createBeginUserLoginUseCase } from '../../../src/modules/identity-acces
 import { createIssueSessionUseCase } from '../../../src/modules/identity-access/application/auth/IssueSession.js';
 import { createSessionIssuer } from '../../../src/modules/identity-access/application/auth/SessionIssuer.js';
 import { createLogoutUseCase } from '../../../src/modules/identity-access/application/auth/Logout.js';
+import { createRequestPasswordResetUseCase } from '../../../src/modules/identity-access/application/auth/RequestPasswordReset.js';
 import { InMemoryActorCredentialGateway } from '../../helpers/identity-access/InMemoryActorCredentialGateway.js';
 import { InMemorySessionRepository } from '../../helpers/identity-access/InMemorySessionRepository.js';
 import { InMemoryUserRepositoryFactory } from '../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
+import { InMemoryOrganizationRepository } from '../../helpers/identity-access/InMemoryOrganizationRepository.js';
 import { InMemoryUnitOfWork } from '../../helpers/identity-access/InMemoryUnitOfWork.js';
 import { InMemoryMfaChallengeStore } from '../../helpers/identity-access/InMemoryMfaChallengeStore.js';
 import { FakePasswordHasher } from '../../helpers/identity-access/FakePasswordHasher.js';
 import { InMemoryAuditRecorder } from '../../helpers/identity-access/InMemoryAuditRecorder.js';
+import { FakeEmailSender } from '../../helpers/identity-access/FakeEmailSender.js';
+import { Organization } from '../../../src/modules/identity-access/domain/model/aggregates/Organization.js';
+import { createSlug } from '../../../src/modules/identity-access/domain/model/value-objects/Slug.js';
 import { FixedClock } from '../../helpers/FixedClock.js';
 import { AesGcmSessionTokenService } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSessionTokenService.js';
 import { AesGcmSecretCipher } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
@@ -66,17 +71,22 @@ function buildApp(): {
   organizationGateway: InMemoryActorCredentialGateway;
   sessions: InMemorySessionRepository;
   userRepositoryFactory: InMemoryUserRepositoryFactory;
+  organizations: InMemoryOrganizationRepository;
   mfaChallenges: InMemoryMfaChallengeStore;
+  emailSender: FakeEmailSender;
+  auditRecorder: InMemoryAuditRecorder;
 } {
   const userGateway = new InMemoryActorCredentialGateway();
   const organizationGateway = new InMemoryActorCredentialGateway();
   const sessions = new InMemorySessionRepository();
   const userRepositoryFactory = new InMemoryUserRepositoryFactory();
+  const organizations = new InMemoryOrganizationRepository();
   const mfaChallenges = new InMemoryMfaChallengeStore();
   const passwordHasher = new FakePasswordHasher();
   const clock = new FixedClock(NOW);
   const dummyCredential = createPasswordCredential('hashed:dummy-password');
   const auditRecorder = new InMemoryAuditRecorder();
+  const emailSender = new FakeEmailSender();
 
   const authenticateUser = createAuthenticateActorUseCase({
     gateway: userGateway,
@@ -123,6 +133,19 @@ function buildApp(): {
       auditRecorder,
     }),
     logout: createLogoutUseCase({ sessions, clock, auditRecorder }),
+    requestPasswordReset: createRequestPasswordResetUseCase({
+      organizations,
+      userRepositoryFactory,
+      sessionTokenService: TOKEN_SERVICE,
+      unitOfWork: new InMemoryUnitOfWork(),
+      emailSender,
+      auditRecorder,
+      clock,
+      tokenKeyVersion: 1,
+      resetTtlSeconds: 900,
+      emailFrom: 'fraud@backendstudio.tech',
+      resetLinkBaseUrl: 'https://app.example.com/reset',
+    }),
   });
 
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {
@@ -142,7 +165,7 @@ function buildApp(): {
     errorHandler: createErrorHandler(identityAccessErrorStatus),
   });
 
-  return { app, userGateway, organizationGateway, sessions, userRepositoryFactory, mfaChallenges };
+  return { app, userGateway, organizationGateway, sessions, userRepositoryFactory, organizations, mfaChallenges, emailSender, auditRecorder };
 }
 
 describe('authRouter (e2e, in-memory gateways)', () => {
@@ -406,6 +429,76 @@ describe('authRouter (e2e, in-memory gateways)', () => {
       expect(response.status).toBe(204);
       const revoked = await sessions.findByTokenHash('token-hash-session-1');
       expect(revoked?.deletedAt).toBe(NOW);
+    });
+  });
+
+  describe('POST /auth/users/password-reset/request (password-management PR-2b)', () => {
+    async function seedOrgAndUser(
+      organizations: InMemoryOrganizationRepository,
+      userRepositoryFactory: InMemoryUserRepositoryFactory,
+    ): Promise<void> {
+      const organization = Organization.create({ id: ORG_ID, slug: createSlug('acme'), name: 'Acme', now: NOW });
+      await organizations.save(organization);
+
+      const user = User.create({
+        id: createUserId('user-1'),
+        organizationId: ORG_ID,
+        email: createEmail('alice@example.com'),
+        credential: createPasswordCredential('hash'),
+        firstName: 'Alice',
+        lastName: 'Smith',
+        now: NOW,
+      });
+      await userRepositoryFactory.forTenant(ORG_ID).save(user);
+    }
+
+    it('the SAME opaque 200 body is returned for a matching user and for an unknown email', async () => {
+      const { app, organizations, userRepositoryFactory, emailSender, auditRecorder } = buildApp();
+      await seedOrgAndUser(organizations, userRepositoryFactory);
+
+      const matching = await request(app)
+        .post('/api/v1/auth/users/password-reset/request')
+        .send({ organizationSlug: 'acme', email: 'alice@example.com' });
+      const unknown = await request(app)
+        .post('/api/v1/auth/users/password-reset/request')
+        .send({ organizationSlug: 'acme', email: 'nobody@example.com' });
+
+      expect(matching.status).toBe(200);
+      expect(unknown.status).toBe(200);
+      expect(matching.body).toEqual(unknown.body);
+      expect(matching.body).toEqual({ status: 'PASSWORD_RESET_REQUESTED' });
+
+      // But only the matching user actually got a token/email/audit event.
+      expect(emailSender.sent).toHaveLength(1);
+      expect(auditRecorder.calls()).toHaveLength(1);
+    });
+
+    it('the SAME opaque 200 body is returned when organizationSlug is missing or unknown', async () => {
+      const { app, organizations, userRepositoryFactory } = buildApp();
+      await seedOrgAndUser(organizations, userRepositoryFactory);
+
+      const missingSlug = await request(app)
+        .post('/api/v1/auth/users/password-reset/request')
+        .send({ email: 'alice@example.com' });
+      const unknownSlug = await request(app)
+        .post('/api/v1/auth/users/password-reset/request')
+        .send({ organizationSlug: 'no-such-org', email: 'alice@example.com' });
+
+      expect(missingSlug.status).toBe(200);
+      expect(unknownSlug.status).toBe(200);
+      expect(missingSlug.body).toEqual({ status: 'PASSWORD_RESET_REQUESTED' });
+      expect(unknownSlug.body).toEqual({ status: 'PASSWORD_RESET_REQUESTED' });
+    });
+
+    it('rejects a body with no email with 400 INVARIANT_VIOLATION (DTO-level validation, not user-scoped)', async () => {
+      const { app } = buildApp();
+
+      const response = await request(app)
+        .post('/api/v1/auth/users/password-reset/request')
+        .send({ organizationSlug: 'acme' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
     });
   });
 });

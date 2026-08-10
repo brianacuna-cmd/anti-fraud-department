@@ -4,7 +4,13 @@ import type { createAuthenticateActorUseCase } from '../../../../application/aut
 import type { createBeginUserLoginUseCase } from '../../../../application/auth/BeginUserLogin.js';
 import type { createIssueSessionUseCase } from '../../../../application/auth/IssueSession.js';
 import type { createLogoutUseCase } from '../../../../application/auth/Logout.js';
-import { usersLoginSchema, organizationsLoginSchema, usersMfaSchema } from './dto/authSchemas.js';
+import type { createRequestPasswordResetUseCase } from '../../../../application/auth/RequestPasswordReset.js';
+import {
+  usersLoginSchema,
+  organizationsLoginSchema,
+  usersMfaSchema,
+  requestPasswordResetSchema,
+} from './dto/authSchemas.js';
 import { parseRequest } from './parseRequest.js';
 
 export interface AuthRouterDeps {
@@ -23,6 +29,8 @@ export interface AuthRouterDeps {
   /** Step 2, challenge path (design "IssueSession flow"). */
   readonly issueSession: ReturnType<typeof createIssueSessionUseCase>;
   readonly logout: ReturnType<typeof createLogoutUseCase>;
+  /** Public, unauthenticated (password-management PR-2b, spec "Request Password Reset"). */
+  readonly requestPasswordReset: ReturnType<typeof createRequestPasswordResetUseCase>;
 }
 
 /**
@@ -75,6 +83,15 @@ export function authRouter(deps: AuthRouterDeps): Router {
     const auth = requireAuthContext(req);
     await deps.logout({ auth });
     res.status(204).send();
+  });
+
+  // password-management PR-2b (spec "Request Password Reset"): ALWAYS 200
+  // opaque — no `AuthContext`, and the response body is identical whether
+  // or not the email/organizationSlug resolves to a real user (design §5).
+  router.post('/auth/users/password-reset/request', async (req, res) => {
+    const body = parseRequest(requestPasswordResetSchema, req.body);
+    const result = await deps.requestPasswordReset({ ...body, ipAddress: req.ip ?? null });
+    res.status(200).json(result);
   });
 
   return router;
