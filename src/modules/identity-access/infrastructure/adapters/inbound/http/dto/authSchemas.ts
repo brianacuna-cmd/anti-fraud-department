@@ -62,3 +62,15 @@ export const confirmPasswordResetSchema = z.object({
 });
 
 export type ConfirmPasswordResetBody = z.infer<typeof confirmPasswordResetSchema>;
+
+/**
+ * POST /auth/refresh body (session-lifecycle PR-2, design "3. `/auth/refresh`
+ * route + DTO"). Bearer-in-body convention, same as `usersMfaSchema` /
+ * `confirmPasswordResetSchema` — the route is UNAUTHENTICATED, no
+ * `AuthContext` exists yet, and the refresh token itself IS the credential.
+ */
+export const refreshSchema = z.object({
+  refreshToken: z.string().min(1),
+});
+
+export type RefreshBody = z.infer<typeof refreshSchema>;

@@ -26,6 +26,10 @@ export type IdentityAccessAuditAction =
   | 'USER_SESSIONS_REVOKED'
   // user-roles PR-2 (design "6. `ChangeUserRole` use case"): organization-only role change.
   | 'USER_ROLE_CHANGED'
+  // session-lifecycle PR-2 (design DD7): emitted by `RefreshSession` — a
+  // successful token rotation, and a reuse/CAS-loss-triggered family revoke.
+  | 'SESSION_REFRESHED'
+  | 'SESSION_REUSE_DETECTED'
   | 'PLATFORM_ADMIN_PROVISIONED'
   // mfa-user-enrollment PR2: user MFA setup/activate/disable.
   | 'MFA_ENABLED'

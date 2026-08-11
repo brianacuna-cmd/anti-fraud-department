@@ -6,12 +6,14 @@ import type { createIssueOrganizationSessionUseCase } from '../../../../applicat
 import type { createLogoutUseCase } from '../../../../application/auth/Logout.js';
 import type { createRequestPasswordResetUseCase } from '../../../../application/auth/RequestPasswordReset.js';
 import type { createConfirmPasswordResetUseCase } from '../../../../application/auth/ConfirmPasswordReset.js';
+import type { createRefreshSessionUseCase } from '../../../../application/auth/RefreshSession.js';
 import {
   usersLoginSchema,
   organizationsLoginSchema,
   usersMfaSchema,
   requestPasswordResetSchema,
   confirmPasswordResetSchema,
+  refreshSchema,
 } from './dto/authSchemas.js';
 import { parseRequest } from './parseRequest.js';
 
@@ -35,6 +37,12 @@ export interface AuthRouterDeps {
   readonly requestPasswordReset: ReturnType<typeof createRequestPasswordResetUseCase>;
   /** Public, unauthenticated, token-only (password-management PR-2c, spec "Confirm Password Reset"). */
   readonly confirmPasswordReset: ReturnType<typeof createConfirmPasswordResetUseCase>;
+  /**
+   * `POST /auth/refresh` (session-lifecycle PR-2, design "3. `/auth/refresh`
+   * route + DTO") — public, unauthenticated: the refresh token itself IS the
+   * credential, so this route never calls `requireAuthContext`.
+   */
+  readonly refreshSession: ReturnType<typeof createRefreshSessionUseCase>;
 }
 
 /**
@@ -81,6 +89,18 @@ export function authRouter(deps: AuthRouterDeps): Router {
   router.post('/auth/organizations/login', async (req, res) => {
     const body = parseRequest(organizationsLoginSchema, req.body);
     const result = await deps.issueOrganizationSession({ ...body, ipAddress: req.ip ?? null });
+    res.status(200).json(result);
+  });
+
+  // session-lifecycle PR-2 (design "3. `/auth/refresh` route + DTO",
+  // DD4) — UNAUTHENTICATED: never calls `requireAuthContext`, the refresh
+  // token in the body IS the credential. Every semantic failure (unknown,
+  // wrong tokenType, revoked, reuse, CAS-loss, expired refresh/family)
+  // collapses to the SAME opaque `SESSION_INVALID` 401 — no branch here
+  // distinguishes them.
+  router.post('/auth/refresh', async (req, res) => {
+    const body = parseRequest(refreshSchema, req.body);
+    const result = await deps.refreshSession({ refreshToken: body.refreshToken, ipAddress: req.ip ?? null });
     res.status(200).json(result);
   });
 

@@ -7,7 +7,8 @@ import type { OrganizationId } from '../../domain/model/value-objects/Organizati
 import type { ActorType } from '../../domain/model/value-objects/ActorType.js';
 import { Session } from '../../domain/model/aggregates/Session.js';
 import { generateSessionId } from '../../domain/model/value-objects/SessionId.js';
-import { generateFamilyId } from '../../domain/model/value-objects/FamilyId.js';
+import { generateFamilyId, type FamilyId } from '../../domain/model/value-objects/FamilyId.js';
+import type { SessionId } from '../../domain/model/value-objects/SessionId.js';
 
 export interface SessionIssuerTtls {
   readonly sessionSeconds: number;
@@ -28,6 +29,20 @@ export interface IssueForActorInput {
   readonly actorType: ActorType;
   readonly now: Instant;
   readonly tx: Transaction;
+  /**
+   * OPTIONAL — session-lifecycle PR-2 (design DD3). When supplied, the
+   * minted session joins an EXISTING rotation family (its ORIGINAL
+   * `familyExpiresAt`, never extended — design D15) with a rotation link,
+   * instead of starting a brand-new family. Every pre-PR-2 caller
+   * (`IssueSession`, `ActivateMfa`, `IssueOrganizationSession`, admin
+   * issuance) omits this field and keeps today's fresh-family behavior
+   * unchanged — this extension is fully backward-compatible.
+   */
+  readonly rotation?: {
+    readonly familyId: FamilyId;
+    readonly familyExpiresAt: Instant;
+    readonly rotatedFromSessionId: SessionId;
+  };
 }
 
 export interface MintedSession {
@@ -53,9 +68,12 @@ function addSeconds(instant: Instant, seconds: number): Instant {
 export function createSessionIssuer(deps: SessionIssuerDeps) {
   return async function issueSessionFor(input: IssueForActorInput): Promise<MintedSession> {
     const sessionId = generateSessionId();
-    const familyId = generateFamilyId();
+    // design D15/DD3: a rotation successor joins the EXISTING family and
+    // carries its ORIGINAL expiry forward — never a fresh id/expiry, and
+    // never `now + familySeconds`.
+    const familyId = input.rotation?.familyId ?? generateFamilyId();
     const expiresAt = addSeconds(input.now, deps.ttls.sessionSeconds);
-    const familyExpiresAt = addSeconds(input.now, deps.ttls.familySeconds);
+    const familyExpiresAt = input.rotation?.familyExpiresAt ?? addSeconds(input.now, deps.ttls.familySeconds);
     // design D38: PLATFORM_ADMIN sessions issue NO refresh token — skip
     // minting it entirely rather than minting-then-discarding, so a
     // never-issued token can never accidentally leak.
@@ -86,6 +104,7 @@ export function createSessionIssuer(deps: SessionIssuerDeps) {
       refreshExpiresAt,
       familyId,
       familyExpiresAt,
+      rotatedFromSessionId: input.rotation?.rotatedFromSessionId ?? null,
       now: input.now,
     });
 

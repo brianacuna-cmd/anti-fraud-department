@@ -66,6 +66,7 @@ import { createBeginUserLoginUseCase } from './modules/identity-access/applicati
 import { createSessionIssuer } from './modules/identity-access/application/auth/SessionIssuer.js';
 import { createIssueSessionUseCase } from './modules/identity-access/application/auth/IssueSession.js';
 import { createIssueOrganizationSessionUseCase } from './modules/identity-access/application/auth/IssueOrganizationSession.js';
+import { createRefreshSessionUseCase } from './modules/identity-access/application/auth/RefreshSession.js';
 import { createLogoutUseCase } from './modules/identity-access/application/auth/Logout.js';
 import { MongoMfaChallengeRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoMfaChallengeRepository.js';
 import { createPasswordCredential } from './modules/identity-access/domain/model/value-objects/PasswordCredential.js';
@@ -398,6 +399,14 @@ async function bootstrap(): Promise<void> {
       unitOfWork,
       clock,
       issueSessionFor: sessionIssuer,
+      auditRecorder,
+    }),
+    refreshSession: createRefreshSessionUseCase({
+      sessionTokenService,
+      sessions,
+      issueSessionFor: sessionIssuer,
+      unitOfWork,
+      clock,
       auditRecorder,
     }),
     logout: createLogoutUseCase({ sessions, clock, auditRecorder }),
