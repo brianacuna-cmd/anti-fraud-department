@@ -74,6 +74,13 @@ import { MongoAuditLogRepository } from './modules/audit/infrastructure/adapters
 import { createRecordAuditLogUseCase } from './modules/audit/application/RecordAuditLog.js';
 import { generateAuditLogId } from './modules/audit/domain/model/value-objects/AuditLogId.js';
 import { createAuditRecorderAdapter } from './composition/auditRecorderAdapter.js';
+import { createNotificationsAuditRecorderAdapter } from './composition/notificationsAuditRecorderAdapter.js';
+import { MongoNotificationPreferenceRepository } from './modules/notifications/infrastructure/adapters/outbound/mongo/MongoNotificationPreferenceRepository.js';
+import { MongoUnitOfWork as NotificationsMongoUnitOfWork } from './modules/notifications/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
+import { createGetNotificationPreferencesUseCase } from './modules/notifications/application/GetNotificationPreferences.js';
+import { createSetNotificationPreferenceUseCase } from './modules/notifications/application/SetNotificationPreference.js';
+import { notificationPreferenceRouter } from './modules/notifications/infrastructure/adapters/inbound/http/notificationPreferenceRouter.js';
+import { notificationsErrorStatus } from './modules/notifications/infrastructure/adapters/inbound/http/errorStatus.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const MONGO_URI = process.env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/?replicaSet=rs0';
@@ -193,6 +200,24 @@ async function bootstrap(): Promise<void> {
   const auditLogs = new MongoAuditLogRepository(db);
   const recordAuditLog = createRecordAuditLogUseCase({ auditLogs, clock, generateAuditLogId });
   const auditRecorder = createAuditRecorderAdapter(recordAuditLog);
+
+  // notification-preferences PR3: the `notifications` module wires against the
+  // SAME `recordAuditLog` instance via its OWN composition-root bridge (its
+  // `AuditRecorder` port is nominally distinct from identity-access's, design
+  // D12). Own `MongoUnitOfWork` instance so the preference upsert + audit row
+  // commit atomically (design D11).
+  const notificationPreferences = new MongoNotificationPreferenceRepository(db);
+  const notificationsUnitOfWork = new NotificationsMongoUnitOfWork(client);
+  const notificationsAuditRecorder = createNotificationsAuditRecorderAdapter(recordAuditLog);
+  const getNotificationPreferences = createGetNotificationPreferencesUseCase({
+    repository: notificationPreferences,
+  });
+  const setNotificationPreference = createSetNotificationPreferenceUseCase({
+    repository: notificationPreferences,
+    unitOfWork: notificationsUnitOfWork,
+    clock,
+    auditRecorder: notificationsAuditRecorder,
+  });
 
   const transitionOrganizationStatus = createTransitionOrganizationStatusUseCase({
     organizations,
@@ -448,10 +473,17 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(identityAccessOrganizationsRouter);
   identityAccessRouter.use(identityAccessUsersRouter);
   identityAccessRouter.use(identityAccessAdminOrganizationsRouter);
+  // notification-preferences PR3: mounted on the SAME authenticated `/api/v1`
+  // router — `notifications` routes are USER-tier self-service and rely on the
+  // `authContextMiddleware` above to resolve the caller's AuthContext.
+  identityAccessRouter.use(notificationPreferenceRouter({ getNotificationPreferences, setNotificationPreference }));
 
   const app = createApp({
     routers: [{ path: '/api/v1', router: identityAccessRouter }],
-    errorHandler: createErrorHandler(identityAccessErrorStatus),
+    // Merged status maps: identity-access + notifications closed error codes.
+    // The two overlapping keys (INVARIANT_VIOLATION=400, FORBIDDEN_CROSS_TENANT=403)
+    // agree, so the spread is order-independent.
+    errorHandler: createErrorHandler({ ...identityAccessErrorStatus, ...notificationsErrorStatus }),
     trustProxy: TRUST_PROXY,
   });
 
