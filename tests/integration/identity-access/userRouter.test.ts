@@ -31,11 +31,17 @@ import { InMemorySessionRepository } from '../../helpers/identity-access/InMemor
 import { SessionTokenAuthContextResolver } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/SessionTokenAuthContextResolver.js';
 import { createAuthContextMiddleware } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/authContextMiddleware.js';
 import { FakeQrCodeGenerator } from '../../helpers/identity-access/FakeQrCodeGenerator.js';
+import { InMemoryRoleRepository } from '../../helpers/identity-access/InMemoryRoleRepository.js';
 import { authenticator } from 'otplib';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 
-const ORG_1_USER = createAuthContext({ userId: 'u1', organizationId: 'org-1', isPlatformAdmin: false });
-const ORG_2_USER = createAuthContext({ userId: 'u2', organizationId: 'org-2', isPlatformAdmin: false });
+// user-roles PR-1b: CreateUser is now org-only-gated (`requireOrganizationActor`).
+// These drive every route in this file's tests (create/get/patch/transition/
+// delete) — the other routes stay on `requireTenantContext` alone, so an
+// ORGANIZATION actor works for them unchanged (design "7. `requireOrganizationActor`
+// guard" — gates ONLY CreateUser and ChangeUserRole).
+const ORG_1_ORGANIZATION = createAuthContext({ userId: 'u1', organizationId: 'org-1', actorType: 'ORGANIZATION' });
+const ORG_2_ORGANIZATION = createAuthContext({ userId: 'u2', organizationId: 'org-2', actorType: 'ORGANIZATION' });
 const PLATFORM_ADMIN_ORG_1 = createAuthContext({ userId: 'u3', organizationId: 'org-1', isPlatformAdmin: true });
 
 const SECRET_CIPHER_FIXTURE = new AesGcmSecretCipher('test-secret', 1);
@@ -67,6 +73,7 @@ function buildApp(
       clock,
       generateId: generateUserId,
       auditRecorder,
+      roleRepository: new InMemoryRoleRepository(),
     }),
     getUser: createGetUserUseCase({ userRepositoryFactory }),
     listUsers: createListUsersUseCase({ userRepositoryFactory }),
@@ -151,6 +158,7 @@ function buildAppWithRealResolver(
       clock,
       generateId: generateUserId,
       auditRecorder,
+      roleRepository: new InMemoryRoleRepository(),
     }),
     getUser: createGetUserUseCase({ userRepositoryFactory }),
     listUsers: createListUsersUseCase({ userRepositoryFactory }),
@@ -209,11 +217,11 @@ function buildAppWithRealResolver(
 
 describe('userRouter (e2e, in-memory repository)', () => {
   it('POST /users creates a user scoped to the caller\'s organization', async () => {
-    const { app } = buildApp(() => ORG_1_USER);
+    const { app } = buildApp(() => ORG_1_ORGANIZATION);
 
     const response = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'super-secret', firstName: 'Alice', lastName: 'Smith' });
+      .send({ email: 'alice@example.com', password: 'super-secret', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     expect(response.status).toBe(201);
     expect(response.body).toMatchObject({
@@ -221,17 +229,51 @@ describe('userRouter (e2e, in-memory repository)', () => {
       firstName: 'Alice',
       organizationId: 'org-1',
       status: 'ACTIVE',
+      roleId: 'ANALYST',
     });
     expect(response.body).not.toHaveProperty('passwordHash');
   });
 
-  it('GET /users/:id returns 404 USER_NOT_FOUND for a cross-tenant id', async () => {
-    const { app } = buildApp(() => ORG_1_USER);
-    const created = await request(app)
+  it('POST /users rejects a USER-tier actor with 403 FORBIDDEN_CROSS_TENANT (user-roles PR-1b org-only gate)', async () => {
+    const actingUser = createAuthContext({ userId: 'u9', organizationId: 'org-1', isPlatformAdmin: false });
+    const { app } = buildApp(() => actingUser);
+
+    const response = await request(app)
+      .post('/api/v1/users')
+      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN_CROSS_TENANT');
+  });
+
+  it('POST /users rejects role=ADMIN with 400 ROLE_NOT_ASSIGNABLE (user-roles PR-1b)', async () => {
+    const { app } = buildApp(() => ORG_1_ORGANIZATION);
+
+    const response = await request(app)
+      .post('/api/v1/users')
+      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ADMIN' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('ROLE_NOT_ASSIGNABLE');
+  });
+
+  it('POST /users rejects a missing role with 400 (zod validation)', async () => {
+    const { app } = buildApp(() => ORG_1_ORGANIZATION);
+
+    const response = await request(app)
       .post('/api/v1/users')
       .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith' });
 
-    const { app: otherOrgApp } = buildApp(() => ORG_2_USER);
+    expect(response.status).toBe(400);
+  });
+
+  it('GET /users/:id returns 404 USER_NOT_FOUND for a cross-tenant id', async () => {
+    const { app } = buildApp(() => ORG_1_ORGANIZATION);
+    const created = await request(app)
+      .post('/api/v1/users')
+      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
+
+    const { app: otherOrgApp } = buildApp(() => ORG_2_ORGANIZATION);
     const response = await request(otherOrgApp).get(`/api/v1/users/${created.body.id}`);
 
     expect(response.status).toBe(404);
@@ -239,9 +281,9 @@ describe('userRouter (e2e, in-memory repository)', () => {
   });
 
   it('GET /users paginates within the caller\'s organization', async () => {
-    const { app } = buildApp(() => ORG_1_USER);
-    await request(app).post('/api/v1/users').send({ email: 'a@example.com', password: 'pw', firstName: 'A', lastName: 'S' });
-    await request(app).post('/api/v1/users').send({ email: 'b@example.com', password: 'pw', firstName: 'B', lastName: 'T' });
+    const { app } = buildApp(() => ORG_1_ORGANIZATION);
+    await request(app).post('/api/v1/users').send({ email: 'a@example.com', password: 'pw', firstName: 'A', lastName: 'S', role: 'ANALYST' });
+    await request(app).post('/api/v1/users').send({ email: 'b@example.com', password: 'pw', firstName: 'B', lastName: 'T', role: 'ANALYST' });
 
     const firstPage = await request(app).get('/api/v1/users?limit=1');
 
@@ -251,10 +293,10 @@ describe('userRouter (e2e, in-memory repository)', () => {
   });
 
   it('PATCH /users/:id updates firstName/lastName/email/avatarUrl only', async () => {
-    const { app } = buildApp(() => ORG_1_USER);
+    const { app } = buildApp(() => ORG_1_ORGANIZATION);
     const created = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith' });
+      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     const response = await request(app)
       .patch(`/api/v1/users/${created.body.id}`)
@@ -265,10 +307,10 @@ describe('userRouter (e2e, in-memory repository)', () => {
   });
 
   it('PATCH /users/:id rejects an attempt to set roleIds with 400 INVARIANT_VIOLATION', async () => {
-    const { app } = buildApp(() => ORG_1_USER);
+    const { app } = buildApp(() => ORG_1_ORGANIZATION);
     const created = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith' });
+      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     const response = await request(app)
       .patch(`/api/v1/users/${created.body.id}`)
@@ -279,10 +321,10 @@ describe('userRouter (e2e, in-memory repository)', () => {
   });
 
   it('POST /users/:id/transition changes status on a valid transition', async () => {
-    const { app } = buildApp(() => ORG_1_USER);
+    const { app } = buildApp(() => ORG_1_ORGANIZATION);
     const created = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith' });
+      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     const response = await request(app)
       .post(`/api/v1/users/${created.body.id}/transition`)
@@ -293,10 +335,10 @@ describe('userRouter (e2e, in-memory repository)', () => {
   });
 
   it('POST /users/:id/transition rejects an invalid transition with 422', async () => {
-    const { app } = buildApp(() => ORG_1_USER);
+    const { app } = buildApp(() => ORG_1_ORGANIZATION);
     const created = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith' });
+      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     const response = await request(app)
       .post(`/api/v1/users/${created.body.id}/transition`)
@@ -307,10 +349,10 @@ describe('userRouter (e2e, in-memory repository)', () => {
   });
 
   it('an org-admin cannot reactivate a DISABLED user in their own org (FORBIDDEN_REACTIVATION)', async () => {
-    const { app } = buildApp(() => ORG_1_USER);
+    const { app } = buildApp(() => ORG_1_ORGANIZATION);
     const created = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith' });
+      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
     await request(app).delete(`/api/v1/users/${created.body.id}`);
 
     const response = await request(app)
@@ -322,10 +364,10 @@ describe('userRouter (e2e, in-memory repository)', () => {
   });
 
   it('DELETE /users/:id behaves identically to transition to DISABLED', async () => {
-    const { app } = buildApp(() => ORG_1_USER);
+    const { app } = buildApp(() => ORG_1_ORGANIZATION);
     const created = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith' });
+      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     const response = await request(app).delete(`/api/v1/users/${created.body.id}`);
 
@@ -335,10 +377,10 @@ describe('userRouter (e2e, in-memory repository)', () => {
 
   it('a platform-admin shares the ordinary tenant-scoped path — no special cross-tenant bypass exists', async () => {
     const sharedFactory = new InMemoryUserRepositoryFactory();
-    const { app: org1App } = buildApp(() => ORG_1_USER, sharedFactory);
+    const { app: org1App } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory);
     const created = await request(org1App)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith' });
+      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     const { app: platformAdminOrg1App } = buildApp(() => PLATFORM_ADMIN_ORG_1, sharedFactory);
     const sameOrgResponse = await request(platformAdminOrg1App).get(`/api/v1/users/${created.body.id}`);
@@ -353,7 +395,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
   });
 
   it('GET /users/unknown-route-suffix returns a plain 404 (no router claims it)', async () => {
-    const { app } = buildApp(() => ORG_1_USER);
+    const { app } = buildApp(() => ORG_1_ORGANIZATION);
 
     const response = await request(app).get('/api/v1/unknown');
 
@@ -365,14 +407,14 @@ describe('userRouter (e2e, in-memory repository)', () => {
     async function seedActingUser(app: Express): Promise<() => AuthContext> {
       const created = await request(app)
         .post('/api/v1/users')
-        .send({ email: 'mfa-user@example.com', password: 'pw', firstName: 'Mfa', lastName: 'User' });
+        .send({ email: 'mfa-user@example.com', password: 'pw', firstName: 'Mfa', lastName: 'User', role: 'ANALYST' });
       const userId = created.body.id as string;
       return () => createAuthContext({ userId, organizationId: 'org-1', isPlatformAdmin: false });
     }
 
     it('POST /users/me/mfa/setup returns a QR data URL and otpauth URI, storing an encrypted (disabled) secret', async () => {
       const sharedFactory = new InMemoryUserRepositoryFactory();
-      const { app: seedApp } = buildApp(() => ORG_1_USER, sharedFactory);
+      const { app: seedApp } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory);
       const actingAuth = await seedActingUser(seedApp);
       const { app } = buildApp(actingAuth, sharedFactory);
 
@@ -385,7 +427,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
 
     it('full setup -> activate flow enables MFA', async () => {
       const sharedFactory = new InMemoryUserRepositoryFactory();
-      const { app: setupApp } = buildApp(() => ORG_1_USER, sharedFactory);
+      const { app: setupApp } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory);
       const actingAuth = await seedActingUser(setupApp);
       const { app } = buildApp(actingAuth, sharedFactory);
 
@@ -400,7 +442,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
 
     it('POST /users/me/mfa/activate rejects a wrong token with 401 MFA_TOKEN_INVALID', async () => {
       const sharedFactory = new InMemoryUserRepositoryFactory();
-      const { app: setupApp } = buildApp(() => ORG_1_USER, sharedFactory);
+      const { app: setupApp } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory);
       const actingAuth = await seedActingUser(setupApp);
       const { app } = buildApp(actingAuth, sharedFactory);
 
@@ -413,7 +455,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
 
     it('DELETE /users/me/mfa disables MFA', async () => {
       const sharedFactory = new InMemoryUserRepositoryFactory();
-      const { app: setupApp } = buildApp(() => ORG_1_USER, sharedFactory);
+      const { app: setupApp } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory);
       const actingAuth = await seedActingUser(setupApp);
       const { app } = buildApp(actingAuth, sharedFactory);
 
@@ -428,14 +470,14 @@ describe('userRouter (e2e, in-memory repository)', () => {
     async function seedActingUser(app: Express, password: string): Promise<() => AuthContext> {
       const created = await request(app)
         .post('/api/v1/users')
-        .send({ email: 'pw-user@example.com', password, firstName: 'Pw', lastName: 'User' });
+        .send({ email: 'pw-user@example.com', password, firstName: 'Pw', lastName: 'User', role: 'ANALYST' });
       const userId = created.body.id as string;
       return () => createAuthContext({ userId, organizationId: 'org-1', isPlatformAdmin: false });
     }
 
     it('POST /users/me/password replaces the credential and returns 204 on correct current password', async () => {
       const sharedFactory = new InMemoryUserRepositoryFactory();
-      const { app: seedApp } = buildApp(() => ORG_1_USER, sharedFactory);
+      const { app: seedApp } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory);
       const actingAuth = await seedActingUser(seedApp, 'old-password');
       const { app } = buildApp(actingAuth, sharedFactory);
 
@@ -448,7 +490,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
 
     it('POST /users/me/password rejects a wrong current password with 401 INVALID_CREDENTIALS', async () => {
       const sharedFactory = new InMemoryUserRepositoryFactory();
-      const { app: seedApp } = buildApp(() => ORG_1_USER, sharedFactory);
+      const { app: seedApp } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory);
       const actingAuth = await seedActingUser(seedApp, 'old-password');
       const { app } = buildApp(actingAuth, sharedFactory);
 
@@ -462,7 +504,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
 
     it('POST /users/me/password requires authentication (no upstream AuthContext at all — a wiring error, same as every other route)', async () => {
       const sharedFactory = new InMemoryUserRepositoryFactory();
-      const { app: seedApp } = buildApp(() => ORG_1_USER, sharedFactory);
+      const { app: seedApp } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory);
       const mfaChallenges = new InMemoryMfaChallengeStore();
       const sessions = new InMemorySessionRepository();
       await seedActingUser(seedApp, 'old-password');
@@ -510,10 +552,10 @@ describe('userRouter (e2e, in-memory repository)', () => {
       const sharedFactory = new InMemoryUserRepositoryFactory();
       const mfaChallenges = new InMemoryMfaChallengeStore();
       const sessions = new InMemorySessionRepository();
-      const { app: seedApp } = buildApp(() => ORG_1_USER, sharedFactory, mfaChallenges, sessions);
+      const { app: seedApp } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory, mfaChallenges, sessions);
       const created = await request(seedApp)
         .post('/api/v1/users')
-        .send({ email: 'enrollee@example.com', password: 'pw', firstName: 'En', lastName: 'Rollee' });
+        .send({ email: 'enrollee@example.com', password: 'pw', firstName: 'En', lastName: 'Rollee', role: 'ANALYST' });
       const userId = created.body.id as string;
 
       const { app } = buildAppWithRealResolver(sharedFactory, mfaChallenges, sessions);
@@ -543,10 +585,10 @@ describe('userRouter (e2e, in-memory repository)', () => {
       const sharedFactory = new InMemoryUserRepositoryFactory();
       const mfaChallenges = new InMemoryMfaChallengeStore();
       const sessions = new InMemorySessionRepository();
-      const { app: seedApp } = buildApp(() => ORG_1_USER, sharedFactory, mfaChallenges, sessions);
+      const { app: seedApp } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory, mfaChallenges, sessions);
       const created = await request(seedApp)
         .post('/api/v1/users')
-        .send({ email: 'enrollee2@example.com', password: 'pw', firstName: 'En', lastName: 'Rollee' });
+        .send({ email: 'enrollee2@example.com', password: 'pw', firstName: 'En', lastName: 'Rollee', role: 'ANALYST' });
       const userId = created.body.id as string;
 
       const { app } = buildAppWithRealResolver(sharedFactory, mfaChallenges, sessions);
@@ -574,10 +616,10 @@ describe('userRouter (e2e, in-memory repository)', () => {
       const sharedFactory = new InMemoryUserRepositoryFactory();
       const mfaChallenges = new InMemoryMfaChallengeStore();
       const sessions = new InMemorySessionRepository();
-      const { app: seedApp } = buildApp(() => ORG_1_USER, sharedFactory, mfaChallenges, sessions);
+      const { app: seedApp } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory, mfaChallenges, sessions);
       const created = await request(seedApp)
         .post('/api/v1/users')
-        .send({ email: 'enrollee3@example.com', password: 'pw', firstName: 'En', lastName: 'Rollee' });
+        .send({ email: 'enrollee3@example.com', password: 'pw', firstName: 'En', lastName: 'Rollee', role: 'ANALYST' });
       const userId = created.body.id as string;
 
       const { app } = buildAppWithRealResolver(sharedFactory, mfaChallenges, sessions);

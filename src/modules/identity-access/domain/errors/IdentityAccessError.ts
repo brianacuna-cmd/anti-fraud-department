@@ -127,6 +127,19 @@ export function passwordResetInvalid(): IdentityAccessError {
   return new IdentityAccessError('PASSWORD_RESET_INVALID', 'password reset token is invalid, expired, or already used');
 }
 
+// user-roles PR-1b: organization-only role assignment on user creation.
+
+/**
+ * ONE code for every way a requested role can fail to be assigned to a
+ * `User` — unknown id, inactive role, or ADMIN (never a User's role) — the
+ * caller is already an authenticated ORGANIZATION actor, so there is no
+ * enumeration oracle to hide (same non-opaque precedent as
+ * `adminOrganizationNotFound`).
+ */
+export function roleNotAssignable(roleId: string): IdentityAccessError {
+  return new IdentityAccessError('ROLE_NOT_ASSIGNABLE', `role "${roleId}" is not assignable to a user`, { roleId });
+}
+
 // mfa-user-enrollment PR2: user MFA setup/activate/disable.
 
 /** No pending TOTP secret to confirm — enrollment was never started, or is already enabled. */

@@ -5,6 +5,7 @@ import type { Email } from '../value-objects/Email.js';
 import type { PasswordCredential } from '../value-objects/PasswordCredential.js';
 import type { LifecycleStatus } from '../value-objects/LifecycleStatus.js';
 import type { TransitionActor } from '../value-objects/TransitionActor.js';
+import type { RoleId } from '../value-objects/RoleId.js';
 import { INITIAL_LOCKOUT_STATE, type LockoutState } from '../value-objects/LockoutState.js';
 import { USER_TRANSITIONS } from '../../services/transitions.js';
 import { assertTransitionAllowed, type ReactivationEdge } from '../../services/StatusTransitionPolicy.js';
@@ -46,6 +47,8 @@ export interface UserProps {
   readonly avatarUrl: string | null;
   readonly status: LifecycleStatus;
   readonly isPlatformAdmin: boolean;
+  /** user-roles PR-1b: required — every User has a role (design "4. `User` aggregate changes"). */
+  readonly roleId: RoleId;
   readonly resetToken: ResetToken | null;
   readonly mfa: MfaSettings;
   /** Failed-login tracking, shared shape with `Organization` (design D18). Never surfaces on a DTO. */
@@ -64,6 +67,7 @@ export interface CreateUserInput {
   readonly lastName: string;
   readonly avatarUrl?: string | null;
   readonly isPlatformAdmin?: boolean;
+  readonly roleId: RoleId;
   readonly now: Instant;
 }
 
@@ -102,6 +106,7 @@ export class User {
       avatarUrl: input.avatarUrl ?? null,
       status: 'ACTIVE',
       isPlatformAdmin: input.isPlatformAdmin ?? false,
+      roleId: input.roleId,
       resetToken: null,
       mfa: DEFAULT_MFA,
       lockout: INITIAL_LOCKOUT_STATE,
@@ -153,6 +158,10 @@ export class User {
 
   get isPlatformAdmin(): boolean {
     return this.props.isPlatformAdmin;
+  }
+
+  get roleId(): RoleId {
+    return this.props.roleId;
   }
 
   get resetToken(): ResetToken | null {

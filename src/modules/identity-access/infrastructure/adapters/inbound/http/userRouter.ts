@@ -40,8 +40,8 @@ export function userRouter(deps: UserRouterDeps): Router {
 
   router.post('/users', async (req, res) => {
     const auth = requireAuthContext(req);
-    const body = parseRequest(createUserSchema, req.body);
-    const user = await deps.createUser({ auth, ...body });
+    const { role, ...body } = parseRequest(createUserSchema, req.body);
+    const user = await deps.createUser({ auth, ...body, roleId: role });
     res.status(201).json(toUserResponse(user));
   });
 

@@ -21,6 +21,7 @@ import { UserActorGateway } from './modules/identity-access/infrastructure/adapt
 import { OrganizationActorGateway } from './modules/identity-access/infrastructure/adapters/outbound/mongo/OrganizationActorGateway.js';
 import { MongoUnitOfWork } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { MongoAdminOrganizationRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoAdminOrganizationRepository.js';
+import { MongoRoleRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoRoleRepository.js';
 import { BcryptPasswordHasher, DUMMY_PASSWORD_HASH } from './modules/identity-access/infrastructure/adapters/outbound/crypto/BcryptPasswordHasher.js';
 import { AesGcmSecretCipher } from './modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
 import { AesGcmSessionTokenService } from './modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSessionTokenService.js';
@@ -140,16 +141,17 @@ async function bootstrap(): Promise<void> {
   await ensureIndexes(db);
   // user-roles PR-1a: idempotent fixed role-catalog seed (ADMIN/SUPERVISOR/
   // ANALYST/AUDITOR) — must run before any request that could reference a
-  // role. `RoleRepository` itself is not yet wired here; it has no real
-  // consumer until PR-1b's CreateUser org-gate lands (this file's existing
-  // "defer construction until a real caller exists" precedent, see
-  // `mfaChallenges`/`adminChallenges` below).
+  // role.
   await ensureRoles(db, clock.now());
 
   const organizations = new MongoOrganizationRepository(db);
   const userRepositoryFactory = new MongoUserRepositoryFactory(db);
   const sessions = new MongoSessionRepository(db);
   const admins = new MongoAdminOrganizationRepository(db);
+  // user-roles PR-1b: first real consumer — construction was deferred out of
+  // PR-1a to avoid dead code with no caller yet (this file's existing
+  // precedent, see `mfaChallenges`/`adminChallenges` below).
+  const roleRepository = new MongoRoleRepository(db);
   const passwordHasher = new BcryptPasswordHasher();
   // Phase 3b (design D13): the ONE AES-256-GCM primitive, layered — also
   // reused by MFA-secret encryption (mfa-totp spec) once that phase lands,
@@ -245,6 +247,7 @@ async function bootstrap(): Promise<void> {
       clock,
       generateId: generateUserId,
       auditRecorder,
+      roleRepository,
     }),
     getUser: createGetUserUseCase({ userRepositoryFactory }),
     listUsers: createListUsersUseCase({ userRepositoryFactory }),

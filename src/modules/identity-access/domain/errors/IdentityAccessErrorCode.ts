@@ -43,4 +43,9 @@ export type IdentityAccessErrorCode =
   // password-management PR-2a (design "HTTP + DTOs + main.ts"): reset-token
   // rejection — expired/replayed/mismatch/user-missing all reject with this
   // ONE code (no oracle for which failed), consumed by PR-2c's confirm flow.
-  | 'PASSWORD_RESET_INVALID';
+  | 'PASSWORD_RESET_INVALID'
+  // user-roles PR-1b (design "5. `CreateUser` use case changes"): a
+  // requested `roleId` that does not resolve to an existing, Active,
+  // user-assignable role — ADMIN, unknown, and inactive all funnel here (no
+  // oracle for which failed; caller is already an authenticated ORGANIZATION).
+  | 'ROLE_NOT_ASSIGNABLE';

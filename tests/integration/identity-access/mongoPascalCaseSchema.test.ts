@@ -8,6 +8,7 @@ import { MongoUserRepositoryFactory } from '../../../src/modules/identity-access
 import { Organization } from '../../../src/modules/identity-access/domain/model/aggregates/Organization.js';
 import { User } from '../../../src/modules/identity-access/domain/model/aggregates/User.js';
 import { createOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
+import { createRoleId } from '../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
 import { createUserId } from '../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
 import { createSlug } from '../../../src/modules/identity-access/domain/model/value-objects/Slug.js';
 import { createEmail } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
@@ -107,6 +108,7 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
       firstName: 'Pascal',
       middleName: 'Middle',
       lastName: 'Case',
+      roleId: createRoleId('ANALYST'),
       now: NOW,
     });
     await userRepositoryFactory.forTenant(ORG_ID).save(user);
@@ -168,6 +170,7 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
       firstName: 'Round',
       middleName: 'Trip',
       lastName: 'Case',
+      roleId: createRoleId('ANALYST'),
       now: NOW,
     });
     await userRepositoryFactory.forTenant(ORG_ID).save(user);
@@ -194,6 +197,7 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
       credential: createPasswordCredential('hash'),
       firstName: 'Guard',
       lastName: 'Case',
+      roleId: createRoleId('ANALYST'),
       now: NOW,
     });
     await userRepositoryFactory.forTenant(ORG_ID).save(user);
@@ -229,6 +233,7 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
         credential: createPasswordCredential('hash'),
         firstName: 'A',
         lastName: 'One',
+        roleId: createRoleId('ANALYST'),
         now: NOW,
       }),
     );
@@ -243,6 +248,7 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
           credential: createPasswordCredential('hash'),
           firstName: 'B',
           lastName: 'Two',
+          roleId: createRoleId('ANALYST'),
           now: NOW,
         }),
       ),

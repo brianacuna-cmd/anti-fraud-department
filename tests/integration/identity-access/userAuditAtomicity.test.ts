@@ -13,12 +13,14 @@ import { createCreateUserUseCase } from '../../../src/modules/identity-access/ap
 import { createTransitionUserStatusUseCase } from '../../../src/modules/identity-access/application/TransitionUserStatus.js';
 import { createPatchUserIdentityUseCase } from '../../../src/modules/identity-access/application/PatchUserIdentity.js';
 import { FakePasswordHasher } from '../../helpers/identity-access/FakePasswordHasher.js';
+import { InMemoryRoleRepository } from '../../helpers/identity-access/InMemoryRoleRepository.js';
 import type { AuditEvent, AuditRecorder } from '../../../src/modules/identity-access/domain/ports/AuditRecorder.js';
 import type { Transaction } from '../../../src/modules/identity-access/domain/ports/UnitOfWork.js';
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
 import { createAuthContext } from '../../../src/shared/kernel/AuthContext.js';
 import { User } from '../../../src/modules/identity-access/domain/model/aggregates/User.js';
 import { createUserId } from '../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
+import { createRoleId } from '../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
 import { createOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createEmail } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 import { createPasswordCredential } from '../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
@@ -28,7 +30,7 @@ jest.setTimeout(120_000);
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ORG_ID = createOrganizationId('org-1');
-const ORG_USER = createAuthContext({ userId: 'admin-user', organizationId: 'org-1', isPlatformAdmin: false });
+const ORG_USER = createAuthContext({ userId: 'admin-user', organizationId: 'org-1', actorType: 'ORGANIZATION' });
 
 /** Throws on the Nth call to `record`, letting earlier calls hit real Mongo — proves partial-write rollback. */
 function failOnNthCall(recorder: AuditRecorder, failAt: number): AuditRecorder {
@@ -85,6 +87,7 @@ describe('User use-case audit atomicity (integration, real replica-set Mongo tra
         credential: createPasswordCredential('hash'),
         firstName: 'Alice',
         lastName: 'Smith',
+        roleId: createRoleId('ANALYST'),
         now: NOW,
       }),
     );
@@ -98,6 +101,7 @@ describe('User use-case audit atomicity (integration, real replica-set Mongo tra
       clock: new SystemClock(),
       generateId: () => createUserId('user-1'),
       auditRecorder,
+      roleRepository: new InMemoryRoleRepository(),
     });
   }
 
@@ -122,7 +126,7 @@ describe('User use-case audit atomicity (integration, real replica-set Mongo tra
   it('CreateUser commits exactly one USER_CREATED audit row atomically with the user', async () => {
     const createUser = buildCreate(baseAuditRecorder);
 
-    await createUser({ auth: ORG_USER, email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith' });
+    await createUser({ auth: ORG_USER, email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', roleId: 'ANALYST' });
 
     const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
     expect(persisted).not.toBeNull();
@@ -135,7 +139,7 @@ describe('User use-case audit atomicity (integration, real replica-set Mongo tra
     const createUser = buildCreate(failOnNthCall(baseAuditRecorder, 1));
 
     await expect(
-      createUser({ auth: ORG_USER, email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith' }),
+      createUser({ auth: ORG_USER, email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', roleId: 'ANALYST' }),
     ).rejects.toThrow('induced audit failure mid-transaction');
 
     const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));

@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
-/** POST /users body. `middleName` is nullable/optional (design A12), no non-empty rule when omitted or null. */
+/**
+ * POST /users body. `middleName` is nullable/optional (design A12), no
+ * non-empty rule when omitted or null. `role` is required (user-roles PR-1b,
+ * design "5. `CreateUser` use case changes" — wire key pinned to `role`;
+ * validated as an existing/Active/user-assignable role in the use case, not
+ * here — this schema only guards presence/shape).
+ */
 export const createUserSchema = z.object({
   email: z.string().min(1),
   password: z.string().min(1),
@@ -8,6 +14,7 @@ export const createUserSchema = z.object({
   middleName: z.string().min(1).nullish(),
   lastName: z.string().min(1),
   avatarUrl: z.string().min(1).nullish(),
+  role: z.string().min(1),
 });
 
 export type CreateUserBody = z.infer<typeof createUserSchema>;

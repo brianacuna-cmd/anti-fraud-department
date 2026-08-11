@@ -7,6 +7,7 @@ import { MongoUserRepositoryFactory } from '../../../src/modules/identity-access
 import { MongoUnitOfWork } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { User } from '../../../src/modules/identity-access/domain/model/aggregates/User.js';
 import { createUserId } from '../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
+import { createRoleId } from '../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
 import { createOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createEmail } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 import { createPasswordCredential } from '../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
@@ -27,6 +28,7 @@ function buildUser(id: string, organizationId = ORG_1, email = `${id}@example.co
     credential: createPasswordCredential('hash'),
     firstName: 'First',
     lastName: 'Last',
+    roleId: createRoleId('ANALYST'),
     now: NOW,
   });
 }

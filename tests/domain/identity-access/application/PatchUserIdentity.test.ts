@@ -6,6 +6,7 @@ import { FixedClock } from '../../../helpers/FixedClock.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { User } from '../../../../src/modules/identity-access/domain/model/aggregates/User.js';
 import { createUserId } from '../../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
+import { createRoleId } from '../../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
 import { createOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createEmail } from '../../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 import { createPasswordCredential } from '../../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
@@ -31,6 +32,7 @@ async function seedUser(
     credential: createPasswordCredential('hash'),
     firstName: 'First',
     lastName: 'Last',
+    roleId: createRoleId('ANALYST'),
     now: CREATED_AT,
   });
   await userRepositoryFactory.forTenant(org).save(user);

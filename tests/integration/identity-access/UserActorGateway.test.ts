@@ -9,6 +9,7 @@ import { UserActorGateway } from '../../../src/modules/identity-access/infrastru
 import { Organization } from '../../../src/modules/identity-access/domain/model/aggregates/Organization.js';
 import { User } from '../../../src/modules/identity-access/domain/model/aggregates/User.js';
 import { createOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
+import { createRoleId } from '../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
 import { createUserId } from '../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
 import { createSlug } from '../../../src/modules/identity-access/domain/model/value-objects/Slug.js';
 import { createEmail } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
@@ -58,6 +59,7 @@ describe('UserActorGateway (integration, real replica-set Mongo)', () => {
         credential: createPasswordCredential('a-bcrypt-hash'),
         firstName: 'Alice',
         lastName: 'Smith',
+        roleId: createRoleId('ANALYST'),
         now: NOW,
       }),
     );
@@ -90,6 +92,7 @@ describe('UserActorGateway (integration, real replica-set Mongo)', () => {
       credential: createPasswordCredential('a-bcrypt-hash'),
       firstName: 'Mfa',
       lastName: 'User',
+      roleId: createRoleId('ANALYST'),
       now: NOW,
     })
       .startMfaEnrollment('encrypted-secret', NOW)

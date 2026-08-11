@@ -72,6 +72,23 @@ describe('createCreateOrganizationWithAdminUseCase', () => {
     expect(adminUser?.organizationId).toBe(organization.id);
   });
 
+  it('persists the bootstrap admin user with roleId=ADMIN (user-roles PR-1b, sole ADMIN-on-User exception)', async () => {
+    const { createOrganizationWithAdmin, userRepositoryFactory } = buildUseCase();
+
+    const organization = await createOrganizationWithAdmin({
+      auth: PLATFORM_ADMIN,
+      name: 'Acme Corp',
+      slug: 'acme-corp',
+      adminEmail: 'admin@acme.com',
+      adminPassword: 'super-secret',
+      adminFirstName: 'Root',
+      adminLastName: 'Admin',
+    });
+
+    const adminUser = await userRepositoryFactory.forTenant(organization.id).findByEmail(createEmail('admin@acme.com'));
+    expect(adminUser?.roleId).toBe('ADMIN');
+  });
+
   it('rejects a duplicate slug with ORGANIZATION_SLUG_TAKEN, creating no admin user', async () => {
     const { createOrganizationWithAdmin, userRepositoryFactory } = buildUseCase();
     await createOrganizationWithAdmin({

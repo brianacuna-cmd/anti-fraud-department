@@ -11,6 +11,7 @@ import { Organization } from '../domain/model/aggregates/Organization.js';
 import { User } from '../domain/model/aggregates/User.js';
 import { createSlug } from '../domain/model/value-objects/Slug.js';
 import { createEmail } from '../domain/model/value-objects/Email.js';
+import { createRoleId } from '../domain/model/value-objects/RoleId.js';
 import { organizationSlugTaken, userEmailTaken } from '../domain/errors/IdentityAccessError.js';
 import { requirePlatformAdmin } from './authorization/requirePlatformAdmin.js';
 
@@ -82,6 +83,11 @@ export function createCreateOrganizationWithAdminUseCase(deps: CreateOrganizatio
         firstName: input.adminFirstName,
         lastName: input.adminLastName,
         isPlatformAdmin: false,
+        // user-roles PR-1b (design "5. CreateUser use case changes", LOCKED
+        // decision): the organization's own bootstrap admin User is the SOLE
+        // sanctioned ADMIN-on-a-User exception — it does NOT go through
+        // CreateUser's `roleRepository.isAssignableToUser` check.
+        roleId: createRoleId('ADMIN'),
         now,
       });
       const userRepository = deps.userRepositoryFactory.forTenant(organization.id);
