@@ -3,9 +3,9 @@ import { createApp } from '../../../src/shared/http/createApp.js';
 import { createErrorHandler } from '../../../src/shared/http/errorHandler.js';
 import { identityAccessErrorStatus } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/errorStatus.js';
 import { authRouter } from '../../../src/modules/identity-access/infrastructure/adapters/inbound/http/authRouter.js';
-import type { createAuthenticateActorUseCase } from '../../../src/modules/identity-access/application/auth/AuthenticateActor.js';
 import type { createBeginUserLoginUseCase } from '../../../src/modules/identity-access/application/auth/BeginUserLogin.js';
 import type { createIssueSessionUseCase } from '../../../src/modules/identity-access/application/auth/IssueSession.js';
+import type { createIssueOrganizationSessionUseCase } from '../../../src/modules/identity-access/application/auth/IssueOrganizationSession.js';
 import type { createLogoutUseCase } from '../../../src/modules/identity-access/application/auth/Logout.js';
 import type { createRequestPasswordResetUseCase } from '../../../src/modules/identity-access/application/auth/RequestPasswordReset.js';
 import type { createConfirmPasswordResetUseCase } from '../../../src/modules/identity-access/application/auth/ConfirmPasswordReset.js';
@@ -24,16 +24,15 @@ describe('authRouter IP capture (design D-A7)', () => {
       calls.push(input);
       return { kind: 'enrollment', token: 'enrollment-token' };
     }) as unknown as ReturnType<typeof createBeginUserLoginUseCase>;
-    const authenticateOrganization = (async () => ({
-      actorId: 'org-1',
-      actorType: 'ORGANIZATION',
-      organizationId: null,
-      mfa: { enabled: false },
-    })) as unknown as ReturnType<typeof createAuthenticateActorUseCase>;
+    const issueOrganizationSession = (async () => ({
+      accessToken: 'a',
+      refreshToken: 'r',
+      expiresAt: '2026-01-01T00:00:00.000Z',
+    })) as unknown as ReturnType<typeof createIssueOrganizationSessionUseCase>;
 
     const router = authRouter({
       beginUserLogin,
-      authenticateOrganization,
+      issueOrganizationSession,
       issueSession: (async () => ({
         accessToken: 'a',
         refreshToken: 'r',
@@ -70,16 +69,16 @@ describe('authRouter IP capture (design D-A7)', () => {
 
   it('resolves ipAddress to null when req.ip is unavailable (trust proxy not configured)', async () => {
     const calls: unknown[] = [];
-    const authenticateOrganization = (async (input: unknown) => {
+    const issueOrganizationSession = (async (input: unknown) => {
       calls.push(input);
-      return { actorId: 'org-1', actorType: 'ORGANIZATION', organizationId: null, mfa: { enabled: false } };
-    }) as unknown as ReturnType<typeof createAuthenticateActorUseCase>;
+      return { accessToken: 'a', refreshToken: 'r', expiresAt: '2026-01-01T00:00:00.000Z' };
+    }) as unknown as ReturnType<typeof createIssueOrganizationSessionUseCase>;
 
     const router = authRouter({
       beginUserLogin: (async () => ({ kind: 'enrollment', token: 'x' })) as unknown as ReturnType<
         typeof createBeginUserLoginUseCase
       >,
-      authenticateOrganization,
+      issueOrganizationSession,
       issueSession: (async () => ({
         accessToken: 'a',
         refreshToken: 'r',

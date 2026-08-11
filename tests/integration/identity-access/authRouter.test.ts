@@ -9,6 +9,7 @@ import { authRouter } from '../../../src/modules/identity-access/infrastructure/
 import { createAuthenticateActorUseCase } from '../../../src/modules/identity-access/application/auth/AuthenticateActor.js';
 import { createBeginUserLoginUseCase } from '../../../src/modules/identity-access/application/auth/BeginUserLogin.js';
 import { createIssueSessionUseCase } from '../../../src/modules/identity-access/application/auth/IssueSession.js';
+import { createIssueOrganizationSessionUseCase } from '../../../src/modules/identity-access/application/auth/IssueOrganizationSession.js';
 import { createSessionIssuer } from '../../../src/modules/identity-access/application/auth/SessionIssuer.js';
 import { createLogoutUseCase } from '../../../src/modules/identity-access/application/auth/Logout.js';
 import { createRequestPasswordResetUseCase } from '../../../src/modules/identity-access/application/auth/RequestPasswordReset.js';
@@ -67,7 +68,9 @@ const SECRET_CIPHER = new AesGcmSecretCipher('test-secret', 1);
 const TOTP_SERVICE = new OtplibTotpService();
 const TOKEN_SERVICE = new AesGcmSessionTokenService(SECRET_CIPHER);
 
-function buildApp(): {
+function buildApp(
+  authOverrides: Partial<Parameters<typeof createAuthContext>[0]> = {},
+): {
   app: Express;
   userGateway: InMemoryActorCredentialGateway;
   organizationGateway: InMemoryActorCredentialGateway;
@@ -115,12 +118,18 @@ function buildApp(): {
       challengeTtlSeconds: 300,
       enrollmentTtlSeconds: 900,
     }),
-    authenticateOrganization: createAuthenticateActorUseCase({
-      gateway: organizationGateway,
-      passwordHasher,
+    issueOrganizationSession: createIssueOrganizationSessionUseCase({
+      authenticateActor: createAuthenticateActorUseCase({
+        gateway: organizationGateway,
+        passwordHasher,
+        clock,
+        dummyCredential,
+        actorType: 'ORGANIZATION',
+        auditRecorder,
+      }),
+      issueSessionFor: sessionIssuer,
+      unitOfWork: new InMemoryUnitOfWork(),
       clock,
-      dummyCredential,
-      actorType: 'ORGANIZATION',
       auditRecorder,
     }),
     issueSession: createIssueSessionUseCase({
@@ -162,7 +171,12 @@ function buildApp(): {
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {
     attachAuthContext(
       req,
-      createAuthContext({ userId: 'user-1', organizationId: 'org-1', sessionId: 'session-1' }),
+      createAuthContext({
+        userId: 'user-1',
+        organizationId: 'org-1',
+        sessionId: 'session-1',
+        ...authOverrides,
+      }),
     );
     next();
   }
@@ -393,8 +407,8 @@ describe('authRouter (e2e, in-memory gateways)', () => {
   });
 
   describe('POST /auth/organizations/login', () => {
-    it('does not require organizationSlug', async () => {
-      const { app, organizationGateway } = buildApp();
+    it('does not require organizationSlug and returns a minted ACCESS+REFRESH session (session-lifecycle PR-1)', async () => {
+      const { app, organizationGateway, sessions } = buildApp();
       organizationGateway.seed('org@acme.example.com', ORG_RECORD);
 
       const response = await request(app)
@@ -402,7 +416,12 @@ describe('authRouter (e2e, in-memory gateways)', () => {
         .send({ email: 'org@acme.example.com', password: 'org-password' });
 
       expect(response.status).toBe(200);
-      expect(response.body).toEqual({ status: 'AUTHENTICATED' });
+      expect(response.body.accessToken).toEqual(expect.any(String));
+      expect(response.body.refreshToken).toEqual(expect.any(String));
+      const saved = await sessions.findByTokenHash(TOKEN_SERVICE.fingerprint(response.body.accessToken));
+      expect(saved?.userId).toBeNull();
+      expect(saved?.organizationId).toBe(ORG_ID);
+      expect(saved?.actorType).toBe('ORGANIZATION');
     });
 
     it('rejects an unknown email with 401 INVALID_CREDENTIALS', async () => {
@@ -441,6 +460,95 @@ describe('authRouter (e2e, in-memory gateways)', () => {
       expect(response.status).toBe(204);
       const revoked = await sessions.findByTokenHash('token-hash-session-1');
       expect(revoked?.deletedAt).toBe(NOW);
+    });
+
+    it('USER logout revokes only the current session, other sessions remain valid (regression)', async () => {
+      const { app, sessions } = buildApp();
+      await sessions.save(
+        Session.create({
+          id: createSessionId('session-1'),
+          userId: 'user-1',
+          organizationId: ORG_ID,
+          actorType: 'USER',
+          tokenHash: 'token-hash-session-1',
+          refreshTokenHash: 'refresh-hash-session-1',
+          expiresAt: NOW,
+          refreshExpiresAt: NOW,
+          familyId: createFamilyId('family-1'),
+          familyExpiresAt: NOW,
+          now: NOW,
+        }),
+      );
+      await sessions.save(
+        Session.create({
+          id: createSessionId('session-2'),
+          userId: 'user-1',
+          organizationId: ORG_ID,
+          actorType: 'USER',
+          tokenHash: 'token-hash-session-2',
+          refreshTokenHash: 'refresh-hash-session-2',
+          expiresAt: NOW,
+          refreshExpiresAt: NOW,
+          familyId: createFamilyId('family-1'),
+          familyExpiresAt: NOW,
+          now: NOW,
+        }),
+      );
+
+      const response = await request(app).post('/api/v1/auth/logout').send({});
+
+      expect(response.status).toBe(204);
+      const revoked = await sessions.findByTokenHash('token-hash-session-1');
+      const other = await sessions.findByTokenHash('token-hash-session-2');
+      expect(revoked?.deletedAt).toBe(NOW);
+      expect(other?.deletedAt).toBeNull();
+    });
+
+    it('ORGANIZATION logout revokes ALL sessions for that organization (behavior change, session-lifecycle PR-1)', async () => {
+      const { app, sessions } = buildApp({
+        userId: 'org-1',
+        organizationId: 'org-1',
+        actorType: 'ORGANIZATION',
+        sessionId: 'org-session-1',
+      });
+      await sessions.save(
+        Session.create({
+          id: createSessionId('org-session-1'),
+          userId: null,
+          organizationId: ORG_ID,
+          actorType: 'ORGANIZATION',
+          tokenHash: 'token-hash-org-session-1',
+          refreshTokenHash: 'refresh-hash-org-session-1',
+          expiresAt: NOW,
+          refreshExpiresAt: NOW,
+          familyId: createFamilyId('family-org-1'),
+          familyExpiresAt: NOW,
+          now: NOW,
+        }),
+      );
+      await sessions.save(
+        Session.create({
+          id: createSessionId('org-session-2'),
+          userId: null,
+          organizationId: ORG_ID,
+          actorType: 'ORGANIZATION',
+          tokenHash: 'token-hash-org-session-2',
+          refreshTokenHash: 'refresh-hash-org-session-2',
+          expiresAt: NOW,
+          refreshExpiresAt: NOW,
+          familyId: createFamilyId('family-org-1'),
+          familyExpiresAt: NOW,
+          now: NOW,
+        }),
+      );
+
+      const response = await request(app).post('/api/v1/auth/logout').send({});
+
+      expect(response.status).toBe(204);
+      const first = await sessions.findByTokenHash('token-hash-org-session-1');
+      const second = await sessions.findByTokenHash('token-hash-org-session-2');
+      expect(first?.deletedAt).toBe(NOW);
+      expect(second?.deletedAt).toBe(NOW);
     });
   });
 

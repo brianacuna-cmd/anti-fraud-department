@@ -65,6 +65,7 @@ import { createAuthenticateActorUseCase } from './modules/identity-access/applic
 import { createBeginUserLoginUseCase } from './modules/identity-access/application/auth/BeginUserLogin.js';
 import { createSessionIssuer } from './modules/identity-access/application/auth/SessionIssuer.js';
 import { createIssueSessionUseCase } from './modules/identity-access/application/auth/IssueSession.js';
+import { createIssueOrganizationSessionUseCase } from './modules/identity-access/application/auth/IssueOrganizationSession.js';
 import { createLogoutUseCase } from './modules/identity-access/application/auth/Logout.js';
 import { MongoMfaChallengeRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoMfaChallengeRepository.js';
 import { createPasswordCredential } from './modules/identity-access/domain/model/value-objects/PasswordCredential.js';
@@ -201,6 +202,7 @@ async function bootstrap(): Promise<void> {
   });
   const transitionUserStatus = createTransitionUserStatusUseCase({
     userRepositoryFactory,
+    sessions,
     unitOfWork,
     clock,
     auditRecorder,
@@ -373,12 +375,18 @@ async function bootstrap(): Promise<void> {
       challengeTtlSeconds: AUTH_MFA_CHALLENGE_TTL_SECONDS,
       enrollmentTtlSeconds: AUTH_MFA_ENROLLMENT_TTL_SECONDS,
     }),
-    authenticateOrganization: createAuthenticateActorUseCase({
-      gateway: new OrganizationActorGateway(organizations),
-      passwordHasher,
+    issueOrganizationSession: createIssueOrganizationSessionUseCase({
+      authenticateActor: createAuthenticateActorUseCase({
+        gateway: new OrganizationActorGateway(organizations),
+        passwordHasher,
+        clock,
+        dummyCredential,
+        actorType: 'ORGANIZATION',
+        auditRecorder,
+      }),
+      issueSessionFor: sessionIssuer,
+      unitOfWork,
       clock,
-      dummyCredential,
-      actorType: 'ORGANIZATION',
       auditRecorder,
     }),
     issueSession: createIssueSessionUseCase({
