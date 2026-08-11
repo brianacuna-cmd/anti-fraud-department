@@ -446,7 +446,7 @@ describe('authRouter (e2e, in-memory gateways)', () => {
   });
 
   describe('POST /auth/refresh (session-lifecycle PR-2)', () => {
-    it('rotates a fresh refresh token: new ACCESS+REFRESH pair, old pair unusable', async () => {
+    it('rotates a fresh refresh token: new ACCESS+REFRESH pair, old REFRESH token rejected at /auth/refresh (old ACCESS-token invalidation is covered by the resolver contract test)', async () => {
       const { app, organizationGateway } = buildApp();
       organizationGateway.seed('org@acme.example.com', ORG_RECORD);
       const loginResponse = await request(app)

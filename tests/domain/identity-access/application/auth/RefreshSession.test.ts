@@ -67,7 +67,7 @@ describe('createRefreshSessionUseCase', () => {
     expect(events[0]).toMatchObject({ action: 'SESSION_REFRESHED', resource: 'sessions' });
   });
 
-  it('the old ACCESS/REFRESH pair is no longer usable to refresh again after rotation', async () => {
+  it('the old REFRESH token is no longer usable to refresh again after rotation (old ACCESS-token invalidation is covered by the resolver contract test)', async () => {
     const harness = buildHarness();
     const minted = await mintUserSession(harness);
     await harness.refreshSession({ refreshToken: minted.refreshToken! });

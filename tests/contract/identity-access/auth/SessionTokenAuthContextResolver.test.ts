@@ -38,6 +38,7 @@ async function seedSession(
     actorType?: 'USER' | 'ORGANIZATION' | 'PLATFORM_ADMIN';
     expiresAt?: typeof NOW;
     deletedAt?: typeof NOW | null;
+    rotatedAt?: typeof NOW | null;
   },
 ): Promise<void> {
   const session = Session.rehydrate({
@@ -56,7 +57,7 @@ async function seedSession(
     refreshExpiresAt: FAR_FUTURE,
     familyId: createFamilyId('family-1'),
     familyExpiresAt: FAR_FUTURE,
-    rotatedAt: null,
+    rotatedAt: overrides.rotatedAt ?? null,
     rotatedFromSessionId: null,
     createdAt: NOW,
     updatedAt: NOW,
@@ -136,6 +137,20 @@ describe('SessionTokenAuthContextResolver', () => {
       id: 'session-1',
       tokenHash: tokenService.fingerprint(token),
       deletedAt: NOW,
+    });
+
+    expect(await resolver.resolve(buildRequest(token))).toBeNull();
+  });
+
+  it('returns null for a rotated session (rotatedAt set) — its old ACCESS token is superseded by the refresh successor, even though the row is not deleted (session-lifecycle PR-2)', async () => {
+    const { tokenService, sessionRepository, resolver } = buildFixture();
+    const token = tokenService.issue({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+    await seedSession(sessionRepository, {
+      id: 'session-1',
+      tokenHash: tokenService.fingerprint(token),
+      rotatedAt: NOW,
+      deletedAt: null,
+      expiresAt: FAR_FUTURE,
     });
 
     expect(await resolver.resolve(buildRequest(token))).toBeNull();
