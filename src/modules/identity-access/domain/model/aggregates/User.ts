@@ -286,6 +286,17 @@ export class User {
     });
   }
 
+  /**
+   * Replaces the assigned role (user-roles PR-2, "Organization-Only Role
+   * Change"). The use case is responsible for validating the new role
+   * (VO known-id gate + `RoleRepository.isAssignableToUser`) BEFORE calling
+   * this — the mutator itself just swaps the value, same shape as
+   * `changeCredential`.
+   */
+  changeRole(newRoleId: RoleId, now: Instant): User {
+    return new User({ ...this.props, roleId: newRoleId, updatedAt: now });
+  }
+
   transitionTo(next: LifecycleStatus, actor: TransitionActor, now: Instant): User {
     assertTransitionAllowed(USER_TRANSITIONS, this.props.status, next, actor, USER_REACTIVATION_EDGE);
     return new User({ ...this.props, status: next, updatedAt: now });

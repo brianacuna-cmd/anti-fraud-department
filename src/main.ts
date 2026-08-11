@@ -54,6 +54,7 @@ import { createSetupMfaUseCase } from './modules/identity-access/application/Set
 import { createActivateMfaUseCase } from './modules/identity-access/application/ActivateMfa.js';
 import { createDisableMfaUseCase } from './modules/identity-access/application/DisableMfa.js';
 import { createChangePasswordUseCase } from './modules/identity-access/application/ChangePassword.js';
+import { createChangeUserRoleUseCase } from './modules/identity-access/application/ChangeUserRole.js';
 import { createRequestPasswordResetUseCase } from './modules/identity-access/application/auth/RequestPasswordReset.js';
 import { createConfirmPasswordResetUseCase } from './modules/identity-access/application/auth/ConfirmPasswordReset.js';
 import { ResendEmailSender } from './modules/identity-access/infrastructure/adapters/outbound/email/ResendEmailSender.js';
@@ -278,6 +279,13 @@ async function bootstrap(): Promise<void> {
       userRepositoryFactory,
       passwordHasher,
       sessions,
+      unitOfWork,
+      clock,
+      auditRecorder,
+    }),
+    changeUserRole: createChangeUserRoleUseCase({
+      userRepositoryFactory,
+      roleRepository,
       unitOfWork,
       clock,
       auditRecorder,

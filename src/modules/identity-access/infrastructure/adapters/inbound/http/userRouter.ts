@@ -12,7 +12,8 @@ import type { createSetupMfaUseCase } from '../../../../application/SetupMfa.js'
 import type { createActivateMfaUseCase } from '../../../../application/ActivateMfa.js';
 import type { createDisableMfaUseCase } from '../../../../application/DisableMfa.js';
 import type { createChangePasswordUseCase } from '../../../../application/ChangePassword.js';
-import { createUserSchema, patchUserSchema, transitionUserSchema, activateMfaSchema, changePasswordSchema } from './dto/userSchemas.js';
+import type { createChangeUserRoleUseCase } from '../../../../application/ChangeUserRole.js';
+import { createUserSchema, patchUserSchema, transitionUserSchema, activateMfaSchema, changePasswordSchema, changeUserRoleSchema } from './dto/userSchemas.js';
 import { toUserListResponse, toUserResponse, toMfaSetupResponse, toActivateMfaResponse } from './mappers/UserHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
 
@@ -27,6 +28,7 @@ export interface UserRouterDeps {
   readonly activateMfa: ReturnType<typeof createActivateMfaUseCase>;
   readonly disableMfa: ReturnType<typeof createDisableMfaUseCase>;
   readonly changePassword: ReturnType<typeof createChangePasswordUseCase>;
+  readonly changeUserRole: ReturnType<typeof createChangeUserRoleUseCase>;
 }
 
 /**
@@ -69,6 +71,16 @@ export function userRouter(deps: UserRouterDeps): Router {
     const auth = requireAuthContext(req);
     const { next } = parseRequest(transitionUserSchema, req.body);
     const user = await deps.transitionUserStatus({ auth, userId: req.params.id!, next });
+    res.status(200).json(toUserResponse(user));
+  });
+
+  // user-roles PR-2: organization-only role change, mirrors the shape of
+  // `/users/:id/transition` (design "6. `ChangeUserRole` use case" — request
+  // wire key `role`, response DTO exposes `roleId`).
+  router.post('/users/:id/role', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const { role } = parseRequest(changeUserRoleSchema, req.body);
+    const user = await deps.changeUserRole({ auth, userId: req.params.id!, roleId: role });
     res.status(200).json(toUserResponse(user));
   });
 
