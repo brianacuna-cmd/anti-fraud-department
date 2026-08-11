@@ -10,6 +10,7 @@ import { createAuthenticateActorUseCase } from '../../../src/modules/identity-ac
 import { createBeginUserLoginUseCase } from '../../../src/modules/identity-access/application/auth/BeginUserLogin.js';
 import { createIssueSessionUseCase } from '../../../src/modules/identity-access/application/auth/IssueSession.js';
 import { createIssueOrganizationSessionUseCase } from '../../../src/modules/identity-access/application/auth/IssueOrganizationSession.js';
+import { createRefreshSessionUseCase } from '../../../src/modules/identity-access/application/auth/RefreshSession.js';
 import { createSessionIssuer } from '../../../src/modules/identity-access/application/auth/SessionIssuer.js';
 import { createLogoutUseCase } from '../../../src/modules/identity-access/application/auth/Logout.js';
 import { createRequestPasswordResetUseCase } from '../../../src/modules/identity-access/application/auth/RequestPasswordReset.js';
@@ -141,6 +142,14 @@ function buildApp(
       unitOfWork: new InMemoryUnitOfWork(),
       clock,
       issueSessionFor: sessionIssuer,
+      auditRecorder,
+    }),
+    refreshSession: createRefreshSessionUseCase({
+      sessionTokenService: TOKEN_SERVICE,
+      sessions,
+      issueSessionFor: sessionIssuer,
+      unitOfWork: new InMemoryUnitOfWork(),
+      clock,
       auditRecorder,
     }),
     logout: createLogoutUseCase({ sessions, clock, auditRecorder }),
@@ -433,6 +442,91 @@ describe('authRouter (e2e, in-memory gateways)', () => {
 
       expect(response.status).toBe(401);
       expect(response.body.error.code).toBe('INVALID_CREDENTIALS');
+    });
+  });
+
+  describe('POST /auth/refresh (session-lifecycle PR-2)', () => {
+    it('rotates a fresh refresh token: new ACCESS+REFRESH pair, old pair unusable', async () => {
+      const { app, organizationGateway } = buildApp();
+      organizationGateway.seed('org@acme.example.com', ORG_RECORD);
+      const loginResponse = await request(app)
+        .post('/api/v1/auth/organizations/login')
+        .send({ email: 'org@acme.example.com', password: 'org-password' });
+
+      const refreshResponse = await request(app)
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: loginResponse.body.refreshToken });
+
+      expect(refreshResponse.status).toBe(200);
+      expect(refreshResponse.body.accessToken).toEqual(expect.any(String));
+      expect(refreshResponse.body.refreshToken).toEqual(expect.any(String));
+      expect(refreshResponse.body.refreshToken).not.toBe(loginResponse.body.refreshToken);
+
+      const replay = await request(app)
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: loginResponse.body.refreshToken });
+      expect(replay.status).toBe(401);
+      expect(replay.body.error.code).toBe('SESSION_INVALID');
+    });
+
+    it('rejects an unknown refresh token with 401 SESSION_INVALID (uniform opaque rejection)', async () => {
+      const { app } = buildApp();
+
+      const response = await request(app).post('/api/v1/auth/refresh').send({ refreshToken: 'not-a-real-token' });
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.code).toBe('SESSION_INVALID');
+    });
+
+    it('rejects an ACCESS token presented at /auth/refresh with the SAME opaque 401', async () => {
+      const { app, organizationGateway } = buildApp();
+      organizationGateway.seed('org@acme.example.com', ORG_RECORD);
+      const loginResponse = await request(app)
+        .post('/api/v1/auth/organizations/login')
+        .send({ email: 'org@acme.example.com', password: 'org-password' });
+
+      const response = await request(app)
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: loginResponse.body.accessToken });
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.code).toBe('SESSION_INVALID');
+    });
+
+    it('rejects a body with no refreshToken with 400 INVARIANT_VIOLATION (DTO-level validation)', async () => {
+      const { app } = buildApp();
+
+      const response = await request(app).post('/api/v1/auth/refresh').send({});
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
+    });
+
+    it('a reused (already-rotated) refresh token revokes the whole family, including the successor session', async () => {
+      const { app, organizationGateway } = buildApp();
+      organizationGateway.seed('org@acme.example.com', ORG_RECORD);
+      const loginResponse = await request(app)
+        .post('/api/v1/auth/organizations/login')
+        .send({ email: 'org@acme.example.com', password: 'org-password' });
+
+      const rotated = await request(app)
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: loginResponse.body.refreshToken });
+      expect(rotated.status).toBe(200);
+
+      // Replay the original (already-rotated) refresh token -> reuse detected.
+      const reuse = await request(app)
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: loginResponse.body.refreshToken });
+      expect(reuse.status).toBe(401);
+      expect(reuse.body.error.code).toBe('SESSION_INVALID');
+
+      // The successor minted from the (now-burned) family must also be dead.
+      const successorRefresh = await request(app)
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: rotated.body.refreshToken });
+      expect(successorRefresh.status).toBe(401);
+      expect(successorRefresh.body.error.code).toBe('SESSION_INVALID');
     });
   });
 

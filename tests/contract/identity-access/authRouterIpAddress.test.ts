@@ -9,6 +9,7 @@ import type { createIssueOrganizationSessionUseCase } from '../../../src/modules
 import type { createLogoutUseCase } from '../../../src/modules/identity-access/application/auth/Logout.js';
 import type { createRequestPasswordResetUseCase } from '../../../src/modules/identity-access/application/auth/RequestPasswordReset.js';
 import type { createConfirmPasswordResetUseCase } from '../../../src/modules/identity-access/application/auth/ConfirmPasswordReset.js';
+import type { createRefreshSessionUseCase } from '../../../src/modules/identity-access/application/auth/RefreshSession.js';
 
 /**
  * Focused e2e for design D-A7's "Login captures IP from input" scenario:
@@ -38,6 +39,11 @@ describe('authRouter IP capture (design D-A7)', () => {
         refreshToken: 'r',
         expiresAt: '2026-01-01T00:00:00.000Z',
       })) as unknown as ReturnType<typeof createIssueSessionUseCase>,
+      refreshSession: (async () => ({
+        accessToken: 'a',
+        refreshToken: 'r',
+        expiresAt: '2026-01-01T00:00:00.000Z',
+      })) as unknown as ReturnType<typeof createRefreshSessionUseCase>,
       logout: (async () => undefined) as unknown as ReturnType<typeof createLogoutUseCase>,
       requestPasswordReset: (async () => ({ status: 'PASSWORD_RESET_REQUESTED' })) as unknown as ReturnType<
         typeof createRequestPasswordResetUseCase
@@ -84,6 +90,11 @@ describe('authRouter IP capture (design D-A7)', () => {
         refreshToken: 'r',
         expiresAt: '2026-01-01T00:00:00.000Z',
       })) as unknown as ReturnType<typeof createIssueSessionUseCase>,
+      refreshSession: (async () => ({
+        accessToken: 'a',
+        refreshToken: 'r',
+        expiresAt: '2026-01-01T00:00:00.000Z',
+      })) as unknown as ReturnType<typeof createRefreshSessionUseCase>,
       logout: (async () => undefined) as unknown as ReturnType<typeof createLogoutUseCase>,
       requestPasswordReset: (async () => ({ status: 'PASSWORD_RESET_REQUESTED' })) as unknown as ReturnType<
         typeof createRequestPasswordResetUseCase
