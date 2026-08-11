@@ -61,3 +61,15 @@ export const changePasswordSchema = z.object({
 });
 
 export type ChangePasswordBody = z.infer<typeof changePasswordSchema>;
+
+/**
+ * POST /users/:id/role body (user-roles PR-2, design "6. `ChangeUserRole`
+ * use case" — request wire key pinned to `role`, matches `createUserSchema`.
+ * Validated as an existing/Active/user-assignable role in the use case, not
+ * here — this schema only guards presence/shape.
+ */
+export const changeUserRoleSchema = z.object({
+  role: z.string().min(1),
+});
+
+export type ChangeUserRoleBody = z.infer<typeof changeUserRoleSchema>;

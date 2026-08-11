@@ -21,6 +21,7 @@ import { createSetupMfaUseCase } from '../../../src/modules/identity-access/appl
 import { createActivateMfaUseCase } from '../../../src/modules/identity-access/application/ActivateMfa.js';
 import { createDisableMfaUseCase } from '../../../src/modules/identity-access/application/DisableMfa.js';
 import { createChangePasswordUseCase } from '../../../src/modules/identity-access/application/ChangePassword.js';
+import { createChangeUserRoleUseCase } from '../../../src/modules/identity-access/application/ChangeUserRole.js';
 import { createSessionIssuer } from '../../../src/modules/identity-access/application/auth/SessionIssuer.js';
 import { generateUserId } from '../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
 import { OtplibTotpService } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mfa/OtplibTotpService.js';
@@ -113,6 +114,13 @@ function buildApp(
       clock,
       auditRecorder,
     }),
+    changeUserRole: createChangeUserRoleUseCase({
+      userRepositoryFactory,
+      roleRepository: new InMemoryRoleRepository(),
+      unitOfWork,
+      clock,
+      auditRecorder,
+    }),
   });
 
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {
@@ -194,6 +202,13 @@ function buildAppWithRealResolver(
       userRepositoryFactory,
       passwordHasher,
       sessions,
+      unitOfWork,
+      clock,
+      auditRecorder,
+    }),
+    changeUserRole: createChangeUserRoleUseCase({
+      userRepositoryFactory,
+      roleRepository: new InMemoryRoleRepository(),
       unitOfWork,
       clock,
       auditRecorder,
@@ -346,6 +361,64 @@ describe('userRouter (e2e, in-memory repository)', () => {
 
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe('INVALID_TRANSITION');
+  });
+
+  it('POST /users/:id/role changes a user\'s role (user-roles PR-2)', async () => {
+    const { app } = buildApp(() => ORG_1_ORGANIZATION);
+    const created = await request(app)
+      .post('/api/v1/users')
+      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
+
+    const response = await request(app)
+      .post(`/api/v1/users/${created.body.id}/role`)
+      .send({ role: 'SUPERVISOR' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.roleId).toBe('SUPERVISOR');
+  });
+
+  it('POST /users/:id/role rejects a USER-tier actor with 403 FORBIDDEN_CROSS_TENANT (user-roles PR-2)', async () => {
+    const { app: seedApp } = buildApp(() => ORG_1_ORGANIZATION);
+    const created = await request(seedApp)
+      .post('/api/v1/users')
+      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
+
+    const actingUser = createAuthContext({ userId: 'u9', organizationId: 'org-1', isPlatformAdmin: false });
+    const { app } = buildApp(() => actingUser);
+
+    const response = await request(app)
+      .post(`/api/v1/users/${created.body.id}/role`)
+      .send({ role: 'SUPERVISOR' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN_CROSS_TENANT');
+  });
+
+  it('POST /users/:id/role returns 404 USER_NOT_FOUND for an unknown user', async () => {
+    const { app } = buildApp(() => ORG_1_ORGANIZATION);
+
+    const response = await request(app)
+      .post('/api/v1/users/unknown-id/role')
+      .send({ role: 'SUPERVISOR' });
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe('USER_NOT_FOUND');
+  });
+
+  it('POST /users/:id/role returns 404 USER_NOT_FOUND for a cross-tenant user', async () => {
+    const sharedFactory = new InMemoryUserRepositoryFactory();
+    const { app: org1App } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory);
+    const created = await request(org1App)
+      .post('/api/v1/users')
+      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
+
+    const { app: org2App } = buildApp(() => ORG_2_ORGANIZATION, sharedFactory);
+    const response = await request(org2App)
+      .post(`/api/v1/users/${created.body.id}/role`)
+      .send({ role: 'SUPERVISOR' });
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe('USER_NOT_FOUND');
   });
 
   it('an org-admin cannot reactivate a DISABLED user in their own org (FORBIDDEN_REACTIVATION)', async () => {

@@ -358,6 +358,21 @@ describe('User#changeCredential', () => {
   });
 });
 
+describe('User#changeRole', () => {
+  it('replaces the roleId and bumps updatedAt, leaving the original instance untouched', () => {
+    const user = buildUser();
+    const newRoleId = createRoleId('SUPERVISOR');
+
+    const changed = user.changeRole(newRoleId, LATER);
+
+    expect(changed).not.toBe(user);
+    expect(changed.roleId).toBe(newRoleId);
+    expect(changed.updatedAt).toBe(LATER);
+    expect(user.roleId).toBe(ROLE_ID);
+    expect(user.updatedAt).toBe(NOW);
+  });
+});
+
 describe('User#beginPasswordReset', () => {
   it('sets resetToken and bumps updatedAt, leaving the original instance untouched', () => {
     const user = buildUser();

@@ -20,6 +20,8 @@ export type IdentityAccessAuditAction =
   | 'USER_CREATED'
   | 'USER_IDENTITY_UPDATED'
   | 'USER_STATUS_CHANGED'
+  // user-roles PR-2 (design "6. `ChangeUserRole` use case"): organization-only role change.
+  | 'USER_ROLE_CHANGED'
   | 'PLATFORM_ADMIN_PROVISIONED'
   // mfa-user-enrollment PR2: user MFA setup/activate/disable.
   | 'MFA_ENABLED'
