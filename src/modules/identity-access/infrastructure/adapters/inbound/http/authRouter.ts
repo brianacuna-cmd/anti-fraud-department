@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
-import type { createAuthenticateActorUseCase } from '../../../../application/auth/AuthenticateActor.js';
 import type { createBeginUserLoginUseCase } from '../../../../application/auth/BeginUserLogin.js';
 import type { createIssueSessionUseCase } from '../../../../application/auth/IssueSession.js';
+import type { createIssueOrganizationSessionUseCase } from '../../../../application/auth/IssueOrganizationSession.js';
 import type { createLogoutUseCase } from '../../../../application/auth/Logout.js';
 import type { createRequestPasswordResetUseCase } from '../../../../application/auth/RequestPasswordReset.js';
 import type { createConfirmPasswordResetUseCase } from '../../../../application/auth/ConfirmPasswordReset.js';
@@ -23,11 +23,11 @@ export interface AuthRouterDeps {
    */
   readonly beginUserLogin: ReturnType<typeof createBeginUserLoginUseCase>;
   /**
-   * ORGANIZATION tier is unchanged and OUT OF SCOPE for two-step-login
-   * (design "Technical Approach": "ORGANIZATION tier out of scope — login
-   * unchanged") — still the Phase 4 stub response.
+   * ORGANIZATION tier login (session-lifecycle PR-1, design "1. ORG login
+   * use case"): single-step, mints a real ACCESS+REFRESH session directly —
+   * no MFA branch, unlike the USER tier's two-step flow.
    */
-  readonly authenticateOrganization: ReturnType<typeof createAuthenticateActorUseCase>;
+  readonly issueOrganizationSession: ReturnType<typeof createIssueOrganizationSessionUseCase>;
   /** Step 2, challenge path (design "IssueSession flow"). */
   readonly issueSession: ReturnType<typeof createIssueSessionUseCase>;
   readonly logout: ReturnType<typeof createLogoutUseCase>;
@@ -48,8 +48,9 @@ export interface AuthRouterDeps {
  * row for the USER tier's MFA-enabled path in this PR (PR3 adds the
  * enrollment hand-off via `ActivateMfa`).
  *
- * `POST /auth/organizations/login` is untouched — ORGANIZATION never
- * branches on MFA (design: hardcoded `mfa.enabled=false`).
+ * `POST /auth/organizations/login` mints a real session directly
+ * (session-lifecycle PR-1) — ORGANIZATION never branches on MFA (design:
+ * hardcoded `mfa.enabled=false`), so there is no separate challenge step.
  *
  * `POST /auth/logout` is intentionally tier-agnostic (design File Changes:
  * "/auth/logout", not "/auth/{tier}/logout") — the resolved `AuthContext`
@@ -79,8 +80,8 @@ export function authRouter(deps: AuthRouterDeps): Router {
 
   router.post('/auth/organizations/login', async (req, res) => {
     const body = parseRequest(organizationsLoginSchema, req.body);
-    await deps.authenticateOrganization({ ...body, ipAddress: req.ip ?? null });
-    res.status(200).json({ status: 'AUTHENTICATED' });
+    const result = await deps.issueOrganizationSession({ ...body, ipAddress: req.ip ?? null });
+    res.status(200).json(result);
   });
 
   router.post('/auth/logout', async (req, res) => {

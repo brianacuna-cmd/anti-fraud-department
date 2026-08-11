@@ -61,6 +61,7 @@ function buildApp(
 
   const transitionUserStatus = createTransitionUserStatusUseCase({
     userRepositoryFactory,
+    sessions,
     unitOfWork,
     clock,
     auditRecorder,
@@ -156,7 +157,7 @@ function buildAppWithRealResolver(
   const clock = new SystemClock();
   const auditRecorder = new InMemoryAuditRecorder();
 
-  const transitionUserStatus = createTransitionUserStatusUseCase({ userRepositoryFactory, unitOfWork, clock, auditRecorder });
+  const transitionUserStatus = createTransitionUserStatusUseCase({ userRepositoryFactory, sessions, unitOfWork, clock, auditRecorder });
 
   const router = userRouter({
     createUser: createCreateUserUseCase({

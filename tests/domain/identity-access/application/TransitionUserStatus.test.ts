@@ -1,15 +1,19 @@
 import { createTransitionUserStatusUseCase } from '../../../../src/modules/identity-access/application/TransitionUserStatus.js';
 import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
+import { InMemorySessionRepository } from '../../../helpers/identity-access/InMemorySessionRepository.js';
 import { InMemoryUnitOfWork } from '../../../helpers/identity-access/InMemoryUnitOfWork.js';
 import { InMemoryAuditRecorder } from '../../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { User } from '../../../../src/modules/identity-access/domain/model/aggregates/User.js';
+import { Session } from '../../../../src/modules/identity-access/domain/model/aggregates/Session.js';
 import { createUserId } from '../../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
 import { createRoleId } from '../../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
 import { createOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createEmail } from '../../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 import { createPasswordCredential } from '../../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
+import { createSessionId } from '../../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
+import { createFamilyId } from '../../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { IdentityAccessError } from '../../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
 
@@ -45,12 +49,30 @@ function buildUseCase(
   userRepositoryFactory: InMemoryUserRepositoryFactory,
   unitOfWork: InMemoryUnitOfWork,
   auditRecorder: InMemoryAuditRecorder = new InMemoryAuditRecorder(),
+  sessions: InMemorySessionRepository = new InMemorySessionRepository(),
 ) {
   return createTransitionUserStatusUseCase({
     userRepositoryFactory,
+    sessions,
     unitOfWork,
     clock: new FixedClock(TRANSITIONED_AT),
     auditRecorder,
+  });
+}
+
+function buildSession(id: string): Session {
+  return Session.create({
+    id: createSessionId(id),
+    userId: 'user-1',
+    organizationId: createOrganizationId('org-1'),
+    actorType: 'USER',
+    tokenHash: `token-hash-${id}`,
+    refreshTokenHash: `refresh-hash-${id}`,
+    expiresAt: TRANSITIONED_AT,
+    refreshExpiresAt: TRANSITIONED_AT,
+    familyId: createFamilyId('family-1'),
+    familyExpiresAt: TRANSITIONED_AT,
+    now: CREATED_AT,
   });
 }
 
@@ -151,5 +173,53 @@ describe('createTransitionUserStatusUseCase', () => {
     ).rejects.toBeInstanceOf(IdentityAccessError);
 
     expect(auditRecorder.all()).toHaveLength(0);
+  });
+
+  it('on DISABLED, revokes all sessions for the user and emits USER_SESSIONS_REVOKED + USER_STATUS_CHANGED', async () => {
+    const userRepositoryFactory = new InMemoryUserRepositoryFactory();
+    await seedUser(userRepositoryFactory);
+    const unitOfWork = new InMemoryUnitOfWork();
+    const auditRecorder = new InMemoryAuditRecorder();
+    const sessions = new InMemorySessionRepository();
+    await sessions.save(buildSession('session-1'));
+    await sessions.save(buildSession('session-2'));
+    const transitionUserStatus = buildUseCase(userRepositoryFactory, unitOfWork, auditRecorder, sessions);
+
+    await transitionUserStatus({ auth: ORG_ADMIN, userId: 'user-1', next: 'DISABLED' });
+
+    const revokedSession1 = await sessions.findByTokenHash('token-hash-session-1');
+    const revokedSession2 = await sessions.findByTokenHash('token-hash-session-2');
+    expect(revokedSession1?.deletedAt).toBe(TRANSITIONED_AT);
+    expect(revokedSession2?.deletedAt).toBe(TRANSITIONED_AT);
+
+    expect(auditRecorder.all()).toHaveLength(2);
+    const [sessionsRevoked, statusChanged] = auditRecorder.all();
+    expect(sessionsRevoked).toMatchObject({
+      action: 'USER_SESSIONS_REVOKED',
+      resource: 'sessions',
+      resourceId: null,
+      detail: { revokedCount: 2 },
+    });
+    expect(statusChanged).toMatchObject({
+      action: 'USER_STATUS_CHANGED',
+      resource: 'users',
+      detail: { from: 'ACTIVE', to: 'DISABLED' },
+    });
+  });
+
+  it('does not revoke sessions or emit USER_SESSIONS_REVOKED for a SUSPENDED transition', async () => {
+    const userRepositoryFactory = new InMemoryUserRepositoryFactory();
+    await seedUser(userRepositoryFactory);
+    const unitOfWork = new InMemoryUnitOfWork();
+    const auditRecorder = new InMemoryAuditRecorder();
+    const sessions = new InMemorySessionRepository();
+    await sessions.save(buildSession('session-1'));
+    const transitionUserStatus = buildUseCase(userRepositoryFactory, unitOfWork, auditRecorder, sessions);
+
+    await transitionUserStatus({ auth: ORG_ADMIN, userId: 'user-1', next: 'SUSPENDED' });
+
+    const untouched = await sessions.findByTokenHash('token-hash-session-1');
+    expect(untouched?.deletedAt).toBeNull();
+    expect(auditRecorder.all().some((event) => event.action === 'USER_SESSIONS_REVOKED')).toBe(false);
   });
 });

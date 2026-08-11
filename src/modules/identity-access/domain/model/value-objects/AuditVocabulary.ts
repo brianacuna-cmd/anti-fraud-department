@@ -20,6 +20,10 @@ export type IdentityAccessAuditAction =
   | 'USER_CREATED'
   | 'USER_IDENTITY_UPDATED'
   | 'USER_STATUS_CHANGED'
+  // session-lifecycle PR-1 (design DD7): emitted alongside USER_STATUS_CHANGED
+  // when a user is transitioned to DISABLED — all of that user's sessions are
+  // revoked in the same transaction.
+  | 'USER_SESSIONS_REVOKED'
   // user-roles PR-2 (design "6. `ChangeUserRole` use case"): organization-only role change.
   | 'USER_ROLE_CHANGED'
   | 'PLATFORM_ADMIN_PROVISIONED'

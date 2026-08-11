@@ -1,6 +1,7 @@
 import type { AuthContext } from '../../../shared/kernel/AuthContext.js';
 import type { Clock } from '../../../shared/time/Clock.js';
 import type { UserRepositoryFactory } from '../domain/ports/UserRepositoryFactory.js';
+import type { SessionRepository } from '../domain/ports/SessionRepository.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { User } from '../domain/model/aggregates/User.js';
@@ -19,6 +20,8 @@ export interface TransitionUserStatusInput {
 
 export interface TransitionUserStatusDeps {
   readonly userRepositoryFactory: UserRepositoryFactory;
+  /** NEW (session-lifecycle PR-1): revokes sessions on DISABLED. */
+  readonly sessions: SessionRepository;
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
   /** NEW (audit-logs-foundation Phase 5): emits USER_STATUS_CHANGED. */
@@ -53,8 +56,26 @@ export function createTransitionUserStatusUseCase(deps: TransitionUserStatusDeps
 
       const actor = createTransitionActor(input.auth.isPlatformAdmin);
       const from = user.status;
-      const transitioned = user.transitionTo(input.next, actor, deps.clock.now());
+      const now = deps.clock.now();
+      const transitioned = user.transitionTo(input.next, actor, now);
       await repository.save(transitioned, tx);
+
+      if (input.next === 'DISABLED') {
+        const revokedCount = await deps.sessions.revokeAllForActor({ actorType: 'USER', userId: id }, now, tx);
+        await deps.auditRecorder.record(
+          {
+            organizationId,
+            actorType: input.auth.actorType,
+            actorId: input.auth.userId,
+            action: 'USER_SESSIONS_REVOKED',
+            resource: 'sessions',
+            resourceId: null,
+            detail: { revokedCount },
+            ipAddress: input.auth.ipAddress,
+          },
+          tx,
+        );
+      }
 
       await deps.auditRecorder.record(
         {

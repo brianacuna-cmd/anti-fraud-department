@@ -94,4 +94,70 @@ describe('createLogoutUseCase', () => {
 
     expect(auditRecorder.all()).toHaveLength(0);
   });
+
+  it('ORGANIZATION actor logout revokes ALL sessions for that organization (behavior change)', async () => {
+    const { logout, sessions } = buildUseCase();
+    await sessions.save(
+      Session.create({
+        id: createSessionId('org-session-1'),
+        userId: null,
+        organizationId: createOrganizationId('org-1'),
+        actorType: 'ORGANIZATION',
+        tokenHash: 'token-hash-org-session-1',
+        refreshTokenHash: 'refresh-hash-org-session-1',
+        expiresAt: LATER,
+        refreshExpiresAt: LATER,
+        familyId: createFamilyId('family-org-1'),
+        familyExpiresAt: LATER,
+        now: NOW,
+      }),
+    );
+    await sessions.save(
+      Session.create({
+        id: createSessionId('org-session-2'),
+        userId: null,
+        organizationId: createOrganizationId('org-1'),
+        actorType: 'ORGANIZATION',
+        tokenHash: 'token-hash-org-session-2',
+        refreshTokenHash: 'refresh-hash-org-session-2',
+        expiresAt: LATER,
+        refreshExpiresAt: LATER,
+        familyId: createFamilyId('family-org-1'),
+        familyExpiresAt: LATER,
+        now: NOW,
+      }),
+    );
+    const auth = createAuthContext({
+      userId: 'org-1',
+      organizationId: 'org-1',
+      actorType: 'ORGANIZATION',
+      sessionId: 'org-session-1',
+    });
+
+    await logout({ auth });
+
+    const first = await sessions.findByTokenHash('token-hash-org-session-1');
+    const second = await sessions.findByTokenHash('token-hash-org-session-2');
+    expect(first?.deletedAt).toBe(LATER);
+    expect(second?.deletedAt).toBe(LATER);
+  });
+
+  it('USER actor logout still revokes only the current session (regression)', async () => {
+    const { logout, sessions } = buildUseCase();
+    await sessions.save(buildSession('session-1'));
+    await sessions.save(buildSession('session-2'));
+    const auth = createAuthContext({
+      userId: 'user-1',
+      organizationId: 'org-1',
+      actorType: 'USER',
+      sessionId: 'session-1',
+    });
+
+    await logout({ auth });
+
+    const revoked = await sessions.findByTokenHash('token-hash-session-1');
+    const other = await sessions.findByTokenHash('token-hash-session-2');
+    expect(revoked?.deletedAt).toBe(LATER);
+    expect(other?.deletedAt).toBeNull();
+  });
 });
