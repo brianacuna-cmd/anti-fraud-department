@@ -5,6 +5,8 @@ import { AesGcmSessionTokenService } from '../../../../../src/modules/identity-a
 import { AesGcmSecretCipher } from '../../../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
 import { fromDate } from '../../../../../src/shared/time/Instant.js';
 import { createOrganizationId } from '../../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
+import { createFamilyId } from '../../../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
+import { createSessionId } from '../../../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ORG_ID = createOrganizationId('org-1');
@@ -90,5 +92,52 @@ describe('createSessionIssuer', () => {
     const secondSaved = await sessions.findByTokenHash(TOKEN_SERVICE.fingerprint(second.accessToken));
     expect(firstSaved?.id).not.toBe(secondSaved?.id);
     expect(firstSaved?.familyId).not.toBe(secondSaved?.familyId);
+  });
+
+  describe('optional `rotation` param (session-lifecycle PR-2, design DD3)', () => {
+    it('omitting `rotation` preserves fresh-family behavior (regression for all existing callers)', async () => {
+      const sessions = new InMemorySessionRepository();
+      const unitOfWork = new InMemoryUnitOfWork();
+      const issueSessionFor = buildIssuer(sessions);
+
+      const minted = await unitOfWork.withTransaction((tx) =>
+        issueSessionFor({ userId: 'user-1', organizationId: ORG_ID, actorType: 'USER', now: NOW, tx }),
+      );
+
+      const saved = await sessions.findByTokenHash(TOKEN_SERVICE.fingerprint(minted.accessToken));
+      expect(saved?.rotatedFromSessionId).toBeNull();
+      expect(saved?.familyExpiresAt).toBe('2026-01-31T00:00:00.000Z');
+    });
+
+    it('a supplied `rotation` mints a session joining the EXISTING family with a rotation link', async () => {
+      const sessions = new InMemorySessionRepository();
+      const unitOfWork = new InMemoryUnitOfWork();
+      const issueSessionFor = buildIssuer(sessions);
+      const existingFamilyId = createFamilyId('family-existing');
+      const existingFamilyExpiresAt = fromDate(new Date('2026-01-10T00:00:00.000Z'));
+      const oldSessionId = createSessionId('old-session-1');
+
+      const minted = await unitOfWork.withTransaction((tx) =>
+        issueSessionFor({
+          userId: 'user-1',
+          organizationId: ORG_ID,
+          actorType: 'USER',
+          now: NOW,
+          tx,
+          rotation: {
+            familyId: existingFamilyId,
+            familyExpiresAt: existingFamilyExpiresAt,
+            rotatedFromSessionId: oldSessionId,
+          },
+        }),
+      );
+
+      const saved = await sessions.findByTokenHash(TOKEN_SERVICE.fingerprint(minted.accessToken));
+      expect(saved?.familyId).toBe(existingFamilyId);
+      // design D15: familyExpiresAt is NEVER extended by rotation — the
+      // ORIGINAL family expiry carries forward, not `now + familySeconds`.
+      expect(saved?.familyExpiresAt).toBe(existingFamilyExpiresAt);
+      expect(saved?.rotatedFromSessionId).toBe(oldSessionId);
+    });
   });
 });
