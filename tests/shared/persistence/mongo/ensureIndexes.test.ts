@@ -123,4 +123,17 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     expect(emailIndex?.sparse).not.toBe(true);
     expect(emailIndex?.partialFilterExpression).toEqual({ Email: { $exists: true, $type: 'string' } });
   });
+
+  it('creates a unique compound index on NotificationPreferences (OrganizationId, UserId, AlertType, Channel) (notification-preferences, design D9)', async () => {
+    await ensureIndexes(db);
+
+    const notificationPreferenceIndexes = await db.collection('NotificationPreferences').indexes();
+    const compoundIndex = notificationPreferenceIndexes.find(
+      (index) => index.name === 'notification_preference_user_alert_channel_unique',
+    );
+
+    expect(compoundIndex).toBeDefined();
+    expect(compoundIndex?.key).toEqual({ OrganizationId: 1, UserId: 1, AlertType: 1, Channel: 1 });
+    expect(compoundIndex?.unique).toBe(true);
+  });
 });
