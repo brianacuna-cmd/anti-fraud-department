@@ -35,6 +35,9 @@ export const identityAccessErrorStatus: StatusByCode = {
   // password-management PR-2a (design "HTTP + DTOs + main.ts"): uniform
   // reset-token rejection (expired/replayed/mismatch/user-missing).
   PASSWORD_RESET_INVALID: 400,
+  // user-roles PR-1b (design "5. `CreateUser` use case changes"): same
+  // family/status as INVARIANT_VIOLATION — an invalid role request.
+  ROLE_NOT_ASSIGNABLE: 400,
   // two-step-login PR1a (design D3): thrown by shared `AuthScopeError` — not
   // an `IdentityAccessErrorCode` (it lives in `shared/kernel`, not this
   // module's closed error set) but `errorHandler` matches any `DomainError`

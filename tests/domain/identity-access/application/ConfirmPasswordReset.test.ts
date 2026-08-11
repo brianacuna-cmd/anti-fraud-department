@@ -8,6 +8,7 @@ import { FixedClock } from '../../../helpers/FixedClock.js';
 import { User } from '../../../../src/modules/identity-access/domain/model/aggregates/User.js';
 import { Session } from '../../../../src/modules/identity-access/domain/model/aggregates/Session.js';
 import { createUserId } from '../../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
+import { createRoleId } from '../../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
 import { createOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createSessionId } from '../../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
 import { createFamilyId } from '../../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
@@ -62,6 +63,7 @@ async function seedUserWithPendingReset(
     credential: createPasswordCredential('hashed:old-password'),
     firstName: 'Alice',
     lastName: 'Smith',
+    roleId: createRoleId('ANALYST'),
     now: CREATED_AT,
   });
 
@@ -242,6 +244,7 @@ describe('createConfirmPasswordResetUseCase', () => {
       credential: createPasswordCredential('hashed:old-password'),
       firstName: 'Alice',
       lastName: 'Smith',
+      roleId: createRoleId('ANALYST'),
       now: CREATED_AT,
     });
     await userRepositoryFactory.forTenant(ORG_ID).save(user);
@@ -282,6 +285,7 @@ describe('createConfirmPasswordResetUseCase', () => {
       credential: createPasswordCredential('hashed:old-password'),
       firstName: 'Alice',
       lastName: 'Smith',
+      roleId: createRoleId('ANALYST'),
       now: CREATED_AT,
     }).beginPasswordReset({ hash: TOKEN_SERVICE.fingerprint(jti), expiresAt: fromDate(new Date('2099-01-01T00:00:00.000Z')) }, CREATED_AT);
     await userRepositoryFactory.forTenant(OTHER_ORG_ID).save(userInOtherOrg);

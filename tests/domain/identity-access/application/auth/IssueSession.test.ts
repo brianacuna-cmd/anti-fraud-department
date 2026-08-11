@@ -12,6 +12,7 @@ import { AesGcmSecretCipher } from '../../../../../src/modules/identity-access/i
 import { OtplibTotpService } from '../../../../../src/modules/identity-access/infrastructure/adapters/outbound/mfa/OtplibTotpService.js';
 import { User } from '../../../../../src/modules/identity-access/domain/model/aggregates/User.js';
 import { createUserId } from '../../../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
+import { createRoleId } from '../../../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
 import { createOrganizationId } from '../../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createEmail } from '../../../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 import { createPasswordCredential } from '../../../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
@@ -37,6 +38,7 @@ async function seedActivatedUser(
     credential: createPasswordCredential('hash'),
     firstName: 'Alice',
     lastName: 'Smith',
+    roleId: createRoleId('ANALYST'),
     now: CREATED_AT,
   })
     .startMfaEnrollment(SECRET_CIPHER.encrypt(plaintextSecret), CREATED_AT)

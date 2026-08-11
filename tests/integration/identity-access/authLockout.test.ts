@@ -11,6 +11,7 @@ import { createAuthenticateActorUseCase } from '../../../src/modules/identity-ac
 import { Organization } from '../../../src/modules/identity-access/domain/model/aggregates/Organization.js';
 import { User } from '../../../src/modules/identity-access/domain/model/aggregates/User.js';
 import { createOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
+import { createRoleId } from '../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
 import { createUserId } from '../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
 import { createSlug } from '../../../src/modules/identity-access/domain/model/value-objects/Slug.js';
 import { createEmail } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
@@ -76,6 +77,7 @@ describe('Login lockout — identical across Users and Organizations (integratio
         credential: createPasswordCredential('hashed:correct-password'),
         firstName: 'Alice',
         lastName: 'Smith',
+        roleId: createRoleId('ANALYST'),
         now: NOW,
       }),
     );

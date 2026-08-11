@@ -11,6 +11,7 @@ describe('createUserSchema', () => {
       password: 'super-secret',
       firstName: 'Alice',
       lastName: 'Smith',
+      role: 'ANALYST',
     });
 
     expect(result.success).toBe(true);
@@ -23,6 +24,7 @@ describe('createUserSchema', () => {
       firstName: 'Alice',
       middleName: 'Marie',
       lastName: 'Smith',
+      role: 'ANALYST',
     });
 
     expect(result.success).toBe(true);
@@ -36,6 +38,7 @@ describe('createUserSchema', () => {
         firstName: 'Alice',
         lastName: 'Smith',
         middleName: null,
+        role: 'ANALYST',
       }).success,
     ).toBe(true);
   });
@@ -47,19 +50,43 @@ describe('createUserSchema', () => {
       firstName: 'Alice',
       middleName: '',
       lastName: 'Smith',
+      role: 'ANALYST',
     });
 
     expect(result.success).toBe(false);
   });
 
   it('rejects a payload missing the required password', () => {
-    const result = createUserSchema.safeParse({ email: 'alice@example.com', firstName: 'Alice', lastName: 'Smith' });
+    const result = createUserSchema.safeParse({ email: 'alice@example.com', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     expect(result.success).toBe(false);
   });
 
   it('rejects an empty email', () => {
-    const result = createUserSchema.safeParse({ email: '', password: 'pw', firstName: 'A', lastName: 'S' });
+    const result = createUserSchema.safeParse({ email: '', password: 'pw', firstName: 'A', lastName: 'S', role: 'ANALYST' });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a payload missing the required role (user-roles PR-1b)', () => {
+    const result = createUserSchema.safeParse({
+      email: 'alice@example.com',
+      password: 'pw',
+      firstName: 'Alice',
+      lastName: 'Smith',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an empty role', () => {
+    const result = createUserSchema.safeParse({
+      email: 'alice@example.com',
+      password: 'pw',
+      firstName: 'Alice',
+      lastName: 'Smith',
+      role: '',
+    });
 
     expect(result.success).toBe(false);
   });

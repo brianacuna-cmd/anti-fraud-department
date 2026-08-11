@@ -34,6 +34,9 @@ describe('identityAccessErrorStatus', () => {
       // password-management PR-2a (design "HTTP + DTOs + main.ts"): uniform
       // reset-token rejection (expired/replayed/mismatch/user-missing).
       PASSWORD_RESET_INVALID: 400,
+      // user-roles PR-1b (design "5. `CreateUser` use case changes"): invalid
+      // role request.
+      ROLE_NOT_ASSIGNABLE: 400,
     });
   });
 });

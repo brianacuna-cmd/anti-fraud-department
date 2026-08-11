@@ -24,6 +24,7 @@ import { InMemoryAuditRecorder } from '../../helpers/identity-access/InMemoryAud
 import { FakeEmailSender } from '../../helpers/identity-access/FakeEmailSender.js';
 import { Organization } from '../../../src/modules/identity-access/domain/model/aggregates/Organization.js';
 import { createSlug } from '../../../src/modules/identity-access/domain/model/value-objects/Slug.js';
+import { createRoleId } from '../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
 import { FixedClock } from '../../helpers/FixedClock.js';
 import { AesGcmSessionTokenService } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSessionTokenService.js';
 import { AesGcmSecretCipher } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
@@ -281,6 +282,7 @@ describe('authRouter (e2e, in-memory gateways)', () => {
         credential: createPasswordCredential('hash'),
         firstName: 'Alice',
         lastName: 'Smith',
+        roleId: createRoleId('ANALYST'),
         now: NOW,
       })
         .startMfaEnrollment(SECRET_CIPHER.encrypt(plaintextSecret), NOW)
@@ -457,6 +459,7 @@ describe('authRouter (e2e, in-memory gateways)', () => {
         credential: createPasswordCredential('hash'),
         firstName: 'Alice',
         lastName: 'Smith',
+        roleId: createRoleId('ANALYST'),
         now: NOW,
       });
       await userRepositoryFactory.forTenant(ORG_ID).save(user);
@@ -528,6 +531,7 @@ describe('authRouter (e2e, in-memory gateways)', () => {
         credential: createPasswordCredential('hash'),
         firstName: 'Alice',
         lastName: 'Smith',
+        roleId: createRoleId('ANALYST'),
         now: NOW,
       }).beginPasswordReset(
         { hash: TOKEN_SERVICE.fingerprint(jti), expiresAt: fromDate(new Date('2026-01-01T00:15:00.000Z')) },

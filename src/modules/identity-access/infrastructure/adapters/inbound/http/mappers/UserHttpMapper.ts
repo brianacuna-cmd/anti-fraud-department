@@ -14,6 +14,8 @@ export interface UserResponseDto {
   readonly avatarUrl: string | null;
   readonly status: string;
   readonly isPlatformAdmin: boolean;
+  /** user-roles PR-1b (design "5. `CreateUser` use case changes"): response wire key pinned to `roleId`. */
+  readonly roleId: string;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -35,6 +37,7 @@ export function toUserResponse(user: User): UserResponseDto {
     avatarUrl: user.avatarUrl,
     status: user.status,
     isPlatformAdmin: user.isPlatformAdmin,
+    roleId: user.roleId,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };

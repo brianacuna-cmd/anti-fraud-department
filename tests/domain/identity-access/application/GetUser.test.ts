@@ -3,6 +3,7 @@ import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { User } from '../../../../src/modules/identity-access/domain/model/aggregates/User.js';
 import { createUserId } from '../../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
+import { createRoleId } from '../../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
 import { createOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createEmail } from '../../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 import { createPasswordCredential } from '../../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
@@ -22,6 +23,7 @@ async function seedUser(userRepositoryFactory: InMemoryUserRepositoryFactory, or
     credential: createPasswordCredential('hash'),
     firstName: 'Alice',
     lastName: 'Smith',
+    roleId: createRoleId('ANALYST'),
     now: NOW,
   });
   await userRepositoryFactory.forTenant(org).save(user);

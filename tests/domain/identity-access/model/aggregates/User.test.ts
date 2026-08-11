@@ -4,12 +4,14 @@ import { createOrganizationId } from '../../../../../src/modules/identity-access
 import { createEmail } from '../../../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 import { createPasswordCredential } from '../../../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
 import { createTransitionActor } from '../../../../../src/modules/identity-access/domain/model/value-objects/TransitionActor.js';
+import { createRoleId } from '../../../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
 import { IdentityAccessError } from '../../../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
 import { fromDate } from '../../../../../src/shared/time/Instant.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const LATER = fromDate(new Date('2026-01-02T00:00:00.000Z'));
 const CREDENTIAL = createPasswordCredential('hash-value');
+const ROLE_ID = createRoleId('ANALYST');
 
 function buildUser(): User {
   return User.create({
@@ -19,6 +21,7 @@ function buildUser(): User {
     credential: CREDENTIAL,
     firstName: 'Alice',
     lastName: 'Smith',
+    roleId: ROLE_ID,
     now: NOW,
   });
 }
@@ -43,6 +46,12 @@ describe('User.create', () => {
     expect(user.isPlatformAdmin).toBe(false);
   });
 
+  it('persists the given roleId (user-roles PR-1b)', () => {
+    const user = buildUser();
+
+    expect(user.roleId).toBe(ROLE_ID);
+  });
+
   it('carries isPlatformAdmin=true when explicitly provisioned', () => {
     const user = User.create({
       id: createUserId('user-1'),
@@ -52,6 +61,7 @@ describe('User.create', () => {
       firstName: 'Alice',
       lastName: 'Smith',
       isPlatformAdmin: true,
+      roleId: ROLE_ID,
       now: NOW,
     });
 
@@ -68,6 +78,7 @@ describe('User.create', () => {
         firstName: 'Alice',
         lastName: 'Smith',
         [field]: '   ',
+        roleId: ROLE_ID,
         now: NOW,
       }),
     ).toThrow(IdentityAccessError);
@@ -83,6 +94,7 @@ describe('User.create', () => {
         firstName: 'Alice',
         lastName: 'Smith',
         avatarUrl: '   ',
+        roleId: ROLE_ID,
         now: NOW,
       }),
     ).toThrow(IdentityAccessError);
@@ -107,6 +119,7 @@ describe('User.create', () => {
       firstName: 'Alice',
       lastName: 'Smith',
       middleName: 'Marie',
+      roleId: ROLE_ID,
       now: NOW,
     });
 
@@ -123,6 +136,7 @@ describe('User.create', () => {
         firstName: 'Alice',
         lastName: 'Smith',
         middleName: '   ',
+        roleId: ROLE_ID,
         now: NOW,
       }),
     ).toThrow(IdentityAccessError);
@@ -160,6 +174,7 @@ describe('User.rehydrate', () => {
       avatarUrl: 'https://example.com/a.png',
       status: 'SUSPENDED',
       isPlatformAdmin: false,
+      roleId: ROLE_ID,
       resetToken: { hash: 'reset-hash', expiresAt: LATER },
       mfa: { secret: 'otp-secret', enabled: true, recoveryCodes: ['code-1'] },
       lockout: { loginAttempts: 2, blockedUntil: null },
@@ -170,6 +185,7 @@ describe('User.rehydrate', () => {
     expect(user.status).toBe('SUSPENDED');
     expect(user.avatarUrl).toBe('https://example.com/a.png');
     expect(user.middleName).toBe('Marie');
+    expect(user.roleId).toBe(ROLE_ID);
     expect(user.resetToken).toEqual({ hash: 'reset-hash', expiresAt: LATER });
     expect(user.mfa).toEqual({ secret: 'otp-secret', enabled: true, recoveryCodes: ['code-1'] });
     expect(user.lockout).toEqual({ loginAttempts: 2, blockedUntil: null });

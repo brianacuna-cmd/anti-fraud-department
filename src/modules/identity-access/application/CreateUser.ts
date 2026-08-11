@@ -4,12 +4,15 @@ import type { UserRepositoryFactory } from '../domain/ports/UserRepositoryFactor
 import type { PasswordHasher } from '../domain/ports/PasswordHasher.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
+import type { RoleRepository } from '../domain/ports/RoleRepository.js';
 import type { UserId } from '../domain/model/value-objects/UserId.js';
 import { User } from '../domain/model/aggregates/User.js';
 import { createOrganizationId } from '../domain/model/value-objects/OrganizationId.js';
 import { createEmail } from '../domain/model/value-objects/Email.js';
-import { userEmailTaken } from '../domain/errors/IdentityAccessError.js';
+import { createRoleId } from '../domain/model/value-objects/RoleId.js';
+import { userEmailTaken, roleNotAssignable } from '../domain/errors/IdentityAccessError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
+import { requireOrganizationActor } from './authorization/requireOrganizationActor.js';
 
 export interface CreateUserInput {
   readonly auth: AuthContext;
@@ -19,6 +22,8 @@ export interface CreateUserInput {
   readonly middleName?: string | null;
   readonly lastName: string;
   readonly avatarUrl?: string | null;
+  /** user-roles PR-1b: raw wire value, required — validated via `RoleRepository.isAssignableToUser`. */
+  readonly roleId: string;
 }
 
 export interface CreateUserDeps {
@@ -30,23 +35,33 @@ export interface CreateUserDeps {
   readonly generateId: () => UserId;
   /** NEW (audit-logs-foundation Phase 5): emits USER_CREATED. */
   readonly auditRecorder: AuditRecorder;
+  /** NEW (user-roles PR-1b): validates the requested role is an existing, Active, user-assignable role. */
+  readonly roleRepository: RoleRepository;
 }
 
 /**
- * Tenant-Scoped User Creation (user-lifecycle spec) — every user is created
- * inside the caller's OWN organization (no platform-admin gate: users routes
- * are tenant-scoped, not platform-admin-gated, per the
- * platform-admin-authorization spec).
+ * Tenant-Scoped, Organization-Only User Creation (user-lifecycle spec,
+ * user-roles PR-1b spec "Organization-Only Role Assignment on User
+ * Creation") — every user is created inside the caller's OWN organization,
+ * and the caller MUST be an `ORGANIZATION`-tier actor (design "5. `CreateUser`
+ * use case changes" — `requireOrganizationActor` replaces the previous
+ * tenant-only gate for this specific route).
  *
- * audit-logs-foundation Phase 5: NOW wrapped in `UnitOfWork.withTransaction`
+ * audit-logs-foundation Phase 5: wrapped in `UnitOfWork.withTransaction`
  * (previously a single-write use case with no transaction at all) so the
  * `User` write and the `USER_CREATED` audit row commit or roll back together
  * (spec "Atomic Emission").
  */
 export function createCreateUserUseCase(deps: CreateUserDeps) {
   return async function createUser(input: CreateUserInput): Promise<User> {
+    requireOrganizationActor(input.auth);
     const organizationId = createOrganizationId(requireTenantContext(input.auth));
     const repository = deps.userRepositoryFactory.forTenant(organizationId);
+
+    const roleId = createRoleId(input.roleId);
+    if (!(await deps.roleRepository.isAssignableToUser(roleId))) {
+      throw roleNotAssignable(input.roleId);
+    }
 
     return deps.unitOfWork.withTransaction(async (tx) => {
       const email = createEmail(input.email);
@@ -66,6 +81,7 @@ export function createCreateUserUseCase(deps: CreateUserDeps) {
         middleName: input.middleName,
         lastName: input.lastName,
         avatarUrl: input.avatarUrl,
+        roleId,
         now: deps.clock.now(),
       });
 
@@ -79,7 +95,7 @@ export function createCreateUserUseCase(deps: CreateUserDeps) {
           action: 'USER_CREATED',
           resource: 'users',
           resourceId: user.id,
-          detail: { email: user.email, firstName: user.firstName, lastName: user.lastName },
+          detail: { email: user.email, firstName: user.firstName, lastName: user.lastName, roleId: user.roleId },
           ipAddress: input.auth.ipAddress,
         },
         tx,
