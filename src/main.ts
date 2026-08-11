@@ -4,6 +4,7 @@ import { parseTrustProxy } from './shared/http/parseTrustProxy.js';
 import { createErrorHandler } from './shared/http/errorHandler.js';
 import { connectMongo } from './shared/persistence/mongo/connect.js';
 import { ensureIndexes } from './shared/persistence/mongo/ensureIndexes.js';
+import { ensureRoles } from './shared/persistence/mongo/ensureRoles.js';
 import { SystemClock } from './shared/time/SystemClock.js';
 import { identityAccessErrorStatus } from './modules/identity-access/infrastructure/adapters/inbound/http/errorStatus.js';
 import { organizationRouter } from './modules/identity-access/infrastructure/adapters/inbound/http/organizationRouter.js';
@@ -135,9 +136,16 @@ async function bootstrap(): Promise<void> {
   assertAuthConfigSafeForProduction(process.env.NODE_ENV, AUTH_MODE, PLATFORM_ADMIN_AUTH);
 
   const { client, db } = await connectMongo(MONGO_URI, MONGO_DB_NAME);
-  await ensureIndexes(db);
-
   const clock = new SystemClock();
+  await ensureIndexes(db);
+  // user-roles PR-1a: idempotent fixed role-catalog seed (ADMIN/SUPERVISOR/
+  // ANALYST/AUDITOR) — must run before any request that could reference a
+  // role. `RoleRepository` itself is not yet wired here; it has no real
+  // consumer until PR-1b's CreateUser org-gate lands (this file's existing
+  // "defer construction until a real caller exists" precedent, see
+  // `mfaChallenges`/`adminChallenges` below).
+  await ensureRoles(db, clock.now());
+
   const organizations = new MongoOrganizationRepository(db);
   const userRepositoryFactory = new MongoUserRepositoryFactory(db);
   const sessions = new MongoSessionRepository(db);
