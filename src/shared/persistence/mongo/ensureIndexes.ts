@@ -125,4 +125,14 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db
     .collection('AuditLogs')
     .createIndex({ Action: 1, CreatedAt: -1 }, { name: 'audit_log_action_created_idx' });
+
+  // `NotificationPreferences` (notification-preferences, design D9). One row
+  // per (organizationId, userId, alertType, channel) — the compound unique
+  // index IS the natural-key identity guard (design D1/D10), never a
+  // composite `_id`. No nullable key fields, so a plain unique index is
+  // correct (no partial predicate needed).
+  await db.collection('NotificationPreferences').createIndex(
+    { OrganizationId: 1, UserId: 1, AlertType: 1, Channel: 1 },
+    { unique: true, name: 'notification_preference_user_alert_channel_unique' },
+  );
 }
