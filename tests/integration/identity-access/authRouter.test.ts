@@ -12,6 +12,7 @@ import { createIssueSessionUseCase } from '../../../src/modules/identity-access/
 import { createSessionIssuer } from '../../../src/modules/identity-access/application/auth/SessionIssuer.js';
 import { createLogoutUseCase } from '../../../src/modules/identity-access/application/auth/Logout.js';
 import { createRequestPasswordResetUseCase } from '../../../src/modules/identity-access/application/auth/RequestPasswordReset.js';
+import { createConfirmPasswordResetUseCase } from '../../../src/modules/identity-access/application/auth/ConfirmPasswordReset.js';
 import { InMemoryActorCredentialGateway } from '../../helpers/identity-access/InMemoryActorCredentialGateway.js';
 import { InMemorySessionRepository } from '../../helpers/identity-access/InMemorySessionRepository.js';
 import { InMemoryUserRepositoryFactory } from '../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
@@ -145,6 +146,15 @@ function buildApp(): {
       resetTtlSeconds: 900,
       emailFrom: 'fraud@backendstudio.tech',
       resetLinkBaseUrl: 'https://app.example.com/reset',
+    }),
+    confirmPasswordReset: createConfirmPasswordResetUseCase({
+      sessionTokenService: TOKEN_SERVICE,
+      userRepositoryFactory,
+      passwordHasher,
+      sessions,
+      unitOfWork: new InMemoryUnitOfWork(),
+      clock,
+      auditRecorder,
     }),
   });
 
@@ -496,6 +506,77 @@ describe('authRouter (e2e, in-memory gateways)', () => {
       const response = await request(app)
         .post('/api/v1/auth/users/password-reset/request')
         .send({ organizationSlug: 'acme' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
+    });
+  });
+
+  describe('POST /auth/users/password-reset/confirm (password-management PR-2c)', () => {
+    async function seedOrgAndUserWithPendingReset(
+      organizations: InMemoryOrganizationRepository,
+      userRepositoryFactory: InMemoryUserRepositoryFactory,
+    ): Promise<string> {
+      const organization = Organization.create({ id: ORG_ID, slug: createSlug('acme'), name: 'Acme', now: NOW });
+      await organizations.save(organization);
+
+      const jti = 'confirm-e2e-jti';
+      const user = User.create({
+        id: createUserId('user-1'),
+        organizationId: ORG_ID,
+        email: createEmail('alice@example.com'),
+        credential: createPasswordCredential('hash'),
+        firstName: 'Alice',
+        lastName: 'Smith',
+        now: NOW,
+      }).beginPasswordReset(
+        { hash: TOKEN_SERVICE.fingerprint(jti), expiresAt: fromDate(new Date('2026-01-01T00:15:00.000Z')) },
+        NOW,
+      );
+      await userRepositoryFactory.forTenant(ORG_ID).save(user);
+
+      return TOKEN_SERVICE.issue({
+        tokenType: 'password_reset',
+        keyVersion: 1,
+        jti,
+        userId: 'user-1',
+        organizationId: 'org-1',
+        actorType: 'USER',
+        expiresAt: fromDate(new Date('2026-01-01T00:15:00.000Z')),
+      });
+    }
+
+    it('a valid unexpired reset token confirms with 204 and clears the pending reset', async () => {
+      const { app, organizations, userRepositoryFactory } = buildApp();
+      const token = await seedOrgAndUserWithPendingReset(organizations, userRepositoryFactory);
+
+      const response = await request(app)
+        .post('/api/v1/auth/users/password-reset/confirm')
+        .send({ token, newPassword: 'brand-new-password' });
+
+      expect(response.status).toBe(204);
+      const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
+      expect(stored?.resetToken).toBeNull();
+    });
+
+    it('rejects an unknown/tampered token with 400 PASSWORD_RESET_INVALID', async () => {
+      const { app, organizations, userRepositoryFactory } = buildApp();
+      const token = await seedOrgAndUserWithPendingReset(organizations, userRepositoryFactory);
+
+      const response = await request(app)
+        .post('/api/v1/auth/users/password-reset/confirm')
+        .send({ token: `${token}tampered`, newPassword: 'brand-new-password' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe('PASSWORD_RESET_INVALID');
+    });
+
+    it('rejects a body with no token with 400 INVARIANT_VIOLATION (DTO-level validation)', async () => {
+      const { app } = buildApp();
+
+      const response = await request(app)
+        .post('/api/v1/auth/users/password-reset/confirm')
+        .send({ newPassword: 'brand-new-password' });
 
       expect(response.status).toBe(400);
       expect(response.body.error.code).toBe('INVARIANT_VIOLATION');

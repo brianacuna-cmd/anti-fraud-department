@@ -48,3 +48,17 @@ export const requestPasswordResetSchema = z.object({
 });
 
 export type RequestPasswordResetBody = z.infer<typeof requestPasswordResetSchema>;
+
+/**
+ * POST /auth/users/password-reset/confirm body (password-management PR-2c,
+ * spec "Confirm Password Reset"). Deliberately NO `organizationSlug` —
+ * unlike `usersLoginSchema`/`requestPasswordResetSchema`, the tenant is
+ * derived entirely from the token's own claims (design §6), so a slug field
+ * here would be dead input.
+ */
+export const confirmPasswordResetSchema = z.object({
+  token: z.string().min(1),
+  newPassword: z.string().min(1),
+});
+
+export type ConfirmPasswordResetBody = z.infer<typeof confirmPasswordResetSchema>;

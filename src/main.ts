@@ -53,6 +53,7 @@ import { createActivateMfaUseCase } from './modules/identity-access/application/
 import { createDisableMfaUseCase } from './modules/identity-access/application/DisableMfa.js';
 import { createChangePasswordUseCase } from './modules/identity-access/application/ChangePassword.js';
 import { createRequestPasswordResetUseCase } from './modules/identity-access/application/auth/RequestPasswordReset.js';
+import { createConfirmPasswordResetUseCase } from './modules/identity-access/application/auth/ConfirmPasswordReset.js';
 import { ResendEmailSender } from './modules/identity-access/infrastructure/adapters/outbound/email/ResendEmailSender.js';
 import { LogEmailSender } from './modules/identity-access/infrastructure/adapters/outbound/email/LogEmailSender.js';
 import { OtplibTotpService } from './modules/identity-access/infrastructure/adapters/outbound/mfa/OtplibTotpService.js';
@@ -385,6 +386,15 @@ async function bootstrap(): Promise<void> {
       resetTtlSeconds: AUTH_PASSWORD_RESET_TTL_SECONDS,
       emailFrom: PASSWORD_RESET_EMAIL_FROM,
       resetLinkBaseUrl: PASSWORD_RESET_LINK_BASE_URL,
+    }),
+    confirmPasswordReset: createConfirmPasswordResetUseCase({
+      sessionTokenService,
+      userRepositoryFactory,
+      passwordHasher,
+      sessions,
+      unitOfWork,
+      clock,
+      auditRecorder,
     }),
   });
 
