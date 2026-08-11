@@ -4,6 +4,7 @@ import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
 import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
 import { MongoUserRepositoryFactory } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUserRepositoryFactory.js';
+import { MongoSessionRepository } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/MongoSessionRepository.js';
 import { MongoUnitOfWork } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { MongoAuditLogRepository } from '../../../src/modules/audit/infrastructure/adapters/outbound/mongo/MongoAuditLogRepository.js';
 import { createRecordAuditLogUseCase } from '../../../src/modules/audit/application/RecordAuditLog.js';
@@ -51,6 +52,7 @@ describe('User use-case audit atomicity (integration, real replica-set Mongo tra
   let client: MongoClient;
   let db: Db;
   let userRepositoryFactory: MongoUserRepositoryFactory;
+  let sessions: MongoSessionRepository;
   let baseAuditRecorder: AuditRecorder;
 
   beforeAll(async () => {
@@ -68,6 +70,7 @@ describe('User use-case audit atomicity (integration, real replica-set Mongo tra
 
   beforeEach(() => {
     userRepositoryFactory = new MongoUserRepositoryFactory(db);
+    sessions = new MongoSessionRepository(db);
     const auditLogs = new MongoAuditLogRepository(db);
     const recordAuditLog = createRecordAuditLogUseCase({ auditLogs, clock: new SystemClock(), generateAuditLogId });
     baseAuditRecorder = createAuditRecorderAdapter(recordAuditLog);
@@ -108,6 +111,7 @@ describe('User use-case audit atomicity (integration, real replica-set Mongo tra
   function buildTransition(auditRecorder: AuditRecorder) {
     return createTransitionUserStatusUseCase({
       userRepositoryFactory,
+      sessions,
       unitOfWork: new MongoUnitOfWork(client),
       clock: new SystemClock(),
       auditRecorder,
