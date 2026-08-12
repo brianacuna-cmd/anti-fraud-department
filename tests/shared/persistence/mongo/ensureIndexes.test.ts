@@ -136,4 +136,32 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     expect(compoundIndex?.key).toEqual({ OrganizationId: 1, UserId: 1, AlertType: 1, Channel: 1 });
     expect(compoundIndex?.unique).toBe(true);
   });
+
+  it('creates the six Cases indexes (case-management Slice 1 — Foundation) and stays idempotent on re-run', async () => {
+    await ensureIndexes(db);
+    await ensureIndexes(db);
+
+    const caseIndexes = await db.collection('Cases').indexes();
+
+    const orgStatusIndex = caseIndexes.find((index) => index.name === 'case_org_status_idx');
+    expect(orgStatusIndex?.key).toEqual({ OrganizationId: 1, Status: 1 });
+
+    const orgPriorityIndex = caseIndexes.find((index) => index.name === 'case_org_priority_idx');
+    expect(orgPriorityIndex?.key).toEqual({ OrganizationId: 1, Priority: 1 });
+
+    const assignedToIndex = caseIndexes.find((index) => index.name === 'case_assigned_to_idx');
+    expect(assignedToIndex?.key).toEqual({ AssignedTo: 1 });
+
+    const riskScoreIndex = caseIndexes.find((index) => index.name === 'case_risk_score_idx');
+    expect(riskScoreIndex?.key).toEqual({ RiskScore: 1 });
+
+    const dueDateIndex = caseIndexes.find((index) => index.name === 'case_due_date_idx');
+    expect(dueDateIndex?.key).toEqual({ DueDate: 1 });
+
+    const tagsIndex = caseIndexes.find((index) => index.name === 'case_tags_idx');
+    expect(tagsIndex?.key).toEqual({ Tags: 1 });
+
+    const matchingNames = caseIndexes.filter((index) => index.name === 'case_org_status_idx');
+    expect(matchingNames).toHaveLength(1);
+  });
 });
