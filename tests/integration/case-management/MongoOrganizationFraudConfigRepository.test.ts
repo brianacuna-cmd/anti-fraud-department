@@ -101,7 +101,7 @@ describe('MongoOrganizationFraudConfigRepository (integration, real replica-set 
 
     let caughtError: unknown;
     try {
-      await db.collection('OrganizationFraudConfig').insertOne({
+      await db.collection<OrganizationFraudConfigDocument>('OrganizationFraudConfig').insertOne({
         _id: 'config-2',
         OrganizationId: 'org-1',
         SlaLowMinutes: 240,
