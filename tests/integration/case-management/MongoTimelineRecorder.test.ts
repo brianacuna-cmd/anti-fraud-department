@@ -1,5 +1,6 @@
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
-import type { Db, MongoClient } from 'mongodb';
+import { ObjectId, type Db, type MongoClient } from 'mongodb';
+import { oid } from '../../support/oid.js';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
 import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
@@ -16,8 +17,8 @@ const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 
 function buildEvent(id: string, caseId = 'case-1'): CaseTimelineEvent {
   return CaseTimelineEvent.create({
-    id: createTimelineEventId(id),
-    caseId: createCaseId(caseId),
+    id: createTimelineEventId(oid(id)),
+    caseId: createCaseId(oid(caseId)),
     eventType: 'CASE_CREATED',
     previousValue: null,
     newValue: null,
@@ -56,10 +57,10 @@ describe('MongoTimelineRecorder (integration, real replica-set Mongo)', () => {
   it('records a timeline event via insertOne', async () => {
     await recorder.record(buildEvent('event-1'));
 
-    const document = await db.collection<CaseTimelineDocument>('CaseTimeline').findOne({ _id: 'event-1' });
+    const document = await db.collection<CaseTimelineDocument>('CaseTimeline').findOne({ _id: new ObjectId(oid('event-1')) });
 
     expect(document).not.toBeNull();
-    expect(document?.CaseId).toBe('case-1');
+    expect(document?.CaseId.toString()).toBe(oid('case-1'));
     expect(document?.EventType).toBe('CASE_CREATED');
   });
 
@@ -85,7 +86,7 @@ describe('MongoTimelineRecorder (integration, real replica-set Mongo)', () => {
 
     await expect(recorder.record(buildEvent('event-1'))).rejects.toThrow();
 
-    const documents = await db.collection('CaseTimeline').find({ _id: 'event-1' }).toArray();
+    const documents = await db.collection('CaseTimeline').find({ _id: new ObjectId(oid('event-1')) }).toArray();
     expect(documents).toHaveLength(1);
   });
 
@@ -95,7 +96,7 @@ describe('MongoTimelineRecorder (integration, real replica-set Mongo)', () => {
 
     const documents = await db
       .collection<CaseTimelineDocument>('CaseTimeline')
-      .find({ CaseId: 'case-1' })
+      .find({ CaseId: new ObjectId(oid('case-1')) })
       .sort({ CreatedAt: -1 })
       .toArray();
 

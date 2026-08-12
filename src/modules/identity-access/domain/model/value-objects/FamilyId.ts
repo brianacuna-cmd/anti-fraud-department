@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { brand, type Brand } from '../../../../../shared/kernel/Brand.js';
 import { invariantViolation } from '../../errors/IdentityAccessError.js';
 
@@ -12,7 +12,7 @@ export function createFamilyId(value: string): FamilyId {
   return brand<string, 'FamilyId'>(value);
 }
 
-/** Mints a fresh id for a brand-new rotation family (design D37: crypto.randomUUID()). */
+/** Mints a fresh id: a 24-char hex string the Mongo mapper stores as `ObjectId`. */
 export function generateFamilyId(): FamilyId {
-  return brand<string, 'FamilyId'>(randomUUID());
+  return brand<string, 'FamilyId'>(randomBytes(12).toString('hex'));
 }

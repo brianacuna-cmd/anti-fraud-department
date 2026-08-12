@@ -12,9 +12,12 @@
  * user-roles PR-1b — every user is created with a role now. `_id` stays
  * lowercase (design A1).
  */
+
+import type { ObjectId } from "mongodb";
+
 export interface UserDocument {
-  readonly _id: string;
-  readonly OrganizationId: string;
+  readonly _id: ObjectId;
+  readonly OrganizationId: ObjectId;
   readonly Email: string;
   readonly PasswordHash: string;
   readonly FirstName: string;

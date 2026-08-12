@@ -1,3 +1,4 @@
+import { ObjectId } from 'mongodb';
 import { brand } from '../../../../../../../shared/kernel/Brand.js';
 import { CaseTimelineEvent } from '../../../../../domain/model/aggregates/CaseTimelineEvent.js';
 import { createTimelineEventId } from '../../../../../domain/model/value-objects/TimelineEventId.js';
@@ -13,8 +14,8 @@ import type { CaseTimelineDocument } from '../documents/CaseTimelineDocument.js'
  */
 export function toDocument(event: CaseTimelineEvent): CaseTimelineDocument {
   return {
-    _id: event.id,
-    CaseId: event.caseId,
+    _id: new ObjectId(event.id),
+    CaseId: new ObjectId(event.caseId),
     EventType: event.eventType,
     PreviousValue: event.previousValue,
     NewValue: event.newValue,
@@ -26,8 +27,8 @@ export function toDocument(event: CaseTimelineEvent): CaseTimelineDocument {
 /** PascalCase (Mongo) -> camelCase (domain) translation seam (mirrors `AuditLogDocumentMapper`). */
 export function toDomain(document: CaseTimelineDocument): CaseTimelineEvent {
   return CaseTimelineEvent.rehydrate({
-    id: createTimelineEventId(document._id),
-    caseId: createCaseId(document.CaseId),
+    id: createTimelineEventId(document._id.toString()),
+    caseId: createCaseId(document.CaseId.toString()),
     eventType: createTimelineEventType(document.EventType),
     previousValue: document.PreviousValue,
     newValue: document.NewValue,

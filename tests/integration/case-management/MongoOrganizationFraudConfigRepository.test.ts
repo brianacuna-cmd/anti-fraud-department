@@ -1,5 +1,6 @@
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
-import type { Db, MongoClient } from 'mongodb';
+import { ObjectId, type Db, type MongoClient } from 'mongodb';
+import { oid } from '../../support/oid.js';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
 import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
@@ -17,7 +18,7 @@ const LATER = fromDate(new Date('2026-01-02T00:00:00.000Z'));
 
 function buildConfig(id: string, organizationId = 'org-1'): OrganizationFraudConfig {
   return OrganizationFraudConfig.create({
-    id: createOrganizationFraudConfigId(id),
+    id: createOrganizationFraudConfigId(oid(id)),
     organizationId,
     slaLowMinutes: 240,
     slaMediumMinutes: 120,
@@ -102,7 +103,7 @@ describe('MongoOrganizationFraudConfigRepository (integration, real replica-set 
     let caughtError: unknown;
     try {
       await db.collection('OrganizationFraudConfig').insertOne({
-        _id: 'config-2',
+        _id: new ObjectId(oid('config-2')),
         OrganizationId: 'org-1',
         SlaLowMinutes: 240,
         SlaMediumMinutes: 120,
@@ -124,7 +125,7 @@ describe('MongoOrganizationFraudConfigRepository (integration, real replica-set 
     expect(extractDuplicateKeyIndexName(caughtError)).toBe('org_fraud_config_unique');
   });
 
-  it('round-trips the raw document by _id as a plain string', async () => {
+  it('round-trips the raw document by _id as a native ObjectId', async () => {
     await repository.upsert(buildConfig('config-id-guard'));
 
     const rawDocument = await db
@@ -132,7 +133,7 @@ describe('MongoOrganizationFraudConfigRepository (integration, real replica-set 
       .findOne({ OrganizationId: 'org-1' });
 
     expect(rawDocument).not.toBeNull();
-    expect(rawDocument?._id).toBe('config-id-guard');
-    expect(typeof rawDocument?._id).toBe('string');
+    expect(rawDocument?._id).toBeInstanceOf(ObjectId);
+    expect(rawDocument?._id.toString()).toBe(oid('config-id-guard'));
   });
 });

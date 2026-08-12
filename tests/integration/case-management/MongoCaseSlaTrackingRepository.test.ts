@@ -1,3 +1,4 @@
+import { ObjectId } from 'mongodb';
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
 import type { Db, MongoClient } from 'mongodb';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
@@ -10,6 +11,7 @@ import { createCaseId } from '../../../src/modules/case-management/domain/model/
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import { extractDuplicateKeyIndexName } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/duplicateKey.js';
 import type { CaseSlaTrackingDocument } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/documents/CaseSlaTrackingDocument.js';
+import { oid } from '../../support/oid.js';
 
 jest.setTimeout(120_000);
 
@@ -19,11 +21,11 @@ const LATER = fromDate(new Date('2026-01-01T02:00:00.000Z'));
 
 function buildTracking(
   id: string,
-  caseId = 'case-1',
+  caseId = oid('case-1'),
   overrides: Partial<Parameters<typeof CaseSlaTracking.create>[0]> = {},
 ): CaseSlaTracking {
   return CaseSlaTracking.create({
-    id: createCaseSlaTrackingId(id),
+    id: createCaseSlaTrackingId(oid(id)),
     caseId: createCaseId(caseId),
     dueDate: DUE,
     now: NOW,
@@ -61,15 +63,15 @@ describe('MongoCaseSlaTrackingRepository (integration, real replica-set Mongo)',
   it('saves a tracking row and retrieves it by CaseId', async () => {
     await repository.save(buildTracking('tracking-1'));
 
-    const found = await repository.findByCaseId(createCaseId('case-1'));
+    const found = await repository.findByCaseId(createCaseId(oid('case-1')));
 
-    expect(found?.caseId).toBe('case-1');
+    expect(found?.caseId).toBe(oid('case-1'));
     expect(found?.status).toBe('ON_TRACK');
     expect(found?.notificationSent).toBe(false);
   });
 
   it('returns null when no tracking row matches the given CaseId', async () => {
-    const found = await repository.findByCaseId(createCaseId('missing-case'));
+    const found = await repository.findByCaseId(createCaseId(oid('missing-case')));
 
     expect(found).toBeNull();
   });
@@ -81,7 +83,7 @@ describe('MongoCaseSlaTrackingRepository (integration, real replica-set Mongo)',
 
     const documents = await db
       .collection<CaseSlaTrackingDocument>('CaseSlaTracking')
-      .find({ CaseId: 'case-1' })
+      .find({ CaseId: new ObjectId(oid('case-1')) })
       .toArray();
 
     expect(documents).toHaveLength(1);
@@ -101,8 +103,8 @@ describe('MongoCaseSlaTrackingRepository (integration, real replica-set Mongo)',
     let caughtError: unknown;
     try {
       await db.collection('CaseSlaTracking').insertOne({
-        _id: 'tracking-2',
-        CaseId: 'case-1',
+        _id: new ObjectId(oid('tracking-2')),
+        CaseId: new ObjectId(oid('case-1')),
         DueDate: DUE,
         DueDateAt: new Date(DUE),
         Status: 'ON_TRACK',
@@ -126,9 +128,9 @@ describe('MongoCaseSlaTrackingRepository (integration, real replica-set Mongo)',
    */
   describe('findDueForSweep (query shape only — sweep logic lands in Slice 13)', () => {
     it('returns rows whose DueDateAt has passed and are not yet BREACHED', async () => {
-      await repository.save(buildTracking('tracking-due', 'case-due', { dueDate: NOW }));
-      await repository.save(buildTracking('tracking-future', 'case-future', { dueDate: LATER }));
-      const breached = buildTracking('tracking-breached', 'case-breached', { dueDate: NOW }).advanceTo(
+      await repository.save(buildTracking('tracking-due', oid('case-due'), { dueDate: NOW }));
+      await repository.save(buildTracking('tracking-future', oid('case-future'), { dueDate: LATER }));
+      const breached = buildTracking('tracking-breached', oid('case-breached'), { dueDate: NOW }).advanceTo(
         'WARNING',
         NOW,
       ).advanceTo('BREACHED', NOW);
@@ -136,20 +138,20 @@ describe('MongoCaseSlaTrackingRepository (integration, real replica-set Mongo)',
 
       const due = await repository.findDueForSweep(NOW);
 
-      expect(due.map((row) => row.caseId).sort()).toEqual(['case-due']);
+      expect(due.map((row) => row.caseId).sort()).toEqual([oid('case-due')]);
     });
   });
 
-  it('round-trips the raw document by _id as a plain string, with DueDateAt mirroring DueDate', async () => {
+  it('round-trips the raw document by _id as a native ObjectId, with DueDateAt mirroring DueDate', async () => {
     await repository.save(buildTracking('tracking-id-guard'));
 
     const rawDocument = await db
       .collection<CaseSlaTrackingDocument>('CaseSlaTracking')
-      .findOne({ CaseId: 'case-1' });
+      .findOne({ CaseId: new ObjectId(oid('case-1')) });
 
     expect(rawDocument).not.toBeNull();
-    expect(rawDocument?._id).toBe('tracking-id-guard');
-    expect(typeof rawDocument?._id).toBe('string');
+    expect(rawDocument?._id).toBeInstanceOf(ObjectId);
+    expect(rawDocument?._id.toString()).toBe(oid('tracking-id-guard'));
     expect(rawDocument?.DueDateAt.toISOString()).toBe(DUE);
   });
 });

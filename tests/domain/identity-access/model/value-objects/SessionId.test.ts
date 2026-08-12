@@ -3,7 +3,7 @@ import {
   generateSessionId,
 } from '../../../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const OBJECT_ID_HEX_PATTERN = /^[0-9a-f]{24}$/i;
 
 describe('createSessionId', () => {
   it('accepts a non-empty string and returns it unchanged', () => {
@@ -29,9 +29,9 @@ describe('generateSessionId', () => {
     expect(first).not.toBe(second);
   });
 
-  it('returns a parseable UUID (design D37)', () => {
+  it('returns a 24-char hex string the Mongo mapper stores as ObjectId', () => {
     const id = generateSessionId();
 
-    expect(id).toMatch(UUID_PATTERN);
+    expect(id).toMatch(OBJECT_ID_HEX_PATTERN);
   });
 });

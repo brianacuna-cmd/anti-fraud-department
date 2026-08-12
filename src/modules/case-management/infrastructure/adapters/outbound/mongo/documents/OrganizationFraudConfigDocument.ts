@@ -1,14 +1,16 @@
 /**
  * Mongo document shape for `OrganizationFraudConfig` (design: "Persistence —
  * collections, documents, mappers"). `_id` is the aggregate's branded
- * `OrganizationFraudConfigId` (a `crypto.randomUUID()` string) — never a
- * driver-generated `ObjectId` (mirrors `CaseDocument`'s ADR-0 override).
+ * `OrganizationFraudConfigId` (a native MongoDB `ObjectId`, mirrors `CaseDocument`).
  *
  * One document per `OrganizationId` — enforced by the `org_fraud_config_unique`
  * index, never by application-level checks.
  */
+
+import type { ObjectId } from "mongodb";
+
 export interface OrganizationFraudConfigDocument {
-  readonly _id: string;
+  readonly _id: ObjectId;
   readonly OrganizationId: string;
   readonly SlaLowMinutes: number;
   readonly SlaMediumMinutes: number;

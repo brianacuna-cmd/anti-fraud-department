@@ -1,13 +1,15 @@
 /**
  * Mongo document shape for `CaseTimeline` (design: "Persistence — collections,
  * documents, mappers"). `_id` is the aggregate's branded `TimelineEventId` (a
- * `crypto.randomUUID()` string) — never a driver-generated `ObjectId`
- * (mirrors `AuditLogDocument`'s ADR-0 override). Append-only — no
+ * native MongoDB `ObjectId`, mirrors `AuditLogDocument`). Append-only — no
  * `UpdatedAt`/`DeletedAt` fields exist by design, same as `AuditLogDocument`.
  */
+
+import type { ObjectId } from "mongodb";
+
 export interface CaseTimelineDocument {
-  readonly _id: string;
-  readonly CaseId: string;
+  readonly _id: ObjectId;
+  readonly CaseId: ObjectId;
   readonly EventType: string;
   readonly PreviousValue: string | null;
   readonly NewValue: string | null;

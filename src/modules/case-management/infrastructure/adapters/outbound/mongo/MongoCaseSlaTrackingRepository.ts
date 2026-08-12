@@ -1,4 +1,4 @@
-import type { ClientSession, Collection, Db } from 'mongodb';
+import { ObjectId, type ClientSession, type Collection, type Db } from 'mongodb';
 import type { Instant } from '../../../../../../shared/time/Instant.js';
 import type { CaseSlaTracking } from '../../../../domain/model/aggregates/CaseSlaTracking.js';
 import type { CaseSlaTrackingRepository } from '../../../../domain/ports/CaseSlaTrackingRepository.js';
@@ -38,7 +38,7 @@ export class MongoCaseSlaTrackingRepository implements CaseSlaTrackingRepository
   }
 
   async findByCaseId(caseId: CaseId, tx?: Transaction): Promise<CaseSlaTracking | null> {
-    const document = await this.collection.findOne({ CaseId: caseId }, { session: toSession(tx) });
+    const document = await this.collection.findOne({ CaseId: new ObjectId(caseId) }, { session: toSession(tx) });
     return document ? toDomain(document) : null;
   }
 

@@ -1,5 +1,5 @@
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
-import type { Db, MongoClient } from 'mongodb';
+import { ObjectId, type Db, type MongoClient } from 'mongodb';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
 import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
@@ -11,6 +11,7 @@ import { createRiskScore } from '../../../src/modules/case-management/domain/mod
 import { createAssignedTo } from '../../../src/modules/case-management/domain/model/value-objects/AssignedTo.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import type { CaseDocument } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/documents/CaseDocument.js';
+import { oid } from '../../support/oid.js';
 
 jest.setTimeout(120_000);
 
@@ -55,9 +56,9 @@ describe('MongoCaseRepository (integration, real replica-set Mongo)', () => {
   });
 
   it('persists a case and retrieves it by id, tenant-scoped fields intact', async () => {
-    await repository.save(buildCase('case-1'));
+    await repository.save(buildCase(oid('case-1')));
 
-    const found = await repository.findById(createCaseId('case-1'));
+    const found = await repository.findById(createCaseId(oid('case-1')));
 
     expect(found?.organizationId).toBe('org-1');
     expect(found?.customerId).toBe('customer-1');
@@ -67,16 +68,16 @@ describe('MongoCaseRepository (integration, real replica-set Mongo)', () => {
   });
 
   it('returns null when no case matches the given id', async () => {
-    const found = await repository.findById(createCaseId('missing'));
+    const found = await repository.findById(createCaseId(oid('missing')));
 
     expect(found).toBeNull();
   });
 
   it('round-trips a reassigned AssignedTo through the split AssignedTo/AssignedToType columns', async () => {
-    const assigned = buildCase('case-2').reassign(createAssignedTo('ROLE', 'role-1'), NOW);
+    const assigned = buildCase(oid('case-2')).reassign(createAssignedTo('ROLE', 'role-1'), NOW);
     await repository.save(assigned);
 
-    const found = await repository.findById(createCaseId('case-2'));
+    const found = await repository.findById(createCaseId(oid('case-2')));
 
     expect(found?.assignedTo).toEqual({ type: 'ROLE', id: 'role-1' });
   });
@@ -86,27 +87,28 @@ describe('MongoCaseRepository (integration, real replica-set Mongo)', () => {
 
     await expect(
       unitOfWork.withTransaction(async (tx) => {
-        await repository.save(buildCase('case-tx'), tx);
+        await repository.save(buildCase(oid('case-tx')), tx);
         throw new Error('boom');
       }),
     ).rejects.toThrow('boom');
 
-    const found = await repository.findById(createCaseId('case-tx'));
+    const found = await repository.findById(createCaseId(oid('case-tx')));
     expect(found).toBeNull();
   });
 
   /**
-   * Regression guard mirroring `MongoOrganizationRepository`'s `_id`
-   * invariant test: `_id` MUST stay the branded `CaseId` string, never a
-   * driver-generated `ObjectId` (design ADR-0's override of the schema .md).
+   * Regression guard (inverted by the UUID -> native ObjectId migration):
+   * `_id` is now persisted as a driver `ObjectId`, never a plain string.
    */
-  it('round-trips the raw document by _id as a plain string', async () => {
-    await repository.save(buildCase('case-id-guard'));
+  it('round-trips the raw document by _id as a native ObjectId', async () => {
+    await repository.save(buildCase(oid('case-id-guard')));
 
-    const rawDocument = await db.collection<CaseDocument>('Cases').findOne({ _id: 'case-id-guard' });
+    const rawDocument = await db
+      .collection<CaseDocument>('Cases')
+      .findOne({ _id: new ObjectId(oid('case-id-guard')) });
 
     expect(rawDocument).not.toBeNull();
-    expect(rawDocument?._id).toBe('case-id-guard');
-    expect(typeof rawDocument?._id).toBe('string');
+    expect(rawDocument?._id).toBeInstanceOf(ObjectId);
+    expect(rawDocument?._id.toString()).toBe(oid('case-id-guard'));
   });
 });

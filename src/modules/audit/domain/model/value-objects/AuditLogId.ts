@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { brand, type Brand } from '../../../../../shared/kernel/Brand.js';
 import { invariantViolation } from '../../errors/AuditError.js';
 
@@ -12,7 +12,7 @@ export function createAuditLogId(value: string): AuditLogId {
   return brand<string, 'AuditLogId'>(value);
 }
 
-/** Mints a fresh id for a brand-new audit log row. */
+/** Mints a fresh id: a 24-char hex string the Mongo mapper stores as `ObjectId`. */
 export function generateAuditLogId(): AuditLogId {
-  return brand<string, 'AuditLogId'>(randomUUID());
+  return brand<string, 'AuditLogId'>(randomBytes(12).toString('hex'));
 }
