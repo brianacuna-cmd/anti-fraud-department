@@ -171,17 +171,8 @@ export class OrganizationFraudConfig {
 
   /** Partial update — undefined fields keep their current value. Used by the Upsert use case. */
   update(patch: UpdateOrganizationFraudConfigInput, now: Instant): OrganizationFraudConfig {
-    for (const field of SLA_FIELDS) {
-      const value = patch[field];
-      if (value !== undefined) {
-        assertNonNegative(field, value);
-      }
-    }
-    for (const field of RISK_THRESHOLD_FIELDS) {
-      const value = patch[field];
-      if (value !== undefined) {
-        assertNonNegative(field, value);
-      }
+    for (const field of [...SLA_FIELDS, ...RISK_THRESHOLD_FIELDS]) {
+      assertPatchFieldNonNegative(patch, field);
     }
     return new OrganizationFraudConfig({
       ...this.props,
@@ -206,4 +197,15 @@ function assertNonNegative(field: string, value: number): void {
       value,
     });
   }
+}
+
+type NumericPatchField = (typeof SLA_FIELDS)[number] | (typeof RISK_THRESHOLD_FIELDS)[number];
+
+/** Validates one optional numeric patch field; a `undefined` field is a no-op (keeps current value). */
+function assertPatchFieldNonNegative(patch: UpdateOrganizationFraudConfigInput, field: NumericPatchField): void {
+  const value = patch[field];
+  if (value === undefined) {
+    return;
+  }
+  assertNonNegative(field, value);
 }
