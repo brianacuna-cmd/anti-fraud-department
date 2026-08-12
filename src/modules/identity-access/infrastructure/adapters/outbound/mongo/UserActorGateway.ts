@@ -11,7 +11,7 @@ import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
 import { createSlug } from '../../../../domain/model/value-objects/Slug.js';
 import { createEmail } from '../../../../domain/model/value-objects/Email.js';
 import { createUserId } from '../../../../domain/model/value-objects/UserId.js';
-import { IdentityAccessError } from '../../../../domain/errors/IdentityAccessError.js';
+import { IdentityAccessError, invariantViolation } from '../../../../domain/errors/IdentityAccessError.js';
 import type { User } from '../../../../domain/model/aggregates/User.js';
 
 function toRecord(user: User): ActorCredentialRecord {
@@ -83,7 +83,10 @@ export class UserActorGateway implements ActorCredentialGateway {
     tx?: Transaction,
   ): Promise<void> {
     if (actor.organizationId === null) {
-      throw new Error('UserActorGateway received an actor with no organizationId — wiring bug');
+      throw invariantViolation('UserActorGateway received an actor with no organizationId — wiring bug', {
+        actorId: actor.actorId,
+        actorType: actor.actorType,
+      });
     }
     const repository = this.userRepositoryFactory.forTenant(actor.organizationId);
     const user = await repository.findById(createUserId(actor.actorId));

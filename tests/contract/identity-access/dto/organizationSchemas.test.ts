@@ -6,7 +6,7 @@ import {
 
 const VALID_ADMIN_FIELDS = {
   adminEmail: 'admin@acme.com',
-  adminPassword: 'super-secret',
+  adminPassword: 'Sup3rSecret',
   adminFirstName: 'Root',
   adminLastName: 'Admin',
 };

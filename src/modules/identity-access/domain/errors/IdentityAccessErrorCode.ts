@@ -48,4 +48,11 @@ export type IdentityAccessErrorCode =
   // requested `roleId` that does not resolve to an existing, Active,
   // user-assignable role — ADMIN, unknown, and inactive all funnel here (no
   // oracle for which failed; caller is already an authenticated ORGANIZATION).
-  | 'ROLE_NOT_ASSIGNABLE';
+  | 'ROLE_NOT_ASSIGNABLE'
+  // password-policy: a raw (pre-hash) password that fails the strength policy
+  // — length/character-class rules, checked at every entry point where a NEW
+  // password enters from transport (CreateUser, ChangePassword,
+  // CreateOrganizationWithAdmin, ConfirmPasswordReset). The failing rules are
+  // aggregated in `metadata.reasons`; safe to surface since a caller choosing
+  // their OWN password is not an enumeration oracle.
+  | 'WEAK_PASSWORD';

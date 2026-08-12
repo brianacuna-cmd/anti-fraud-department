@@ -10,6 +10,7 @@ import { createOrganizationId } from '../domain/model/value-objects/Organization
 import { createUserId } from '../domain/model/value-objects/UserId.js';
 import { createPasswordCredential } from '../domain/model/value-objects/PasswordCredential.js';
 import { userNotFound, invalidCurrentPassword } from '../domain/errors/IdentityAccessError.js';
+import { assertPasswordPolicy } from '../domain/model/value-objects/PasswordPolicy.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 
 export interface ChangePasswordInput {
@@ -42,6 +43,7 @@ export function createChangePasswordUseCase(deps: ChangePasswordDeps) {
   return async function changePassword(input: ChangePasswordInput): Promise<User> {
     const organizationId = createOrganizationId(requireTenantContext(input.auth));
     const repository = deps.userRepositoryFactory.forTenant(organizationId);
+    assertPasswordPolicy(input.newPassword);
 
     return deps.unitOfWork.withTransaction(async (tx) => {
       const userId = createUserId(input.auth.userId);

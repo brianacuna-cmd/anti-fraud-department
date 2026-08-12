@@ -45,7 +45,7 @@ describe('createCreateUserUseCase', () => {
     const user = await createUser({
       auth: ORG_1_ADMIN,
       email: 'alice@example.com',
-      password: 'super-secret',
+      password: 'Sup3rSecret',
       firstName: 'Alice',
       lastName: 'Smith',
       roleId: 'ANALYST',
@@ -53,7 +53,7 @@ describe('createCreateUserUseCase', () => {
 
     expect(user.status).toBe('ACTIVE');
     expect(user.email).toBe('alice@example.com');
-    expect(user.credential.passwordHash).toBe('hashed:super-secret');
+    expect(user.credential.passwordHash).toBe('hashed:Sup3rSecret');
     expect(passwordHasher.hashCallCount).toBe(1);
     const persisted = await userRepositoryFactory.forTenant(user.organizationId).findById(user.id);
     expect(persisted?.firstName).toBe('Alice');
@@ -61,11 +61,11 @@ describe('createCreateUserUseCase', () => {
 
   it('rejects a duplicate email within the same organization with USER_EMAIL_TAKEN', async () => {
     const { createUser } = buildUseCase();
-    await createUser({ auth: ORG_1_ADMIN, email: 'alice@example.com', password: 'pw', firstName: 'A', lastName: 'S', roleId: 'ANALYST' });
+    await createUser({ auth: ORG_1_ADMIN, email: 'alice@example.com', password: 'Passw0rd1', firstName: 'A', lastName: 'S', roleId: 'ANALYST' });
 
     expect.assertions(2);
     try {
-      await createUser({ auth: ORG_1_ADMIN, email: 'alice@example.com', password: 'pw2', firstName: 'A2', lastName: 'S2', roleId: 'ANALYST' });
+      await createUser({ auth: ORG_1_ADMIN, email: 'alice@example.com', password: 'Passw0rd2', firstName: 'A2', lastName: 'S2', roleId: 'ANALYST' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('USER_EMAIL_TAKEN');
@@ -74,12 +74,12 @@ describe('createCreateUserUseCase', () => {
 
   it('allows the same email to be used across two different organizations', async () => {
     const { createUser } = buildUseCase();
-    await createUser({ auth: ORG_1_ADMIN, email: 'shared@example.com', password: 'pw', firstName: 'A', lastName: 'S', roleId: 'ANALYST' });
+    await createUser({ auth: ORG_1_ADMIN, email: 'shared@example.com', password: 'Passw0rd1', firstName: 'A', lastName: 'S', roleId: 'ANALYST' });
 
     const secondOrgUser = await createUser({
       auth: ORG_2_ADMIN,
       email: 'shared@example.com',
-      password: 'pw2',
+      password: 'Passw0rd2',
       firstName: 'B',
       lastName: 'T',
       roleId: 'ANALYST',
@@ -95,7 +95,7 @@ describe('createCreateUserUseCase', () => {
     const user = await createUser({
       auth: ORG_1_ADMIN,
       email: 'alice@example.com',
-      password: 'super-secret',
+      password: 'Sup3rSecret',
       firstName: 'Alice',
       lastName: 'Smith',
       roleId: 'ANALYST',
@@ -112,11 +112,11 @@ describe('createCreateUserUseCase', () => {
 
   it('records no audit event when the create fails (duplicate email)', async () => {
     const { createUser, auditRecorder } = buildUseCase();
-    await createUser({ auth: ORG_1_ADMIN, email: 'dup@example.com', password: 'pw', firstName: 'A', lastName: 'S', roleId: 'ANALYST' });
+    await createUser({ auth: ORG_1_ADMIN, email: 'dup@example.com', password: 'Passw0rd1', firstName: 'A', lastName: 'S', roleId: 'ANALYST' });
     auditRecorder.calls(); // first create recorded one event
 
     await expect(
-      createUser({ auth: ORG_1_ADMIN, email: 'dup@example.com', password: 'pw2', firstName: 'A2', lastName: 'S2', roleId: 'ANALYST' }),
+      createUser({ auth: ORG_1_ADMIN, email: 'dup@example.com', password: 'Passw0rd2', firstName: 'A2', lastName: 'S2', roleId: 'ANALYST' }),
     ).rejects.toBeInstanceOf(IdentityAccessError);
 
     expect(auditRecorder.all().filter((e) => e.action === 'USER_CREATED')).toHaveLength(1);
@@ -128,7 +128,7 @@ describe('createCreateUserUseCase', () => {
     const user = await createUser({
       auth: ORG_1_ADMIN,
       email: 'alice@example.com',
-      password: 'pw',
+      password: 'Passw0rd1',
       firstName: 'Alice',
       lastName: 'Smith',
       roleId: 'SUPERVISOR',
@@ -145,7 +145,7 @@ describe('createCreateUserUseCase', () => {
       await createUser({
         auth: ORG_1_USER,
         email: 'alice@example.com',
-        password: 'pw',
+        password: 'Passw0rd1',
         firstName: 'Alice',
         lastName: 'Smith',
         roleId: 'ANALYST',
@@ -158,6 +158,27 @@ describe('createCreateUserUseCase', () => {
     expect(list.items).toHaveLength(0);
   });
 
+  it('rejects a weak password with WEAK_PASSWORD before hashing or persisting', async () => {
+    const { createUser, passwordHasher, userRepositoryFactory } = buildUseCase();
+
+    expect.assertions(3);
+    try {
+      await createUser({
+        auth: ORG_1_ADMIN,
+        email: 'alice@example.com',
+        password: '123',
+        firstName: 'Alice',
+        lastName: 'Smith',
+        roleId: 'ANALYST',
+      });
+    } catch (error) {
+      expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('WEAK_PASSWORD');
+    }
+    expect(passwordHasher.hashCallCount).toBe(0);
+    const list = await userRepositoryFactory.forTenant(createOrganizationId('org-1')).list(10);
+    expect(list.items).toHaveLength(0);
+  });
+
   it('rejects roleId ADMIN with ROLE_NOT_ASSIGNABLE', async () => {
     const { createUser } = buildUseCase();
 
@@ -166,7 +187,7 @@ describe('createCreateUserUseCase', () => {
       await createUser({
         auth: ORG_1_ADMIN,
         email: 'alice@example.com',
-        password: 'pw',
+        password: 'Passw0rd1',
         firstName: 'Alice',
         lastName: 'Smith',
         roleId: 'ADMIN',
@@ -185,7 +206,7 @@ describe('createCreateUserUseCase', () => {
       await createUser({
         auth: ORG_1_ADMIN,
         email: 'alice@example.com',
-        password: 'pw',
+        password: 'Passw0rd1',
         firstName: 'Alice',
         lastName: 'Smith',
         roleId: 'NOT-A-ROLE',
@@ -217,7 +238,7 @@ describe('createCreateUserUseCase', () => {
       await createUser({
         auth: ORG_1_ADMIN,
         email: 'alice@example.com',
-        password: 'pw',
+        password: 'Passw0rd1',
         firstName: 'Alice',
         lastName: 'Smith',
         roleId: 'SUPERVISOR',

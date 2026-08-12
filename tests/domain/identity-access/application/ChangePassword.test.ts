@@ -22,7 +22,7 @@ const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const CHANGED_AT = fromDate(new Date('2026-01-02T00:00:00.000Z'));
 const AUTH = createAuthContext({ userId: 'user-1', organizationId: 'org-1', isPlatformAdmin: false });
 const CURRENT_PASSWORD = 'current-password';
-const NEW_PASSWORD = 'brand-new-password';
+const NEW_PASSWORD = 'BrandNewPassw0rd';
 
 async function seedUser(userRepositoryFactory: InMemoryUserRepositoryFactory, passwordHasher: FakePasswordHasher): Promise<void> {
   const org = createOrganizationId('org-1');
@@ -100,6 +100,24 @@ describe('createChangePasswordUseCase', () => {
     expect(calls[0].event.action).toBe('PASSWORD_CHANGED');
     expect(calls[0].event.resource).toBe('users');
     expect(calls[0].event.resourceId).toBe('user-1');
+  });
+
+  it('rejects a weak new password with WEAK_PASSWORD without hashing, mutating, or recording anything', async () => {
+    const userRepositoryFactory = new InMemoryUserRepositoryFactory();
+    const passwordHasher = new FakePasswordHasher();
+    await seedUser(userRepositoryFactory, passwordHasher);
+    const sessions = new InMemorySessionRepository();
+    await seedSession(sessions);
+    const unitOfWork = new InMemoryUnitOfWork();
+    const auditRecorder = new InMemoryAuditRecorder();
+    const changePassword = buildUseCase(userRepositoryFactory, unitOfWork, sessions, auditRecorder, passwordHasher);
+
+    await expect(
+      changePassword({ auth: AUTH, currentPassword: CURRENT_PASSWORD, newPassword: '123' }),
+    ).rejects.toMatchObject({ code: 'WEAK_PASSWORD' });
+
+    expect(unitOfWork.transactionCount).toBe(0);
+    expect(auditRecorder.calls()).toHaveLength(0);
   });
 
   it('rejects a wrong current password without mutating the credential, revoking sessions, or recording an audit event', async () => {

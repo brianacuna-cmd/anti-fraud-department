@@ -24,7 +24,7 @@ const NOW = fromDate(new Date('2026-01-02T00:00:00.000Z'));
 const ORG_ID = createOrganizationId('org-1');
 const OTHER_ORG_ID = createOrganizationId('org-2');
 const TOKEN_SERVICE = new AesGcmSessionTokenService(new AesGcmSecretCipher('test-secret', 1));
-const NEW_PASSWORD = 'brand-new-password';
+const NEW_PASSWORD = 'BrandNewPassw0rd';
 
 function buildFixture() {
   const userRepositoryFactory = new InMemoryUserRepositoryFactory();
@@ -126,6 +126,21 @@ describe('createConfirmPasswordResetUseCase', () => {
     expect(calls[0].event.action).toBe('PASSWORD_RESET_COMPLETED');
     expect(calls[0].event.resource).toBe('users');
     expect(calls[0].event.resourceId).toBe('user-1');
+  });
+
+  it('rejects a weak new password with WEAK_PASSWORD, only AFTER the token/user checks pass, without mutating state', async () => {
+    const { userRepositoryFactory, unitOfWork, auditRecorder, confirmPasswordReset } = buildFixture();
+    const token = await seedUserWithPendingReset(userRepositoryFactory);
+
+    await expect(confirmPasswordReset({ token, newPassword: '123' })).rejects.toMatchObject({
+      code: 'WEAK_PASSWORD',
+    });
+
+    const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
+    expect(stored?.resetToken).not.toBeNull();
+    expect(stored?.credential.passwordHash).toBe('hashed:old-password');
+    expect(unitOfWork.transactionCount).toBe(0);
+    expect(auditRecorder.calls()).toHaveLength(0);
   });
 
   it('rejects an expired token (payload self-expiry) with the opaque PASSWORD_RESET_INVALID, without mutating state', async () => {

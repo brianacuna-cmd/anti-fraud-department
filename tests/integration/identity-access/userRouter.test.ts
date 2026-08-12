@@ -237,7 +237,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
 
     const response = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'super-secret', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
+      .send({ email: 'alice@example.com', password: 'Sup3rSecret', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     expect(response.status).toBe(201);
     expect(response.body).toMatchObject({
@@ -256,7 +256,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
 
     const response = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
+      .send({ email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe('FORBIDDEN_CROSS_TENANT');
@@ -267,7 +267,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
 
     const response = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ADMIN' });
+      .send({ email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', role: 'ADMIN' });
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('ROLE_NOT_ASSIGNABLE');
@@ -278,7 +278,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
 
     const response = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith' });
+      .send({ email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith' });
 
     expect(response.status).toBe(400);
   });
@@ -287,7 +287,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
     const { app } = buildApp(() => ORG_1_ORGANIZATION);
     const created = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
+      .send({ email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     const { app: otherOrgApp } = buildApp(() => ORG_2_ORGANIZATION);
     const response = await request(otherOrgApp).get(`/api/v1/users/${created.body.id}`);
@@ -298,8 +298,8 @@ describe('userRouter (e2e, in-memory repository)', () => {
 
   it('GET /users paginates within the caller\'s organization', async () => {
     const { app } = buildApp(() => ORG_1_ORGANIZATION);
-    await request(app).post('/api/v1/users').send({ email: 'a@example.com', password: 'pw', firstName: 'A', lastName: 'S', role: 'ANALYST' });
-    await request(app).post('/api/v1/users').send({ email: 'b@example.com', password: 'pw', firstName: 'B', lastName: 'T', role: 'ANALYST' });
+    await request(app).post('/api/v1/users').send({ email: 'a@example.com', password: 'Passw0rd1', firstName: 'A', lastName: 'S', role: 'ANALYST' });
+    await request(app).post('/api/v1/users').send({ email: 'b@example.com', password: 'Passw0rd1', firstName: 'B', lastName: 'T', role: 'ANALYST' });
 
     const firstPage = await request(app).get('/api/v1/users?limit=1');
 
@@ -312,7 +312,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
     const { app } = buildApp(() => ORG_1_ORGANIZATION);
     const created = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
+      .send({ email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     const response = await request(app)
       .patch(`/api/v1/users/${created.body.id}`)
@@ -326,7 +326,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
     const { app } = buildApp(() => ORG_1_ORGANIZATION);
     const created = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
+      .send({ email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     const response = await request(app)
       .patch(`/api/v1/users/${created.body.id}`)
@@ -340,7 +340,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
     const { app } = buildApp(() => ORG_1_ORGANIZATION);
     const created = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
+      .send({ email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     const response = await request(app)
       .post(`/api/v1/users/${created.body.id}/transition`)
@@ -354,7 +354,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
     const { app } = buildApp(() => ORG_1_ORGANIZATION);
     const created = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
+      .send({ email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     const response = await request(app)
       .post(`/api/v1/users/${created.body.id}/transition`)
@@ -368,7 +368,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
     const { app } = buildApp(() => ORG_1_ORGANIZATION);
     const created = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
+      .send({ email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     const response = await request(app)
       .post(`/api/v1/users/${created.body.id}/role`)
@@ -382,7 +382,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
     const { app: seedApp } = buildApp(() => ORG_1_ORGANIZATION);
     const created = await request(seedApp)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
+      .send({ email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     const actingUser = createAuthContext({ userId: 'u9', organizationId: 'org-1', isPlatformAdmin: false });
     const { app } = buildApp(() => actingUser);
@@ -411,7 +411,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
     const { app: org1App } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory);
     const created = await request(org1App)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
+      .send({ email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     const { app: org2App } = buildApp(() => ORG_2_ORGANIZATION, sharedFactory);
     const response = await request(org2App)
@@ -426,7 +426,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
     const { app } = buildApp(() => ORG_1_ORGANIZATION);
     const created = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
+      .send({ email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
     await request(app).delete(`/api/v1/users/${created.body.id}`);
 
     const response = await request(app)
@@ -441,7 +441,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
     const { app } = buildApp(() => ORG_1_ORGANIZATION);
     const created = await request(app)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
+      .send({ email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     const response = await request(app).delete(`/api/v1/users/${created.body.id}`);
 
@@ -454,7 +454,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
     const { app: org1App } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory);
     const created = await request(org1App)
       .post('/api/v1/users')
-      .send({ email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
+      .send({ email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     const { app: platformAdminOrg1App } = buildApp(() => PLATFORM_ADMIN_ORG_1, sharedFactory);
     const sameOrgResponse = await request(platformAdminOrg1App).get(`/api/v1/users/${created.body.id}`);
@@ -481,7 +481,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
     async function seedActingUser(app: Express): Promise<() => AuthContext> {
       const created = await request(app)
         .post('/api/v1/users')
-        .send({ email: 'mfa-user@example.com', password: 'pw', firstName: 'Mfa', lastName: 'User', role: 'ANALYST' });
+        .send({ email: 'mfa-user@example.com', password: 'Passw0rd1', firstName: 'Mfa', lastName: 'User', role: 'ANALYST' });
       const userId = created.body.id as string;
       return () => createAuthContext({ userId, organizationId: 'org-1', isPlatformAdmin: false });
     }
@@ -552,12 +552,12 @@ describe('userRouter (e2e, in-memory repository)', () => {
     it('POST /users/me/password replaces the credential and returns 204 on correct current password', async () => {
       const sharedFactory = new InMemoryUserRepositoryFactory();
       const { app: seedApp } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory);
-      const actingAuth = await seedActingUser(seedApp, 'old-password');
+      const actingAuth = await seedActingUser(seedApp, 'OldPassw0rd');
       const { app } = buildApp(actingAuth, sharedFactory);
 
       const response = await request(app)
         .post('/api/v1/users/me/password')
-        .send({ currentPassword: 'old-password', newPassword: 'new-password' });
+        .send({ currentPassword: 'OldPassw0rd', newPassword: 'NewPassw0rd' });
 
       expect(response.status).toBe(204);
     });
@@ -565,12 +565,12 @@ describe('userRouter (e2e, in-memory repository)', () => {
     it('POST /users/me/password rejects a wrong current password with 401 INVALID_CREDENTIALS', async () => {
       const sharedFactory = new InMemoryUserRepositoryFactory();
       const { app: seedApp } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory);
-      const actingAuth = await seedActingUser(seedApp, 'old-password');
+      const actingAuth = await seedActingUser(seedApp, 'OldPassw0rd');
       const { app } = buildApp(actingAuth, sharedFactory);
 
       const response = await request(app)
         .post('/api/v1/users/me/password')
-        .send({ currentPassword: 'wrong-password', newPassword: 'new-password' });
+        .send({ currentPassword: 'wrong-password', newPassword: 'NewPassw0rd' });
 
       expect(response.status).toBe(401);
       expect(response.body.error.code).toBe('INVALID_CREDENTIALS');
@@ -581,12 +581,12 @@ describe('userRouter (e2e, in-memory repository)', () => {
       const { app: seedApp } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory);
       const mfaChallenges = new InMemoryMfaChallengeStore();
       const sessions = new InMemorySessionRepository();
-      await seedActingUser(seedApp, 'old-password');
+      await seedActingUser(seedApp, 'OldPassw0rd');
       const { app } = buildAppWithRealResolver(sharedFactory, mfaChallenges, sessions);
 
       const response = await request(app)
         .post('/api/v1/users/me/password')
-        .send({ currentPassword: 'old-password', newPassword: 'new-password' });
+        .send({ currentPassword: 'OldPassw0rd', newPassword: 'NewPassw0rd' });
 
       expect(response.status).toBe(500);
     });
@@ -629,7 +629,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
       const { app: seedApp } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory, mfaChallenges, sessions);
       const created = await request(seedApp)
         .post('/api/v1/users')
-        .send({ email: 'enrollee@example.com', password: 'pw', firstName: 'En', lastName: 'Rollee', role: 'ANALYST' });
+        .send({ email: 'enrollee@example.com', password: 'Passw0rd1', firstName: 'En', lastName: 'Rollee', role: 'ANALYST' });
       const userId = created.body.id as string;
 
       const { app } = buildAppWithRealResolver(sharedFactory, mfaChallenges, sessions);
@@ -662,7 +662,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
       const { app: seedApp } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory, mfaChallenges, sessions);
       const created = await request(seedApp)
         .post('/api/v1/users')
-        .send({ email: 'enrollee2@example.com', password: 'pw', firstName: 'En', lastName: 'Rollee', role: 'ANALYST' });
+        .send({ email: 'enrollee2@example.com', password: 'Passw0rd1', firstName: 'En', lastName: 'Rollee', role: 'ANALYST' });
       const userId = created.body.id as string;
 
       const { app } = buildAppWithRealResolver(sharedFactory, mfaChallenges, sessions);
@@ -693,7 +693,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
       const { app: seedApp } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory, mfaChallenges, sessions);
       const created = await request(seedApp)
         .post('/api/v1/users')
-        .send({ email: 'enrollee3@example.com', password: 'pw', firstName: 'En', lastName: 'Rollee', role: 'ANALYST' });
+        .send({ email: 'enrollee3@example.com', password: 'Passw0rd1', firstName: 'En', lastName: 'Rollee', role: 'ANALYST' });
       const userId = created.body.id as string;
 
       const { app } = buildAppWithRealResolver(sharedFactory, mfaChallenges, sessions);
