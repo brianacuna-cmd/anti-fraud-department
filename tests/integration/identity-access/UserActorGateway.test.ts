@@ -141,6 +141,22 @@ describe('UserActorGateway (integration, real replica-set Mongo)', () => {
     expect(persisted?.updatedAt).toBe(LATER);
   });
 
+  it('throws a domain INVARIANT_VIOLATION (not a native Error) when the actor has no organizationId — wiring-bug guard', async () => {
+    const orphan = {
+      actorId: 'user-1',
+      actorType: 'USER',
+      organizationId: null,
+      credential: { passwordHash: 'a-bcrypt-hash' },
+      lockout: { loginAttempts: 0, blockedUntil: null },
+      status: 'ACTIVE',
+      mfa: { enabled: false, secret: null },
+    } as const;
+
+    await expect(
+      gateway.registerLoginFailure(orphan, { loginAttempts: 1, blockedUntil: null }, NOW),
+    ).rejects.toMatchObject({ code: 'INVARIANT_VIOLATION' });
+  });
+
   it('registerLoginSuccess resets the LockoutState to zero', async () => {
     const record = await gateway.findByEmail({ email: 'alice@example.com', organizationSlug: 'acme' });
     await gateway.registerLoginFailure(record!, { loginAttempts: 2, blockedUntil: null }, NOW);
