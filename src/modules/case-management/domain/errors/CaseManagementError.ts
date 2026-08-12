@@ -37,3 +37,11 @@ export function forbiddenCrossTenant(
 ): CaseManagementError {
   return new CaseManagementError('FORBIDDEN_CROSS_TENANT', message);
 }
+
+export function organizationFraudConfigNotFound(organizationId: string): CaseManagementError {
+  return new CaseManagementError(
+    'ORGANIZATION_FRAUD_CONFIG_NOT_FOUND',
+    `no OrganizationFraudConfig exists for organization "${organizationId}"`,
+    { organizationId },
+  );
+}
