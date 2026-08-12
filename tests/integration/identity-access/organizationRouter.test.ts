@@ -28,7 +28,7 @@ const REGULAR_USER = createAuthContext({ userId: 'user-1', organizationId: 'o1',
 
 const ADMIN_BOOTSTRAP_FIELDS = {
   adminEmail: 'admin@acme.com',
-  adminPassword: 'super-secret',
+  adminPassword: 'Sup3rSecret',
   adminFirstName: 'Root',
   adminLastName: 'Admin',
 };

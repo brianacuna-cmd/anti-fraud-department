@@ -130,7 +130,7 @@ describe('User use-case audit atomicity (integration, real replica-set Mongo tra
   it('CreateUser commits exactly one USER_CREATED audit row atomically with the user', async () => {
     const createUser = buildCreate(baseAuditRecorder);
 
-    await createUser({ auth: ORG_USER, email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', roleId: 'ANALYST' });
+    await createUser({ auth: ORG_USER, email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', roleId: 'ANALYST' });
 
     const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
     expect(persisted).not.toBeNull();
@@ -143,7 +143,7 @@ describe('User use-case audit atomicity (integration, real replica-set Mongo tra
     const createUser = buildCreate(failOnNthCall(baseAuditRecorder, 1));
 
     await expect(
-      createUser({ auth: ORG_USER, email: 'alice@example.com', password: 'pw', firstName: 'Alice', lastName: 'Smith', roleId: 'ANALYST' }),
+      createUser({ auth: ORG_USER, email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', roleId: 'ANALYST' }),
     ).rejects.toThrow('induced audit failure mid-transaction');
 
     const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));

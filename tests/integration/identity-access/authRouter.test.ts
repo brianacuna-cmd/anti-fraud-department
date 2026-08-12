@@ -758,7 +758,7 @@ describe('authRouter (e2e, in-memory gateways)', () => {
 
       const response = await request(app)
         .post('/api/v1/auth/users/password-reset/confirm')
-        .send({ token, newPassword: 'brand-new-password' });
+        .send({ token, newPassword: 'BrandNewPassw0rd' });
 
       expect(response.status).toBe(204);
       const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
@@ -771,7 +771,7 @@ describe('authRouter (e2e, in-memory gateways)', () => {
 
       const response = await request(app)
         .post('/api/v1/auth/users/password-reset/confirm')
-        .send({ token: `${token}tampered`, newPassword: 'brand-new-password' });
+        .send({ token: `${token}tampered`, newPassword: 'BrandNewPassw0rd' });
 
       expect(response.status).toBe(400);
       expect(response.body.error.code).toBe('PASSWORD_RESET_INVALID');
@@ -782,7 +782,7 @@ describe('authRouter (e2e, in-memory gateways)', () => {
 
       const response = await request(app)
         .post('/api/v1/auth/users/password-reset/confirm')
-        .send({ newPassword: 'brand-new-password' });
+        .send({ newPassword: 'BrandNewPassw0rd' });
 
       expect(response.status).toBe(400);
       expect(response.body.error.code).toBe('INVARIANT_VIOLATION');

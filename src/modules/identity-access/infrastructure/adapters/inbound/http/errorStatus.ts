@@ -38,6 +38,9 @@ export const identityAccessErrorStatus: StatusByCode = {
   // user-roles PR-1b (design "5. `CreateUser` use case changes"): same
   // family/status as INVARIANT_VIOLATION — an invalid role request.
   ROLE_NOT_ASSIGNABLE: 400,
+  // password-policy: a well-formed request whose chosen password fails the
+  // strength rules — 422 (semantic validation) rather than 400 (malformed).
+  WEAK_PASSWORD: 422,
   // two-step-login PR1a (design D3): thrown by shared `AuthScopeError` — not
   // an `IdentityAccessErrorCode` (it lives in `shared/kernel`, not this
   // module's closed error set) but `errorHandler` matches any `DomainError`

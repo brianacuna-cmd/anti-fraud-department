@@ -140,6 +140,14 @@ export function roleNotAssignable(roleId: string): IdentityAccessError {
   return new IdentityAccessError('ROLE_NOT_ASSIGNABLE', `role "${roleId}" is not assignable to a user`, { roleId });
 }
 
+// password-policy: raw-password strength rejection. The caller is choosing
+// their OWN password (create/change/reset), so — unlike login errors — there
+// is no enumeration oracle to hide; the failing rules ride in `reasons` so the
+// HTTP layer can tell the user exactly what to fix.
+export function weakPassword(reasons: readonly string[]): IdentityAccessError {
+  return new IdentityAccessError('WEAK_PASSWORD', 'password does not meet the strength policy', { reasons });
+}
+
 // mfa-user-enrollment PR2: user MFA setup/activate/disable.
 
 /** No pending TOTP secret to confirm — enrollment was never started, or is already enabled. */

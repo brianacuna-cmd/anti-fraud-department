@@ -58,7 +58,7 @@ describe('createCreateOrganizationWithAdminUseCase', () => {
       name: 'Acme Corp',
       slug: 'acme-corp',
       adminEmail: 'admin@acme.com',
-      adminPassword: 'super-secret',
+      adminPassword: 'Sup3rSecret',
       adminFirstName: 'Root',
       adminLastName: 'Admin',
     });
@@ -80,7 +80,7 @@ describe('createCreateOrganizationWithAdminUseCase', () => {
       name: 'Acme Corp',
       slug: 'acme-corp',
       adminEmail: 'admin@acme.com',
-      adminPassword: 'super-secret',
+      adminPassword: 'Sup3rSecret',
       adminFirstName: 'Root',
       adminLastName: 'Admin',
     });
@@ -96,7 +96,7 @@ describe('createCreateOrganizationWithAdminUseCase', () => {
       name: 'Acme Corp',
       slug: 'acme-corp',
       adminEmail: 'admin@acme.com',
-      adminPassword: 'super-secret',
+      adminPassword: 'Sup3rSecret',
       adminFirstName: 'Root',
       adminLastName: 'Admin',
     });
@@ -108,7 +108,7 @@ describe('createCreateOrganizationWithAdminUseCase', () => {
         name: 'Acme Corp 2',
         slug: 'acme-corp',
         adminEmail: 'other-admin@acme.com',
-        adminPassword: 'super-secret',
+        adminPassword: 'Sup3rSecret',
         adminFirstName: 'Other',
         adminLastName: 'Admin',
       });
@@ -129,7 +129,7 @@ describe('createCreateOrganizationWithAdminUseCase', () => {
       name: 'Acme Corp',
       slug: 'acme-corp',
       adminEmail: 'shared-admin@example.com',
-      adminPassword: 'super-secret',
+      adminPassword: 'Sup3rSecret',
       adminFirstName: 'Root',
       adminLastName: 'Admin',
     });
@@ -141,7 +141,7 @@ describe('createCreateOrganizationWithAdminUseCase', () => {
         name: 'Globex',
         slug: 'globex',
         adminEmail: 'shared-admin@example.com',
-        adminPassword: 'super-secret',
+        adminPassword: 'Sup3rSecret',
         adminFirstName: 'New',
         adminLastName: 'Admin',
       });
@@ -163,7 +163,7 @@ describe('createCreateOrganizationWithAdminUseCase', () => {
         name: 'Acme Corp',
         slug: 'acme-corp',
         adminEmail: 'admin@acme.com',
-        adminPassword: 'super-secret',
+        adminPassword: 'Sup3rSecret',
         adminFirstName: 'Root',
         adminLastName: 'Admin',
       });
@@ -182,7 +182,7 @@ describe('createCreateOrganizationWithAdminUseCase', () => {
       name: 'Acme Corp',
       slug: 'acme-corp',
       adminEmail: 'admin@acme.com',
-      adminPassword: 'super-secret',
+      adminPassword: 'Sup3rSecret',
       adminFirstName: 'Root',
       adminLastName: 'Admin',
     });
@@ -201,7 +201,7 @@ describe('createCreateOrganizationWithAdminUseCase', () => {
       name: 'Acme Corp',
       slug: 'acme-corp',
       adminEmail: 'admin@acme.com',
-      adminPassword: 'super-secret',
+      adminPassword: 'Sup3rSecret',
       adminFirstName: 'Root',
       adminLastName: 'Admin',
     });
@@ -218,5 +218,24 @@ describe('createCreateOrganizationWithAdminUseCase', () => {
       ipAddress: '203.0.113.10',
     });
     expect(auditRecorder.calls()[0]?.tx).toBeDefined();
+  });
+
+  it('rejects a weak admin password with WEAK_PASSWORD before opening the transaction', async () => {
+    const { createOrganizationWithAdmin, organizations, unitOfWork } = buildUseCase();
+
+    await expect(
+      createOrganizationWithAdmin({
+        auth: PLATFORM_ADMIN,
+        name: 'Acme Corp',
+        slug: 'acme-corp',
+        adminEmail: 'admin@acme.com',
+        adminPassword: '123',
+        adminFirstName: 'Root',
+        adminLastName: 'Admin',
+      }),
+    ).rejects.toMatchObject({ code: 'WEAK_PASSWORD' });
+
+    expect(unitOfWork.transactionCount).toBe(0);
+    expect(await organizations.findBySlug(createSlug('acme-corp'))).toBeNull();
   });
 });

@@ -11,6 +11,7 @@ import { createOrganizationId } from '../domain/model/value-objects/Organization
 import { createEmail } from '../domain/model/value-objects/Email.js';
 import { createRoleId } from '../domain/model/value-objects/RoleId.js';
 import { userEmailTaken, roleNotAssignable } from '../domain/errors/IdentityAccessError.js';
+import { assertPasswordPolicy } from '../domain/model/value-objects/PasswordPolicy.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireOrganizationActor } from './authorization/requireOrganizationActor.js';
 
@@ -55,6 +56,7 @@ export interface CreateUserDeps {
 export function createCreateUserUseCase(deps: CreateUserDeps) {
   return async function createUser(input: CreateUserInput): Promise<User> {
     requireOrganizationActor(input.auth);
+    assertPasswordPolicy(input.password);
     const organizationId = createOrganizationId(requireTenantContext(input.auth));
     const repository = deps.userRepositoryFactory.forTenant(organizationId);
 

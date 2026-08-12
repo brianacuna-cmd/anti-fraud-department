@@ -10,6 +10,7 @@ import { createOrganizationId } from '../../domain/model/value-objects/Organizat
 import { createUserId } from '../../domain/model/value-objects/UserId.js';
 import { createPasswordCredential } from '../../domain/model/value-objects/PasswordCredential.js';
 import { passwordResetInvalid } from '../../domain/errors/IdentityAccessError.js';
+import { assertPasswordPolicy } from '../../domain/model/value-objects/PasswordPolicy.js';
 
 export interface ConfirmPasswordResetInput {
   readonly token: string;
@@ -78,6 +79,11 @@ export function createConfirmPasswordResetUseCase(deps: ConfirmPasswordResetDeps
     if (toDate(resetToken.expiresAt).getTime() <= toDate(now).getTime()) {
       throw passwordResetInvalid();
     }
+
+    // Strength policy is enforced only AFTER every opaque token/user check
+    // passes — a WEAK_PASSWORD response is distinguishable, so surfacing it
+    // earlier would leak that the token/user was otherwise valid.
+    assertPasswordPolicy(input.newPassword);
 
     await deps.unitOfWork.withTransaction(async (tx) => {
       const newCredential = createPasswordCredential(

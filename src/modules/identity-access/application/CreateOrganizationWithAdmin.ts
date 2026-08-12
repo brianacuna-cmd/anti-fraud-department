@@ -13,6 +13,7 @@ import { createSlug } from '../domain/model/value-objects/Slug.js';
 import { createEmail } from '../domain/model/value-objects/Email.js';
 import { createRoleId } from '../domain/model/value-objects/RoleId.js';
 import { organizationSlugTaken, userEmailTaken } from '../domain/errors/IdentityAccessError.js';
+import { assertPasswordPolicy } from '../domain/model/value-objects/PasswordPolicy.js';
 import { requirePlatformAdmin } from './authorization/requirePlatformAdmin.js';
 
 export interface CreateOrganizationWithAdminInput {
@@ -50,6 +51,7 @@ export function createCreateOrganizationWithAdminUseCase(deps: CreateOrganizatio
     input: CreateOrganizationWithAdminInput,
   ): Promise<Organization> {
     requirePlatformAdmin(input.auth);
+    assertPasswordPolicy(input.adminPassword);
 
     return deps.unitOfWork.withTransaction(async (tx) => {
       const slug = createSlug(input.slug);

@@ -73,7 +73,7 @@ describe('CreateOrganizationWithAdmin bootstrap (integration, real replica-set M
       name: 'Acme Corp',
       slug: 'acme-corp',
       adminEmail: 'admin@acme.com',
-      adminPassword: 'super-secret',
+      adminPassword: 'Sup3rSecret',
       adminFirstName: 'Root',
       adminLastName: 'Admin',
     });
@@ -91,7 +91,7 @@ describe('CreateOrganizationWithAdmin bootstrap (integration, real replica-set M
       name: 'Acme Corp',
       slug: 'acme-corp',
       adminEmail: 'shared@example.com',
-      adminPassword: 'super-secret',
+      adminPassword: 'Sup3rSecret',
       adminFirstName: 'Root',
       adminLastName: 'Admin',
     });
@@ -103,7 +103,7 @@ describe('CreateOrganizationWithAdmin bootstrap (integration, real replica-set M
         name: 'Globex',
         slug: 'globex',
         adminEmail: 'shared@example.com',
-        adminPassword: 'super-secret',
+        adminPassword: 'Sup3rSecret',
         adminFirstName: 'New',
         adminLastName: 'Admin',
       });
@@ -130,7 +130,7 @@ describe('CreateOrganizationWithAdmin bootstrap (integration, real replica-set M
         name: 'Acme Corp',
         slug: 'acme-corp',
         adminEmail: 'admin@acme.com',
-        adminPassword: 'super-secret',
+        adminPassword: 'Sup3rSecret',
         adminFirstName: 'Root',
         adminLastName: 'Admin',
       }),
