@@ -135,4 +135,22 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { OrganizationId: 1, UserId: 1, AlertType: 1, Channel: 1 },
     { unique: true, name: 'notification_preference_user_alert_channel_unique' },
   );
+
+  // `Cases` (case-management Slice 1 — Foundation). Tenant-scoped lookup
+  // indexes for the T3 inbox query (later slice) and routing/SLA joins.
+  await db
+    .collection('Cases')
+    .createIndex({ OrganizationId: 1, Status: 1 }, { name: 'case_org_status_idx' });
+
+  await db
+    .collection('Cases')
+    .createIndex({ OrganizationId: 1, Priority: 1 }, { name: 'case_org_priority_idx' });
+
+  await db.collection('Cases').createIndex({ AssignedTo: 1 }, { name: 'case_assigned_to_idx' });
+
+  await db.collection('Cases').createIndex({ RiskScore: 1 }, { name: 'case_risk_score_idx' });
+
+  await db.collection('Cases').createIndex({ DueDate: 1 }, { name: 'case_due_date_idx' });
+
+  await db.collection('Cases').createIndex({ Tags: 1 }, { name: 'case_tags_idx' });
 }
