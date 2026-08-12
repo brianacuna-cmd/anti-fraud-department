@@ -153,4 +153,12 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection('Cases').createIndex({ DueDate: 1 }, { name: 'case_due_date_idx' });
 
   await db.collection('Cases').createIndex({ Tags: 1 }, { name: 'case_tags_idx' });
+
+  // `OrganizationFraudConfig` (case-management Slice 2). Per-tenant singleton
+  // — this unique index IS the invariant guard (mirrors
+  // `NotificationPreferences`' compound unique index above), never
+  // re-checked in application code.
+  await db
+    .collection('OrganizationFraudConfig')
+    .createIndex({ OrganizationId: 1 }, { unique: true, name: 'org_fraud_config_unique' });
 }
