@@ -1,4 +1,5 @@
 import type { CaseStatus } from '../model/value-objects/CaseStatus.js';
+import type { SlaStatus } from '../model/value-objects/SlaStatus.js';
 
 /**
  * Lookup table shape shared by every entity's transition table (mirrors
@@ -18,4 +19,16 @@ export const caseStatusTransitions: TransitionTable<CaseStatus> = {
   IN_REVIEW: ['RESOLVED'],
   RESOLVED: ['ARCHIVED', 'OPEN', 'IN_REVIEW'],
   ARCHIVED: ['OPEN', 'IN_REVIEW'],
+};
+
+/**
+ * CaseSlaTracking status edges (spec: "CaseSlaTracking status lifecycle").
+ * Forward-only sweep path ON_TRACK -> WARNING -> BREACHED — no reverse edge;
+ * `reset()` (T6) bypasses this table entirely and rehydrates a fresh
+ * ON_TRACK row instead of "transitioning" backward.
+ */
+export const slaStatusTransitions: TransitionTable<SlaStatus> = {
+  ON_TRACK: ['WARNING'],
+  WARNING: ['BREACHED'],
+  BREACHED: [],
 };
