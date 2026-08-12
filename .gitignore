@@ -1,17 +1,1 @@
-# Internal docs — never commit
-docs/
-
-# Node / TypeScript
-node_modules/
-dist/
-coverage/
-.cache/
-.env
-.env.*
-*.log
-
-# Local tool caches (machine-specific absolute paths)
-.atl/
-
-# SDD planning artifacts live in Engram only, not in the repo
-openspec/
+Nothing to output - the change list contains only a markdown file (GUIA_MIGRACION_OBJECTID_PARTE1.md) which is a source/config file, and there are no build artifacts, dependencies, or temp files to ignore.
