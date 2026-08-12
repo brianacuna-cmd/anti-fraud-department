@@ -169,4 +169,19 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db
     .collection('CaseTimeline')
     .createIndex({ CaseId: 1, CreatedAt: -1 }, { name: 'case_timeline_case_created_idx' });
+
+  // `CaseSlaTracking` (case-management Slice 4). One row per Case — this
+  // unique index IS the invariant guard (mirrors `org_fraud_config_unique`
+  // above), never re-checked in application code. `DueDateAt` is the BSON
+  // Date mirror the sweep's range query (Slice 13) relies on; `Status` backs
+  // the sweep's `{ $ne: 'BREACHED' }` filter.
+  await db
+    .collection('CaseSlaTracking')
+    .createIndex({ CaseId: 1 }, { unique: true, name: 'sla_tracking_case_unique' });
+
+  await db
+    .collection('CaseSlaTracking')
+    .createIndex({ DueDateAt: 1 }, { name: 'sla_tracking_due_date_idx' });
+
+  await db.collection('CaseSlaTracking').createIndex({ Status: 1 }, { name: 'sla_tracking_status_idx' });
 }
