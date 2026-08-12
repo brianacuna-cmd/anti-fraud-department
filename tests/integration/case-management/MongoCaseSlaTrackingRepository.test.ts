@@ -100,7 +100,7 @@ describe('MongoCaseSlaTrackingRepository (integration, real replica-set Mongo)',
 
     let caughtError: unknown;
     try {
-      await db.collection('CaseSlaTracking').insertOne({
+      await db.collection<CaseSlaTrackingDocument>('CaseSlaTracking').insertOne({
         _id: 'tracking-2',
         CaseId: 'case-1',
         DueDate: DUE,
