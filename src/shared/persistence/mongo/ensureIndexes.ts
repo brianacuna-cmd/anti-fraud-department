@@ -161,12 +161,4 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db
     .collection('OrganizationFraudConfig')
     .createIndex({ OrganizationId: 1 }, { unique: true, name: 'org_fraud_config_unique' });
-
-  // `CaseTimeline` (case-management Slice 3 — append-only). Single lookup
-  // index for "events for this case, newest first" — no uniqueness
-  // constraint, every insert is a brand-new row (design: "CaseTimeline ...
-  // insertOne only").
-  await db
-    .collection('CaseTimeline')
-    .createIndex({ CaseId: 1, CreatedAt: -1 }, { name: 'case_timeline_case_created_idx' });
 }
