@@ -164,4 +164,18 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     const matchingNames = caseIndexes.filter((index) => index.name === 'case_org_status_idx');
     expect(matchingNames).toHaveLength(1);
   });
+
+  it('creates the OrganizationFraudConfig unique index (case-management Slice 2) and stays idempotent on re-run', async () => {
+    await ensureIndexes(db);
+    await ensureIndexes(db);
+
+    const configIndexes = await db.collection('OrganizationFraudConfig').indexes();
+    const uniqueIndex = configIndexes.find((index) => index.name === 'org_fraud_config_unique');
+
+    expect(uniqueIndex?.key).toEqual({ OrganizationId: 1 });
+    expect(uniqueIndex?.unique).toBe(true);
+
+    const matchingNames = configIndexes.filter((index) => index.name === 'org_fraud_config_unique');
+    expect(matchingNames).toHaveLength(1);
+  });
 });
