@@ -81,6 +81,15 @@ import { createGetNotificationPreferencesUseCase } from './modules/notifications
 import { createSetNotificationPreferenceUseCase } from './modules/notifications/application/SetNotificationPreference.js';
 import { notificationPreferenceRouter } from './modules/notifications/infrastructure/adapters/inbound/http/notificationPreferenceRouter.js';
 import { notificationsErrorStatus } from './modules/notifications/infrastructure/adapters/inbound/http/errorStatus.js';
+import { MongoCaseRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRepository.js';
+import { MongoTimelineRecorder } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoTimelineRecorder.js';
+import { MongoUnitOfWork as CaseManagementMongoUnitOfWork } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
+import { generateCaseId } from './modules/case-management/domain/model/value-objects/CaseId.js';
+import { generateTimelineEventId } from './modules/case-management/domain/model/value-objects/TimelineEventId.js';
+import { createCreateCaseUseCase } from './modules/case-management/application/CreateCase.js';
+import { caseRouter } from './modules/case-management/infrastructure/adapters/inbound/http/caseRouter.js';
+import { caseManagementErrorStatus } from './modules/case-management/infrastructure/adapters/inbound/http/errorStatus.js';
+import { createCaseManagementAuditRecorderAdapter } from './composition/caseManagementAuditRecorderAdapter.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const MONGO_URI = process.env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/?replicaSet=rs0';
@@ -217,6 +226,28 @@ async function bootstrap(): Promise<void> {
     unitOfWork: notificationsUnitOfWork,
     clock,
     auditRecorder: notificationsAuditRecorder,
+  });
+
+  // case-management Slice 5 (T5 manual case creation): own `MongoUnitOfWork`
+  // instance (same pattern as `notificationsUnitOfWork` above) so the Case
+  // insert + CaseTimeline CASE_CREATED entry + CREATE_CASE audit row commit
+  // atomically. Its `AuditRecorder` bridges to the SAME `recordAuditLog`
+  // instance via its OWN composition-root adapter (nominally distinct port,
+  // exact twin of `auditRecorderAdapter.ts`/`notificationsAuditRecorderAdapter.ts`).
+  const caseManagementUnitOfWork = new CaseManagementMongoUnitOfWork(client);
+  const cases = new MongoCaseRepository(db);
+  const caseTimelineRecorder = new MongoTimelineRecorder(db);
+  const caseManagementAuditRecorder = createCaseManagementAuditRecorderAdapter(recordAuditLog);
+  const caseManagementCasesRouter = caseRouter({
+    createCase: createCreateCaseUseCase({
+      cases,
+      timelineRecorder: caseTimelineRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateCaseId,
+      generateTimelineEventId,
+      auditRecorder: caseManagementAuditRecorder,
+    }),
   });
 
   const transitionOrganizationStatus = createTransitionOrganizationStatusUseCase({
@@ -477,13 +508,23 @@ async function bootstrap(): Promise<void> {
   // router — `notifications` routes are USER-tier self-service and rely on the
   // `authContextMiddleware` above to resolve the caller's AuthContext.
   identityAccessRouter.use(notificationPreferenceRouter({ getNotificationPreferences, setNotificationPreference }));
+  // case-management Slice 5: mounted on the SAME authenticated `/api/v1`
+  // router — case-management routes rely on the `authContextMiddleware`
+  // above to resolve the caller's AuthContext (design: no separate auth
+  // path; T5 is analyst/supervisor self-service within their own org).
+  identityAccessRouter.use(caseManagementCasesRouter);
 
   const app = createApp({
     routers: [{ path: '/api/v1', router: identityAccessRouter }],
-    // Merged status maps: identity-access + notifications closed error codes.
-    // The two overlapping keys (INVARIANT_VIOLATION=400, FORBIDDEN_CROSS_TENANT=403)
-    // agree, so the spread is order-independent.
-    errorHandler: createErrorHandler({ ...identityAccessErrorStatus, ...notificationsErrorStatus }),
+    // Merged status maps: identity-access + notifications + case-management
+    // closed error codes. The overlapping keys (INVARIANT_VIOLATION=400,
+    // FORBIDDEN_CROSS_TENANT=403) agree across all three, so the spread is
+    // order-independent.
+    errorHandler: createErrorHandler({
+      ...identityAccessErrorStatus,
+      ...notificationsErrorStatus,
+      ...caseManagementErrorStatus,
+    }),
     trustProxy: TRUST_PROXY,
   });
 
