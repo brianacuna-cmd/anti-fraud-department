@@ -85,7 +85,7 @@ describe('MongoTimelineRecorder (integration, real replica-set Mongo)', () => {
 
     await expect(recorder.record(buildEvent('event-1'))).rejects.toThrow();
 
-    const documents = await db.collection('CaseTimeline').find({ _id: 'event-1' }).toArray();
+    const documents = await db.collection<CaseTimelineDocument>('CaseTimeline').find({ _id: 'event-1' }).toArray();
     expect(documents).toHaveLength(1);
   });
 
