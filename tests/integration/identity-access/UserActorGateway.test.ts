@@ -15,12 +15,13 @@ import { createSlug } from '../../../src/modules/identity-access/domain/model/va
 import { createEmail } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 import { createPasswordCredential } from '../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
+import { oid } from '../../support/oid.js';
 
 jest.setTimeout(120_000);
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const LATER = fromDate(new Date('2026-01-01T01:00:00.000Z'));
-const ORG_ID = createOrganizationId('org-1');
+const ORG_ID = createOrganizationId(oid('org-1'));
 
 describe('UserActorGateway (integration, real replica-set Mongo)', () => {
   let replicaSet: MongoMemoryReplSet;
@@ -53,7 +54,7 @@ describe('UserActorGateway (integration, real replica-set Mongo)', () => {
     );
     await userRepositoryFactory.forTenant(ORG_ID).save(
       User.create({
-        id: createUserId('user-1'),
+        id: createUserId(oid('user-1')),
         organizationId: ORG_ID,
         email: createEmail('alice@example.com'),
         credential: createPasswordCredential('a-bcrypt-hash'),
@@ -74,7 +75,7 @@ describe('UserActorGateway (integration, real replica-set Mongo)', () => {
     const record = await gateway.findByEmail({ email: 'alice@example.com', organizationSlug: 'acme' });
 
     expect(record).toEqual({
-      actorId: 'user-1',
+      actorId: oid('user-1'),
       actorType: 'USER',
       organizationId: ORG_ID,
       credential: { passwordHash: 'a-bcrypt-hash' },
@@ -86,7 +87,7 @@ describe('UserActorGateway (integration, real replica-set Mongo)', () => {
 
   it('maps mfa.enabled/secret from the User aggregate when MFA is enrolled (design D-A11/two-step-login)', async () => {
     const enrolled = User.create({
-      id: createUserId('user-mfa'),
+      id: createUserId(oid('user-mfa')),
       organizationId: ORG_ID,
       email: createEmail('mfa@example.com'),
       credential: createPasswordCredential('a-bcrypt-hash'),
@@ -123,7 +124,7 @@ describe('UserActorGateway (integration, real replica-set Mongo)', () => {
   });
 
   it('never falls back across tiers/organizations — same email in a different org does not resolve', async () => {
-    const otherOrgId = createOrganizationId('org-2');
+    const otherOrgId = createOrganizationId(oid('org-2'));
     await organizations.save(Organization.create({ id: otherOrgId, name: 'Globex', slug: createSlug('globex'), now: NOW }));
 
     const record = await gateway.findByEmail({ email: 'alice@example.com', organizationSlug: 'globex' });
@@ -136,14 +137,14 @@ describe('UserActorGateway (integration, real replica-set Mongo)', () => {
 
     await gateway.registerLoginFailure(record!, { loginAttempts: 2, blockedUntil: null }, LATER);
 
-    const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
+    const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
     expect(persisted?.lockout).toEqual({ loginAttempts: 2, blockedUntil: null });
     expect(persisted?.updatedAt).toBe(LATER);
   });
 
   it('throws a domain INVARIANT_VIOLATION (not a native Error) when the actor has no organizationId — wiring-bug guard', async () => {
     const orphan = {
-      actorId: 'user-1',
+      actorId: oid('user-1'),
       actorType: 'USER',
       organizationId: null,
       credential: { passwordHash: 'a-bcrypt-hash' },
@@ -163,7 +164,7 @@ describe('UserActorGateway (integration, real replica-set Mongo)', () => {
 
     await gateway.registerLoginSuccess(record!, LATER);
 
-    const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
+    const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
     expect(persisted?.lockout).toEqual({ loginAttempts: 0, blockedUntil: null });
   });
 });

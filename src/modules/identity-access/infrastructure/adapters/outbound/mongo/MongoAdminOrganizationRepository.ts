@@ -1,4 +1,4 @@
-import type { ClientSession, Collection, Db } from 'mongodb';
+import { ObjectId, type ClientSession, type Collection, type Db } from 'mongodb';
 import type { AdminOrganization } from '../../../../domain/model/aggregates/AdminOrganization.js';
 import type { AdminOrganizationRepository } from '../../../../domain/ports/AdminOrganizationRepository.js';
 import type { AdminOrganizationId } from '../../../../domain/model/value-objects/AdminOrganizationId.js';
@@ -35,7 +35,7 @@ export class MongoAdminOrganizationRepository implements AdminOrganizationReposi
   }
 
   async findById(id: AdminOrganizationId): Promise<AdminOrganization | null> {
-    const document = await this.collection.findOne({ _id: id });
+    const document = await this.collection.findOne({ _id: new ObjectId(id) });
     return document ? toDomain(document) : null;
   }
 
@@ -66,14 +66,14 @@ export class MongoAdminOrganizationRepository implements AdminOrganizationReposi
     tx?: Transaction,
   ): Promise<string | null> {
     const before = await this.collection.findOneAndUpdate(
-      { _id: id, keys: { $elemMatch: { keyId, encryptedPrivateKey: { $ne: null } } } },
+      { _id: new ObjectId(id), keys: { $elemMatch: { keyId: new ObjectId(keyId), encryptedPrivateKey: { $ne: null } } } },
       { $set: { 'keys.$.privateKeyDownloadedAt': now, 'keys.$.encryptedPrivateKey': null, updatedAt: now } },
       { returnDocument: 'before', session: toSession(tx) },
     );
     if (!before) {
       return null;
     }
-    const claimedKey = before.keys.find((key) => key.keyId === keyId);
+    const claimedKey = before.keys.find((key) => key.keyId.toString() === keyId);
     return claimedKey?.encryptedPrivateKey ?? null;
   }
 }

@@ -22,6 +22,7 @@ import { createSlug } from '../../../src/modules/identity-access/domain/model/va
 import { createSessionId } from '../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
 import { createFamilyId } from '../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
+import { oid } from '../../support/oid.js';
 
 jest.setTimeout(120_000);
 
@@ -77,7 +78,7 @@ describe('TransitionOrganizationStatus audit atomicity (integration, real replic
     await db.collection('AuditLogs').deleteMany({});
   });
 
-  async function seedOrganization(id = 'org-1'): Promise<void> {
+  async function seedOrganization(id = oid('org-1')): Promise<void> {
     await organizations.save(
       Organization.create({ id: createOrganizationId(id), name: 'Acme', slug: createSlug(`acme-${id}`), now: NOW }),
     );
@@ -86,15 +87,15 @@ describe('TransitionOrganizationStatus audit atomicity (integration, real replic
   async function seedSession(id: string, organizationId: string): Promise<void> {
     await sessions.save(
       Session.create({
-        id: createSessionId(id),
-        userId: 'org-user-1',
+        id: createSessionId(oid(id)),
+        userId: oid('org-user-1'),
         organizationId: createOrganizationId(organizationId),
         actorType: 'USER',
         tokenHash: `token-hash-${id}`,
         refreshTokenHash: `refresh-hash-${id}`,
         expiresAt: NOW,
         refreshExpiresAt: NOW,
-        familyId: createFamilyId('family-1'),
+        familyId: createFamilyId(oid('family-1')),
         familyExpiresAt: NOW,
         now: NOW,
       }),
@@ -112,12 +113,12 @@ describe('TransitionOrganizationStatus audit atomicity (integration, real replic
   }
 
   it('commits exactly one ORGANIZATION_STATUS_CHANGED audit row atomically with a non-CANCELLED transition', async () => {
-    await seedOrganization('org-1');
+    await seedOrganization(oid('org-1'));
     const transitionOrganizationStatus = buildUseCase(baseAuditRecorder);
 
-    await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: 'org-1', next: 'SUSPENDED' });
+    await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: oid('org-1'), next: 'SUSPENDED' });
 
-    const persisted = await organizations.findById(createOrganizationId('org-1'));
+    const persisted = await organizations.findById(createOrganizationId(oid('org-1')));
     expect(persisted?.status).toBe('SUSPENDED');
     const auditRows = await db.collection('AuditLogs').find({}).toArray();
     expect(auditRows).toHaveLength(1);
@@ -125,29 +126,29 @@ describe('TransitionOrganizationStatus audit atomicity (integration, real replic
   });
 
   it('rolls back the status change AND persists NO audit row when the audit write fails mid-transaction', async () => {
-    await seedOrganization('org-1');
+    await seedOrganization(oid('org-1'));
     const failingRecorder = failOnNthCall(baseAuditRecorder, 1);
     const transitionOrganizationStatus = buildUseCase(failingRecorder);
 
     await expect(
-      transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: 'org-1', next: 'SUSPENDED' }),
+      transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: oid('org-1'), next: 'SUSPENDED' }),
     ).rejects.toThrow('induced audit failure mid-transaction');
 
-    const persisted = await organizations.findById(createOrganizationId('org-1'));
+    const persisted = await organizations.findById(createOrganizationId(oid('org-1')));
     expect(persisted?.status).toBe('ACTIVE');
     const auditRows = await db.collection('AuditLogs').find({}).toArray();
     expect(auditRows).toHaveLength(0);
   });
 
   it('on CANCELLED: commits the status change, the session revocation, AND both audit rows atomically', async () => {
-    await seedOrganization('org-1');
-    await seedSession('session-1', 'org-1');
-    await seedSession('session-2', 'org-1');
+    await seedOrganization(oid('org-1'));
+    await seedSession('session-1', oid('org-1'));
+    await seedSession('session-2', oid('org-1'));
     const transitionOrganizationStatus = buildUseCase(baseAuditRecorder);
 
-    await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: 'org-1', next: 'CANCELLED' });
+    await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: oid('org-1'), next: 'CANCELLED' });
 
-    const persisted = await organizations.findById(createOrganizationId('org-1'));
+    const persisted = await organizations.findById(createOrganizationId(oid('org-1')));
     expect(persisted?.status).toBe('CANCELLED');
     const revoked1 = await sessions.findByTokenHash('token-hash-session-1');
     const revoked2 = await sessions.findByTokenHash('token-hash-session-2');
@@ -161,16 +162,16 @@ describe('TransitionOrganizationStatus audit atomicity (integration, real replic
   });
 
   it('on CANCELLED: when the SECOND audit write fails, rolls back the status change, the session revocation, AND the already-inserted first audit row', async () => {
-    await seedOrganization('org-1');
-    await seedSession('session-1', 'org-1');
+    await seedOrganization(oid('org-1'));
+    await seedSession('session-1', oid('org-1'));
     const failingRecorder = failOnNthCall(baseAuditRecorder, 2);
     const transitionOrganizationStatus = buildUseCase(failingRecorder);
 
     await expect(
-      transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: 'org-1', next: 'CANCELLED' }),
+      transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: oid('org-1'), next: 'CANCELLED' }),
     ).rejects.toThrow('induced audit failure mid-transaction');
 
-    const persisted = await organizations.findById(createOrganizationId('org-1'));
+    const persisted = await organizations.findById(createOrganizationId(oid('org-1')));
     expect(persisted?.status).toBe('ACTIVE');
     const revoked1 = await sessions.findByTokenHash('token-hash-session-1');
     expect(revoked1?.deletedAt).toBeNull();

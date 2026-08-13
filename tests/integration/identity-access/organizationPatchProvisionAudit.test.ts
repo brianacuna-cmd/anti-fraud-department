@@ -24,6 +24,7 @@ import { createSlug } from '../../../src/modules/identity-access/domain/model/va
 import { createAdminOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/AdminOrganizationId.js';
 import { createAdminKeyId } from '../../../src/modules/identity-access/domain/model/value-objects/AdminKeyId.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
+import { oid } from '../../support/oid.js';
 
 jest.setTimeout(120_000);
 
@@ -79,7 +80,7 @@ describe('Organization Patch/Provision audit atomicity (integration, real replic
     await db.collection('AuditLogs').deleteMany({});
   });
 
-  async function seedOrganization(id = 'org-1'): Promise<void> {
+  async function seedOrganization(id = oid('org-1')): Promise<void> {
     await organizations.save(
       Organization.create({ id: createOrganizationId(id), name: 'Acme', slug: createSlug(`acme-${id}`), now: NOW }),
     );
@@ -105,11 +106,11 @@ describe('Organization Patch/Provision audit atomicity (integration, real replic
       clock: new SystemClock(),
       generateAdminOrganizationId: () => {
         orgSeq += 1;
-        return createAdminOrganizationId(`admin-org-${orgSeq}`);
+        return createAdminOrganizationId(oid(`admin-org-${orgSeq}`));
       },
       generateAdminKeyId: () => {
         keySeq += 1;
-        return createAdminKeyId(`admin-key-${keySeq}`);
+        return createAdminKeyId(oid(`admin-key-${keySeq}`));
       },
       auditRecorder,
     });
@@ -117,12 +118,12 @@ describe('Organization Patch/Provision audit atomicity (integration, real replic
 
   describe('PatchOrganizationIdentity', () => {
     it('commits exactly one ORGANIZATION_IDENTITY_UPDATED audit row atomically with the patch', async () => {
-      await seedOrganization('org-1');
+      await seedOrganization(oid('org-1'));
       const patch = buildPatch(baseAuditRecorder);
 
-      await patch({ auth: PLATFORM_ADMIN, organizationId: 'org-1', name: 'Acme Renamed' });
+      await patch({ auth: PLATFORM_ADMIN, organizationId: oid('org-1'), name: 'Acme Renamed' });
 
-      const persisted = await organizations.findById(createOrganizationId('org-1'));
+      const persisted = await organizations.findById(createOrganizationId(oid('org-1')));
       expect(persisted?.name).toBe('Acme Renamed');
       const auditRows = await db.collection('AuditLogs').find({}).toArray();
       expect(auditRows).toHaveLength(1);
@@ -130,14 +131,14 @@ describe('Organization Patch/Provision audit atomicity (integration, real replic
     });
 
     it('rolls back the patch AND persists NO audit row when the audit write fails', async () => {
-      await seedOrganization('org-1');
+      await seedOrganization(oid('org-1'));
       const patch = buildPatch(failOnNthCall(baseAuditRecorder, 1));
 
       await expect(
-        patch({ auth: PLATFORM_ADMIN, organizationId: 'org-1', name: 'Acme Renamed' }),
+        patch({ auth: PLATFORM_ADMIN, organizationId: oid('org-1'), name: 'Acme Renamed' }),
       ).rejects.toThrow('induced audit failure mid-transaction');
 
-      const persisted = await organizations.findById(createOrganizationId('org-1'));
+      const persisted = await organizations.findById(createOrganizationId(oid('org-1')));
       expect(persisted?.name).toBe('Acme');
       const auditRows = await db.collection('AuditLogs').find({}).toArray();
       expect(auditRows).toHaveLength(0);

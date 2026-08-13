@@ -21,11 +21,12 @@ import { InMemoryAuditRecorder } from '../../helpers/identity-access/InMemoryAud
 import { FixedClock } from '../../helpers/FixedClock.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import { IdentityAccessError } from '../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
+import { oid } from '../../support/oid.js';
 
 jest.setTimeout(120_000);
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const ORG_ID = createOrganizationId('org-lockout');
+const ORG_ID = createOrganizationId(oid('org-lockout'));
 
 async function expectCode(promise: Promise<unknown>, code: string): Promise<void> {
   let caught: unknown;
@@ -71,7 +72,7 @@ describe('Login lockout — identical across Users and Organizations (integratio
     await organizations.save(Organization.create({ id: ORG_ID, name: 'Acme', slug: createSlug('acme'), now: NOW }));
     await userRepositoryFactory.forTenant(ORG_ID).save(
       User.create({
-        id: createUserId('user-lockout'),
+        id: createUserId(oid('user-lockout')),
         organizationId: ORG_ID,
         email: createEmail('alice@example.com'),
         credential: createPasswordCredential('hashed:correct-password'),
@@ -83,7 +84,7 @@ describe('Login lockout — identical across Users and Organizations (integratio
     );
     await organizations.save(
       Organization.create({
-        id: createOrganizationId('org-actor-lockout'),
+        id: createOrganizationId(oid('org-actor-lockout')),
         name: 'Org Actor',
         slug: createSlug('org-actor'),
         email: createEmail('org@acme.example.com'),
@@ -130,8 +131,8 @@ describe('Login lockout — identical across Users and Organizations (integratio
     await expectCode(userLoginAttempt(), 'ACCOUNT_LOCKED');
     await expectCode(orgLoginAttempt(), 'ACCOUNT_LOCKED');
 
-    const persistedUser = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-lockout'));
-    const persistedOrganization = await organizations.findById(createOrganizationId('org-actor-lockout'));
+    const persistedUser = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-lockout')));
+    const persistedOrganization = await organizations.findById(createOrganizationId(oid('org-actor-lockout')));
 
     expect(persistedUser?.lockout.loginAttempts).toBe(3);
     expect(persistedUser?.lockout.blockedUntil).not.toBeNull();

@@ -1,4 +1,4 @@
-import type { ClientSession, Collection, Db } from 'mongodb';
+import { ObjectId, type ClientSession, type Collection, type Db } from 'mongodb';
 import { buildCursorPage } from '../../../../../../shared/http/pagination.js';
 import type { User } from '../../../../domain/model/aggregates/User.js';
 import type { UserListPage, UserRepository } from '../../../../domain/ports/UserRepository.js';
@@ -50,22 +50,22 @@ export class MongoUserRepository implements UserRepository {
   }
 
   async findById(id: UserId): Promise<User | null> {
-    const document = await this.collection.findOne({ _id: id, OrganizationId: this.organizationId });
+    const document = await this.collection.findOne({ _id: new ObjectId(id), OrganizationId: new ObjectId(this.organizationId) });
     return document ? toDomain(document) : null;
   }
 
   async findByEmail(email: Email): Promise<User | null> {
-    const document = await this.collection.findOne({ Email: email, OrganizationId: this.organizationId });
+    const document = await this.collection.findOne({ Email: email, OrganizationId: new ObjectId(this.organizationId) });
     return document ? toDomain(document) : null;
   }
 
   async list(limit: number, cursor?: string): Promise<UserListPage> {
     const filter = cursor
-      ? { OrganizationId: this.organizationId, _id: { $gt: cursor } }
-      : { OrganizationId: this.organizationId };
+      ? { OrganizationId: new ObjectId(this.organizationId), _id: { $gt: new ObjectId(cursor) } }
+      : { OrganizationId: new ObjectId(this.organizationId) };
     const documents = await this.collection.find(filter).sort({ _id: 1 }).limit(limit + 1).toArray();
 
-    const wrapped = documents.map((document) => ({ value: toDomain(document), cursorId: document._id }));
+    const wrapped = documents.map((document) => ({ value: toDomain(document), cursorId: document._id.toString() }));
     const page = buildCursorPage(wrapped, limit);
     return { items: page.items.map((entry) => entry.value), nextCursor: page.nextCursor };
   }

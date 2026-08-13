@@ -1,5 +1,6 @@
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
-import type { Db, MongoClient } from 'mongodb';
+import { ObjectId, type Db, type MongoClient } from 'mongodb';
+import { oid } from '../../support/oid.js';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
 import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
@@ -19,7 +20,7 @@ const LATER = fromDate(new Date('2026-01-02T00:00:00.000Z'));
 
 function activeKey(keyId: string): AdminKey {
   return createAdminKey({
-    keyId: createAdminKeyId(keyId),
+    keyId: createAdminKeyId(oid(keyId)),
     publicKey: `pub-${keyId}`,
     status: 'ACTIVE',
     encryptedPrivateKey: `cipher-${keyId}`,
@@ -29,7 +30,7 @@ function activeKey(keyId: string): AdminKey {
 
 function deprecatedKey(keyId: string): AdminKey {
   return createAdminKey({
-    keyId: createAdminKeyId(keyId),
+    keyId: createAdminKeyId(oid(keyId)),
     publicKey: `pub-${keyId}`,
     status: 'DEPRECATED',
     encryptedPrivateKey: null,
@@ -44,7 +45,7 @@ function buildAdminOrganization(
   email: string,
   keys: readonly AdminKey[] = [activeKey('key-1')],
 ): AdminOrganization {
-  return AdminOrganization.create({ id: createAdminOrganizationId(id), email: createEmail(email), keys, now: NOW });
+  return AdminOrganization.create({ id: createAdminOrganizationId(oid(id)), email: createEmail(email), keys, now: NOW });
 }
 
 describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)', () => {
@@ -77,7 +78,7 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
   it('persists an admin organization and retrieves it by id', async () => {
     await repository.save(buildAdminOrganization('admin-org-1', 'root@platform.test'));
 
-    const found = await repository.findById(createAdminOrganizationId('admin-org-1'));
+    const found = await repository.findById(createAdminOrganizationId(oid('admin-org-1')));
 
     expect(found?.email).toBe('root@platform.test');
     expect(found?.keys).toHaveLength(1);
@@ -85,7 +86,7 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
   });
 
   it('returns null when no admin organization matches the given id', async () => {
-    const found = await repository.findById(createAdminOrganizationId('missing'));
+    const found = await repository.findById(createAdminOrganizationId(oid('missing')));
 
     expect(found).toBeNull();
   });
@@ -97,17 +98,17 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
     ]);
 
     await repository.save(admin);
-    const found = await repository.findById(createAdminOrganizationId('admin-org-multi'));
+    const found = await repository.findById(createAdminOrganizationId(oid('admin-org-multi')));
 
     expect(found?.keys).toHaveLength(2);
-    const deprecated = found?.findKey(createAdminKeyId('key-0'));
+    const deprecated = found?.findKey(createAdminKeyId(oid('key-0')));
     expect(deprecated?.status).toBe('DEPRECATED');
     expect(deprecated?.encryptedPrivateKey).toBeNull();
     expect(deprecated?.privateKeyDownloadedAt).toBe(NOW);
     expect(deprecated?.rotatedAt).toBe(LATER);
     expect(deprecated?.revokedAt).toBeNull();
 
-    const active = found?.findKey(createAdminKeyId('key-1'));
+    const active = found?.findKey(createAdminKeyId(oid('key-1')));
     expect(active?.status).toBe('ACTIVE');
     expect(active?.encryptedPrivateKey).toBe('cipher-key-1');
     expect(active?.privateKeyDownloadedAt).toBeNull();
@@ -118,7 +119,7 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
 
     const found = await repository.findByEmail(createEmail('root@platform.test'));
 
-    expect(found?.id).toBe('admin-org-1');
+    expect(found?.id).toBe(oid('admin-org-1'));
   });
 
   it('returns null when no admin organization matches the given email', async () => {
@@ -142,29 +143,29 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
       await repository.save(buildAdminOrganization('admin-claim-1', 'claim1@platform.test'));
 
       const first = await repository.claimPrivateKey(
-        createAdminOrganizationId('admin-claim-1'),
-        createAdminKeyId('key-1'),
+        createAdminOrganizationId(oid('admin-claim-1')),
+        createAdminKeyId(oid('key-1')),
         LATER,
       );
       expect(first).toBe('cipher-key-1');
 
       const second = await repository.claimPrivateKey(
-        createAdminOrganizationId('admin-claim-1'),
-        createAdminKeyId('key-1'),
+        createAdminOrganizationId(oid('admin-claim-1')),
+        createAdminKeyId(oid('key-1')),
         LATER,
       );
       expect(second).toBeNull();
 
-      const found = await repository.findById(createAdminOrganizationId('admin-claim-1'));
-      const key = found?.findKey(createAdminKeyId('key-1'));
+      const found = await repository.findById(createAdminOrganizationId(oid('admin-claim-1')));
+      const key = found?.findKey(createAdminKeyId(oid('key-1')));
       expect(key?.encryptedPrivateKey).toBeNull();
       expect(key?.privateKeyDownloadedAt).toBe(LATER);
     });
 
     it('returns null for an unknown admin organization id', async () => {
       const result = await repository.claimPrivateKey(
-        createAdminOrganizationId('missing-admin'),
-        createAdminKeyId('key-1'),
+        createAdminOrganizationId(oid('missing-admin')),
+        createAdminKeyId(oid('key-1')),
         LATER,
       );
       expect(result).toBeNull();
@@ -174,8 +175,8 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
       await repository.save(buildAdminOrganization('admin-claim-2', 'claim2@platform.test'));
 
       const result = await repository.claimPrivateKey(
-        createAdminOrganizationId('admin-claim-2'),
-        createAdminKeyId('nonexistent-key'),
+        createAdminOrganizationId(oid('admin-claim-2')),
+        createAdminKeyId(oid('nonexistent-key')),
         LATER,
       );
       expect(result).toBeNull();
@@ -186,13 +187,13 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
 
       const [resultA, resultB] = await Promise.all([
         repository.claimPrivateKey(
-          createAdminOrganizationId('admin-claim-race'),
-          createAdminKeyId('key-1'),
+          createAdminOrganizationId(oid('admin-claim-race')),
+          createAdminKeyId(oid('key-1')),
           LATER,
         ),
         repository.claimPrivateKey(
-          createAdminOrganizationId('admin-claim-race'),
-          createAdminKeyId('key-1'),
+          createAdminOrganizationId(oid('admin-claim-race')),
+          createAdminKeyId(oid('key-1')),
           LATER,
         ),
       ]);
@@ -204,8 +205,8 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
       expect(losers).toHaveLength(1);
       expect(winners[0]).toBe('cipher-key-1');
 
-      const found = await repository.findById(createAdminOrganizationId('admin-claim-race'));
-      expect(found?.findKey(createAdminKeyId('key-1'))?.encryptedPrivateKey).toBeNull();
+      const found = await repository.findById(createAdminOrganizationId(oid('admin-claim-race')));
+      expect(found?.findKey(createAdminKeyId(oid('key-1')))?.encryptedPrivateKey).toBeNull();
     });
   });
 
@@ -222,14 +223,14 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
 
     const rawDocument = await db
       .collection<AdminOrganizationDocument>('adminOrganizations')
-      .findOne({ _id: 'admin-org-id-guard' });
+      .findOne({ _id: new ObjectId(oid('admin-org-id-guard')) });
 
     expect(rawDocument).not.toBeNull();
-    expect(rawDocument?._id).toBe('admin-org-id-guard');
-    expect(typeof rawDocument?._id).toBe('string');
+    expect(rawDocument?._id).toBeInstanceOf(ObjectId);
+    expect(rawDocument?._id.toString()).toBe(oid('admin-org-id-guard'));
     expect(rawDocument).not.toHaveProperty('_Id');
     expect(rawDocument?.email).toBe('guard@platform.test');
-    expect(rawDocument?.keys[0]?.keyId).toBe('key-1');
+    expect(rawDocument?.keys[0]?.keyId.toString()).toBe(oid('key-1'));
     expect(rawDocument).not.toHaveProperty('Keys');
   });
 });

@@ -1,3 +1,4 @@
+import { ObjectId } from 'mongodb';
 import { brand } from '../../../../../../../shared/kernel/Brand.js';
 import { Organization } from '../../../../../domain/model/aggregates/Organization.js';
 import { createOrganizationId } from '../../../../../domain/model/value-objects/OrganizationId.js';
@@ -13,7 +14,7 @@ import type { OrganizationDocument } from '../documents/OrganizationDocument.js'
  */
 export function toDocument(organization: Organization): OrganizationDocument {
   return {
-    _id: organization.id,
+    _id: new ObjectId(organization.id),
     Name: organization.name,
     Slug: organization.slug,
     Domain: organization.domain,
@@ -32,7 +33,7 @@ export function toDocument(organization: Organization): OrganizationDocument {
 /** PascalCase (Mongo) -> camelCase (domain) translation seam (design A2). */
 export function toDomain(document: OrganizationDocument): Organization {
   return Organization.rehydrate({
-    id: createOrganizationId(document._id),
+    id: createOrganizationId(document._id.toString()),
     name: document.Name,
     slug: createSlug(document.Slug),
     domain: document.Domain,

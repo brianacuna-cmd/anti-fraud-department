@@ -1,16 +1,18 @@
 /**
  * Mongo document shape for `Cases` (design: "Persistence — collections,
- * documents, mappers"). `_id` is the aggregate's branded `CaseId` (a
- * `crypto.randomUUID()` string) — never a driver-generated `ObjectId`
- * (mirrors `OrganizationDocument`'s ADR-0 override of the schema .md).
+ * documents, mappers"). `_id` is the aggregate's branded `CaseId` (a native
+ * MongoDB `ObjectId`, mirrors `OrganizationDocument`).
  *
  * `AssignedTo`/`AssignedToType` are stored as two separate columns (mapper
  * splits/joins the `AssignedTo` VO) — design's "resolve via two separate
  * lookups, no `$lookup` union" decision. `DueDate` is the read-model copy
  * owned exclusively by SLA write paths (T2/T6), never mutated independently.
  */
+
+import type { ObjectId } from "mongodb";
+
 export interface CaseDocument {
-  readonly _id: string;
+  readonly _id: ObjectId;
   readonly OrganizationId: string;
   readonly CustomerId: string;
   readonly CustomerEmail: string | null;

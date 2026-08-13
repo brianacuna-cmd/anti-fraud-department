@@ -1,5 +1,5 @@
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
-import type { Db, MongoClient } from 'mongodb';
+import { ObjectId, type Db, type MongoClient } from 'mongodb';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
 import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
@@ -92,7 +92,7 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
     expect(persisted?.status).toBe('OPEN');
     expect(persisted?.organizationId).toBe('org-1');
 
-    const timelineRows = await db.collection('CaseTimeline').find({ CaseId: kase.id }).toArray();
+    const timelineRows = await db.collection('CaseTimeline').find({ CaseId: new ObjectId(kase.id) }).toArray();
     expect(timelineRows).toHaveLength(1);
     expect(timelineRows[0]?.EventType).toBe('CASE_CREATED');
 

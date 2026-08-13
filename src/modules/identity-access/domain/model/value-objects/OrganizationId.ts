@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { brand, type Brand } from '../../../../../shared/kernel/Brand.js';
 import { invariantViolation } from '../../errors/IdentityAccessError.js';
 
@@ -12,7 +12,7 @@ export function createOrganizationId(value: string): OrganizationId {
   return brand<string, 'OrganizationId'>(value);
 }
 
-/** Mints a fresh id for a brand-new organization (proposal: crypto.randomUUID()). */
+/** Mints a fresh id: a 24-char hex string the Mongo mapper stores as `ObjectId`. */
 export function generateOrganizationId(): OrganizationId {
-  return brand<string, 'OrganizationId'>(randomUUID());
+  return brand<string, 'OrganizationId'>(randomBytes(12).toString('hex'));
 }

@@ -18,11 +18,12 @@ import { fromDate } from '../../../src/shared/time/Instant.js';
 import { createOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import type { Clock } from '../../../src/shared/time/Clock.js';
 import type { Instant } from '../../../src/shared/time/Instant.js';
+import { oid } from '../../support/oid.js';
 
 jest.setTimeout(120_000);
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const ORG_ID = createOrganizationId('org-1');
+const ORG_ID = createOrganizationId(oid('org-1'));
 const SECRET_CIPHER = new AesGcmSecretCipher('test-secret', 1);
 const TOKEN_SERVICE = new AesGcmSessionTokenService(SECRET_CIPHER);
 const TTLS = { sessionSeconds: 900, refreshSeconds: 1_209_600, familySeconds: 2_592_000 };

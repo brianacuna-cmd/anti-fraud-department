@@ -4,8 +4,11 @@
  * fields exist by design; every field is written explicitly by the mapper,
  * including `null`, never omitted (same convention as `SessionDocument`).
  */
+
+import type { ObjectId } from "mongodb";
+
 export interface AuditLogDocument {
-  readonly _id: string;
+  readonly _id: ObjectId;
   readonly OrganizationId: string | null;
   readonly ActorType: string;
   readonly ActorId: string | null;

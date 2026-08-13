@@ -1,7 +1,6 @@
 /**
  * Mongo document shape for `Sessions` (design D14, A2: PascalCase keys).
- * `_id` is the aggregate's branded `SessionId` (a `crypto.randomUUID()`
- * string, design D37) — never a driver-generated `ObjectId`.
+ * `_id` is the aggregate's branded `SessionId` (a native MongoDB `ObjectId`).
  *
  * `RefreshTokenHash`/`RefreshExpiresAt` are explicitly nullable and WRITTEN
  * explicitly by the mapper, never omitted (design D38) — this repo's
@@ -14,20 +13,22 @@
  * acts only on a real BSON `Date` field; a TTL index on the string field
  * would create successfully and silently delete nothing.
  */
+import type { ObjectId } from "mongodb";
+
 export interface SessionDocument {
-  readonly _id: string;
-  readonly UserId: string | null;
-  readonly OrganizationId: string | null;
+  readonly _id: ObjectId;
+  readonly UserId: ObjectId | null;
+  readonly OrganizationId: ObjectId| null;
   readonly ActorType: string;
   readonly TokenHash: string;
   readonly RefreshTokenHash: string | null;
   readonly ExpiresAt: string;
   readonly RefreshExpiresAt: string | null;
-  readonly FamilyId: string;
+  readonly FamilyId: ObjectId;
   readonly FamilyExpiresAt: string;
   readonly FamilyExpiresAtDate: Date;
   readonly RotatedAt: string | null;
-  readonly RotatedFromSessionId: string | null;
+  readonly RotatedFromSessionId: ObjectId | null;
   readonly CreatedAt: string;
   readonly UpdatedAt: string;
   /** The single revocation signal (design D14). */

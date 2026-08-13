@@ -26,12 +26,13 @@ import { createOrganizationId } from '../../../src/modules/identity-access/domai
 import { createEmail } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 import { createPasswordCredential } from '../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
+import { oid } from '../../support/oid.js';
 
 jest.setTimeout(120_000);
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const ORG_ID = createOrganizationId('org-1');
-const ORG_USER = createAuthContext({ userId: 'admin-user', organizationId: 'org-1', actorType: 'ORGANIZATION' });
+const ORG_ID = createOrganizationId(oid('org-1'));
+const ORG_USER = createAuthContext({ userId: 'admin-user', organizationId: oid('org-1'), actorType: 'ORGANIZATION' });
 
 /** Throws on the Nth call to `record`, letting earlier calls hit real Mongo — proves partial-write rollback. */
 function failOnNthCall(recorder: AuditRecorder, failAt: number): AuditRecorder {
@@ -81,7 +82,7 @@ describe('User use-case audit atomicity (integration, real replica-set Mongo tra
     await db.collection('AuditLogs').deleteMany({});
   });
 
-  async function seedUser(id = 'user-1', email = 'alice@example.com'): Promise<void> {
+  async function seedUser(id = oid('user-1'), email = 'alice@example.com'): Promise<void> {
     await userRepositoryFactory.forTenant(ORG_ID).save(
       User.create({
         id: createUserId(id),
@@ -102,7 +103,7 @@ describe('User use-case audit atomicity (integration, real replica-set Mongo tra
       passwordHasher: new FakePasswordHasher(),
       unitOfWork: new MongoUnitOfWork(client),
       clock: new SystemClock(),
-      generateId: () => createUserId('user-1'),
+      generateId: () => createUserId(oid('user-1')),
       auditRecorder,
       roleRepository: new InMemoryRoleRepository(),
     });
@@ -132,7 +133,7 @@ describe('User use-case audit atomicity (integration, real replica-set Mongo tra
 
     await createUser({ auth: ORG_USER, email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', roleId: 'ANALYST' });
 
-    const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
+    const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
     expect(persisted).not.toBeNull();
     const auditRows = await db.collection('AuditLogs').find({}).toArray();
     expect(auditRows).toHaveLength(1);
@@ -146,35 +147,35 @@ describe('User use-case audit atomicity (integration, real replica-set Mongo tra
       createUser({ auth: ORG_USER, email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', roleId: 'ANALYST' }),
     ).rejects.toThrow('induced audit failure mid-transaction');
 
-    const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
+    const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
     expect(persisted).toBeNull();
     const auditRows = await db.collection('AuditLogs').find({}).toArray();
     expect(auditRows).toHaveLength(0);
   });
 
   it('TransitionUserStatus rolls back the status change AND persists NO audit row when the audit write fails', async () => {
-    await seedUser('user-1');
+    await seedUser(oid('user-1'));
     const transition = buildTransition(failOnNthCall(baseAuditRecorder, 1));
 
     await expect(
-      transition({ auth: ORG_USER, userId: 'user-1', next: 'SUSPENDED' }),
+      transition({ auth: ORG_USER, userId: oid('user-1'), next: 'SUSPENDED' }),
     ).rejects.toThrow('induced audit failure mid-transaction');
 
-    const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
+    const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
     expect(persisted?.status).toBe('ACTIVE');
     const auditRows = await db.collection('AuditLogs').find({}).toArray();
     expect(auditRows).toHaveLength(0);
   });
 
   it('PatchUserIdentity rolls back the patch AND persists NO audit row when the audit write fails', async () => {
-    await seedUser('user-1');
+    await seedUser(oid('user-1'));
     const patch = buildPatch(failOnNthCall(baseAuditRecorder, 1));
 
     await expect(
-      patch({ auth: ORG_USER, userId: 'user-1', firstName: 'Alicia' }),
+      patch({ auth: ORG_USER, userId: oid('user-1'), firstName: 'Alicia' }),
     ).rejects.toThrow('induced audit failure mid-transaction');
 
-    const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
+    const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
     expect(persisted?.firstName).toBe('Alice');
     const auditRows = await db.collection('AuditLogs').find({}).toArray();
     expect(auditRows).toHaveLength(0);

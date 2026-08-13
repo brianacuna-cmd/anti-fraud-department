@@ -1,3 +1,4 @@
+import { ObjectId } from 'mongodb';
 import { brand } from '../../../../../../../shared/kernel/Brand.js';
 import { AuditLog } from '../../../../../domain/model/aggregates/AuditLog.js';
 import { createAuditLogId } from '../../../../../domain/model/value-objects/AuditLogId.js';
@@ -11,7 +12,7 @@ import type { AuditLogDocument } from '../documents/AuditLogDocument.js';
  */
 export function toDocument(auditLog: AuditLog): AuditLogDocument {
   return {
-    _id: auditLog.id,
+    _id: new ObjectId(auditLog.id),
     OrganizationId: auditLog.organizationId,
     ActorType: auditLog.actorType,
     ActorId: auditLog.actorId,
@@ -27,7 +28,7 @@ export function toDocument(auditLog: AuditLog): AuditLogDocument {
 /** PascalCase (Mongo) -> camelCase (domain) translation seam (design A2). */
 export function toDomain(document: AuditLogDocument): AuditLog {
   return AuditLog.rehydrate({
-    id: createAuditLogId(document._id),
+    id: createAuditLogId(document._id.toString()),
     organizationId: document.OrganizationId,
     actorType: document.ActorType as ActorType,
     actorId: document.ActorId,

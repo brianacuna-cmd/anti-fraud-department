@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { brand, type Brand } from '../../../../../shared/kernel/Brand.js';
 import { invariantViolation } from '../../errors/CaseManagementError.js';
 
@@ -12,7 +12,7 @@ export function createTimelineEventId(value: string): TimelineEventId {
   return brand<string, 'TimelineEventId'>(value);
 }
 
-/** Mints a fresh id for a brand-new timeline event (mirrors CaseId's crypto.randomUUID()). */
+/** Mints a fresh id: a 24-char hex string the Mongo mapper stores as `ObjectId`. */
 export function generateTimelineEventId(): TimelineEventId {
-  return brand<string, 'TimelineEventId'>(randomUUID());
+  return brand<string, 'TimelineEventId'>(randomBytes(12).toString('hex'));
 }

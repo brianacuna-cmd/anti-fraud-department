@@ -11,6 +11,7 @@ import { createSlug } from '../../../src/modules/identity-access/domain/model/va
 import { createEmail } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 import { createPasswordCredential } from '../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
+import { oid } from '../../support/oid.js';
 
 jest.setTimeout(120_000);
 
@@ -49,7 +50,7 @@ describe('OrganizationActorGateway (integration, real replica-set Mongo)', () =>
   it('resolves an organization with credentials by email, ignoring organizationSlug', async () => {
     await organizations.save(
       Organization.create({
-        id: createOrganizationId('org-creds'),
+        id: createOrganizationId(oid('org-creds')),
         name: 'Acme',
         slug: createSlug('acme'),
         email: createEmail('org@acme.example.com'),
@@ -61,7 +62,7 @@ describe('OrganizationActorGateway (integration, real replica-set Mongo)', () =>
     const record = await gateway.findByEmail({ email: 'org@acme.example.com', organizationSlug: 'ignored' });
 
     expect(record).toEqual({
-      actorId: 'org-creds',
+      actorId: oid('org-creds'),
       actorType: 'ORGANIZATION',
       organizationId: null,
       credential: { passwordHash: 'a-bcrypt-hash' },
@@ -73,7 +74,7 @@ describe('OrganizationActorGateway (integration, real replica-set Mongo)', () =>
 
   it('returns null for an organization with no credentials yet (design D36 pulled forward)', async () => {
     await organizations.save(
-      Organization.create({ id: createOrganizationId('org-no-creds'), name: 'Bare', slug: createSlug('bare'), now: NOW }),
+      Organization.create({ id: createOrganizationId(oid('org-no-creds')), name: 'Bare', slug: createSlug('bare'), now: NOW }),
     );
 
     const record = await gateway.findByEmail({ email: 'bare@example.com' });
@@ -90,7 +91,7 @@ describe('OrganizationActorGateway (integration, real replica-set Mongo)', () =>
   it('registerLoginFailure then registerLoginSuccess round-trip through real persistence', async () => {
     await organizations.save(
       Organization.create({
-        id: createOrganizationId('org-lock'),
+        id: createOrganizationId(oid('org-lock')),
         name: 'Locky',
         slug: createSlug('locky'),
         email: createEmail('locky@example.com'),
@@ -101,11 +102,11 @@ describe('OrganizationActorGateway (integration, real replica-set Mongo)', () =>
     const record = await gateway.findByEmail({ email: 'locky@example.com' });
 
     await gateway.registerLoginFailure(record!, { loginAttempts: 3, blockedUntil: LATER }, NOW);
-    const lockedOrg = await organizations.findById(createOrganizationId('org-lock'));
+    const lockedOrg = await organizations.findById(createOrganizationId(oid('org-lock')));
     expect(lockedOrg?.lockout).toEqual({ loginAttempts: 3, blockedUntil: LATER });
 
     await gateway.registerLoginSuccess(record!, LATER);
-    const resetOrg = await organizations.findById(createOrganizationId('org-lock'));
+    const resetOrg = await organizations.findById(createOrganizationId(oid('org-lock')));
     expect(resetOrg?.lockout).toEqual({ loginAttempts: 0, blockedUntil: null });
   });
 });

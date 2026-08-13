@@ -10,6 +10,7 @@ import { createOrganizationId } from '../../../src/modules/notifications/domain/
 import { createUserId } from '../../../src/modules/notifications/domain/model/value-objects/UserId.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import type { NotificationPreferenceDocument } from '../../../src/modules/notifications/infrastructure/adapters/outbound/mongo/documents/NotificationPreferenceDocument.js';
+import { oid } from '../../support/oid.js';
 
 jest.setTimeout(120_000);
 
@@ -46,8 +47,8 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
   it('upsert() inserts a new row when none exists, generating an ObjectId _id (design D1/D4)', async () => {
     const unitOfWork = new MongoUnitOfWork(client);
     const desired = NotificationPreference.create({
-      organizationId: createOrganizationId('org-1'),
-      userId: createUserId('user-1'),
+      organizationId: createOrganizationId(oid('org-1')),
+      userId: createUserId(oid('user-1')),
       alertType: 'CASO_ASIGNADO',
       channel: 'EMAIL',
       enabled: false,
@@ -61,8 +62,8 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
     expect(saved.updatedAt).toBe(NOW);
 
     const raw = await db.collection<NotificationPreferenceDocument>('NotificationPreferences').findOne({
-      OrganizationId: 'org-1',
-      UserId: 'user-1',
+      OrganizationId: oid('org-1'),
+      UserId: oid('user-1'),
       AlertType: 'CASO_ASIGNADO',
       Channel: 'EMAIL',
     });
@@ -73,8 +74,8 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
   it('upsert() updates Enabled/UpdatedAt in place and preserves the original CreatedAt on a second call (design D5)', async () => {
     const unitOfWork = new MongoUnitOfWork(client);
     const first = NotificationPreference.create({
-      organizationId: createOrganizationId('org-1'),
-      userId: createUserId('user-1'),
+      organizationId: createOrganizationId(oid('org-1')),
+      userId: createUserId(oid('user-1')),
       alertType: 'SLA_POR_VENCER',
       channel: 'EMAIL',
       enabled: true,
@@ -83,8 +84,8 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
     await unitOfWork.withTransaction((tx) => repository.upsert(first, tx));
 
     const second = NotificationPreference.create({
-      organizationId: createOrganizationId('org-1'),
-      userId: createUserId('user-1'),
+      organizationId: createOrganizationId(oid('org-1')),
+      userId: createUserId(oid('user-1')),
       alertType: 'SLA_POR_VENCER',
       channel: 'EMAIL',
       enabled: false,
@@ -96,7 +97,7 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
     expect(saved.updatedAt).toBe(LATER);
     expect(saved.createdAt).toBe(NOW);
 
-    const rows = await db.collection('NotificationPreferences').find({ UserId: 'user-1' }).toArray();
+    const rows = await db.collection('NotificationPreferences').find({ UserId: oid('user-1') }).toArray();
     expect(rows).toHaveLength(1);
   });
 
@@ -105,8 +106,8 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
     await unitOfWork.withTransaction((tx) =>
       repository.upsert(
         NotificationPreference.create({
-          organizationId: createOrganizationId('org-1'),
-          userId: createUserId('user-1'),
+          organizationId: createOrganizationId(oid('org-1')),
+          userId: createUserId(oid('user-1')),
           alertType: 'APROBACION_PENDIENTE',
           channel: 'EMAIL',
           enabled: false,
@@ -118,8 +119,8 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
     await unitOfWork.withTransaction((tx) =>
       repository.upsert(
         NotificationPreference.create({
-          organizationId: createOrganizationId('org-2'),
-          userId: createUserId('user-2'),
+          organizationId: createOrganizationId(oid('org-2')),
+          userId: createUserId(oid('user-2')),
           alertType: 'RIESGO_CRITICO',
           channel: 'EMAIL',
           enabled: false,
@@ -129,7 +130,7 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
       ),
     );
 
-    const rows = await repository.findByUser(createOrganizationId('org-1'), createUserId('user-1'));
+    const rows = await repository.findByUser(createOrganizationId(oid('org-1')), createUserId(oid('user-1')));
 
     expect(rows).toHaveLength(1);
     expect(rows[0]?.alertType).toBe('APROBACION_PENDIENTE');
@@ -138,7 +139,7 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
   it('rejects a duplicate (organizationId, userId, alertType, channel) key with a real E11000 (notification_preference_user_alert_channel_unique)', async () => {
     await db.collection<NotificationPreferenceDocument>('NotificationPreferences').insertOne({
       _id: new ObjectId(),
-      OrganizationId: 'org-1',
+      OrganizationId: oid('org-1'),
       UserId: 'user-dup',
       AlertType: 'RIESGO_CRITICO',
       Channel: 'EMAIL',
@@ -150,7 +151,7 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
     await expect(
       db.collection<NotificationPreferenceDocument>('NotificationPreferences').insertOne({
         _id: new ObjectId(),
-        OrganizationId: 'org-1',
+        OrganizationId: oid('org-1'),
         UserId: 'user-dup',
         AlertType: 'RIESGO_CRITICO',
         Channel: 'EMAIL',
@@ -165,8 +166,8 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
     const unitOfWork = new MongoUnitOfWork(client);
     const buildDesired = (enabled: boolean, now = NOW) =>
       NotificationPreference.create({
-        organizationId: createOrganizationId('org-concurrency'),
-        userId: createUserId('user-concurrency'),
+        organizationId: createOrganizationId(oid('org-concurrency')),
+        userId: createUserId(oid('user-concurrency')),
         alertType: 'CASO_ASIGNADO',
         channel: 'EMAIL',
         enabled,
@@ -180,7 +181,7 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
 
     const rows = await db
       .collection('NotificationPreferences')
-      .find({ OrganizationId: 'org-concurrency', UserId: 'user-concurrency' })
+      .find({ OrganizationId: oid('org-concurrency'), UserId: oid('user-concurrency') })
       .toArray();
     expect(rows).toHaveLength(1);
   });

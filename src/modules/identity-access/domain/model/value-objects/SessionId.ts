@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { brand, type Brand } from '../../../../../shared/kernel/Brand.js';
 import { invariantViolation } from '../../errors/IdentityAccessError.js';
 
@@ -12,7 +12,7 @@ export function createSessionId(value: string): SessionId {
   return brand<string, 'SessionId'>(value);
 }
 
-/** Mints a fresh id for a brand-new session (design D37: crypto.randomUUID()). */
+/** Mints a fresh id: a 24-char hex string the Mongo mapper stores as `ObjectId`. */
 export function generateSessionId(): SessionId {
-  return brand<string, 'SessionId'>(randomUUID());
+  return brand<string, 'SessionId'>(randomBytes(12).toString('hex'));
 }
