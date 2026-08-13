@@ -31,3 +31,18 @@ export const verifyAdminChallengeSchema = z.object({
 });
 
 export type VerifyAdminChallengeBody = z.infer<typeof verifyAdminChallengeSchema>;
+
+export const adminOtpVerifySchema = z.object({
+  challengeToken: z.string().min(1),
+  otp: z.string().min(6).max(6),
+});
+
+export type AdminOtpVerifyBody = z.infer<typeof adminOtpVerifySchema>;
+
+export const adminMfaSchema = z.object({
+  challengeToken: z.string().min(1),
+  code: z.string().min(6).max(6),
+});
+
+export type AdminMfaBody = z.infer<typeof adminMfaSchema>;
+
