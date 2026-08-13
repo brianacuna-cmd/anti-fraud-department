@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { AesGcmSecretCipher } from '../../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
 import { AesGcmSessionTokenService } from '../../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSessionTokenService.js';
 
@@ -9,22 +10,22 @@ describe('AesGcmSessionTokenService', () => {
   it('issues an opaque token and reads back the exact same payload', () => {
     const service = buildService();
 
-    const token = service.issue({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+    const token = service.issue({ sessionId: oid('session-1'), tokenType: 'ACCESS', keyVersion: 1 });
 
-    expect(service.read(token)).toEqual({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+    expect(service.read(token)).toEqual({ sessionId: oid('session-1'), tokenType: 'ACCESS', keyVersion: 1 });
   });
 
   it('round-trips a REFRESH token distinctly from an ACCESS token', () => {
     const service = buildService();
 
-    const token = service.issue({ sessionId: 'session-1', tokenType: 'REFRESH', keyVersion: 1 });
+    const token = service.issue({ sessionId: oid('session-1'), tokenType: 'REFRESH', keyVersion: 1 });
 
-    expect(service.read(token)).toEqual({ sessionId: 'session-1', tokenType: 'REFRESH', keyVersion: 1 });
+    expect(service.read(token)).toEqual({ sessionId: oid('session-1'), tokenType: 'REFRESH', keyVersion: 1 });
   });
 
   it('returns null when reading a tampered token', () => {
     const service = buildService();
-    const token = service.issue({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+    const token = service.issue({ sessionId: oid('session-1'), tokenType: 'ACCESS', keyVersion: 1 });
     const raw = Buffer.from(token, 'base64url');
     raw[raw.length - 1] = (raw[raw.length - 1]! ^ 0xff) & 0xff;
 
@@ -47,7 +48,7 @@ describe('AesGcmSessionTokenService', () => {
 
   it('fingerprint is a deterministic 64-char SHA-256 hex digest', () => {
     const service = buildService();
-    const token = service.issue({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+    const token = service.issue({ sessionId: oid('session-1'), tokenType: 'ACCESS', keyVersion: 1 });
 
     const first = service.fingerprint(token);
     const second = service.fingerprint(token);
@@ -58,8 +59,8 @@ describe('AesGcmSessionTokenService', () => {
 
   it('fingerprint differs for different tokens', () => {
     const service = buildService();
-    const tokenA = service.issue({ sessionId: 'session-a', tokenType: 'ACCESS', keyVersion: 1 });
-    const tokenB = service.issue({ sessionId: 'session-b', tokenType: 'ACCESS', keyVersion: 1 });
+    const tokenA = service.issue({ sessionId: oid('session-a'), tokenType: 'ACCESS', keyVersion: 1 });
+    const tokenB = service.issue({ sessionId: oid('session-b'), tokenType: 'ACCESS', keyVersion: 1 });
 
     expect(service.fingerprint(tokenA)).not.toBe(service.fingerprint(tokenB));
   });
@@ -69,8 +70,8 @@ describe('AesGcmSessionTokenService', () => {
       tokenType: 'mfa_challenge' as const,
       keyVersion: 1,
       jti: 'jti-1',
-      userId: 'user-1',
-      organizationId: 'org-1',
+      userId: oid('user-1'),
+      organizationId: oid('org-1'),
       actorType: 'USER' as const,
       expiresAt: '2026-01-01T00:05:00.000Z',
     };
@@ -113,11 +114,11 @@ describe('AesGcmSessionTokenService', () => {
 
     it('an ACCESS token read as scoped MFA payload fields stays a pointer payload, not confused with scoped shape', () => {
       const service = buildService();
-      const token = service.issue({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+      const token = service.issue({ sessionId: oid('session-1'), tokenType: 'ACCESS', keyVersion: 1 });
 
       const payload = service.read(token);
 
-      expect(payload).toEqual({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+      expect(payload).toEqual({ sessionId: oid('session-1'), tokenType: 'ACCESS', keyVersion: 1 });
     });
   });
 
@@ -126,8 +127,8 @@ describe('AesGcmSessionTokenService', () => {
       tokenType: 'password_reset' as const,
       keyVersion: 1,
       jti: 'jti-reset-1',
-      userId: 'user-1',
-      organizationId: 'org-1',
+      userId: oid('user-1'),
+      organizationId: oid('org-1'),
       actorType: 'USER' as const,
       expiresAt: '2026-01-01T00:15:00.000Z',
     };
@@ -169,19 +170,19 @@ describe('AesGcmSessionTokenService', () => {
 
     it('an ACCESS/mfa payload is never misidentified as password_reset, and vice versa (regression guard, PR-2a task 7)', () => {
       const service = buildService();
-      const accessToken = service.issue({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+      const accessToken = service.issue({ sessionId: oid('session-1'), tokenType: 'ACCESS', keyVersion: 1 });
       const mfaToken = service.issue({
         tokenType: 'mfa_challenge',
         keyVersion: 1,
         jti: 'jti-mfa-1',
-        userId: 'user-1',
-        organizationId: 'org-1',
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
         actorType: 'USER',
         expiresAt: '2026-01-01T00:05:00.000Z',
       });
       const resetToken = service.issue(resetPayload);
 
-      expect(service.read(accessToken)).toEqual({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+      expect(service.read(accessToken)).toEqual({ sessionId: oid('session-1'), tokenType: 'ACCESS', keyVersion: 1 });
       expect((service.read(mfaToken) as { tokenType: string }).tokenType).toBe('mfa_challenge');
       expect((service.read(resetToken) as { tokenType: string }).tokenType).toBe('password_reset');
     });

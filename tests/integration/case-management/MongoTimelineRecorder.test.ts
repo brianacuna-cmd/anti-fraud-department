@@ -15,14 +15,14 @@ jest.setTimeout(120_000);
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 
-function buildEvent(id: string, caseId = 'case-1'): CaseTimelineEvent {
+function buildEvent(id: string, caseId = oid('case-1')): CaseTimelineEvent {
   return CaseTimelineEvent.create({
-    id: createTimelineEventId(oid(id)),
-    caseId: createCaseId(oid(caseId)),
+    id: createTimelineEventId(id),
+    caseId: createCaseId(caseId),
     eventType: 'CASE_CREATED',
     previousValue: null,
     newValue: null,
-    createdBy: 'user-1',
+    createdBy: oid('user-1'),
     createdAt: NOW,
   });
 }
@@ -51,17 +51,17 @@ describe('MongoTimelineRecorder (integration, real replica-set Mongo)', () => {
   });
 
   afterEach(async () => {
-    await db.collection('CaseTimeline').deleteMany({});
+    await db.collection('case_timeline').deleteMany({});
   });
 
   it('records a timeline event via insertOne', async () => {
-    await recorder.record(buildEvent('event-1'));
+    await recorder.record(buildEvent(oid('event-1')));
 
-    const document = await db.collection<CaseTimelineDocument>('CaseTimeline').findOne({ _id: new ObjectId(oid('event-1')) });
+    const document = await db.collection<CaseTimelineDocument>('case_timeline').findOne({ _id: new ObjectId(oid('event-1')) });
 
     expect(document).not.toBeNull();
-    expect(document?.CaseId.toString()).toBe(oid('case-1'));
-    expect(document?.EventType).toBe('CASE_CREATED');
+    expect(document?.case_id.toString()).toBe(oid('case-1'));
+    expect(document?.event_type).toBe('CASE_CREATED');
   });
 
   it('verify no update/delete method exists on the port (compile-time contract)', () => {
@@ -82,22 +82,22 @@ describe('MongoTimelineRecorder (integration, real replica-set Mongo)', () => {
    * turned into an update — `insertOne`, not `replaceOne`/`updateOne`.
    */
   it('re-recording the same event id fails — CaseTimeline is append-only, never replaced', async () => {
-    await recorder.record(buildEvent('event-1'));
+    await recorder.record(buildEvent(oid('event-1')));
 
-    await expect(recorder.record(buildEvent('event-1'))).rejects.toThrow();
+    await expect(recorder.record(buildEvent(oid('event-1')))).rejects.toThrow();
 
-    const documents = await db.collection<CaseTimelineDocument>('CaseTimeline').find({ _id: new ObjectId(oid('event-1')) }).toArray();
+    const documents = await db.collection<CaseTimelineDocument>('case_timeline').find({ _id: new ObjectId(oid('event-1')) }).toArray();
     expect(documents).toHaveLength(1);
   });
 
   it('records multiple independent events for the same case, newest queryable first via the index', async () => {
-    await recorder.record(buildEvent('event-1'));
-    await recorder.record(buildEvent('event-2'));
+    await recorder.record(buildEvent(oid('event-1')));
+    await recorder.record(buildEvent(oid('event-2')));
 
     const documents = await db
-      .collection<CaseTimelineDocument>('CaseTimeline')
-      .find({ CaseId: new ObjectId(oid('case-1')) })
-      .sort({ CreatedAt: -1 })
+      .collection<CaseTimelineDocument>('case_timeline')
+      .find({ case_id: new ObjectId(oid('case-1')) })
+      .sort({ created_at: -1 })
       .toArray();
 
     expect(documents).toHaveLength(2);

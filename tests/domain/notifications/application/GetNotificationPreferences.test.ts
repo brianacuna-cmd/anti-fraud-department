@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createGetNotificationPreferencesUseCase } from '../../../../src/modules/notifications/application/GetNotificationPreferences.js';
 import { InMemoryNotificationPreferenceRepository } from '../../../helpers/notifications/InMemoryNotificationPreferenceRepository.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
@@ -10,7 +11,7 @@ import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { NotificationsError } from '../../../../src/modules/notifications/domain/errors/NotificationsError.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const ORG_1_USER = createAuthContext({ userId: 'user-1', organizationId: 'org-1' });
+const ORG_1_USER = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1') });
 
 function buildUseCase(repository: InMemoryNotificationPreferenceRepository) {
   return createGetNotificationPreferencesUseCase({ repository });
@@ -35,8 +36,8 @@ describe('createGetNotificationPreferencesUseCase', () => {
     const repository = new InMemoryNotificationPreferenceRepository();
     repository.seed(
       NotificationPreference.create({
-        organizationId: createOrganizationId('org-1'),
-        userId: createUserId('user-1'),
+        organizationId: createOrganizationId(oid('org-1')),
+        userId: createUserId(oid('user-1')),
         alertType: createAlertType('SLA_POR_VENCER'),
         channel: createNotificationChannel('EMAIL'),
         enabled: false,
@@ -57,7 +58,7 @@ describe('createGetNotificationPreferencesUseCase', () => {
     const repository = new InMemoryNotificationPreferenceRepository();
     const findByUserSpy = jest.spyOn(repository, 'findByUser');
     const getPreferences = buildUseCase(repository);
-    const platformAdmin = createAuthContext({ userId: 'admin-1', organizationId: null, isPlatformAdmin: true });
+    const platformAdmin = createAuthContext({ userId: oid('admin-1'), organizationId: null, isPlatformAdmin: true });
 
     expect.assertions(3);
     try {
@@ -76,6 +77,6 @@ describe('createGetNotificationPreferencesUseCase', () => {
 
     await getPreferences({ auth: ORG_1_USER });
 
-    expect(findByUserSpy).toHaveBeenCalledWith('org-1', 'user-1');
+    expect(findByUserSpy).toHaveBeenCalledWith(oid('org-1'), oid('user-1'));
   });
 });

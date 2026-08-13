@@ -1,17 +1,16 @@
-import { createUserId } from '../../../../../src/modules/notifications/domain/model/value-objects/UserId.js';
+import {
+  createUserId,
+} from '../../../../../src/modules/notifications/domain/model/value-objects/UserId.js';
+
+const HEX = 'a'.repeat(24);
 
 describe('createUserId', () => {
-  it('accepts a non-empty string and returns it unchanged', () => {
-    const id = createUserId('user-123');
-
-    expect(id).toBe('user-123');
+  it('accepts a 24-character hexadecimal ObjectId', () => {
+    expect(createUserId(HEX)).toBe(HEX);
   });
 
-  it('rejects an empty string as an invariant violation', () => {
-    expect(() => createUserId('')).toThrow(/non-empty/);
-  });
-
-  it('rejects a whitespace-only string as an invariant violation', () => {
-    expect(() => createUserId('   ')).toThrow(/non-empty/);
+  it('rejects a value that is not a 24-character hex ObjectId', () => {
+    expect(() => createUserId('')).toThrow(/24-character hexadecimal ObjectId/);
+    expect(() => createUserId('not-an-objectid')).toThrow(/24-character hexadecimal ObjectId/);
   });
 });

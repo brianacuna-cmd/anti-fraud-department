@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { authenticator } from 'otplib';
 import { createActivateMfaUseCase } from '../../../../src/modules/identity-access/application/ActivateMfa.js';
 import { createSessionIssuer } from '../../../../src/modules/identity-access/application/auth/SessionIssuer.js';
@@ -22,10 +23,10 @@ import { IdentityAccessError } from '../../../../src/modules/identity-access/dom
 
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ACTIVATED_AT = fromDate(new Date('2026-01-02T00:00:00.000Z'));
-const AUTH = createAuthContext({ userId: 'user-1', organizationId: 'org-1', isPlatformAdmin: false });
+const AUTH = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), isPlatformAdmin: false });
 const ENROLLMENT_AUTH = createAuthContext({
-  userId: 'user-1',
-  organizationId: 'org-1',
+  userId: oid('user-1'),
+  organizationId: oid('org-1'),
   purpose: 'enrollment',
   mfaJti: 'jti-1',
 });
@@ -37,9 +38,9 @@ async function seedUserWithPendingSecret(
   userRepositoryFactory: InMemoryUserRepositoryFactory,
   plaintextSecret: string,
 ): Promise<void> {
-  const org = createOrganizationId('org-1');
+  const org = createOrganizationId(oid('org-1'));
   const user = User.create({
-    id: createUserId('user-1'),
+    id: createUserId(oid('user-1')),
     organizationId: org,
     email: createEmail('alice@example.com'),
     credential: createPasswordCredential('hash'),
@@ -96,7 +97,7 @@ describe('createActivateMfaUseCase', () => {
     expect(calls[0].tx).toBeDefined();
     expect(calls[0].event.action).toBe('MFA_ENABLED');
     expect(calls[0].event.resource).toBe('users');
-    expect(calls[0].event.resourceId).toBe('user-1');
+    expect(calls[0].event.resourceId).toBe(oid('user-1'));
   });
 
   it('rejects a wrong token with MFA_TOKEN_INVALID and does NOT enable MFA', async () => {
@@ -115,16 +116,16 @@ describe('createActivateMfaUseCase', () => {
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('MFA_TOKEN_INVALID');
     }
 
-    const stored = await userRepositoryFactory.forTenant(createOrganizationId('org-1')).findById(createUserId('user-1'));
+    const stored = await userRepositoryFactory.forTenant(createOrganizationId(oid('org-1'))).findById(createUserId(oid('user-1')));
     expect(stored!.mfa.enabled).toBe(false);
     expect(auditRecorder.all()).toHaveLength(0);
   });
 
   it('rejects activation with no pending enrollment (MFA_ENROLLMENT_NOT_PENDING)', async () => {
-    const org = createOrganizationId('org-1');
+    const org = createOrganizationId(oid('org-1'));
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
     const user = User.create({
-      id: createUserId('user-1'),
+      id: createUserId(oid('user-1')),
       organizationId: org,
       email: createEmail('alice@example.com'),
       credential: createPasswordCredential('hash'),
@@ -164,8 +165,8 @@ describe('createActivateMfaUseCase', () => {
       const mfaChallenges = new InMemoryMfaChallengeStore();
       await mfaChallenges.append({
         jti: 'jti-1',
-        userId: 'user-1',
-        organizationId: 'org-1',
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
         actorType: 'USER',
         tokenType: 'mfa_enrollment',
         expiresAt: fromDate(new Date('2026-01-02T01:00:00.000Z')),
@@ -183,7 +184,7 @@ describe('createActivateMfaUseCase', () => {
       expect(result.session!.refreshToken).toBeDefined();
       expect((await mfaChallenges.get('jti-1'))?.consumedAt).toBe(ACTIVATED_AT);
       const savedSession = await sessions.findByTokenHash(TOKEN_SERVICE.fingerprint(result.session!.accessToken));
-      expect(savedSession?.userId).toBe('user-1');
+      expect(savedSession?.userId).toBe(oid('user-1'));
       expect(unitOfWork.transactionCount).toBe(1);
     });
 
@@ -195,8 +196,8 @@ describe('createActivateMfaUseCase', () => {
       const mfaChallenges = new InMemoryMfaChallengeStore();
       await mfaChallenges.append({
         jti: 'jti-1',
-        userId: 'user-1',
-        organizationId: 'org-1',
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
         actorType: 'USER',
         tokenType: 'mfa_enrollment',
         expiresAt: fromDate(new Date('2026-01-02T01:00:00.000Z')),
@@ -240,8 +241,8 @@ describe('createActivateMfaUseCase', () => {
       const mfaChallenges = new InMemoryMfaChallengeStore();
       await mfaChallenges.append({
         jti: 'jti-1',
-        userId: 'user-1',
-        organizationId: 'org-1',
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
         actorType: 'USER',
         tokenType: 'mfa_enrollment',
         expiresAt: fromDate(new Date('2026-01-02T01:00:00.000Z')),

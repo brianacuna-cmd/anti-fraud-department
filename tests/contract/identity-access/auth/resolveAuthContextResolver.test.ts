@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { resolveAuthContextResolver } from '../../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/resolveAuthContextResolver.js';
 import { TrustedHeaderAuthContextResolver } from '../../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/TrustedHeaderAuthContextResolver.js';
 import { TieredAuthContextResolver } from '../../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/TieredAuthContextResolver.js';
@@ -70,7 +71,7 @@ describe('resolveAuthContextResolver', () => {
     });
 
     const req = {
-      headers: { 'x-actor-user-id': 'u1' },
+      headers: { 'x-actor-user-id': oid('u1') },
     } as unknown as import('express').Request;
 
     await expect(resolver.resolve(req)).resolves.toBeNull();

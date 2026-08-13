@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { createIssueOrganizationSessionUseCase } from '../../../../../src/modules/identity-access/application/auth/IssueOrganizationSession.js';
 import { createAuthenticateActorUseCase } from '../../../../../src/modules/identity-access/application/auth/AuthenticateActor.js';
 import { createSessionIssuer } from '../../../../../src/modules/identity-access/application/auth/SessionIssuer.js';
@@ -24,7 +25,7 @@ const TOKEN_SERVICE = new AesGcmSessionTokenService(SECRET_CIPHER);
 // id in actorId — reproduced here so the use case's derivation is exercised
 // exactly like the real gateway (design DD1).
 const ORG_RECORD: ActorCredentialRecord = {
-  actorId: 'org-1',
+  actorId: oid('org-1'),
   actorType: 'ORGANIZATION',
   organizationId: null,
   credential: createPasswordCredential('hashed:org-password'),
@@ -76,7 +77,7 @@ describe('createIssueOrganizationSessionUseCase', () => {
 
     const saved = await sessions.findByTokenHash(TOKEN_SERVICE.fingerprint(result.accessToken));
     expect(saved?.userId).toBeNull();
-    expect(saved?.organizationId).toBe(createOrganizationId('org-1'));
+    expect(saved?.organizationId).toBe(createOrganizationId(oid('org-1')));
     expect(saved?.actorType).toBe('ORGANIZATION');
 
     const loginEvents = auditRecorder.all().filter((event) => event.action === 'LOGIN');
@@ -84,7 +85,7 @@ describe('createIssueOrganizationSessionUseCase', () => {
     const mintLogin = auditRecorder.calls().find((call) => call.event.action === 'LOGIN' && call.tx !== undefined);
     expect(mintLogin).toBeDefined();
     expect(mintLogin?.event.resource).toBe('sessions');
-    expect(mintLogin?.event.organizationId).toBe(createOrganizationId('org-1'));
+    expect(mintLogin?.event.organizationId).toBe(createOrganizationId(oid('org-1')));
   });
 
   it('rejects invalid ORG credentials with LOGIN_FAILED audit and no session created', async () => {

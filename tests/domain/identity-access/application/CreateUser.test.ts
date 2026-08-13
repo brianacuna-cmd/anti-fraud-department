@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createCreateUserUseCase } from '../../../../src/modules/identity-access/application/CreateUser.js';
 import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
 import { InMemoryUnitOfWork } from '../../../helpers/identity-access/InMemoryUnitOfWork.js';
@@ -12,9 +13,9 @@ import { createOrganizationId } from '../../../../src/modules/identity-access/do
 import { IdentityAccessError } from '../../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const ORG_1_ADMIN = createAuthContext({ userId: 'u1', organizationId: 'org-1', actorType: 'ORGANIZATION' });
-const ORG_2_ADMIN = createAuthContext({ userId: 'u2', organizationId: 'org-2', actorType: 'ORGANIZATION' });
-const ORG_1_USER = createAuthContext({ userId: 'u3', organizationId: 'org-1', isPlatformAdmin: false });
+const ORG_1_ADMIN = createAuthContext({ userId: oid('u1'), organizationId: oid('org-1'), actorType: 'ORGANIZATION' });
+const ORG_2_ADMIN = createAuthContext({ userId: oid('u2'), organizationId: oid('org-2'), actorType: 'ORGANIZATION' });
+const ORG_1_USER = createAuthContext({ userId: oid('u3'), organizationId: oid('org-1'), isPlatformAdmin: false });
 
 function buildUseCase() {
   const userRepositoryFactory = new InMemoryUserRepositoryFactory();
@@ -30,7 +31,7 @@ function buildUseCase() {
     clock: new FixedClock(NOW),
     generateId: () => {
       nextId += 1;
-      return createUserId(`user-${nextId}`);
+      return createUserId(oid(`user-${nextId}`));
     },
     auditRecorder,
     roleRepository,
@@ -86,7 +87,7 @@ describe('createCreateUserUseCase', () => {
     });
 
     expect(secondOrgUser.email).toBe('shared@example.com');
-    expect(secondOrgUser.organizationId).toBe('org-2');
+    expect(secondOrgUser.organizationId).toBe(oid('org-2'));
   });
 
   it('emits exactly one USER_CREATED audit event inside the transaction', async () => {
@@ -107,7 +108,7 @@ describe('createCreateUserUseCase', () => {
     expect(calls[0].event.action).toBe('USER_CREATED');
     expect(calls[0].event.resource).toBe('users');
     expect(calls[0].event.resourceId).toBe(user.id);
-    expect(calls[0].event.organizationId).toBe('org-1');
+    expect(calls[0].event.organizationId).toBe(oid('org-1'));
   });
 
   it('records no audit event when the create fails (duplicate email)', async () => {
@@ -154,7 +155,7 @@ describe('createCreateUserUseCase', () => {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('FORBIDDEN_CROSS_TENANT');
     }
-    const list = await userRepositoryFactory.forTenant(createOrganizationId('org-1')).list(10);
+    const list = await userRepositoryFactory.forTenant(createOrganizationId(oid('org-1'))).list(10);
     expect(list.items).toHaveLength(0);
   });
 
@@ -175,7 +176,7 @@ describe('createCreateUserUseCase', () => {
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('WEAK_PASSWORD');
     }
     expect(passwordHasher.hashCallCount).toBe(0);
-    const list = await userRepositoryFactory.forTenant(createOrganizationId('org-1')).list(10);
+    const list = await userRepositoryFactory.forTenant(createOrganizationId(oid('org-1'))).list(10);
     expect(list.items).toHaveLength(0);
   });
 
@@ -228,7 +229,7 @@ describe('createCreateUserUseCase', () => {
       passwordHasher,
       unitOfWork,
       clock: new FixedClock(NOW),
-      generateId: () => createUserId('user-inactive-role'),
+      generateId: () => createUserId(oid('user-inactive-role')),
       auditRecorder,
       roleRepository,
     });

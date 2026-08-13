@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { CaseSlaTracking } from '../../../../../src/modules/case-management/domain/model/aggregates/CaseSlaTracking.js';
 import { createCaseSlaTrackingId } from '../../../../../src/modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
 import { createCaseId } from '../../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
@@ -10,8 +11,8 @@ function buildTracking(
   overrides: Partial<Parameters<typeof CaseSlaTracking.create>[0]> = {},
 ): CaseSlaTracking {
   return CaseSlaTracking.create({
-    id: createCaseSlaTrackingId('tracking-1'),
-    caseId: createCaseId('case-1'),
+    id: createCaseSlaTrackingId(oid('tracking-1')),
+    caseId: createCaseId(oid('case-1')),
     dueDate: NOW,
     now: NOW,
     ...overrides,
@@ -25,7 +26,7 @@ describe('CaseSlaTracking.create', () => {
     expect(tracking.status).toBe('ON_TRACK');
     expect(tracking.notificationSent).toBe(false);
     expect(tracking.dueDate).toBe(NOW);
-    expect(tracking.caseId).toBe('case-1');
+    expect(tracking.caseId).toBe(oid('case-1'));
   });
 });
 

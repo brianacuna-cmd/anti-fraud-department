@@ -46,23 +46,29 @@ export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Rout
       res.status(200).json([]);
       return;
     }
-    const docs = await deps.db.collection('adminOrganizations').find().toArray();
+    const docs = await deps.db.collection('admin_organizations').find().toArray();
     const items = docs.map((doc) => ({
       id: String(doc._id),
       email: doc.email as string,
       keys: ((doc.keys as unknown[]) || []).map((k) => {
         const item = k as Record<string, unknown>;
+        const asIso = (value: unknown): string | null => {
+          if (value instanceof Date) {
+            return value.toISOString();
+          }
+          return typeof value === 'string' ? value : null;
+        };
         return {
-          keyId: item.keyId as string,
-          publicKey: item.publicKey as string,
+          keyId: String(item.key_id ?? item.keyId ?? ''),
+          publicKey: (item.public_key ?? item.publicKey) as string,
           status: item.status as string,
-          createdAt: item.createdAt as string,
-          rotatedAt: (item.rotatedAt as string) ?? null,
-          revokedAt: (item.revokedAt as string) ?? null,
+          createdAt: asIso(item.created_at ?? item.createdAt) ?? '',
+          rotatedAt: asIso(item.rotated_at ?? item.rotatedAt),
+          revokedAt: asIso(item.revoked_at ?? item.revokedAt),
         };
       }),
-      createdAt: doc.createdAt as string,
-      updatedAt: doc.updatedAt as string,
+      createdAt: doc.created_at instanceof Date ? doc.created_at.toISOString() : (doc.created_at as string),
+      updatedAt: doc.updated_at instanceof Date ? doc.updated_at.toISOString() : (doc.updated_at as string),
     }));
     res.status(200).json(items);
   });

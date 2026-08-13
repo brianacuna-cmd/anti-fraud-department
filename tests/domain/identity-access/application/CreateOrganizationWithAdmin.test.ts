@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createCreateOrganizationWithAdminUseCase } from '../../../../src/modules/identity-access/application/CreateOrganizationWithAdmin.js';
 import { InMemoryOrganizationRepository } from '../../../helpers/identity-access/InMemoryOrganizationRepository.js';
 import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
@@ -15,12 +16,12 @@ import { IdentityAccessError } from '../../../../src/modules/identity-access/dom
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const PLATFORM_ADMIN = createAuthContext({
-  userId: 'u1',
-  organizationId: 'o0',
+  userId: oid('u1'),
+  organizationId: oid('o0'),
   isPlatformAdmin: true,
   ipAddress: '203.0.113.10',
 });
-const REGULAR_USER = createAuthContext({ userId: 'u2', organizationId: 'o1', isPlatformAdmin: false });
+const REGULAR_USER = createAuthContext({ userId: oid('u2'), organizationId: oid('o1'), isPlatformAdmin: false });
 
 function buildUseCase() {
   const organizations = new InMemoryOrganizationRepository();
@@ -38,11 +39,11 @@ function buildUseCase() {
     clock: new FixedClock(NOW),
     generateOrganizationId: () => {
       nextOrgId += 1;
-      return createOrganizationId(`org-${nextOrgId}`);
+      return createOrganizationId(oid(`org-${nextOrgId}`));
     },
     generateUserId: () => {
       nextUserId += 1;
-      return createUserId(`user-${nextUserId}`);
+      return createUserId(oid(`user-${nextUserId}`));
     },
     auditRecorder,
   });
@@ -116,7 +117,7 @@ describe('createCreateOrganizationWithAdminUseCase', () => {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('ORGANIZATION_SLUG_TAKEN');
     }
-    const secondOrg = await userRepositoryFactory.forTenant(createOrganizationId('org-2')).findByEmail(
+    const secondOrg = await userRepositoryFactory.forTenant(createOrganizationId(oid('org-2'))).findByEmail(
       createEmail('other-admin@acme.com'),
     );
     expect(secondOrg).toBeNull();
@@ -187,7 +188,7 @@ describe('createCreateOrganizationWithAdminUseCase', () => {
       adminLastName: 'Admin',
     });
 
-    const callerOrgUsers = await userRepositoryFactory.forTenant(createOrganizationId('o0')).list(10);
+    const callerOrgUsers = await userRepositoryFactory.forTenant(createOrganizationId(oid('o0'))).list(10);
     expect(callerOrgUsers.items).toHaveLength(0);
     const newOrgUsers = await userRepositoryFactory.forTenant(organization.id).list(10);
     expect(newOrgUsers.items).toHaveLength(1);
@@ -211,7 +212,7 @@ describe('createCreateOrganizationWithAdminUseCase', () => {
     expect(event).toMatchObject({
       organizationId: organization.id,
       actorType: 'PLATFORM_ADMIN',
-      actorId: 'u1',
+      actorId: oid('u1'),
       action: 'ORGANIZATION_CREATED',
       resource: 'organizations',
       resourceId: organization.id,

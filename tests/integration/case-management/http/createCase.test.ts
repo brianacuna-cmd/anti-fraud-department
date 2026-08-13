@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import request from 'supertest';
 import { createApp } from '../../../../src/shared/http/createApp.js';
@@ -24,7 +25,7 @@ import { OrganizationFraudConfig } from '../../../../src/modules/case-management
 import { generateOrganizationFraudConfigId } from '../../../../src/modules/case-management/domain/model/value-objects/OrganizationFraudConfigId.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 
-const ORG_1_ANALYST = createAuthContext({ userId: 'analyst-1', organizationId: 'org-1', actorType: 'USER' });
+const ORG_1_ANALYST = createAuthContext({ userId: oid('analyst-1'), organizationId: oid('org-1'), actorType: 'USER' });
 
 /** JDM: riskScore > 80 AND status == OPEN -> targetUserId "auto-user". */
 function highRiskToUserJdm(): Record<string, unknown> {
@@ -105,7 +106,7 @@ function buildApp(actorPerRequest: () => AuthContext) {
 }
 
 describe('caseRouter (e2e, in-memory repository)', () => {
-  it('POST /cases creates a Case scoped to the caller\'s organization, Status OPEN, 201 shape', async () => {
+  it('POST /cases creates a Case scoped to the caller\'s organization, status OPEN, 201 shape', async () => {
     const { app } = buildApp(() => ORG_1_ANALYST);
 
     const response = await request(app)
@@ -114,7 +115,7 @@ describe('caseRouter (e2e, in-memory repository)', () => {
 
     expect(response.status).toBe(201);
     expect(response.body).toMatchObject({
-      organizationId: 'org-1',
+      organizationId: oid('org-1'),
       customerId: 'customer-1',
       riskScore: 75,
       priority: 'HIGH',
@@ -167,7 +168,7 @@ describe('caseRouter (e2e, in-memory repository)', () => {
     routingRules.add(
       CaseRoutingRule.create({
         id: generateCaseRoutingRuleId(),
-        organizationId: 'org-1',
+        organizationId: oid('org-1'),
         name: 'high-risk -> auto-user',
         conditions: highRiskToUserJdm(),
         conditionsVersion: 1,
@@ -190,7 +191,7 @@ describe('caseRouter (e2e, in-memory repository)', () => {
     routingRules.add(
       CaseRoutingRule.create({
         id: generateCaseRoutingRuleId(),
-        organizationId: 'org-1',
+        organizationId: oid('org-1'),
         name: 'high-risk -> auto-user',
         conditions: highRiskToUserJdm(),
         conditionsVersion: 1,
@@ -222,7 +223,7 @@ describe('caseRouter (e2e, in-memory repository)', () => {
     const { app, routingRules, auditRecorder } = buildApp(() => ORG_1_ANALYST);
     const rule = CaseRoutingRule.create({
       id: generateCaseRoutingRuleId(),
-      organizationId: 'org-1',
+      organizationId: oid('org-1'),
       name: 'high-risk -> auto-user',
       conditions: highRiskToUserJdm(),
       conditionsVersion: 4,
@@ -247,7 +248,7 @@ describe('caseRouter (e2e, in-memory repository)', () => {
     routingRules.add(
       CaseRoutingRule.create({
         id: generateCaseRoutingRuleId(),
-        organizationId: 'org-1',
+        organizationId: oid('org-1'),
         name: 'broken-rule',
         conditions: { nodes: 'not-a-jdm-graph' },
         conditionsVersion: 1,
@@ -269,7 +270,7 @@ describe('caseRouter (e2e, in-memory repository)', () => {
     routingRules.add(
       CaseRoutingRule.create({
         id: generateCaseRoutingRuleId(),
-        organizationId: 'org-1',
+        organizationId: oid('org-1'),
         name: 'high-risk -> auto-user',
         conditions: highRiskToUserJdm(),
         conditionsVersion: 1,
@@ -279,7 +280,7 @@ describe('caseRouter (e2e, in-memory repository)', () => {
     fraudConfig.seed(
       OrganizationFraudConfig.create({
         id: generateOrganizationFraudConfigId(),
-        organizationId: 'org-1',
+        organizationId: oid('org-1'),
         slaLowMinutes: 60,
         slaMediumMinutes: 60,
         slaHighMinutes: 60,

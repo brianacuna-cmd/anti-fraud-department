@@ -32,7 +32,7 @@ jest.setTimeout(120_000);
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ORG_ID = createOrganizationId(oid('org-1'));
-const ORG_USER = createAuthContext({ userId: 'admin-user', organizationId: oid('org-1'), actorType: 'ORGANIZATION' });
+const ORG_USER = createAuthContext({ userId: oid('admin-user'), organizationId: oid('org-1'), actorType: 'ORGANIZATION' });
 
 /** Throws on the Nth call to `record`, letting earlier calls hit real Mongo — proves partial-write rollback. */
 function failOnNthCall(recorder: AuditRecorder, failAt: number): AuditRecorder {
@@ -78,8 +78,8 @@ describe('User use-case audit atomicity (integration, real replica-set Mongo tra
   });
 
   afterEach(async () => {
-    await db.collection('Users').deleteMany({});
-    await db.collection('AuditLogs').deleteMany({});
+    await db.collection('users').deleteMany({});
+    await db.collection('audit_logs').deleteMany({});
   });
 
   async function seedUser(id = oid('user-1'), email = 'alice@example.com'): Promise<void> {
@@ -135,9 +135,9 @@ describe('User use-case audit atomicity (integration, real replica-set Mongo tra
 
     const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
     expect(persisted).not.toBeNull();
-    const auditRows = await db.collection('AuditLogs').find({}).toArray();
+    const auditRows = await db.collection('audit_logs').find({}).toArray();
     expect(auditRows).toHaveLength(1);
-    expect(auditRows[0]?.Action).toBe('USER_CREATED');
+    expect(auditRows[0]?.action).toBe('USER_CREATED');
   });
 
   it('CreateUser rolls back the user AND persists NO audit row when the audit write fails', async () => {
@@ -149,7 +149,7 @@ describe('User use-case audit atomicity (integration, real replica-set Mongo tra
 
     const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
     expect(persisted).toBeNull();
-    const auditRows = await db.collection('AuditLogs').find({}).toArray();
+    const auditRows = await db.collection('audit_logs').find({}).toArray();
     expect(auditRows).toHaveLength(0);
   });
 
@@ -163,7 +163,7 @@ describe('User use-case audit atomicity (integration, real replica-set Mongo tra
 
     const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
     expect(persisted?.status).toBe('ACTIVE');
-    const auditRows = await db.collection('AuditLogs').find({}).toArray();
+    const auditRows = await db.collection('audit_logs').find({}).toArray();
     expect(auditRows).toHaveLength(0);
   });
 
@@ -177,7 +177,7 @@ describe('User use-case audit atomicity (integration, real replica-set Mongo tra
 
     const persisted = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
     expect(persisted?.firstName).toBe('Alice');
-    const auditRows = await db.collection('AuditLogs').find({}).toArray();
+    const auditRows = await db.collection('audit_logs').find({}).toArray();
     expect(auditRows).toHaveLength(0);
   });
 });

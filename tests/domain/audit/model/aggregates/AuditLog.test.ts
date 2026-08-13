@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { AuditLog } from '../../../../../src/modules/audit/domain/model/aggregates/AuditLog.js';
 import { createAuditLogId } from '../../../../../src/modules/audit/domain/model/value-objects/AuditLogId.js';
 import { fromDate } from '../../../../../src/shared/time/Instant.js';
@@ -7,25 +8,25 @@ const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 describe('AuditLog.create', () => {
   it('creates an immutable audit record with all fields set', () => {
     const log = AuditLog.create({
-      id: createAuditLogId('audit-1'),
-      organizationId: 'org-1',
+      id: createAuditLogId(oid('audit-1')),
+      organizationId: oid('org-1'),
       actorType: 'USER',
-      actorId: 'user-1',
+      actorId: oid('user-1'),
       action: 'USER_CREATED',
       resource: 'users',
-      resourceId: 'user-2',
+      resourceId: oid('user-2'),
       detail: { field: 'value' },
       ipAddress: '127.0.0.1',
       createdAt: NOW,
     });
 
-    expect(log.id).toBe('audit-1');
-    expect(log.organizationId).toBe('org-1');
+    expect(log.id).toBe(oid('audit-1'));
+    expect(log.organizationId).toBe(oid('org-1'));
     expect(log.actorType).toBe('USER');
-    expect(log.actorId).toBe('user-1');
+    expect(log.actorId).toBe(oid('user-1'));
     expect(log.action).toBe('USER_CREATED');
     expect(log.resource).toBe('users');
-    expect(log.resourceId).toBe('user-2');
+    expect(log.resourceId).toBe(oid('user-2'));
     expect(log.detail).toEqual({ field: 'value' });
     expect(log.ipAddress).toBe('127.0.0.1');
     expect(log.createdAt).toBe(NOW);
@@ -33,10 +34,10 @@ describe('AuditLog.create', () => {
 
   it('accepts nullable organizationId, resourceId, and ipAddress (e.g. PLATFORM_ADMIN acting outside a tenant)', () => {
     const log = AuditLog.create({
-      id: createAuditLogId('audit-2'),
+      id: createAuditLogId(oid('audit-2')),
       organizationId: null,
       actorType: 'PLATFORM_ADMIN',
-      actorId: 'admin-1',
+      actorId: oid('admin-1'),
       action: 'ORGANIZATION_CREATED',
       resource: 'organizations',
       resourceId: null,
@@ -53,10 +54,10 @@ describe('AuditLog.create', () => {
 
   it('exposes no update/delete/transition methods — append-only aggregate (compile-time absence)', () => {
     const log = AuditLog.create({
-      id: createAuditLogId('audit-3'),
-      organizationId: 'org-1',
+      id: createAuditLogId(oid('audit-3')),
+      organizationId: oid('org-1'),
       actorType: 'USER',
-      actorId: 'user-1',
+      actorId: oid('user-1'),
       action: 'USER_CREATED',
       resource: 'users',
       resourceId: null,
@@ -73,19 +74,19 @@ describe('AuditLog.create', () => {
 describe('AuditLog.rehydrate', () => {
   it('reconstructs an audit log from stored props without re-validating', () => {
     const log = AuditLog.rehydrate({
-      id: createAuditLogId('audit-1'),
-      organizationId: 'org-1',
+      id: createAuditLogId(oid('audit-1')),
+      organizationId: oid('org-1'),
       actorType: 'USER',
-      actorId: 'user-1',
+      actorId: oid('user-1'),
       action: 'USER_CREATED',
       resource: 'users',
-      resourceId: 'user-2',
+      resourceId: oid('user-2'),
       detail: { field: 'value' },
       ipAddress: '127.0.0.1',
       createdAt: NOW,
     });
 
-    expect(log.id).toBe('audit-1');
+    expect(log.id).toBe(oid('audit-1'));
     expect(log.detail).toEqual({ field: 'value' });
   });
 });
@@ -93,13 +94,13 @@ describe('AuditLog.rehydrate', () => {
 describe('AuditLog.toProps', () => {
   it('round-trips through toProps', () => {
     const props = {
-      id: createAuditLogId('audit-1'),
-      organizationId: 'org-1',
+      id: createAuditLogId(oid('audit-1')),
+      organizationId: oid('org-1'),
       actorType: 'USER' as const,
-      actorId: 'user-1',
+      actorId: oid('user-1'),
       action: 'USER_CREATED',
       resource: 'users',
-      resourceId: 'user-2',
+      resourceId: oid('user-2'),
       detail: { field: 'value' },
       ipAddress: '127.0.0.1',
       createdAt: NOW,

@@ -17,7 +17,7 @@ jest.setTimeout(120_000);
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 
-function buildCase(id: string, organizationId = 'org-1'): Case {
+function buildCase(id: string, organizationId = oid('org-1')): Case {
   return Case.create({
     id: createCaseId(id),
     organizationId,
@@ -52,7 +52,7 @@ describe('MongoCaseRepository (integration, real replica-set Mongo)', () => {
   });
 
   afterEach(async () => {
-    await db.collection('Cases').deleteMany({});
+    await db.collection('cases').deleteMany({});
   });
 
   it('persists a case and retrieves it by id, tenant-scoped fields intact', async () => {
@@ -60,7 +60,7 @@ describe('MongoCaseRepository (integration, real replica-set Mongo)', () => {
 
     const found = await repository.findById(createCaseId(oid('case-1')));
 
-    expect(found?.organizationId).toBe('org-1');
+    expect(found?.organizationId).toBe(oid('org-1'));
     expect(found?.customerId).toBe('customer-1');
     expect(found?.status).toBe('OPEN');
     expect(found?.riskScore).toBe(42);
@@ -104,7 +104,7 @@ describe('MongoCaseRepository (integration, real replica-set Mongo)', () => {
     await repository.save(buildCase(oid('case-id-guard')));
 
     const rawDocument = await db
-      .collection<CaseDocument>('Cases')
+      .collection<CaseDocument>('cases')
       .findOne({ _id: new ObjectId(oid('case-id-guard')) });
 
     expect(rawDocument).not.toBeNull();

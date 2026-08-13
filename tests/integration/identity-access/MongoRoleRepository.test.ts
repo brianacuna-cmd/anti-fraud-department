@@ -5,7 +5,7 @@ import { ensureRoles } from '../../../src/shared/persistence/mongo/ensureRoles.j
 import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
 import { MongoRoleRepository } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/MongoRoleRepository.js';
 import { createRoleId } from '../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
-import { fromDate } from '../../../src/shared/time/Instant.js';
+import { fromDate, toDate } from '../../../src/shared/time/Instant.js';
 import type { RolDocument } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/documents/RolDocument.js';
 
 jest.setTimeout(120_000);
@@ -36,7 +36,7 @@ describe('MongoRoleRepository (integration, real replica-set Mongo)', () => {
   });
 
   afterEach(async () => {
-    await db.collection('Rol').deleteMany({});
+    await db.collection('rol').deleteMany({});
   });
 
   it('findById returns a known seeded role', async () => {
@@ -47,7 +47,7 @@ describe('MongoRoleRepository (integration, real replica-set Mongo)', () => {
   });
 
   it('findById returns null when the role is not in the catalog', async () => {
-    await db.collection('Rol').deleteMany({});
+    await db.collection('rol').deleteMany({});
 
     const found = await repository.findById(createRoleId('SUPERVISOR'));
 
@@ -63,13 +63,13 @@ describe('MongoRoleRepository (integration, real replica-set Mongo)', () => {
   });
 
   it('isAssignableToUser is false for an INACTIVE role', async () => {
-    await db.collection<RolDocument>('Rol').updateOne({ _id: 'AUDITOR' }, { $set: { Status: 'INACTIVE' } });
+    await db.collection<RolDocument>('rol').updateOne({ _id: 'AUDITOR' }, { $set: { status: 'INACTIVE' } });
 
     expect(await repository.isAssignableToUser(createRoleId('AUDITOR'))).toBe(false);
   });
 
   it('isAssignableToUser is false for a soft-deleted role', async () => {
-    await db.collection<RolDocument>('Rol').updateOne({ _id: 'AUDITOR' }, { $set: { DeletedAt: NOW } });
+    await db.collection<RolDocument>('rol').updateOne({ _id: 'AUDITOR' }, { $set: { deleted_at: toDate(NOW) } });
 
     expect(await repository.isAssignableToUser(createRoleId('AUDITOR'))).toBe(false);
   });

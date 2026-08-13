@@ -1,5 +1,6 @@
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
 import type { Db, MongoClient } from 'mongodb';
+import { oid } from '../../support/oid.js';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
 import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
@@ -19,7 +20,7 @@ function buildRule(
 ): CaseRoutingRule {
   return CaseRoutingRule.create({
     id: generateCaseRoutingRuleId(),
-    organizationId: overrides.organizationId ?? 'org-1',
+    organizationId: overrides.organizationId ?? oid('org-1'),
     name,
     conditions: { contentType: 'application/vnd.gorules.decision', nodes: [], edges: [] },
     conditionsVersion: 1,
@@ -29,7 +30,7 @@ function buildRule(
 }
 
 async function seed(db: Db, rule: CaseRoutingRule): Promise<void> {
-  await db.collection<CaseRoutingRuleDocument>('CaseRoutingRules').insertOne(toDocument(rule));
+  await db.collection<CaseRoutingRuleDocument>('case_routing_rules').insertOne(toDocument(rule));
 }
 
 describe('MongoCaseRoutingRuleRepository (integration, real replica-set Mongo)', () => {
@@ -56,16 +57,16 @@ describe('MongoCaseRoutingRuleRepository (integration, real replica-set Mongo)',
   });
 
   afterEach(async () => {
-    await db.collection('CaseRoutingRules').deleteMany({});
+    await db.collection('case_routing_rules').deleteMany({});
   });
 
   it('returns only ACTIVE rules for the given organization, ordered by CreatedAt ascending', async () => {
     await seed(db, buildRule('second', '2026-01-02T00:00:00.000Z'));
     await seed(db, buildRule('first', '2026-01-01T00:00:00.000Z'));
     await seed(db, buildRule('inactive', '2026-01-03T00:00:00.000Z', { status: 'INACTIVE' }));
-    await seed(db, buildRule('other-org', '2026-01-01T00:00:00.000Z', { organizationId: 'org-2' }));
+    await seed(db, buildRule('other-org', '2026-01-01T00:00:00.000Z', { organizationId: oid('org-2') }));
 
-    const rules = await repository.findActiveByOrganization('org-1');
+    const rules = await repository.findActiveByOrganization(oid('org-1'));
 
     expect(rules.map((r) => r.name)).toEqual(['first', 'second']);
   });
@@ -73,7 +74,7 @@ describe('MongoCaseRoutingRuleRepository (integration, real replica-set Mongo)',
   it('returns an empty array when the organization has no active rules', async () => {
     await seed(db, buildRule('inactive', '2026-01-01T00:00:00.000Z', { status: 'INACTIVE' }));
 
-    const rules = await repository.findActiveByOrganization('org-1');
+    const rules = await repository.findActiveByOrganization(oid('org-1'));
 
     expect(rules).toEqual([]);
   });

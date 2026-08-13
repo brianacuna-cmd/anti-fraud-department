@@ -20,7 +20,7 @@ const LATER = fromDate(new Date('2026-01-02T00:00:00.000Z'));
 
 function activeKey(keyId: string): AdminKey {
   return createAdminKey({
-    keyId: createAdminKeyId(oid(keyId)),
+    keyId: createAdminKeyId(keyId),
     publicKey: `pub-${keyId}`,
     status: 'ACTIVE',
     encryptedPrivateKey: `cipher-${keyId}`,
@@ -30,7 +30,7 @@ function activeKey(keyId: string): AdminKey {
 
 function deprecatedKey(keyId: string): AdminKey {
   return createAdminKey({
-    keyId: createAdminKeyId(oid(keyId)),
+    keyId: createAdminKeyId(keyId),
     publicKey: `pub-${keyId}`,
     status: 'DEPRECATED',
     encryptedPrivateKey: null,
@@ -43,9 +43,9 @@ function deprecatedKey(keyId: string): AdminKey {
 function buildAdminOrganization(
   id: string,
   email: string,
-  keys: readonly AdminKey[] = [activeKey('key-1')],
+  keys: readonly AdminKey[] = [activeKey(oid('key-1'))],
 ): AdminOrganization {
-  return AdminOrganization.create({ id: createAdminOrganizationId(oid(id)), email: createEmail(email), keys, now: NOW });
+  return AdminOrganization.create({ id: createAdminOrganizationId(id), email: createEmail(email), keys, now: NOW });
 }
 
 describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)', () => {
@@ -72,11 +72,11 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
   });
 
   afterEach(async () => {
-    await db.collection('adminOrganizations').deleteMany({});
+    await db.collection('admin_organizations').deleteMany({});
   });
 
   it('persists an admin organization and retrieves it by id', async () => {
-    await repository.save(buildAdminOrganization('admin-org-1', 'root@platform.test'));
+    await repository.save(buildAdminOrganization(oid('admin-org-1'), 'root@platform.test'));
 
     const found = await repository.findById(createAdminOrganizationId(oid('admin-org-1')));
 
@@ -92,9 +92,9 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
   });
 
   it('round-trips a multi-key embedded array, preserving every field including nulls', async () => {
-    const admin = buildAdminOrganization('admin-org-multi', 'multi@platform.test', [
-      deprecatedKey('key-0'),
-      activeKey('key-1'),
+    const admin = buildAdminOrganization(oid('admin-org-multi'), 'multi@platform.test', [
+      deprecatedKey(oid('key-0')),
+      activeKey(oid('key-1')),
     ]);
 
     await repository.save(admin);
@@ -110,12 +110,12 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
 
     const active = found?.findKey(createAdminKeyId(oid('key-1')));
     expect(active?.status).toBe('ACTIVE');
-    expect(active?.encryptedPrivateKey).toBe('cipher-key-1');
+    expect(active?.encryptedPrivateKey).toBe(`cipher-${oid('key-1')}`);
     expect(active?.privateKeyDownloadedAt).toBeNull();
   });
 
   it('finds an admin organization by email', async () => {
-    await repository.save(buildAdminOrganization('admin-org-1', 'root@platform.test'));
+    await repository.save(buildAdminOrganization(oid('admin-org-1'), 'root@platform.test'));
 
     const found = await repository.findByEmail(createEmail('root@platform.test'));
 
@@ -131,23 +131,23 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
   it('countAll reflects inserted documents', async () => {
     expect(await repository.countAll()).toBe(0);
 
-    await repository.save(buildAdminOrganization('admin-org-1', 'root1@platform.test'));
+    await repository.save(buildAdminOrganization(oid('admin-org-1'), 'root1@platform.test'));
     expect(await repository.countAll()).toBe(1);
 
-    await repository.save(buildAdminOrganization('admin-org-2', 'root2@platform.test'));
+    await repository.save(buildAdminOrganization(oid('admin-org-2'), 'root2@platform.test'));
     expect(await repository.countAll()).toBe(2);
   });
 
   describe('claimPrivateKey (design D32a — atomic one-time-download CAS)', () => {
     it('claims the ciphertext once and nulls it out for the next call', async () => {
-      await repository.save(buildAdminOrganization('admin-claim-1', 'claim1@platform.test'));
+      await repository.save(buildAdminOrganization(oid('admin-claim-1'), 'claim1@platform.test'));
 
       const first = await repository.claimPrivateKey(
         createAdminOrganizationId(oid('admin-claim-1')),
         createAdminKeyId(oid('key-1')),
         LATER,
       );
-      expect(first).toBe('cipher-key-1');
+      expect(first).toBe(`cipher-${oid('key-1')}`);
 
       const second = await repository.claimPrivateKey(
         createAdminOrganizationId(oid('admin-claim-1')),
@@ -172,7 +172,7 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
     });
 
     it('returns null for an unknown keyId on a real admin organization', async () => {
-      await repository.save(buildAdminOrganization('admin-claim-2', 'claim2@platform.test'));
+      await repository.save(buildAdminOrganization(oid('admin-claim-2'), 'claim2@platform.test'));
 
       const result = await repository.claimPrivateKey(
         createAdminOrganizationId(oid('admin-claim-2')),
@@ -183,7 +183,7 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
     });
 
     it('two concurrent claims on the same key: exactly one winner gets the ciphertext, the other gets null', async () => {
-      await repository.save(buildAdminOrganization('admin-claim-race', 'race@platform.test'));
+      await repository.save(buildAdminOrganization(oid('admin-claim-race'), 'race@platform.test'));
 
       const [resultA, resultB] = await Promise.all([
         repository.claimPrivateKey(
@@ -203,7 +203,7 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
       const losers = results.filter((r) => r === null);
       expect(winners).toHaveLength(1);
       expect(losers).toHaveLength(1);
-      expect(winners[0]).toBe('cipher-key-1');
+      expect(winners[0]).toBe(`cipher-${oid('key-1')}`);
 
       const found = await repository.findById(createAdminOrganizationId(oid('admin-claim-race')));
       expect(found?.findKey(createAdminKeyId(oid('key-1')))?.encryptedPrivateKey).toBeNull();
@@ -219,10 +219,10 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
    * mapper) so it fails if a later phase ever renames fields to PascalCase.
    */
   it('round-trips the raw document with camelCase fields (design D39 regression guard)', async () => {
-    await repository.save(buildAdminOrganization('admin-org-id-guard', 'guard@platform.test'));
+    await repository.save(buildAdminOrganization(oid('admin-org-id-guard'), 'guard@platform.test'));
 
     const rawDocument = await db
-      .collection<AdminOrganizationDocument>('adminOrganizations')
+      .collection<AdminOrganizationDocument>('admin_organizations')
       .findOne({ _id: new ObjectId(oid('admin-org-id-guard')) });
 
     expect(rawDocument).not.toBeNull();
@@ -230,7 +230,7 @@ describe('MongoAdminOrganizationRepository (integration, real replica-set Mongo)
     expect(rawDocument?._id.toString()).toBe(oid('admin-org-id-guard'));
     expect(rawDocument).not.toHaveProperty('_Id');
     expect(rawDocument?.email).toBe('guard@platform.test');
-    expect(rawDocument?.keys[0]?.keyId.toString()).toBe(oid('key-1'));
+    expect(rawDocument?.keys[0]?.key_id.toString()).toBe(oid('key-1'));
     expect(rawDocument).not.toHaveProperty('Keys');
   });
 });

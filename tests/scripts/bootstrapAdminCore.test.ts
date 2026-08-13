@@ -1,3 +1,4 @@
+import { oid } from '../support/oid.js';
 import { runBootstrapAdmin } from '../../scripts/bootstrapAdminCore.js';
 import { InMemoryAdminOrganizationRepository } from '../helpers/identity-access/InMemoryAdminOrganizationRepository.js';
 import { InMemoryAuditRecorder } from '../helpers/identity-access/InMemoryAuditRecorder.js';
@@ -26,11 +27,11 @@ function buildDeps() {
     clock,
     generateAdminOrganizationId: () => {
       nextOrgIdSeq += 1;
-      return createAdminOrganizationId(`admin-org-${nextOrgIdSeq}`);
+      return createAdminOrganizationId(oid(`admin-org-${nextOrgIdSeq}`));
     },
     generateAdminKeyId: () => {
       nextKeyIdSeq += 1;
-      return createAdminKeyId(`admin-key-${nextKeyIdSeq}`);
+      return createAdminKeyId(oid(`admin-key-${nextKeyIdSeq}`));
     },
   };
   return { deps, admins, cipher, auditRecorder };

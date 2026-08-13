@@ -3,28 +3,25 @@ import {
   generateOrganizationId,
 } from '../../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 
+const HEX = 'a'.repeat(24);
+
 describe('createOrganizationId', () => {
-  it('accepts a non-empty string and returns it unchanged', () => {
-    const id = createOrganizationId('org-123');
-
-    expect(id).toBe('org-123');
+  it('accepts a 24-character hexadecimal ObjectId', () => {
+    expect(createOrganizationId(HEX)).toBe(HEX);
   });
 
-  it('rejects an empty string as an invariant violation', () => {
-    expect(() => createOrganizationId('')).toThrow(/non-empty/);
-  });
-
-  it('rejects a whitespace-only string as an invariant violation', () => {
-    expect(() => createOrganizationId('   ')).toThrow(/non-empty/);
+  it('rejects a value that is not a 24-character hex ObjectId', () => {
+    expect(() => createOrganizationId('')).toThrow(/24-character hexadecimal ObjectId/);
+    expect(() => createOrganizationId('not-an-objectid')).toThrow(/24-character hexadecimal ObjectId/);
   });
 });
 
 describe('generateOrganizationId', () => {
-  it('generates a fresh, non-empty id on every call', () => {
+  it('generates a unique 24-char hex id on every call', () => {
     const first = generateOrganizationId();
     const second = generateOrganizationId();
 
-    expect(first.length).toBeGreaterThan(0);
+    expect(first).toMatch(/^[a-f0-9]{24}$/);
     expect(first).not.toBe(second);
   });
 });

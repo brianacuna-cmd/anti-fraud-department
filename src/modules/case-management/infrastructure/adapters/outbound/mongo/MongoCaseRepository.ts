@@ -11,7 +11,7 @@ function toSession(tx: Transaction | undefined): ClientSession | undefined {
   return tx as unknown as ClientSession | undefined;
 }
 
-const COLLECTION_NAME = 'Cases';
+const COLLECTION_NAME = 'cases';
 
 /** Mongo adapter for `CaseRepository` (Slice 1 — Foundation: save/findById round-trip only). */
 export class MongoCaseRepository implements CaseRepository {

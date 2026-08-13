@@ -1,3 +1,4 @@
+import { oid } from '../../support/oid.js';
 import request from 'supertest';
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { createApp } from '../../../src/shared/http/createApp.js';
@@ -26,8 +27,8 @@ function buildApp(overrides: {
     overrides.setNotificationPreference ??
     ((async () =>
       NotificationPreference.create({
-        organizationId: createOrganizationId('org-1'),
-        userId: createUserId('user-1'),
+        organizationId: createOrganizationId(oid('org-1')),
+        userId: createUserId(oid('user-1')),
         alertType: 'CASO_ASIGNADO',
         channel: 'EMAIL',
         enabled: true,
@@ -37,7 +38,7 @@ function buildApp(overrides: {
   const router = notificationPreferenceRouter({ getNotificationPreferences, setNotificationPreference });
 
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {
-    attachAuthContext(req, createAuthContext({ userId: 'user-1', organizationId: 'org-1' }));
+    attachAuthContext(req, createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1') }));
     next();
   }
 
@@ -74,8 +75,8 @@ describe('notificationPreferenceRouter', () => {
       setNotificationPreference: (async (input: unknown) => {
         calls.push(input);
         return NotificationPreference.create({
-          organizationId: createOrganizationId('org-1'),
-          userId: createUserId('user-1'),
+          organizationId: createOrganizationId(oid('org-1')),
+          userId: createUserId(oid('user-1')),
           alertType: 'CASO_ASIGNADO',
           channel: 'EMAIL',
           enabled: false,
@@ -135,8 +136,8 @@ describe('notificationPreferenceRouter', () => {
       >,
       setNotificationPreference: (async () =>
         NotificationPreference.create({
-          organizationId: createOrganizationId('org-1'),
-          userId: createUserId('user-1'),
+          organizationId: createOrganizationId(oid('org-1')),
+          userId: createUserId(oid('user-1')),
           alertType: 'CASO_ASIGNADO',
           channel: 'EMAIL',
           enabled: true,

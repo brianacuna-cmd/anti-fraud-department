@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { Case } from '../../../../../src/modules/case-management/domain/model/aggregates/Case.js';
 import { createCaseId } from '../../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { createRiskScore } from '../../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
@@ -10,8 +11,8 @@ const LATER = fromDate(new Date('2026-01-02T00:00:00.000Z'));
 
 function buildCase(): Case {
   return Case.create({
-    id: createCaseId('case-1'),
-    organizationId: 'org-1',
+    id: createCaseId(oid('case-1')),
+    organizationId: oid('org-1'),
     customerId: 'customer-1',
     riskScore: createRiskScore(50),
     priority: 'MEDIUM',
@@ -35,7 +36,7 @@ describe('Case.create', () => {
   it('rejects an empty organizationId', () => {
     expect(() =>
       Case.create({
-        id: createCaseId('case-1'),
+        id: createCaseId(oid('case-1')),
         organizationId: '   ',
         customerId: 'customer-1',
         riskScore: createRiskScore(50),
@@ -49,8 +50,8 @@ describe('Case.create', () => {
 describe('Case.rehydrate', () => {
   it('reconstructs a case from stored props without re-validating business rules', () => {
     const kase = Case.rehydrate({
-      id: createCaseId('case-1'),
-      organizationId: 'org-1',
+      id: createCaseId(oid('case-1')),
+      organizationId: oid('org-1'),
       customerId: 'customer-1',
       customerEmail: null,
       bridgeUserId: null,
@@ -61,7 +62,7 @@ describe('Case.rehydrate', () => {
       riskScore: createRiskScore(90),
       status: 'RESOLVED',
       priority: 'HIGH',
-      assignedTo: createAssignedTo('USER', 'user-1'),
+      assignedTo: createAssignedTo('USER', oid('user-1')),
       dueDate: LATER,
       tags: ['fraud'],
       createdAt: NOW,
@@ -70,7 +71,7 @@ describe('Case.rehydrate', () => {
     });
 
     expect(kase.status).toBe('RESOLVED');
-    expect(kase.assignedTo).toEqual({ type: 'USER', id: 'user-1' });
+    expect(kase.assignedTo).toEqual({ type: 'USER', id: oid('user-1') });
     expect(kase.dueDate).toBe(LATER);
   });
 });
@@ -135,7 +136,7 @@ describe('Case#reassign', () => {
   });
 
   it('clears assignedTo when given null', () => {
-    const kase = buildCase().reassign(createAssignedTo('USER', 'user-1'), NOW);
+    const kase = buildCase().reassign(createAssignedTo('USER', oid('user-1')), NOW);
 
     const cleared = kase.reassign(null, LATER);
 

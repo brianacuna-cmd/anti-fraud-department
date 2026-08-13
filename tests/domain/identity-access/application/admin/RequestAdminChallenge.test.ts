@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { createRequestAdminChallengeUseCase } from '../../../../../src/modules/identity-access/application/admin/RequestAdminChallenge.js';
 import { AdminOrganization } from '../../../../../src/modules/identity-access/domain/model/aggregates/AdminOrganization.js';
 import { createAdminOrganizationId } from '../../../../../src/modules/identity-access/domain/model/value-objects/AdminOrganizationId.js';
@@ -27,11 +28,11 @@ function buildHarness() {
 
 async function seedAdminWithActiveKey(admins: InMemoryAdminOrganizationRepository) {
   const admin = AdminOrganization.create({
-    id: createAdminOrganizationId('admin-1'),
+    id: createAdminOrganizationId(oid('admin-1')),
     email: createEmail('root@platform.internal'),
     keys: [
       createAdminKey({
-        keyId: createAdminKeyId('key-1'),
+        keyId: createAdminKeyId(oid('key-1')),
         publicKey: '-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----\n',
         status: 'ACTIVE',
         encryptedPrivateKey: 'ciphertext',
@@ -76,7 +77,7 @@ describe('createRequestAdminChallengeUseCase', () => {
   it('rejects an unknown adminOrganizationId with an opaque adminChallengeInvalid (no enumeration oracle)', async () => {
     const { requestAdminChallenge } = buildHarness();
 
-    await expect(requestAdminChallenge({ adminOrganizationId: 'never-provisioned' })).rejects.toMatchObject({
+    await expect(requestAdminChallenge({ adminOrganizationId: oid('never-provisioned') })).rejects.toMatchObject({
       code: 'ADMIN_CHALLENGE_INVALID',
     });
   });
@@ -84,11 +85,11 @@ describe('createRequestAdminChallengeUseCase', () => {
   it('rejects an admin with no ACTIVE key with the SAME opaque error as unknown id', async () => {
     const { admins, requestAdminChallenge } = buildHarness();
     const admin = AdminOrganization.create({
-      id: createAdminOrganizationId('admin-2'),
+      id: createAdminOrganizationId(oid('admin-2')),
       email: createEmail('deprecated@platform.internal'),
       keys: [
         createAdminKey({
-          keyId: createAdminKeyId('key-2'),
+          keyId: createAdminKeyId(oid('key-2')),
           publicKey: '-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----\n',
           status: 'REVOKED',
           encryptedPrivateKey: null,

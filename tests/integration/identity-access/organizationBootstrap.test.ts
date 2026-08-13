@@ -1,3 +1,4 @@
+import { oid } from '../../support/oid.js';
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
 import type { Db, MongoClient } from 'mongodb';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
@@ -20,7 +21,7 @@ import { IdentityAccessError } from '../../../src/modules/identity-access/domain
 
 jest.setTimeout(120_000);
 
-const PLATFORM_ADMIN = createAuthContext({ userId: 'u1', organizationId: 'o0', isPlatformAdmin: true });
+const PLATFORM_ADMIN = createAuthContext({ userId: oid('u1'), organizationId: oid('o0'), isPlatformAdmin: true });
 
 describe('CreateOrganizationWithAdmin bootstrap (integration, real replica-set Mongo transaction)', () => {
   let replicaSet: MongoMemoryReplSet;
@@ -48,8 +49,8 @@ describe('CreateOrganizationWithAdmin bootstrap (integration, real replica-set M
   });
 
   afterEach(async () => {
-    await db.collection('Organizations').deleteMany({});
-    await db.collection('Users').deleteMany({});
+    await db.collection('organizations').deleteMany({});
+    await db.collection('users').deleteMany({});
   });
 
   function buildUseCase(passwordHasher: PasswordHasher = new BcryptPasswordHasher()) {

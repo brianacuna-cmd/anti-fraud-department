@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { createSessionIssuer } from '../../../../../src/modules/identity-access/application/auth/SessionIssuer.js';
 import { InMemorySessionRepository } from '../../../../helpers/identity-access/InMemorySessionRepository.js';
 import { InMemoryUnitOfWork } from '../../../../helpers/identity-access/InMemoryUnitOfWork.js';
@@ -9,7 +10,7 @@ import { createFamilyId } from '../../../../../src/modules/identity-access/domai
 import { createSessionId } from '../../../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const ORG_ID = createOrganizationId('org-1');
+const ORG_ID = createOrganizationId(oid('org-1'));
 const TOKEN_SERVICE = new AesGcmSessionTokenService(new AesGcmSecretCipher('test-secret', 1));
 
 function buildIssuer(sessions: InMemorySessionRepository) {
@@ -28,7 +29,7 @@ describe('createSessionIssuer', () => {
     const issueSessionFor = buildIssuer(sessions);
 
     const minted = await unitOfWork.withTransaction((tx) =>
-      issueSessionFor({ userId: 'user-1', organizationId: ORG_ID, actorType: 'USER', now: NOW, tx }),
+      issueSessionFor({ userId: oid('user-1'), organizationId: ORG_ID, actorType: 'USER', now: NOW, tx }),
     );
 
     // USER sessions still mint a REFRESH token (design D38 only skips it for
@@ -46,7 +47,7 @@ describe('createSessionIssuer', () => {
     const saved = await sessions.findByTokenHash(TOKEN_SERVICE.fingerprint(minted.accessToken));
     expect(saved).not.toBeNull();
     expect(saved?.refreshTokenHash).toBe(TOKEN_SERVICE.fingerprint(refreshToken));
-    expect(saved?.userId).toBe('user-1');
+    expect(saved?.userId).toBe(oid('user-1'));
     expect(saved?.organizationId).toBe(ORG_ID);
     expect(saved?.actorType).toBe('USER');
     expect(saved?.expiresAt).toBe('2026-01-01T00:15:00.000Z');
@@ -60,7 +61,7 @@ describe('createSessionIssuer', () => {
     const issueSessionFor = buildIssuer(sessions);
 
     const minted = await unitOfWork.withTransaction((tx) =>
-      issueSessionFor({ userId: 'admin-1', organizationId: null, actorType: 'PLATFORM_ADMIN', now: NOW, tx }),
+      issueSessionFor({ userId: oid('admin-1'), organizationId: null, actorType: 'PLATFORM_ADMIN', now: NOW, tx }),
     );
 
     expect(minted.refreshToken).toBeNull();
@@ -81,10 +82,10 @@ describe('createSessionIssuer', () => {
     const issueSessionFor = buildIssuer(sessions);
 
     const first = await unitOfWork.withTransaction((tx) =>
-      issueSessionFor({ userId: 'user-1', organizationId: ORG_ID, actorType: 'USER', now: NOW, tx }),
+      issueSessionFor({ userId: oid('user-1'), organizationId: ORG_ID, actorType: 'USER', now: NOW, tx }),
     );
     const second = await unitOfWork.withTransaction((tx) =>
-      issueSessionFor({ userId: 'user-1', organizationId: ORG_ID, actorType: 'USER', now: NOW, tx }),
+      issueSessionFor({ userId: oid('user-1'), organizationId: ORG_ID, actorType: 'USER', now: NOW, tx }),
     );
 
     expect(first.accessToken).not.toBe(second.accessToken);
@@ -101,7 +102,7 @@ describe('createSessionIssuer', () => {
       const issueSessionFor = buildIssuer(sessions);
 
       const minted = await unitOfWork.withTransaction((tx) =>
-        issueSessionFor({ userId: 'user-1', organizationId: ORG_ID, actorType: 'USER', now: NOW, tx }),
+        issueSessionFor({ userId: oid('user-1'), organizationId: ORG_ID, actorType: 'USER', now: NOW, tx }),
       );
 
       const saved = await sessions.findByTokenHash(TOKEN_SERVICE.fingerprint(minted.accessToken));
@@ -113,13 +114,13 @@ describe('createSessionIssuer', () => {
       const sessions = new InMemorySessionRepository();
       const unitOfWork = new InMemoryUnitOfWork();
       const issueSessionFor = buildIssuer(sessions);
-      const existingFamilyId = createFamilyId('family-existing');
+      const existingFamilyId = createFamilyId(oid('family-existing'));
       const existingFamilyExpiresAt = fromDate(new Date('2026-01-10T00:00:00.000Z'));
-      const oldSessionId = createSessionId('old-session-1');
+      const oldSessionId = createSessionId(oid('old-session-1'));
 
       const minted = await unitOfWork.withTransaction((tx) =>
         issueSessionFor({
-          userId: 'user-1',
+          userId: oid('user-1'),
           organizationId: ORG_ID,
           actorType: 'USER',
           now: NOW,

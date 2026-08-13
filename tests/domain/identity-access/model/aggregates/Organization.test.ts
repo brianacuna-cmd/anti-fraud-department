@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { Organization } from '../../../../../src/modules/identity-access/domain/model/aggregates/Organization.js';
 import { createOrganizationId } from '../../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createSlug } from '../../../../../src/modules/identity-access/domain/model/value-objects/Slug.js';
@@ -12,7 +13,7 @@ const LATER = fromDate(new Date('2026-01-02T00:00:00.000Z'));
 
 function buildOrganization(): Organization {
   return Organization.create({
-    id: createOrganizationId('org-1'),
+    id: createOrganizationId(oid('org-1')),
     name: 'Acme Corp',
     slug: createSlug('acme-corp'),
     now: NOW,
@@ -41,7 +42,7 @@ describe('Organization.create', () => {
   it('rejects an empty name as an invariant violation', () => {
     expect(() =>
       Organization.create({
-        id: createOrganizationId('org-1'),
+        id: createOrganizationId(oid('org-1')),
         name: '   ',
         slug: createSlug('acme-corp'),
         now: NOW,
@@ -52,7 +53,7 @@ describe('Organization.create', () => {
   it('rejects a blank domain as an invariant violation', () => {
     expect(() =>
       Organization.create({
-        id: createOrganizationId('org-1'),
+        id: createOrganizationId(oid('org-1')),
         name: 'Acme Corp',
         slug: createSlug('acme-corp'),
         domain: '   ',
@@ -81,7 +82,7 @@ describe('Organization.create', () => {
 
   it('accepts an explicit email/credential when provisioned (design D36 self-credentials, pulled forward)', () => {
     const organization = Organization.create({
-      id: createOrganizationId('org-1'),
+      id: createOrganizationId(oid('org-1')),
       name: 'Acme Corp',
       slug: createSlug('acme-corp'),
       email: createEmail('org@acme.example.com'),
@@ -97,7 +98,7 @@ describe('Organization.create', () => {
 describe('Organization.rehydrate', () => {
   it('reconstructs an organization from stored props without re-validating business rules', () => {
     const organization = Organization.rehydrate({
-      id: createOrganizationId('org-1'),
+      id: createOrganizationId(oid('org-1')),
       name: 'Acme Corp',
       slug: createSlug('acme-corp'),
       domain: 'acme.com',
@@ -120,7 +121,7 @@ describe('Organization.rehydrate', () => {
 
   it('reconstructs a CANCELLED organization with its stored deletedAt', () => {
     const organization = Organization.rehydrate({
-      id: createOrganizationId('org-1'),
+      id: createOrganizationId(oid('org-1')),
       name: 'Acme Corp',
       slug: createSlug('acme-corp'),
       domain: null,

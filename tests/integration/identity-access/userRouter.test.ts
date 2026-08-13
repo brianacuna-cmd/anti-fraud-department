@@ -1,3 +1,4 @@
+import { oid } from '../../support/oid.js';
 import { Router, type Express, type Request, type Response, type NextFunction } from 'express';
 import request from 'supertest';
 import { createApp } from '../../../src/shared/http/createApp.js';
@@ -41,9 +42,9 @@ import { fromDate } from '../../../src/shared/time/Instant.js';
 // delete) — the other routes stay on `requireTenantContext` alone, so an
 // ORGANIZATION actor works for them unchanged (design "7. `requireOrganizationActor`
 // guard" — gates ONLY CreateUser and ChangeUserRole).
-const ORG_1_ORGANIZATION = createAuthContext({ userId: 'u1', organizationId: 'org-1', actorType: 'ORGANIZATION' });
-const ORG_2_ORGANIZATION = createAuthContext({ userId: 'u2', organizationId: 'org-2', actorType: 'ORGANIZATION' });
-const PLATFORM_ADMIN_ORG_1 = createAuthContext({ userId: 'u3', organizationId: 'org-1', isPlatformAdmin: true });
+const ORG_1_ORGANIZATION = createAuthContext({ userId: oid('u1'), organizationId: oid('org-1'), actorType: 'ORGANIZATION' });
+const ORG_2_ORGANIZATION = createAuthContext({ userId: oid('u2'), organizationId: oid('org-2'), actorType: 'ORGANIZATION' });
+const PLATFORM_ADMIN_ORG_1 = createAuthContext({ userId: oid('u3'), organizationId: oid('org-1'), isPlatformAdmin: true });
 
 const SECRET_CIPHER_FIXTURE = new AesGcmSecretCipher('test-secret', 1);
 const TOKEN_SERVICE_FIXTURE = new AesGcmSessionTokenService(SECRET_CIPHER_FIXTURE);
@@ -243,7 +244,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
     expect(response.body).toMatchObject({
       email: 'alice@example.com',
       firstName: 'Alice',
-      organizationId: 'org-1',
+      organizationId: oid('org-1'),
       status: 'ACTIVE',
       roleId: 'ANALYST',
     });
@@ -251,7 +252,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
   });
 
   it('POST /users rejects a USER-tier actor with 403 FORBIDDEN_CROSS_TENANT (user-roles PR-1b org-only gate)', async () => {
-    const actingUser = createAuthContext({ userId: 'u9', organizationId: 'org-1', isPlatformAdmin: false });
+    const actingUser = createAuthContext({ userId: oid('u9'), organizationId: oid('org-1'), isPlatformAdmin: false });
     const { app } = buildApp(() => actingUser);
 
     const response = await request(app)
@@ -384,7 +385,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
       .post('/api/v1/users')
       .send({ email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
-    const actingUser = createAuthContext({ userId: 'u9', organizationId: 'org-1', isPlatformAdmin: false });
+    const actingUser = createAuthContext({ userId: oid('u9'), organizationId: oid('org-1'), isPlatformAdmin: false });
     const { app } = buildApp(() => actingUser);
 
     const response = await request(app)
@@ -399,7 +400,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
     const { app } = buildApp(() => ORG_1_ORGANIZATION);
 
     const response = await request(app)
-      .post('/api/v1/users/unknown-id/role')
+      .post(`/api/v1/users/${oid('unknown-id')}/role`)
       .send({ role: 'SUPERVISOR' });
 
     expect(response.status).toBe(404);
@@ -461,7 +462,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
     expect(sameOrgResponse.status).toBe(200);
 
     const { app: platformAdminOrg2App } = buildApp(
-      () => createAuthContext({ userId: 'u4', organizationId: 'org-2', isPlatformAdmin: true }),
+      () => createAuthContext({ userId: oid('u4'), organizationId: oid('org-2'), isPlatformAdmin: true }),
       sharedFactory,
     );
     const crossOrgResponse = await request(platformAdminOrg2App).get(`/api/v1/users/${created.body.id}`);
@@ -483,7 +484,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
         .post('/api/v1/users')
         .send({ email: 'mfa-user@example.com', password: 'Passw0rd1', firstName: 'Mfa', lastName: 'User', role: 'ANALYST' });
       const userId = created.body.id as string;
-      return () => createAuthContext({ userId, organizationId: 'org-1', isPlatformAdmin: false });
+      return () => createAuthContext({ userId, organizationId: oid('org-1'), isPlatformAdmin: false });
     }
 
     it('POST /users/me/mfa/setup returns a QR data URL and otpauth URI, storing an encrypted (disabled) secret', async () => {
@@ -546,7 +547,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
         .post('/api/v1/users')
         .send({ email: 'pw-user@example.com', password, firstName: 'Pw', lastName: 'User', role: 'ANALYST' });
       const userId = created.body.id as string;
-      return () => createAuthContext({ userId, organizationId: 'org-1', isPlatformAdmin: false });
+      return () => createAuthContext({ userId, organizationId: oid('org-1'), isPlatformAdmin: false });
     }
 
     it('POST /users/me/password replaces the credential and returns 204 on correct current password', async () => {
@@ -599,7 +600,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
         keyVersion: 1,
         jti,
         userId,
-        organizationId: 'org-1',
+        organizationId: oid('org-1'),
         actorType: 'USER',
         expiresAt,
       });
@@ -614,7 +615,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
       await mfaChallenges.append({
         jti,
         userId,
-        organizationId: 'org-1',
+        organizationId: oid('org-1'),
         actorType: 'USER',
         tokenType: 'mfa_enrollment',
         expiresAt,
@@ -727,7 +728,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
       const mfaChallenges = new InMemoryMfaChallengeStore();
       const sessions = new InMemorySessionRepository();
       const { app } = buildAppWithRealResolver(sharedFactory, mfaChallenges, sessions);
-      const expiredToken = issueEnrollmentToken('user-x', 'jti-expired', '2020-01-01T00:00:00.000Z');
+      const expiredToken = issueEnrollmentToken(oid('user-x'), 'jti-expired', '2020-01-01T00:00:00.000Z');
 
       const response = await request(app)
         .post('/api/v1/users/me/mfa/setup')

@@ -1,14 +1,15 @@
+import { oid } from '../../../support/oid.js';
 import { InMemoryAuditRecorder } from '../../../helpers/identity-access/InMemoryAuditRecorder.js';
 import type { AuditEvent } from '../../../../src/modules/identity-access/domain/ports/AuditRecorder.js';
 import type { Transaction } from '../../../../src/modules/identity-access/domain/ports/UnitOfWork.js';
 
 const EVENT: AuditEvent = {
-  organizationId: 'org-1',
+  organizationId: oid('org-1'),
   actorType: 'USER',
-  actorId: 'user-1',
+  actorId: oid('user-1'),
   action: 'USER_CREATED',
   resource: 'users',
-  resourceId: 'user-2',
+  resourceId: oid('user-2'),
   detail: { field: 'value' },
   ipAddress: '127.0.0.1',
 };

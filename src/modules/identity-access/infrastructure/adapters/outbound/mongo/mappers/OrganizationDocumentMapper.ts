@@ -1,5 +1,5 @@
 import { ObjectId } from 'mongodb';
-import { brand } from '../../../../../../../shared/kernel/Brand.js';
+import { fromDate, toDate } from '../../../../../../../shared/time/Instant.js';
 import { Organization } from '../../../../../domain/model/aggregates/Organization.js';
 import { createOrganizationId } from '../../../../../domain/model/value-objects/OrganizationId.js';
 import { createSlug } from '../../../../../domain/model/value-objects/Slug.js';
@@ -8,45 +8,42 @@ import { createEmail } from '../../../../../domain/model/value-objects/Email.js'
 import { createPasswordCredential } from '../../../../../domain/model/value-objects/PasswordCredential.js';
 import type { OrganizationDocument } from '../documents/OrganizationDocument.js';
 
-/**
- * camelCase (domain) -> PascalCase (Mongo) translation seam (design A2).
- * `_id` is the sole documented exception and stays lowercase (design A1).
- */
+/** camelCase (domain) -> snake_case (Mongo). `_id` stays lowercase. */
 export function toDocument(organization: Organization): OrganizationDocument {
   return {
     _id: new ObjectId(organization.id),
-    Name: organization.name,
-    Slug: organization.slug,
-    Domain: organization.domain,
-    Status: organization.status,
-    Configuration: organization.configuration,
-    Email: organization.email,
-    PasswordHash: organization.credential === null ? null : organization.credential.passwordHash,
-    LoginAttempts: organization.lockout.loginAttempts,
-    BlockedUntil: organization.lockout.blockedUntil,
-    CreatedAt: organization.createdAt,
-    UpdatedAt: organization.updatedAt,
-    DeletedAt: organization.deletedAt,
+    name: organization.name,
+    slug: organization.slug,
+    domain: organization.domain,
+    status: organization.status,
+    configuration: organization.configuration,
+    email: organization.email,
+    password_hash: organization.credential === null ? null : organization.credential.passwordHash,
+    login_attempts: organization.lockout.loginAttempts,
+    blocked_until: organization.lockout.blockedUntil === null ? null : toDate(organization.lockout.blockedUntil),
+    created_at: toDate(organization.createdAt),
+    updated_at: toDate(organization.updatedAt),
+    deleted_at: organization.deletedAt === null ? null : toDate(organization.deletedAt),
   };
 }
 
-/** PascalCase (Mongo) -> camelCase (domain) translation seam (design A2). */
+/** snake_case (Mongo) -> camelCase (domain). */
 export function toDomain(document: OrganizationDocument): Organization {
   return Organization.rehydrate({
     id: createOrganizationId(document._id.toString()),
-    name: document.Name,
-    slug: createSlug(document.Slug),
-    domain: document.Domain,
-    status: createOrganizationStatus(document.Status),
-    configuration: document.Configuration,
-    email: document.Email === null ? null : createEmail(document.Email),
-    credential: document.PasswordHash === null ? null : createPasswordCredential(document.PasswordHash),
+    name: document.name,
+    slug: createSlug(document.slug),
+    domain: document.domain,
+    status: createOrganizationStatus(document.status),
+    configuration: document.configuration,
+    email: document.email === null ? null : createEmail(document.email),
+    credential: document.password_hash === null ? null : createPasswordCredential(document.password_hash),
     lockout: {
-      loginAttempts: document.LoginAttempts,
-      blockedUntil: document.BlockedUntil === null ? null : brand<string, 'Instant'>(document.BlockedUntil),
+      loginAttempts: document.login_attempts,
+      blockedUntil: document.blocked_until === null ? null : fromDate(document.blocked_until),
     },
-    createdAt: brand<string, 'Instant'>(document.CreatedAt),
-    updatedAt: brand<string, 'Instant'>(document.UpdatedAt),
-    deletedAt: document.DeletedAt === null ? null : brand<string, 'Instant'>(document.DeletedAt),
+    createdAt: fromDate(document.created_at),
+    updatedAt: fromDate(document.updated_at),
+    deletedAt: document.deleted_at === null ? null : fromDate(document.deleted_at),
   });
 }

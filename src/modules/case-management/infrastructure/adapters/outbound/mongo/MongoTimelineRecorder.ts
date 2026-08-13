@@ -10,7 +10,7 @@ function toSession(tx: Transaction | undefined): ClientSession | undefined {
   return tx as unknown as ClientSession | undefined;
 }
 
-const COLLECTION_NAME = 'CaseTimeline';
+const COLLECTION_NAME = 'case_timeline';
 
 /**
  * Mongo adapter for `TimelineRecorder` (design: "CaseTimeline is append-only").

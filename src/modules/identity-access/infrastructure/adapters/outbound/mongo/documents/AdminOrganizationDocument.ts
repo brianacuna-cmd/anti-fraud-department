@@ -1,32 +1,24 @@
 /**
- * Mongo document shape for `adminOrganizations` (design D31/D39). `_id` is
- * the aggregate's branded `AdminOrganizationId` (a `crypto.randomUUID()`
- * string) — never a driver-generated `ObjectId`, matching
- * `OrganizationDocument`/`UserDocument`.
- *
- * `keys` is the embedded rotation-history array (design D31): bounded, always
- * read whole, never a separate collection. Field names are camelCase
- * (verified worktree finding, design D39) — this module does NOT follow the
- * parent design's stated PascalCase convention, matching what
- * `OrganizationDocument`/`UserDocument` actually ship.
+ * Mongo document shape for `admin_organizations`. Instant fields are BSON `Date`.
  */
-import type { ObjectId } from "mongodb";
+
+import type { ObjectId } from 'mongodb';
 
 export interface AdminKeyDocument {
-  readonly keyId: ObjectId;
-  readonly publicKey: string;
+  readonly key_id: ObjectId;
+  readonly public_key: string;
   readonly status: string;
-  readonly encryptedPrivateKey: string | null;
-  readonly privateKeyDownloadedAt: string | null;
-  readonly createdAt: string;
-  readonly rotatedAt: string | null;
-  readonly revokedAt: string | null;
+  readonly encrypted_private_key: string | null;
+  readonly private_key_downloaded_at: Date | null;
+  readonly created_at: Date;
+  readonly rotated_at: Date | null;
+  readonly revoked_at: Date | null;
 }
 
 export interface AdminOrganizationDocument {
   readonly _id: ObjectId;
   readonly email: string;
   readonly keys: readonly AdminKeyDocument[];
-  readonly createdAt: string;
-  readonly updatedAt: string;
+  readonly created_at: Date;
+  readonly updated_at: Date;
 }

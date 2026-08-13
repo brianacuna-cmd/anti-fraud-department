@@ -1,90 +1,83 @@
 import { ObjectId } from 'mongodb';
-import { brand } from '../../../../../../../shared/kernel/Brand.js';
+import { fromDate, toDate } from '../../../../../../../shared/time/Instant.js';
 import { OrganizationFraudConfig } from '../../../../../domain/model/aggregates/OrganizationFraudConfig.js';
 import { createOrganizationFraudConfigId } from '../../../../../domain/model/value-objects/OrganizationFraudConfigId.js';
 import type { OrganizationFraudConfigDocument } from '../documents/OrganizationFraudConfigDocument.js';
 
-/**
- * camelCase (domain) -> PascalCase (Mongo) translation seam (mirrors
- * `CaseDocumentMapper`). `_id` is the sole documented exception and stays
- * lowercase.
- */
+/** camelCase (domain) -> snake_case (Mongo). Instant fields become BSON `Date`. */
 export function toDocument(config: OrganizationFraudConfig): OrganizationFraudConfigDocument {
   return {
     _id: new ObjectId(config.id),
-    OrganizationId: config.organizationId,
-    SlaLowMinutes: config.slaLowMinutes,
-    SlaMediumMinutes: config.slaMediumMinutes,
-    SlaHighMinutes: config.slaHighMinutes,
-    SlaCriticalMinutes: config.slaCriticalMinutes,
-    RiskThresholdLow: config.riskThresholdLow,
-    RiskThresholdMedium: config.riskThresholdMedium,
-    RiskThresholdHigh: config.riskThresholdHigh,
-    RiskThresholdCritical: config.riskThresholdCritical,
-    FeatureFlags: config.featureFlags,
-    CreatedAt: config.createdAt,
-    UpdatedAt: config.updatedAt,
+    organization_id: new ObjectId(config.organizationId),
+    sla_low_minutes: config.slaLowMinutes,
+    sla_medium_minutes: config.slaMediumMinutes,
+    sla_high_minutes: config.slaHighMinutes,
+    sla_critical_minutes: config.slaCriticalMinutes,
+    risk_threshold_low: config.riskThresholdLow,
+    risk_threshold_medium: config.riskThresholdMedium,
+    risk_threshold_high: config.riskThresholdHigh,
+    risk_threshold_critical: config.riskThresholdCritical,
+    feature_flags: config.featureFlags,
+    created_at: toDate(config.createdAt),
+    updated_at: toDate(config.updatedAt),
   };
 }
 
 export interface UpsertFields {
-  readonly key: { readonly OrganizationId: string };
+  readonly key: { readonly organization_id: ObjectId };
   readonly set: {
-    readonly SlaLowMinutes: number;
-    readonly SlaMediumMinutes: number;
-    readonly SlaHighMinutes: number;
-    readonly SlaCriticalMinutes: number;
-    readonly RiskThresholdLow: number;
-    readonly RiskThresholdMedium: number;
-    readonly RiskThresholdHigh: number;
-    readonly RiskThresholdCritical: number;
-    readonly FeatureFlags: Readonly<Record<string, boolean>>;
-    readonly UpdatedAt: string;
+    readonly sla_low_minutes: number;
+    readonly sla_medium_minutes: number;
+    readonly sla_high_minutes: number;
+    readonly sla_critical_minutes: number;
+    readonly risk_threshold_low: number;
+    readonly risk_threshold_medium: number;
+    readonly risk_threshold_high: number;
+    readonly risk_threshold_critical: number;
+    readonly feature_flags: Readonly<Record<string, boolean>>;
+    readonly updated_at: Date;
   };
-  readonly setOnInsert: { readonly _id: ObjectId; readonly CreatedAt: string };
+  readonly setOnInsert: { readonly _id: ObjectId; readonly created_at: Date };
 }
 
 /**
  * Splits a desired post-state into the `$set`/`$setOnInsert` fragments the
- * repository's atomic upsert needs (mirrors
- * `NotificationPreferenceDocumentMapper.toUpsertFields`) — the create/found
- * branches are decided by Mongo itself, never by a prior app-layer read.
- * `_id` is written only via `$setOnInsert` so an update never touches it.
+ * repository's atomic upsert needs. `_id` is written only via `$setOnInsert`.
  */
 export function toUpsertFields(config: OrganizationFraudConfig): UpsertFields {
   return {
-    key: { OrganizationId: config.organizationId },
+    key: { organization_id: new ObjectId(config.organizationId) },
     set: {
-      SlaLowMinutes: config.slaLowMinutes,
-      SlaMediumMinutes: config.slaMediumMinutes,
-      SlaHighMinutes: config.slaHighMinutes,
-      SlaCriticalMinutes: config.slaCriticalMinutes,
-      RiskThresholdLow: config.riskThresholdLow,
-      RiskThresholdMedium: config.riskThresholdMedium,
-      RiskThresholdHigh: config.riskThresholdHigh,
-      RiskThresholdCritical: config.riskThresholdCritical,
-      FeatureFlags: config.featureFlags,
-      UpdatedAt: config.updatedAt,
+      sla_low_minutes: config.slaLowMinutes,
+      sla_medium_minutes: config.slaMediumMinutes,
+      sla_high_minutes: config.slaHighMinutes,
+      sla_critical_minutes: config.slaCriticalMinutes,
+      risk_threshold_low: config.riskThresholdLow,
+      risk_threshold_medium: config.riskThresholdMedium,
+      risk_threshold_high: config.riskThresholdHigh,
+      risk_threshold_critical: config.riskThresholdCritical,
+      feature_flags: config.featureFlags,
+      updated_at: toDate(config.updatedAt),
     },
-    setOnInsert: { _id: new ObjectId(config.id), CreatedAt: config.createdAt },
+    setOnInsert: { _id: new ObjectId(config.id), created_at: toDate(config.createdAt) },
   };
 }
 
-/** PascalCase (Mongo) -> camelCase (domain) translation seam (mirrors `CaseDocumentMapper`). */
+/** snake_case (Mongo) -> camelCase (domain). */
 export function toDomain(document: OrganizationFraudConfigDocument): OrganizationFraudConfig {
   return OrganizationFraudConfig.rehydrate({
     id: createOrganizationFraudConfigId(document._id.toString()),
-    organizationId: document.OrganizationId,
-    slaLowMinutes: document.SlaLowMinutes,
-    slaMediumMinutes: document.SlaMediumMinutes,
-    slaHighMinutes: document.SlaHighMinutes,
-    slaCriticalMinutes: document.SlaCriticalMinutes,
-    riskThresholdLow: document.RiskThresholdLow,
-    riskThresholdMedium: document.RiskThresholdMedium,
-    riskThresholdHigh: document.RiskThresholdHigh,
-    riskThresholdCritical: document.RiskThresholdCritical,
-    featureFlags: document.FeatureFlags,
-    createdAt: brand<string, 'Instant'>(document.CreatedAt),
-    updatedAt: brand<string, 'Instant'>(document.UpdatedAt),
+    organizationId: document.organization_id.toString(),
+    slaLowMinutes: document.sla_low_minutes,
+    slaMediumMinutes: document.sla_medium_minutes,
+    slaHighMinutes: document.sla_high_minutes,
+    slaCriticalMinutes: document.sla_critical_minutes,
+    riskThresholdLow: document.risk_threshold_low,
+    riskThresholdMedium: document.risk_threshold_medium,
+    riskThresholdHigh: document.risk_threshold_high,
+    riskThresholdCritical: document.risk_threshold_critical,
+    featureFlags: document.feature_flags,
+    createdAt: fromDate(document.created_at),
+    updatedAt: fromDate(document.updated_at),
   });
 }

@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import {
   toUserResponse,
   toUserListResponse,
@@ -15,8 +16,8 @@ const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 function buildUser(id: string, middleName: string | null = null): User {
   return User.create({
     id: createUserId(id),
-    organizationId: createOrganizationId('org-1'),
-    email: createEmail(`${id}@example.com`),
+    organizationId: createOrganizationId(oid('org-1')),
+    email: createEmail('user-1@example.com'),
     credential: createPasswordCredential('hash-value'),
     firstName: 'First',
     middleName,
@@ -28,13 +29,13 @@ function buildUser(id: string, middleName: string | null = null): User {
 
 describe('toUserResponse', () => {
   it('maps a User aggregate to a plain JSON-serializable DTO, excluding the password credential', () => {
-    const user = buildUser('user-1');
+    const user = buildUser(oid('user-1'));
 
     const dto = toUserResponse(user);
 
     expect(dto).toEqual({
-      id: 'user-1',
-      organizationId: 'org-1',
+      id: oid('user-1'),
+      organizationId: oid('org-1'),
       email: 'user-1@example.com',
       firstName: 'First',
       middleName: null,
@@ -52,7 +53,7 @@ describe('toUserResponse', () => {
   });
 
   it('surfaces a provided middleName (design A12 — exposed on HTTP, camelCase)', () => {
-    const user = buildUser('user-2', 'Danger');
+    const user = buildUser(oid('user-2'), 'Danger');
 
     const dto = toUserResponse(user);
 
@@ -60,7 +61,7 @@ describe('toUserResponse', () => {
   });
 
   it('excludes resetToken, mfa, and configuration — persistence/domain-only, never on a DTO (design A11)', () => {
-    const user = buildUser('user-1');
+    const user = buildUser(oid('user-1'));
 
     const dto = toUserResponse(user);
 
@@ -72,12 +73,12 @@ describe('toUserResponse', () => {
 
 describe('toUserListResponse', () => {
   it('maps a cursor page of users to {items, nextCursor}', () => {
-    const page = { items: [buildUser('user-1'), buildUser('user-2')], nextCursor: 'user-2' };
+    const page = { items: [buildUser(oid('user-1')), buildUser(oid('user-2'))], nextCursor: oid('user-2') };
 
     const dto = toUserListResponse(page);
 
     expect(dto.items).toHaveLength(2);
-    expect(dto.items[0]?.id).toBe('user-1');
-    expect(dto.nextCursor).toBe('user-2');
+    expect(dto.items[0]?.id).toBe(oid('user-1'));
+    expect(dto.nextCursor).toBe(oid('user-2'));
   });
 });

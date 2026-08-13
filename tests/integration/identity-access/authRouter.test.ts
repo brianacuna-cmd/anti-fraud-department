@@ -540,8 +540,8 @@ describe('authRouter (e2e, in-memory gateways)', () => {
           userId: oid('user-1'),
           organizationId: ORG_ID,
           actorType: 'USER',
-          tokenHash: 'token-hash-session-1',
-          refreshTokenHash: 'refresh-hash-session-1',
+          tokenHash: `token-hash-${oid('session-1')}`,
+          refreshTokenHash: `refresh-hash-${oid('session-1')}`,
           expiresAt: NOW,
           refreshExpiresAt: NOW,
           familyId: createFamilyId(oid('family-1')),
@@ -553,7 +553,7 @@ describe('authRouter (e2e, in-memory gateways)', () => {
       const response = await request(app).post('/api/v1/auth/logout').send({});
 
       expect(response.status).toBe(204);
-      const revoked = await sessions.findByTokenHash('token-hash-session-1');
+      const revoked = await sessions.findByTokenHash(`token-hash-${oid('session-1')}`);
       expect(revoked?.deletedAt).toBe(NOW);
     });
 
@@ -565,8 +565,8 @@ describe('authRouter (e2e, in-memory gateways)', () => {
           userId: oid('user-1'),
           organizationId: ORG_ID,
           actorType: 'USER',
-          tokenHash: 'token-hash-session-1',
-          refreshTokenHash: 'refresh-hash-session-1',
+          tokenHash: `token-hash-${oid('session-1')}`,
+          refreshTokenHash: `refresh-hash-${oid('session-1')}`,
           expiresAt: NOW,
           refreshExpiresAt: NOW,
           familyId: createFamilyId(oid('family-1')),
@@ -580,8 +580,8 @@ describe('authRouter (e2e, in-memory gateways)', () => {
           userId: oid('user-1'),
           organizationId: ORG_ID,
           actorType: 'USER',
-          tokenHash: 'token-hash-session-2',
-          refreshTokenHash: 'refresh-hash-session-2',
+          tokenHash: `token-hash-${oid('session-2')}`,
+          refreshTokenHash: `refresh-hash-${oid('session-2')}`,
           expiresAt: NOW,
           refreshExpiresAt: NOW,
           familyId: createFamilyId(oid('family-1')),
@@ -593,8 +593,8 @@ describe('authRouter (e2e, in-memory gateways)', () => {
       const response = await request(app).post('/api/v1/auth/logout').send({});
 
       expect(response.status).toBe(204);
-      const revoked = await sessions.findByTokenHash('token-hash-session-1');
-      const other = await sessions.findByTokenHash('token-hash-session-2');
+      const revoked = await sessions.findByTokenHash(`token-hash-${oid('session-1')}`);
+      const other = await sessions.findByTokenHash(`token-hash-${oid('session-2')}`);
       expect(revoked?.deletedAt).toBe(NOW);
       expect(other?.deletedAt).toBeNull();
     });

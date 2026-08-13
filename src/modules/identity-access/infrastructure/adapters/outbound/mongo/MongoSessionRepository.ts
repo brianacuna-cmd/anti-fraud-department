@@ -4,23 +4,17 @@ import type { SessionActorRef, SessionRepository } from '../../../../domain/port
 import type { SessionId } from '../../../../domain/model/value-objects/SessionId.js';
 import type { FamilyId } from '../../../../domain/model/value-objects/FamilyId.js';
 import type { OrganizationId } from '../../../../domain/model/value-objects/OrganizationId.js';
-import type { Instant } from '../../../../../../shared/time/Instant.js';
+import { toDate, type Instant } from '../../../../../../shared/time/Instant.js';
 import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
 import type { SessionDocument } from './documents/SessionDocument.js';
 import { toDocument, toDomain } from './mappers/SessionDocumentMapper.js';
 
-/** Casts the opaque `Transaction` handle back to a real Mongo `ClientSession` (design D6). */
 function toSession(tx: Transaction | undefined): ClientSession | undefined {
   return tx as unknown as ClientSession | undefined;
 }
 
-const COLLECTION_NAME = 'Sessions';
+const COLLECTION_NAME = 'sessions';
 
-/**
- * Mongo adapter for `SessionRepository` (design D14, D15, D27, D28, D38).
- * Not tenant-bound, unlike `MongoUserRepository` — a session lookup by
- * token hash has no tenant to scope by until AFTER the row resolves.
- */
 export class MongoSessionRepository implements SessionRepository {
   private readonly collection: Collection<SessionDocument>;
 
@@ -37,63 +31,60 @@ export class MongoSessionRepository implements SessionRepository {
   }
 
   async findByTokenHash(hash: string): Promise<Session | null> {
-    const document = await this.collection.findOne({ TokenHash: hash });
+    const document = await this.collection.findOne({ token_hash: hash });
     return document ? toDomain(document) : null;
   }
 
   async findByRefreshTokenHash(hash: string, tx?: Transaction): Promise<Session | null> {
-    const document = await this.collection.findOne({ RefreshTokenHash: hash }, { session: toSession(tx) });
+    const document = await this.collection.findOne({ refresh_token_hash: hash }, { session: toSession(tx) });
     return document ? toDomain(document) : null;
   }
 
-  /**
-   * Atomic compare-and-set (design D15): the filter only matches a row whose
-   * `RotatedAt` is still `null`, so `modifiedCount === 1` is decided by
-   * COMMITTED state, never a prior read. The CAS loser gets `false` and must
-   * re-read to take the grace/theft branch.
-   */
   async markRotated(id: SessionId, rotatedAt: Instant, tx?: Transaction): Promise<boolean> {
+    const at = toDate(rotatedAt);
     const result = await this.collection.updateOne(
-      { _id: new ObjectId(id), RotatedAt: null },
-      { $set: { RotatedAt: rotatedAt, UpdatedAt: rotatedAt } },
+      { _id: new ObjectId(id), rotated_at: null },
+      { $set: { rotated_at: at, updated_at: at } },
       { session: toSession(tx) },
     );
     return result.modifiedCount === 1;
   }
 
-  /** Unsessioned by design (D16) — must survive the triggering request's own rollback. */
   async revokeFamily(familyId: FamilyId, revokedAt: Instant): Promise<number> {
+    const at = toDate(revokedAt);
     const result = await this.collection.updateMany(
-      { FamilyId: new ObjectId(familyId), DeletedAt: null },
-      { $set: { DeletedAt: revokedAt, UpdatedAt: revokedAt } },
+      { family_id: new ObjectId(familyId), deleted_at: null },
+      { $set: { deleted_at: at, updated_at: at } },
     );
     return result.modifiedCount;
   }
 
-  /** Sets `deletedAt` on exactly the given session (Phase 4 — `Logout`). A no-op for an unknown or already-revoked id. */
   async revokeSession(id: SessionId, revokedAt: Instant, tx?: Transaction): Promise<void> {
+    const at = toDate(revokedAt);
     await this.collection.updateOne(
-      { _id: new ObjectId(id), DeletedAt: null },
-      { $set: { DeletedAt: revokedAt, UpdatedAt: revokedAt } },
+      { _id: new ObjectId(id), deleted_at: null },
+      { $set: { deleted_at: at, updated_at: at } },
       { session: toSession(tx) },
     );
   }
 
   async revokeAllForOrganization(id: OrganizationId, at: Instant, tx?: Transaction): Promise<number> {
+    const when = toDate(at);
     const result = await this.collection.updateMany(
-      { OrganizationId: new ObjectId(id), DeletedAt: null },
-      { $set: { DeletedAt: at, UpdatedAt: at } },
+      { organization_id: new ObjectId(id), deleted_at: null },
+      { $set: { deleted_at: when, updated_at: when } },
       { session: toSession(tx) },
     );
     return result.modifiedCount;
   }
 
   async revokeAllForActor(actor: SessionActorRef, at: Instant, tx?: Transaction): Promise<number> {
+    const when = toDate(at);
     const filter =
       actor.actorType === 'ORGANIZATION'
-        ? { ActorType: 'ORGANIZATION', OrganizationId: new ObjectId(actor.organizationId), DeletedAt: null }
-        : { ActorType: actor.actorType, UserId: new ObjectId(actor.userId), DeletedAt: null };
-    const result = await this.collection.updateMany(filter, { $set: { DeletedAt: at, UpdatedAt: at } }, {
+        ? { actor_type: 'ORGANIZATION', organization_id: new ObjectId(actor.organizationId), deleted_at: null }
+        : { actor_type: actor.actorType, user_id: new ObjectId(actor.userId), deleted_at: null };
+    const result = await this.collection.updateMany(filter, { $set: { deleted_at: when, updated_at: when } }, {
       session: toSession(tx),
     });
     return result.modifiedCount;

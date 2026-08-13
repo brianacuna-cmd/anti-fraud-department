@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createRequestPasswordResetUseCase } from '../../../../src/modules/identity-access/application/auth/RequestPasswordReset.js';
 import { InMemoryOrganizationRepository } from '../../../helpers/identity-access/InMemoryOrganizationRepository.js';
 import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
@@ -62,7 +63,7 @@ async function seedOrgAndUser(
   await organizations.save(organization);
 
   const user = User.create({
-    id: createUserId('user-1'),
+    id: createUserId(oid('user-1')),
     organizationId: ORG_ID,
     email: createEmail('alice@example.com'),
     credential: createPasswordCredential('hashed:whatever'),
@@ -83,7 +84,7 @@ describe('createRequestPasswordResetUseCase', () => {
 
     expect(result).toEqual({ status: 'PASSWORD_RESET_REQUESTED' });
 
-    const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
+    const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
     expect(stored?.resetToken).not.toBeNull();
     expect(stored?.resetToken?.expiresAt).toBe(fromDate(new Date('2026-01-02T00:15:00.000Z')));
 
@@ -96,7 +97,7 @@ describe('createRequestPasswordResetUseCase', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].event.action).toBe('PASSWORD_RESET_REQUESTED');
     expect(calls[0].event.resource).toBe('users');
-    expect(calls[0].event.resourceId).toBe('user-1');
+    expect(calls[0].event.resourceId).toBe(oid('user-1'));
   });
 
   it('returns the identical opaque result for an unknown email, storing nothing and sending nothing', async () => {
@@ -106,7 +107,7 @@ describe('createRequestPasswordResetUseCase', () => {
     const result = await requestPasswordReset({ email: 'nobody@example.com', organizationSlug: 'acme' });
 
     expect(result).toEqual({ status: 'PASSWORD_RESET_REQUESTED' });
-    const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
+    const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
     expect(stored?.resetToken).toBeNull();
     expect(emailSender.sent).toHaveLength(0);
     expect(auditRecorder.calls()).toHaveLength(0);
@@ -185,7 +186,7 @@ describe('createRequestPasswordResetUseCase', () => {
     const result = await requestPasswordReset({ email: 'alice@example.com', organizationSlug: 'acme' });
 
     expect(result).toEqual({ status: 'PASSWORD_RESET_REQUESTED' });
-    const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
+    const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
     expect(stored?.resetToken).not.toBeNull();
     expect(auditRecorder.calls()).toHaveLength(1);
   });
@@ -219,7 +220,7 @@ describe('createRequestPasswordResetUseCase', () => {
     const result = await requestPasswordReset({ email: 'alice@example.com', organizationSlug: 'acme' });
 
     expect(result).toEqual({ status: 'PASSWORD_RESET_REQUESTED' });
-    const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
+    const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
     expect(stored?.resetToken).not.toBeNull();
     expect(emailSender.sent).toHaveLength(1);
   });
@@ -229,10 +230,10 @@ describe('createRequestPasswordResetUseCase', () => {
     await seedOrgAndUser(organizations, userRepositoryFactory);
 
     await requestPasswordReset({ email: 'alice@example.com', organizationSlug: 'acme' });
-    const firstHash = (await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1')))?.resetToken?.hash;
+    const firstHash = (await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1'))))?.resetToken?.hash;
 
     await requestPasswordReset({ email: 'alice@example.com', organizationSlug: 'acme' });
-    const secondHash = (await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1')))?.resetToken?.hash;
+    const secondHash = (await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1'))))?.resetToken?.hash;
 
     expect(firstHash).toBeDefined();
     expect(secondHash).toBeDefined();
