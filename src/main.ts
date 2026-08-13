@@ -90,6 +90,7 @@ import { createCreateCaseUseCase } from './modules/case-management/application/C
 import { createCalculateSlaUseCase } from './modules/case-management/application/CalculateSla.js';
 import { createRouteCaseUseCase } from './modules/case-management/application/RouteCase.js';
 import { createReassignCaseUseCase } from './modules/case-management/application/ReassignCase.js';
+import { createListCasesUseCase } from './modules/case-management/application/ListCases.js';
 import { MongoCaseRoutingRuleRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRoutingRuleRepository.js';
 import { MongoOrganizationFraudConfigRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoOrganizationFraudConfigRepository.js';
 import { MongoCaseSlaTrackingRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseSlaTrackingRepository.js';
@@ -302,6 +303,7 @@ async function bootstrap(): Promise<void> {
       generateTimelineEventId,
       assigneeDirectory,
     }),
+    listCases: createListCasesUseCase({ cases }),
   });
   const organizationFraudConfigHttpRouter = organizationFraudConfigRouter({
     getOrganizationFraudConfig: createGetOrganizationFraudConfigUseCase({

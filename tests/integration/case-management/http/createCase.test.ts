@@ -12,6 +12,7 @@ import { createCreateCaseUseCase } from '../../../../src/modules/case-management
 import { createCalculateSlaUseCase } from '../../../../src/modules/case-management/application/CalculateSla.js';
 import { createRouteCaseUseCase } from '../../../../src/modules/case-management/application/RouteCase.js';
 import { createReassignCaseUseCase } from '../../../../src/modules/case-management/application/ReassignCase.js';
+import { createListCasesUseCase } from '../../../../src/modules/case-management/application/ListCases.js';
 import { ZenRoutingEngine } from '../../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
@@ -130,6 +131,7 @@ function buildApp(actorPerRequest: () => AuthContext, options: { seedFraudConfig
       generateTimelineEventId,
       assigneeDirectory: new InMemoryAssigneeDirectory(),
     }),
+    listCases: createListCasesUseCase({ cases }),
   });
 
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {

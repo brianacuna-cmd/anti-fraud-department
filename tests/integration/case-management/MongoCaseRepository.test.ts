@@ -111,4 +111,81 @@ describe('MongoCaseRepository (integration, real replica-set Mongo)', () => {
     expect(rawDocument?._id).toBeInstanceOf(ObjectId);
     expect(rawDocument?._id.toString()).toBe(oid('case-id-guard'));
   });
+
+  it('list sorts by due_date ASC with nulls last and excludes soft-deleted', async () => {
+    const early = fromDate(new Date('2026-01-02T00:00:00.000Z'));
+    const late = fromDate(new Date('2026-01-04T00:00:00.000Z'));
+
+    await repository.save(buildCase(oid('list-null')).withDueDate(null, NOW));
+    await repository.save(buildCase(oid('list-late')).withDueDate(late, NOW));
+    await repository.save(buildCase(oid('list-early')).withDueDate(early, NOW));
+    await repository.save(
+      Case.rehydrate({
+        ...buildCase(oid('list-deleted')).withDueDate(early, NOW).toProps(),
+        deletedAt: NOW,
+      }),
+    );
+    await repository.save(buildCase(oid('list-other-org'), oid('org-2')).withDueDate(early, NOW));
+
+    const page = await repository.list({
+      organizationId: oid('org-1'),
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(page.total).toBe(3);
+    expect(page.items.map((c) => c.id)).toEqual([
+      oid('list-early'),
+      oid('list-late'),
+      oid('list-null'),
+    ]);
+  });
+
+  it('list filters by status, priority, assignedTo, riskScore, tags, and due range', async () => {
+    const mid = fromDate(new Date('2026-01-03T00:00:00.000Z'));
+    const early = fromDate(new Date('2026-01-02T00:00:00.000Z'));
+    const late = fromDate(new Date('2026-01-04T00:00:00.000Z'));
+    const assignee = oid('analyst-list');
+
+    const match = buildCase(oid('list-match'))
+      .reassign(createAssignedTo('USER', assignee), NOW)
+      .withDueDate(mid, NOW);
+    await repository.save(
+      Case.rehydrate({
+        ...match.toProps(),
+        riskScore: createRiskScore(70),
+        priority: 'HIGH',
+        status: 'OPEN',
+        tags: ['fraud', 'wire'],
+      }),
+    );
+    await repository.save(
+      Case.rehydrate({
+        ...buildCase(oid('list-miss'))
+          .reassign(createAssignedTo('USER', assignee), NOW)
+          .withDueDate(mid, NOW)
+          .toProps(),
+        riskScore: createRiskScore(10),
+        priority: 'HIGH',
+        tags: ['fraud', 'wire'],
+      }),
+    );
+
+    const page = await repository.list({
+      organizationId: oid('org-1'),
+      status: ['OPEN'],
+      priority: ['HIGH'],
+      assignedToId: assignee,
+      riskScoreMin: 50,
+      riskScoreMax: 80,
+      tags: ['fraud', 'wire'],
+      dueAfter: early,
+      dueBefore: late,
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(page.total).toBe(1);
+    expect(page.items[0]?.id).toBe(oid('list-match'));
+  });
 });
