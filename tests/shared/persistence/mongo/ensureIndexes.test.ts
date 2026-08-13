@@ -160,4 +160,15 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     expect(orgStatusIndex?.key).toEqual({ organization_id: 1, status: 1 });
     expect(routingIndexes.filter((index) => index.name === 'case_routing_rules_org_status_idx')).toHaveLength(1);
   });
+
+  it('creates the RiskScoringRules org+status index and stays idempotent on re-run', async () => {
+    await ensureIndexes(db);
+    await ensureIndexes(db);
+
+    const scoringIndexes = await db.collection('risk_scoring_rules').indexes();
+    const orgStatusIndex = scoringIndexes.find((index) => index.name === 'risk_scoring_rules_org_status_idx');
+
+    expect(orgStatusIndex?.key).toEqual({ organization_id: 1, status: 1 });
+    expect(scoringIndexes.filter((index) => index.name === 'risk_scoring_rules_org_status_idx')).toHaveLength(1);
+  });
 });
