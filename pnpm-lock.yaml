@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@gorules/zen-engine':
+        specifier: ^0.54.0
+        version: 0.54.0(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
@@ -444,6 +447,61 @@ packages:
   '@eslint/plugin-kit@0.7.2':
     resolution: {integrity: sha512-+CNAzxglkrpNf/kKywqQfk74QjtceuOE7Qm+AF8miRvPF/wmmK5+OJOgVh3AVTT3RP2mH3+FOaxlE5v72owk0A==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
+
+  '@gorules/zen-engine-darwin-arm64@0.54.0':
+    resolution: {integrity: sha512-FBNmqK+plKAnJvbCi26BGHdhdhRFL2IJs+jVmlzAE95Mkt0DKB6jdVRSRZS3y1hhEnIdcXEBhx6S2f/eWDLcZA==}
+    engines: {node: '>= 14'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@gorules/zen-engine-darwin-x64@0.54.0':
+    resolution: {integrity: sha512-SL+dPc6K149fQZ/43Cuf11wUrUqmA2/Dhu2HJDnHNf9yTTs8/o2WnK5+amZ+eWTZZdbDJmYpfIDdM7YRnL5KEw==}
+    engines: {node: '>= 14'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@gorules/zen-engine-linux-arm64-gnu@0.54.0':
+    resolution: {integrity: sha512-3bCz4p1BgTQcSWc+4AWWYcX3IPqHuct+QjxLFfQQNeuYjmkCPP44tgRltaVZsLtWIebBeOUAxuF9AHnTwrpDDA==}
+    engines: {node: '>= 14'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@gorules/zen-engine-linux-arm64-musl@0.54.0':
+    resolution: {integrity: sha512-lWNthckrELOOPCyArgWKDPmE0k4tlAL8KkAW/xjjKU6mMnrQWMi6ZgQbUMF4Egp86BY8zRwZfqFGkQL7JvInbg==}
+    engines: {node: '>= 14'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@gorules/zen-engine-linux-x64-gnu@0.54.0':
+    resolution: {integrity: sha512-1EW5Ri7+XuUWsp+wNfgao/RN9CO1HL1ddf9vES4VjqBe6AYL9RaqcFDa+hDUCcp5CDvC34sCf/Xnvr8BCm5DBg==}
+    engines: {node: '>= 14'}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@gorules/zen-engine-linux-x64-musl@0.54.0':
+    resolution: {integrity: sha512-YSo2fwUw16QFBYTRsM4euhDEMDvN6UmSp6mWIxE1p/VeCGjxDTS9PJpPK114HYYmI/nSLiKP3qCe/tkA0PRSOA==}
+    engines: {node: '>= 14'}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@gorules/zen-engine-wasm32-wasi@0.54.0':
+    resolution: {integrity: sha512-CGpmNAm22+iEHGGNIH/sf9dDrNzxDYeA9jAkt/vynCYRJarF55YgfbvutOZ0t8pl+8D+falA6mB9eJ6ME7wWaA==}
+    engines: {node: '>=14.0.0'}
+    cpu: [wasm32]
+
+  '@gorules/zen-engine-win32-x64-msvc@0.54.0':
+    resolution: {integrity: sha512-bj5PytBCNFBueP+8jma0iL0MnF75c0lk147FL9CrGvZdsxuHw5v4ogvv8vQNQMKhidDyfokcfq67+dFcUP9gUQ==}
+    engines: {node: '>= 14'}
+    cpu: [x64]
+    os: [win32]
+
+  '@gorules/zen-engine@0.54.0':
+    resolution: {integrity: sha512-rt8LeikbQVxDthok9KsLGQxoLVG26Hmb4QCS+CCVSaoFDVDMmo3VfhryyCVkqvY0FjIeIZTluZcPlAI8gNAkqw==}
+    engines: {node: '>= 14'}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -2949,6 +3007,49 @@ snapshots:
     dependencies:
       '@eslint/core': 1.2.1
       levn: 0.4.1
+
+  '@gorules/zen-engine-darwin-arm64@0.54.0':
+    optional: true
+
+  '@gorules/zen-engine-darwin-x64@0.54.0':
+    optional: true
+
+  '@gorules/zen-engine-linux-arm64-gnu@0.54.0':
+    optional: true
+
+  '@gorules/zen-engine-linux-arm64-musl@0.54.0':
+    optional: true
+
+  '@gorules/zen-engine-linux-x64-gnu@0.54.0':
+    optional: true
+
+  '@gorules/zen-engine-linux-x64-musl@0.54.0':
+    optional: true
+
+  '@gorules/zen-engine-wasm32-wasi@0.54.0(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
+    dependencies:
+      '@napi-rs/wasm-runtime': 1.2.2(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
+    transitivePeerDependencies:
+      - '@emnapi/core'
+      - '@emnapi/runtime'
+    optional: true
+
+  '@gorules/zen-engine-win32-x64-msvc@0.54.0':
+    optional: true
+
+  '@gorules/zen-engine@0.54.0(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
+    optionalDependencies:
+      '@gorules/zen-engine-darwin-arm64': 0.54.0
+      '@gorules/zen-engine-darwin-x64': 0.54.0
+      '@gorules/zen-engine-linux-arm64-gnu': 0.54.0
+      '@gorules/zen-engine-linux-arm64-musl': 0.54.0
+      '@gorules/zen-engine-linux-x64-gnu': 0.54.0
+      '@gorules/zen-engine-linux-x64-musl': 0.54.0
+      '@gorules/zen-engine-wasm32-wasi': 0.54.0(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
+      '@gorules/zen-engine-win32-x64-msvc': 0.54.0
+    transitivePeerDependencies:
+      - '@emnapi/core'
+      - '@emnapi/runtime'
 
   '@humanfs/core@0.19.2':
     dependencies:
