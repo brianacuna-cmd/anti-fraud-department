@@ -1,6 +1,5 @@
 import { ObjectId } from 'mongodb';
-import { brand } from '../../../../../../../shared/kernel/Brand.js';
-import { toDate } from '../../../../../../../shared/time/Instant.js';
+import { fromDate, toDate } from '../../../../../../../shared/time/Instant.js';
 import { Session } from '../../../../../domain/model/aggregates/Session.js';
 import { createSessionId } from '../../../../../domain/model/value-objects/SessionId.js';
 import { createFamilyId } from '../../../../../domain/model/value-objects/FamilyId.js';
@@ -9,52 +8,51 @@ import { createActorType } from '../../../../../domain/model/value-objects/Actor
 import type { SessionDocument } from '../documents/SessionDocument.js';
 
 /**
- * camelCase (domain) -> PascalCase (Mongo) translation seam (design A2).
- * `_id` is the sole documented exception and stays lowercase (design A1).
- * `RefreshTokenHash`/`RefreshExpiresAt` are written explicitly — even when
- * `null` — never omitted (design D38's partial-index precondition).
- * `FamilyExpiresAtDate` is derived from `FamilyExpiresAt` on every write —
- * the TTL-bearing BSON `Date` mirror (design D15).
+ * camelCase (domain) -> snake_case (Mongo). Instant fields become BSON `Date`.
+ * `refresh_token_hash`/`refresh_expires_at` are written explicitly — even when
+ * `null` — never omitted (partial unique index precondition).
  */
 export function toDocument(session: Session): SessionDocument {
   return {
     _id: new ObjectId(session.id),
-    UserId: session.userId === null ? null : new ObjectId(session.userId),
-    OrganizationId: session.organizationId === null ? null : new ObjectId(session.organizationId),
-    ActorType: session.actorType,
-    TokenHash: session.tokenHash,
-    RefreshTokenHash: session.refreshTokenHash,
-    ExpiresAt: session.expiresAt,
-    RefreshExpiresAt: session.refreshExpiresAt,
-    FamilyId: new ObjectId(session.familyId),
-    FamilyExpiresAt: session.familyExpiresAt,
-    FamilyExpiresAtDate: toDate(session.familyExpiresAt),
-    RotatedAt: session.rotatedAt,
-    RotatedFromSessionId: session.rotatedFromSessionId === null ? null : new ObjectId(session.rotatedFromSessionId),
-    CreatedAt: session.createdAt,
-    UpdatedAt: session.updatedAt,
-    DeletedAt: session.deletedAt,
+    user_id: session.userId === null ? null : new ObjectId(session.userId),
+    organization_id: session.organizationId === null ? null : new ObjectId(session.organizationId),
+    actor_type: session.actorType,
+    token_hash: session.tokenHash,
+    refresh_token_hash: session.refreshTokenHash,
+    expires_at: toDate(session.expiresAt),
+    refresh_expires_at: session.refreshExpiresAt === null ? null : toDate(session.refreshExpiresAt),
+    family_id: new ObjectId(session.familyId),
+    family_expires_at: toDate(session.familyExpiresAt),
+    rotated_at: session.rotatedAt === null ? null : toDate(session.rotatedAt),
+    rotated_from_session_id:
+      session.rotatedFromSessionId === null ? null : new ObjectId(session.rotatedFromSessionId),
+    created_at: toDate(session.createdAt),
+    updated_at: toDate(session.updatedAt),
+    deleted_at: session.deletedAt === null ? null : toDate(session.deletedAt),
   };
 }
 
-/** PascalCase (Mongo) -> camelCase (domain) translation seam (design A2). */
+/** snake_case (Mongo) -> camelCase (domain). */
 export function toDomain(document: SessionDocument): Session {
   return Session.rehydrate({
     id: createSessionId(document._id.toString()),
-    userId: document.UserId === null ? null : document.UserId.toString(),
-    organizationId: document.OrganizationId === null ? null : createOrganizationId(document.OrganizationId.toString()),
-    actorType: createActorType(document.ActorType),
-    tokenHash: document.TokenHash,
-    refreshTokenHash: document.RefreshTokenHash,
-    expiresAt: brand<string, 'Instant'>(document.ExpiresAt),
-    refreshExpiresAt: document.RefreshExpiresAt === null ? null : brand<string, 'Instant'>(document.RefreshExpiresAt),
-    familyId: createFamilyId(document.FamilyId.toString()),
-    familyExpiresAt: brand<string, 'Instant'>(document.FamilyExpiresAt),
-    rotatedAt: document.RotatedAt === null ? null : brand<string, 'Instant'>(document.RotatedAt),
+    userId: document.user_id === null ? null : document.user_id.toString(),
+    organizationId: document.organization_id === null ? null : createOrganizationId(document.organization_id.toString()),
+    actorType: createActorType(document.actor_type),
+    tokenHash: document.token_hash,
+    refreshTokenHash: document.refresh_token_hash,
+    expiresAt: fromDate(document.expires_at),
+    refreshExpiresAt: document.refresh_expires_at === null ? null : fromDate(document.refresh_expires_at),
+    familyId: createFamilyId(document.family_id.toString()),
+    familyExpiresAt: fromDate(document.family_expires_at),
+    rotatedAt: document.rotated_at === null ? null : fromDate(document.rotated_at),
     rotatedFromSessionId:
-      document.RotatedFromSessionId === null ? null : createSessionId(document.RotatedFromSessionId.toString()),
-    createdAt: brand<string, 'Instant'>(document.CreatedAt),
-    updatedAt: brand<string, 'Instant'>(document.UpdatedAt),
-    deletedAt: document.DeletedAt === null ? null : brand<string, 'Instant'>(document.DeletedAt),
+      document.rotated_from_session_id === null
+        ? null
+        : createSessionId(document.rotated_from_session_id.toString()),
+    createdAt: fromDate(document.created_at),
+    updatedAt: fromDate(document.updated_at),
+    deletedAt: document.deleted_at === null ? null : fromDate(document.deleted_at),
   });
 }

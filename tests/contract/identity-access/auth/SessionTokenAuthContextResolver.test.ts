@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import type { Request } from 'express';
 import { SessionTokenAuthContextResolver } from '../../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/SessionTokenAuthContextResolver.js';
 import { AesGcmSecretCipher } from '../../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
@@ -43,10 +44,10 @@ async function seedSession(
 ): Promise<void> {
   const session = Session.rehydrate({
     id: createSessionId(overrides.id),
-    userId: overrides.userId === undefined ? 'user-1' : overrides.userId,
+    userId: overrides.userId === undefined ? oid('user-1') : overrides.userId,
     organizationId:
       overrides.organizationId === undefined
-        ? createOrganizationId('org-1')
+        ? createOrganizationId(oid('org-1'))
         : overrides.organizationId === null
           ? null
           : createOrganizationId(overrides.organizationId),
@@ -55,7 +56,7 @@ async function seedSession(
     refreshTokenHash: 'refresh-hash',
     expiresAt: overrides.expiresAt ?? FAR_FUTURE,
     refreshExpiresAt: FAR_FUTURE,
-    familyId: createFamilyId('family-1'),
+    familyId: createFamilyId(oid('family-1')),
     familyExpiresAt: FAR_FUTURE,
     rotatedAt: overrides.rotatedAt ?? null,
     rotatedFromSessionId: null,
@@ -69,37 +70,37 @@ async function seedSession(
 describe('SessionTokenAuthContextResolver', () => {
   it('resolves AuthContext for a valid, unexpired, unrevoked USER session', async () => {
     const { tokenService, sessionRepository, resolver } = buildFixture();
-    const token = tokenService.issue({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+    const token = tokenService.issue({ sessionId: oid('session-1'), tokenType: 'ACCESS', keyVersion: 1 });
     await seedSession(sessionRepository, {
-      id: 'session-1',
+      id: oid('session-1'),
       tokenHash: tokenService.fingerprint(token),
-      userId: 'user-1',
-      organizationId: 'org-1',
+      userId: oid('user-1'),
+      organizationId: oid('org-1'),
       actorType: 'USER',
     });
 
     const auth = await resolver.resolve(buildRequest(token));
 
-    expect(auth?.userId).toBe('user-1');
-    expect(auth?.organizationId).toBe('org-1');
+    expect(auth?.userId).toBe(oid('user-1'));
+    expect(auth?.organizationId).toBe(oid('org-1'));
     expect(auth?.actorType).toBe('USER');
-    expect(auth?.sessionId).toBe('session-1');
+    expect(auth?.sessionId).toBe(oid('session-1'));
   });
 
   it('resolves AuthContext for an ORGANIZATION session using organizationId as the principal', async () => {
     const { tokenService, sessionRepository, resolver } = buildFixture();
-    const token = tokenService.issue({ sessionId: 'org-session-1', tokenType: 'ACCESS', keyVersion: 1 });
+    const token = tokenService.issue({ sessionId: oid('org-session-1'), tokenType: 'ACCESS', keyVersion: 1 });
     await seedSession(sessionRepository, {
-      id: 'org-session-1',
+      id: oid('org-session-1'),
       tokenHash: tokenService.fingerprint(token),
       userId: null,
-      organizationId: 'org-1',
+      organizationId: oid('org-1'),
       actorType: 'ORGANIZATION',
     });
 
     const auth = await resolver.resolve(buildRequest(token));
 
-    expect(auth?.userId).toBe('org-1');
+    expect(auth?.userId).toBe(oid('org-1'));
     expect(auth?.actorType).toBe('ORGANIZATION');
   });
 
@@ -117,24 +118,24 @@ describe('SessionTokenAuthContextResolver', () => {
 
   it('returns null when the token is a REFRESH token, not an ACCESS token', async () => {
     const { tokenService, sessionRepository, resolver } = buildFixture();
-    const token = tokenService.issue({ sessionId: 'session-1', tokenType: 'REFRESH', keyVersion: 1 });
-    await seedSession(sessionRepository, { id: 'session-1', tokenHash: tokenService.fingerprint(token) });
+    const token = tokenService.issue({ sessionId: oid('session-1'), tokenType: 'REFRESH', keyVersion: 1 });
+    await seedSession(sessionRepository, { id: oid('session-1'), tokenHash: tokenService.fingerprint(token) });
 
     expect(await resolver.resolve(buildRequest(token))).toBeNull();
   });
 
   it('returns null when the session cannot be found by TokenHash', async () => {
     const { tokenService, resolver } = buildFixture();
-    const token = tokenService.issue({ sessionId: 'missing-session', tokenType: 'ACCESS', keyVersion: 1 });
+    const token = tokenService.issue({ sessionId: oid('missing-session'), tokenType: 'ACCESS', keyVersion: 1 });
 
     expect(await resolver.resolve(buildRequest(token))).toBeNull();
   });
 
   it('returns null immediately for a revoked session, even before ExpiresAt (design: "Revoked token rejected immediately")', async () => {
     const { tokenService, sessionRepository, resolver } = buildFixture();
-    const token = tokenService.issue({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+    const token = tokenService.issue({ sessionId: oid('session-1'), tokenType: 'ACCESS', keyVersion: 1 });
     await seedSession(sessionRepository, {
-      id: 'session-1',
+      id: oid('session-1'),
       tokenHash: tokenService.fingerprint(token),
       deletedAt: NOW,
     });
@@ -144,9 +145,9 @@ describe('SessionTokenAuthContextResolver', () => {
 
   it('returns null for a rotated session (rotatedAt set) — its old ACCESS token is superseded by the refresh successor, even though the row is not deleted (session-lifecycle PR-2)', async () => {
     const { tokenService, sessionRepository, resolver } = buildFixture();
-    const token = tokenService.issue({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+    const token = tokenService.issue({ sessionId: oid('session-1'), tokenType: 'ACCESS', keyVersion: 1 });
     await seedSession(sessionRepository, {
-      id: 'session-1',
+      id: oid('session-1'),
       tokenHash: tokenService.fingerprint(token),
       rotatedAt: NOW,
       deletedAt: null,
@@ -158,9 +159,9 @@ describe('SessionTokenAuthContextResolver', () => {
 
   it('returns null for an expired session', async () => {
     const { tokenService, sessionRepository, resolver } = buildFixture();
-    const token = tokenService.issue({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+    const token = tokenService.issue({ sessionId: oid('session-1'), tokenType: 'ACCESS', keyVersion: 1 });
     await seedSession(sessionRepository, {
-      id: 'session-1',
+      id: oid('session-1'),
       tokenHash: tokenService.fingerprint(token),
       expiresAt: PAST,
     });
@@ -175,16 +176,16 @@ describe('SessionTokenAuthContextResolver', () => {
         tokenType: 'mfa_enrollment',
         keyVersion: 1,
         jti: 'jti-1',
-        userId: 'user-1',
-        organizationId: 'org-1',
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
         actorType: 'USER',
         expiresAt: FAR_FUTURE_ISO,
       });
 
       const auth = await resolver.resolve(buildRequest(token));
 
-      expect(auth?.userId).toBe('user-1');
-      expect(auth?.organizationId).toBe('org-1');
+      expect(auth?.userId).toBe(oid('user-1'));
+      expect(auth?.organizationId).toBe(oid('org-1'));
       expect(auth?.actorType).toBe('USER');
       expect(auth?.purpose).toBe('enrollment');
       expect(auth?.mfaJti).toBe('jti-1');
@@ -197,8 +198,8 @@ describe('SessionTokenAuthContextResolver', () => {
         tokenType: 'mfa_challenge',
         keyVersion: 1,
         jti: 'jti-2',
-        userId: 'user-1',
-        organizationId: 'org-1',
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
         actorType: 'USER',
         expiresAt: FAR_FUTURE_ISO,
       });
@@ -215,8 +216,8 @@ describe('SessionTokenAuthContextResolver', () => {
         tokenType: 'mfa_enrollment',
         keyVersion: 1,
         jti: 'jti-3',
-        userId: 'user-1',
-        organizationId: 'org-1',
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
         actorType: 'USER',
         expiresAt: PAST_ISO,
       });
@@ -232,8 +233,8 @@ describe('SessionTokenAuthContextResolver', () => {
         tokenType: 'password_reset',
         keyVersion: 1,
         jti: 'jti-reset-1',
-        userId: 'user-1',
-        organizationId: 'org-1',
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
         actorType: 'USER',
         expiresAt: FAR_FUTURE_ISO,
       });

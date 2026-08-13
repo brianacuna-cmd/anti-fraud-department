@@ -1,3 +1,4 @@
+import { oid } from '../../support/oid.js';
 import { Router, type Express, type Request, type Response, type NextFunction } from 'express';
 import request from 'supertest';
 import { createApp } from '../../../src/shared/http/createApp.js';
@@ -23,8 +24,8 @@ import { generateOrganizationId, createOrganizationId } from '../../../src/modul
 import { generateUserId } from '../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
 import { createEmail } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 
-const PLATFORM_ADMIN = createAuthContext({ userId: 'admin-1', organizationId: 'o0', isPlatformAdmin: true });
-const REGULAR_USER = createAuthContext({ userId: 'user-1', organizationId: 'o1', isPlatformAdmin: false });
+const PLATFORM_ADMIN = createAuthContext({ userId: oid('admin-1'), organizationId: oid('o0'), isPlatformAdmin: true });
+const REGULAR_USER = createAuthContext({ userId: oid('user-1'), organizationId: oid('o1'), isPlatformAdmin: false });
 
 const ADMIN_BOOTSTRAP_FIELDS = {
   adminEmail: 'admin@acme.com',
@@ -119,7 +120,7 @@ describe('organizationRouter (e2e, in-memory repository)', () => {
   it('GET /organizations/:id returns 404 ORGANIZATION_NOT_FOUND for an unknown id', async () => {
     const { app } = buildApp(() => PLATFORM_ADMIN);
 
-    const response = await request(app).get('/api/v1/organizations/missing');
+    const response = await request(app).get(`/api/v1/organizations/${oid('missing')}`);
 
     expect(response.status).toBe(404);
     expect(response.body.error.code).toBe('ORGANIZATION_NOT_FOUND');

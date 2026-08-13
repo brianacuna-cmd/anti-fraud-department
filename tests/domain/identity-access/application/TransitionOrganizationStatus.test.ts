@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createTransitionOrganizationStatusUseCase } from '../../../../src/modules/identity-access/application/TransitionOrganizationStatus.js';
 import { InMemoryOrganizationRepository } from '../../../helpers/identity-access/InMemoryOrganizationRepository.js';
 import { InMemorySessionRepository } from '../../../helpers/identity-access/InMemorySessionRepository.js';
@@ -17,19 +18,19 @@ import { IdentityAccessError } from '../../../../src/modules/identity-access/dom
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const TRANSITIONED_AT = fromDate(new Date('2026-01-02T00:00:00.000Z'));
 const PLATFORM_ADMIN = createAuthContext({
-  userId: 'u1',
-  organizationId: 'o0',
+  userId: oid('u1'),
+  organizationId: oid('o0'),
   isPlatformAdmin: true,
   ipAddress: '203.0.113.10',
 });
-const REGULAR_USER = createAuthContext({ userId: 'u2', organizationId: 'o1', isPlatformAdmin: false });
+const REGULAR_USER = createAuthContext({ userId: oid('u2'), organizationId: oid('o1'), isPlatformAdmin: false });
 
 async function seedOrganization(
   organizations: InMemoryOrganizationRepository,
   status: 'ACTIVE' | 'CANCELLED' = 'ACTIVE',
 ): Promise<void> {
   let organization = Organization.create({
-    id: createOrganizationId('org-1'),
+    id: createOrganizationId(oid('org-1')),
     name: 'Acme',
     slug: createSlug('acme'),
     now: CREATED_AT,
@@ -43,14 +44,14 @@ async function seedOrganization(
 function buildSession(id: string): Session {
   return Session.create({
     id: createSessionId(id),
-    userId: 'org-user-1',
-    organizationId: createOrganizationId('org-1'),
+    userId: oid('org-user-1'),
+    organizationId: createOrganizationId(oid('org-1')),
     actorType: 'USER',
     tokenHash: `token-hash-${id}`,
     refreshTokenHash: `refresh-hash-${id}`,
     expiresAt: TRANSITIONED_AT,
     refreshExpiresAt: TRANSITIONED_AT,
-    familyId: createFamilyId('family-1'),
+    familyId: createFamilyId(oid('family-1')),
     familyExpiresAt: TRANSITIONED_AT,
     now: CREATED_AT,
   });
@@ -80,13 +81,13 @@ describe('createTransitionOrganizationStatusUseCase', () => {
 
     const organization = await transitionOrganizationStatus({
       auth: PLATFORM_ADMIN,
-      organizationId: 'org-1',
+      organizationId: oid('org-1'),
       next: 'SUSPENDED',
     });
 
     expect(organization.status).toBe('SUSPENDED');
     expect(unitOfWork.transactionCount).toBe(1);
-    const persisted = await organizations.findById(createOrganizationId('org-1'));
+    const persisted = await organizations.findById(createOrganizationId(oid('org-1')));
     expect(persisted?.status).toBe('SUSPENDED');
   });
 
@@ -97,7 +98,7 @@ describe('createTransitionOrganizationStatusUseCase', () => {
 
     expect.assertions(2);
     try {
-      await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: 'missing', next: 'SUSPENDED' });
+      await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: oid('missing'), next: 'SUSPENDED' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('ORGANIZATION_NOT_FOUND');
@@ -112,13 +113,13 @@ describe('createTransitionOrganizationStatusUseCase', () => {
 
     const organization = await transitionOrganizationStatus({
       auth: PLATFORM_ADMIN,
-      organizationId: 'org-1',
+      organizationId: oid('org-1'),
       next: 'CANCELLED',
     });
 
     expect(organization.status).toBe('CANCELLED');
     expect(organization.deletedAt).toBe(TRANSITIONED_AT);
-    const persisted = await organizations.findById(createOrganizationId('org-1'));
+    const persisted = await organizations.findById(createOrganizationId(oid('org-1')));
     expect(persisted?.deletedAt).toBe(TRANSITIONED_AT);
   });
 
@@ -130,7 +131,7 @@ describe('createTransitionOrganizationStatusUseCase', () => {
 
     expect.assertions(2);
     try {
-      await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: 'org-1', next: 'ACTIVE' });
+      await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: oid('org-1'), next: 'ACTIVE' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('INVALID_TRANSITION');
@@ -145,7 +146,7 @@ describe('createTransitionOrganizationStatusUseCase', () => {
 
     expect.assertions(2);
     try {
-      await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: 'org-1', next: 'ACTIVE' });
+      await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: oid('org-1'), next: 'ACTIVE' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('INVALID_TRANSITION');
@@ -160,7 +161,7 @@ describe('createTransitionOrganizationStatusUseCase', () => {
 
     expect.assertions(3);
     try {
-      await transitionOrganizationStatus({ auth: REGULAR_USER, organizationId: 'org-1', next: 'SUSPENDED' });
+      await transitionOrganizationStatus({ auth: REGULAR_USER, organizationId: oid('org-1'), next: 'SUSPENDED' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('FORBIDDEN_CROSS_TENANT');
@@ -175,17 +176,17 @@ describe('createTransitionOrganizationStatusUseCase', () => {
     const auditRecorder = new InMemoryAuditRecorder();
     const transitionOrganizationStatus = buildUseCase(organizations, unitOfWork, new InMemorySessionRepository(), auditRecorder);
 
-    await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: 'org-1', next: 'SUSPENDED' });
+    await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: oid('org-1'), next: 'SUSPENDED' });
 
     expect(auditRecorder.all()).toHaveLength(1);
     const [event] = auditRecorder.all();
     expect(event).toMatchObject({
-      organizationId: 'org-1',
+      organizationId: oid('org-1'),
       actorType: 'PLATFORM_ADMIN',
-      actorId: 'u1',
+      actorId: oid('u1'),
       action: 'ORGANIZATION_STATUS_CHANGED',
       resource: 'organizations',
-      resourceId: 'org-1',
+      resourceId: oid('org-1'),
       detail: { from: 'ACTIVE', to: 'SUSPENDED' },
       ipAddress: '203.0.113.10',
     });
@@ -197,32 +198,32 @@ describe('createTransitionOrganizationStatusUseCase', () => {
     await seedOrganization(organizations);
     const unitOfWork = new InMemoryUnitOfWork();
     const sessions = new InMemorySessionRepository();
-    await sessions.save(buildSession('session-1'));
-    await sessions.save(buildSession('session-2'));
+    await sessions.save(buildSession(oid('session-1')));
+    await sessions.save(buildSession(oid('session-2')));
     const auditRecorder = new InMemoryAuditRecorder();
     const transitionOrganizationStatus = buildUseCase(organizations, unitOfWork, sessions, auditRecorder);
 
-    await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: 'org-1', next: 'CANCELLED' });
+    await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: oid('org-1'), next: 'CANCELLED' });
 
-    const revokedSession1 = await sessions.findByTokenHash('token-hash-session-1');
-    const revokedSession2 = await sessions.findByTokenHash('token-hash-session-2');
+    const revokedSession1 = await sessions.findByTokenHash(`token-hash-${oid('session-1')}`);
+    const revokedSession2 = await sessions.findByTokenHash(`token-hash-${oid('session-2')}`);
     expect(revokedSession1?.deletedAt).toBe(TRANSITIONED_AT);
     expect(revokedSession2?.deletedAt).toBe(TRANSITIONED_AT);
 
     expect(auditRecorder.all()).toHaveLength(2);
     const [sessionsRevoked, statusChanged] = auditRecorder.all();
     expect(sessionsRevoked).toMatchObject({
-      organizationId: 'org-1',
+      organizationId: oid('org-1'),
       action: 'ORGANIZATION_SESSIONS_REVOKED',
       resource: 'sessions',
       resourceId: null,
       detail: { revokedCount: 2 },
     });
     expect(statusChanged).toMatchObject({
-      organizationId: 'org-1',
+      organizationId: oid('org-1'),
       action: 'ORGANIZATION_STATUS_CHANGED',
       resource: 'organizations',
-      resourceId: 'org-1',
+      resourceId: oid('org-1'),
       detail: { from: 'ACTIVE', to: 'CANCELLED' },
     });
   });
@@ -234,7 +235,7 @@ describe('createTransitionOrganizationStatusUseCase', () => {
     const auditRecorder = new InMemoryAuditRecorder();
     const transitionOrganizationStatus = buildUseCase(organizations, unitOfWork, new InMemorySessionRepository(), auditRecorder);
 
-    await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: 'org-1', next: 'SUSPENDED' });
+    await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: oid('org-1'), next: 'SUSPENDED' });
 
     expect(auditRecorder.all().some((event) => event.action === 'ORGANIZATION_SESSIONS_REVOKED')).toBe(false);
   });

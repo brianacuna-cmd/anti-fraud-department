@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { User } from '../../../../../src/modules/identity-access/domain/model/aggregates/User.js';
 import { createUserId } from '../../../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
 import { createOrganizationId } from '../../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
@@ -15,8 +16,8 @@ const ROLE_ID = createRoleId('ANALYST');
 
 function buildUser(): User {
   return User.create({
-    id: createUserId('user-1'),
-    organizationId: createOrganizationId('org-1'),
+    id: createUserId(oid('user-1')),
+    organizationId: createOrganizationId(oid('org-1')),
     email: createEmail('alice@example.com'),
     credential: CREDENTIAL,
     firstName: 'Alice',
@@ -54,8 +55,8 @@ describe('User.create', () => {
 
   it('carries isPlatformAdmin=true when explicitly provisioned', () => {
     const user = User.create({
-      id: createUserId('user-1'),
-      organizationId: createOrganizationId('org-1'),
+      id: createUserId(oid('user-1')),
+      organizationId: createOrganizationId(oid('org-1')),
       email: createEmail('alice@example.com'),
       credential: CREDENTIAL,
       firstName: 'Alice',
@@ -71,8 +72,8 @@ describe('User.create', () => {
   it.each(['firstName', 'lastName'] as const)('rejects an empty %s as an invariant violation', (field) => {
     expect(() =>
       User.create({
-        id: createUserId('user-1'),
-        organizationId: createOrganizationId('org-1'),
+        id: createUserId(oid('user-1')),
+        organizationId: createOrganizationId(oid('org-1')),
         email: createEmail('alice@example.com'),
         credential: CREDENTIAL,
         firstName: 'Alice',
@@ -87,8 +88,8 @@ describe('User.create', () => {
   it('rejects a blank avatarUrl as an invariant violation', () => {
     expect(() =>
       User.create({
-        id: createUserId('user-1'),
-        organizationId: createOrganizationId('org-1'),
+        id: createUserId(oid('user-1')),
+        organizationId: createOrganizationId(oid('org-1')),
         email: createEmail('alice@example.com'),
         credential: CREDENTIAL,
         firstName: 'Alice',
@@ -112,8 +113,8 @@ describe('User.create', () => {
 
   it('accepts a provided middleName', () => {
     const user = User.create({
-      id: createUserId('user-1'),
-      organizationId: createOrganizationId('org-1'),
+      id: createUserId(oid('user-1')),
+      organizationId: createOrganizationId(oid('org-1')),
       email: createEmail('alice@example.com'),
       credential: CREDENTIAL,
       firstName: 'Alice',
@@ -129,8 +130,8 @@ describe('User.create', () => {
   it('rejects a blank middleName as an invariant violation', () => {
     expect(() =>
       User.create({
-        id: createUserId('user-1'),
-        organizationId: createOrganizationId('org-1'),
+        id: createUserId(oid('user-1')),
+        organizationId: createOrganizationId(oid('org-1')),
         email: createEmail('alice@example.com'),
         credential: CREDENTIAL,
         firstName: 'Alice',
@@ -164,8 +165,8 @@ describe('User.create', () => {
 describe('User.rehydrate', () => {
   it('reconstructs a user from stored props without re-validating business rules', () => {
     const user = User.rehydrate({
-      id: createUserId('user-1'),
-      organizationId: createOrganizationId('org-1'),
+      id: createUserId(oid('user-1')),
+      organizationId: createOrganizationId(oid('org-1')),
       email: createEmail('alice@example.com'),
       credential: CREDENTIAL,
       firstName: 'Alice',

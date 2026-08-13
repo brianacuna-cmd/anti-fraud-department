@@ -1,24 +1,18 @@
 /**
- * Mongo document shape for `MfaChallenges` (design D1, two-step-login, A2:
- * PascalCase keys). `_id` is the token's `jti` — a plain string, never a
- * driver-generated `ObjectId` (design A1/D37 convention, mirrored from
- * `Sessions`) — so the atomic CAS `consume` can match on `{_id, ConsumedAt:
- * null, ExpiresAt:{$gt:now}}` with no secondary lookup.
- *
- * `ExpiresAtDate` is a BSON `Date` MIRROR of `ExpiresAt` (an `Instant`
- * ISO-8601 string) — TTL only (identical pattern to `Sessions.
- * FamilyExpiresAtDate`, design D15). Mongo's TTL monitor acts only on a real
- * BSON `Date` field; a TTL index on the string field would create
- * successfully and silently delete nothing.
+ * Mongo document shape for `mfa_challenges`. `_id` is the token `jti` — a
+ * plain string, never an `ObjectId`, so consume can match on `{_id, ...}`
+ * with no secondary lookup. Instant fields are BSON `Date`.
  */
+
+import type { ObjectId } from 'mongodb';
+
 export interface MfaChallengeDocument {
   readonly _id: string;
-  readonly UserId: string;
-  readonly OrganizationId: string | null;
-  readonly ActorType: string;
-  readonly TokenType: string;
-  readonly ExpiresAt: string;
-  readonly ExpiresAtDate: Date;
-  readonly ConsumedAt: string | null;
-  readonly CreatedAt: string;
+  readonly user_id: ObjectId;
+  readonly organization_id: ObjectId | null;
+  readonly actor_type: string;
+  readonly token_type: string;
+  readonly expires_at: Date;
+  readonly consumed_at: Date | null;
+  readonly created_at: Date;
 }

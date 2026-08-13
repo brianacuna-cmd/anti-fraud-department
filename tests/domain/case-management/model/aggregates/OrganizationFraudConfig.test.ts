@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { OrganizationFraudConfig } from '../../../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
 import { createOrganizationFraudConfigId } from '../../../../../src/modules/case-management/domain/model/value-objects/OrganizationFraudConfigId.js';
 import { CaseManagementError } from '../../../../../src/modules/case-management/domain/errors/CaseManagementError.js';
@@ -8,8 +9,8 @@ const LATER = fromDate(new Date('2026-01-02T00:00:00.000Z'));
 
 function buildConfig(overrides: Partial<Parameters<typeof OrganizationFraudConfig.create>[0]> = {}): OrganizationFraudConfig {
   return OrganizationFraudConfig.create({
-    id: createOrganizationFraudConfigId('config-1'),
-    organizationId: 'org-1',
+    id: createOrganizationFraudConfigId(oid('config-1')),
+    organizationId: oid('org-1'),
     slaLowMinutes: 240,
     slaMediumMinutes: 120,
     slaHighMinutes: 60,
@@ -28,7 +29,7 @@ describe('OrganizationFraudConfig.create', () => {
   it('creates a config with all fields set', () => {
     const config = buildConfig();
 
-    expect(config.organizationId).toBe('org-1');
+    expect(config.organizationId).toBe(oid('org-1'));
     expect(config.slaLowMinutes).toBe(240);
     expect(config.slaCriticalMinutes).toBe(30);
     expect(config.riskThresholdCritical).toBe(90);

@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createProvisionAdminOrganizationUseCase } from '../../../../src/modules/identity-access/application/admin/ProvisionAdminOrganization.js';
 import { InMemoryAdminOrganizationRepository } from '../../../helpers/identity-access/InMemoryAdminOrganizationRepository.js';
 import { InMemoryUnitOfWork } from '../../../helpers/identity-access/InMemoryUnitOfWork.js';
@@ -13,12 +14,12 @@ import { IdentityAccessError } from '../../../../src/modules/identity-access/dom
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const PLATFORM_ADMIN = createAuthContext({
-  userId: 'admin-1',
+  userId: oid('admin-1'),
   organizationId: null,
   isPlatformAdmin: true,
   ipAddress: '203.0.113.10',
 });
-const REGULAR_USER = createAuthContext({ userId: 'user-1', organizationId: 'o1', isPlatformAdmin: false });
+const REGULAR_USER = createAuthContext({ userId: oid('user-1'), organizationId: oid('o1'), isPlatformAdmin: false });
 
 function buildUseCase() {
   const admins = new InMemoryAdminOrganizationRepository();
@@ -37,11 +38,11 @@ function buildUseCase() {
     clock,
     generateAdminOrganizationId: () => {
       nextOrgIdSeq += 1;
-      return createAdminOrganizationId(`admin-org-${nextOrgIdSeq}`);
+      return createAdminOrganizationId(oid(`admin-org-${nextOrgIdSeq}`));
     },
     generateAdminKeyId: () => {
       nextKeyIdSeq += 1;
-      return createAdminKeyId(`admin-key-${nextKeyIdSeq}`);
+      return createAdminKeyId(oid(`admin-key-${nextKeyIdSeq}`));
     },
     auditRecorder,
   });
@@ -97,7 +98,7 @@ describe('createProvisionAdminOrganizationUseCase', () => {
     expect(event).toMatchObject({
       organizationId: null,
       actorType: 'PLATFORM_ADMIN',
-      actorId: 'admin-1',
+      actorId: oid('admin-1'),
       action: 'PLATFORM_ADMIN_PROVISIONED',
       resource: 'adminOrganizations',
       resourceId: admin.id,

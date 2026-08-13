@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { InMemoryMfaChallengeStore } from '../../../helpers/identity-access/InMemoryMfaChallengeStore.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 import type { MfaChallengeRecord } from '../../../../src/modules/identity-access/domain/ports/MfaChallengeStore.js';
@@ -10,8 +11,8 @@ const PAST_EXPIRY = fromDate(new Date('2025-12-31T23:59:00.000Z'));
 function buildRecord(overrides: Partial<MfaChallengeRecord> & { jti: string }): MfaChallengeRecord {
   return {
     jti: overrides.jti,
-    userId: overrides.userId ?? 'user-1',
-    organizationId: overrides.organizationId ?? 'org-1',
+    userId: overrides.userId ?? oid('user-1'),
+    organizationId: overrides.organizationId ?? oid('org-1'),
     actorType: 'USER',
     tokenType: overrides.tokenType ?? 'mfa_challenge',
     expiresAt: overrides.expiresAt ?? EXPIRY,

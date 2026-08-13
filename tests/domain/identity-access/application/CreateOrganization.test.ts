@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createCreateOrganizationUseCase } from '../../../../src/modules/identity-access/application/CreateOrganization.js';
 import { InMemoryOrganizationRepository } from '../../../helpers/identity-access/InMemoryOrganizationRepository.js';
 import { InMemoryUnitOfWork } from '../../../helpers/identity-access/InMemoryUnitOfWork.js';
@@ -11,12 +12,12 @@ import { IdentityAccessError } from '../../../../src/modules/identity-access/dom
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const PLATFORM_ADMIN = createAuthContext({
-  userId: 'u1',
-  organizationId: 'o0',
+  userId: oid('u1'),
+  organizationId: oid('o0'),
   isPlatformAdmin: true,
   ipAddress: '203.0.113.10',
 });
-const REGULAR_USER = createAuthContext({ userId: 'u2', organizationId: 'o1', isPlatformAdmin: false });
+const REGULAR_USER = createAuthContext({ userId: oid('u2'), organizationId: oid('o1'), isPlatformAdmin: false });
 
 function buildUseCase() {
   const organizations = new InMemoryOrganizationRepository();
@@ -30,7 +31,7 @@ function buildUseCase() {
     clock,
     generateId: () => {
       nextId += 1;
-      return createOrganizationId(`org-${nextId}`);
+      return createOrganizationId(oid(`org-${nextId}`));
     },
     auditRecorder,
   });
@@ -89,7 +90,7 @@ describe('createCreateOrganizationUseCase', () => {
     expect(event).toMatchObject({
       organizationId: organization.id,
       actorType: 'PLATFORM_ADMIN',
-      actorId: 'u1',
+      actorId: oid('u1'),
       action: 'ORGANIZATION_CREATED',
       resource: 'organizations',
       resourceId: organization.id,

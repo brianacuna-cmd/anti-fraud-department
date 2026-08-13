@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { createDownloadAdminPrivateKeyUseCase } from '../../../../../src/modules/identity-access/application/admin/DownloadAdminPrivateKey.js';
 import { AdminOrganization } from '../../../../../src/modules/identity-access/domain/model/aggregates/AdminOrganization.js';
 import { createAdminOrganizationId } from '../../../../../src/modules/identity-access/domain/model/value-objects/AdminOrganizationId.js';
@@ -14,8 +15,8 @@ import { FixedClock } from '../../../../helpers/FixedClock.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const CREATED_AT = fromDate(new Date('2025-12-31T00:00:00.000Z'));
-const PLATFORM_ADMIN = createAuthContext({ userId: 'admin-caller', organizationId: null, isPlatformAdmin: true });
-const REGULAR_USER = createAuthContext({ userId: 'user-1', organizationId: 'o1', isPlatformAdmin: false });
+const PLATFORM_ADMIN = createAuthContext({ userId: oid('admin-caller'), organizationId: null, isPlatformAdmin: true });
+const REGULAR_USER = createAuthContext({ userId: oid('user-1'), organizationId: oid('o1'), isPlatformAdmin: false });
 const CIPHER = new AesGcmSecretCipher('download-admin-private-key-test-secret', 1);
 const PLAINTEXT_PEM = '-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n';
 
@@ -33,13 +34,13 @@ function buildHarness() {
   return { admins, unitOfWork, auditRecorder, downloadAdminPrivateKey };
 }
 
-async function seedAdminWithKey(admins: InMemoryAdminOrganizationRepository, id = 'admin-1') {
+async function seedAdminWithKey(admins: InMemoryAdminOrganizationRepository, id = oid('admin-1')) {
   const admin = AdminOrganization.create({
     id: createAdminOrganizationId(id),
     email: createEmail('root@platform.internal'),
     keys: [
       createAdminKey({
-        keyId: createAdminKeyId('key-1'),
+        keyId: createAdminKeyId(oid('key-1')),
         publicKey: '-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----\n',
         status: 'ACTIVE',
         encryptedPrivateKey: CIPHER.encrypt(PLAINTEXT_PEM),
@@ -60,7 +61,7 @@ describe('createDownloadAdminPrivateKeyUseCase', () => {
     const result = await downloadAdminPrivateKey({
       auth: PLATFORM_ADMIN,
       adminOrganizationId: admin.id,
-      keyId: 'key-1',
+      keyId: oid('key-1'),
     });
 
     expect(result.privateKeyPkcs8Pem).toBe(PLAINTEXT_PEM);
@@ -72,17 +73,17 @@ describe('createDownloadAdminPrivateKeyUseCase', () => {
 
     // The key is nulled at rest — never a decryptable copy remains.
     const reloaded = await admins.findById(admin.id);
-    expect(reloaded?.findKey(createAdminKeyId('key-1'))?.encryptedPrivateKey).toBeNull();
+    expect(reloaded?.findKey(createAdminKeyId(oid('key-1')))?.encryptedPrivateKey).toBeNull();
   });
 
   it('rejects a second download of the same key (already claimed)', async () => {
     const { admins, downloadAdminPrivateKey } = buildHarness();
     const admin = await seedAdminWithKey(admins);
 
-    await downloadAdminPrivateKey({ auth: PLATFORM_ADMIN, adminOrganizationId: admin.id, keyId: 'key-1' });
+    await downloadAdminPrivateKey({ auth: PLATFORM_ADMIN, adminOrganizationId: admin.id, keyId: oid('key-1') });
 
     await expect(
-      downloadAdminPrivateKey({ auth: PLATFORM_ADMIN, adminOrganizationId: admin.id, keyId: 'key-1' }),
+      downloadAdminPrivateKey({ auth: PLATFORM_ADMIN, adminOrganizationId: admin.id, keyId: oid('key-1') }),
     ).rejects.toMatchObject({ code: 'ADMIN_PRIVATE_KEY_UNAVAILABLE' });
   });
 
@@ -90,7 +91,7 @@ describe('createDownloadAdminPrivateKeyUseCase', () => {
     const { downloadAdminPrivateKey } = buildHarness();
 
     await expect(
-      downloadAdminPrivateKey({ auth: PLATFORM_ADMIN, adminOrganizationId: 'missing-admin', keyId: 'key-1' }),
+      downloadAdminPrivateKey({ auth: PLATFORM_ADMIN, adminOrganizationId: oid('missing-admin'), keyId: oid('key-1') }),
     ).rejects.toMatchObject({ code: 'ADMIN_ORGANIZATION_NOT_FOUND' });
   });
 
@@ -99,7 +100,7 @@ describe('createDownloadAdminPrivateKeyUseCase', () => {
     const admin = await seedAdminWithKey(admins);
 
     await expect(
-      downloadAdminPrivateKey({ auth: PLATFORM_ADMIN, adminOrganizationId: admin.id, keyId: 'nonexistent' }),
+      downloadAdminPrivateKey({ auth: PLATFORM_ADMIN, adminOrganizationId: admin.id, keyId: oid('nonexistent') }),
     ).rejects.toMatchObject({ code: 'ADMIN_PRIVATE_KEY_UNAVAILABLE' });
   });
 
@@ -108,7 +109,7 @@ describe('createDownloadAdminPrivateKeyUseCase', () => {
     const admin = await seedAdminWithKey(admins);
 
     await expect(
-      downloadAdminPrivateKey({ auth: REGULAR_USER, adminOrganizationId: admin.id, keyId: 'key-1' }),
+      downloadAdminPrivateKey({ auth: REGULAR_USER, adminOrganizationId: admin.id, keyId: oid('key-1') }),
     ).rejects.toMatchObject({ code: 'FORBIDDEN_CROSS_TENANT' });
   });
 
@@ -116,7 +117,7 @@ describe('createDownloadAdminPrivateKeyUseCase', () => {
     const { admins, auditRecorder, downloadAdminPrivateKey } = buildHarness();
     const admin = await seedAdminWithKey(admins);
 
-    await downloadAdminPrivateKey({ auth: PLATFORM_ADMIN, adminOrganizationId: admin.id, keyId: 'key-1' });
+    await downloadAdminPrivateKey({ auth: PLATFORM_ADMIN, adminOrganizationId: admin.id, keyId: oid('key-1') });
 
     const detailString = JSON.stringify(auditRecorder.calls()[0]!.event.detail);
     expect(detailString).not.toContain('BEGIN PRIVATE KEY');

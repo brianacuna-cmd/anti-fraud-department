@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { InMemoryAdminChallengeStore } from '../../../helpers/identity-access/InMemoryAdminChallengeStore.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 import type { AdminChallengeRecord } from '../../../../src/modules/identity-access/domain/ports/AdminChallengeStore.js';
@@ -10,7 +11,7 @@ const PAST_EXPIRY = fromDate(new Date('2025-12-31T23:59:00.000Z'));
 function buildRecord(overrides: Partial<AdminChallengeRecord> & { challengeId: string }): AdminChallengeRecord {
   return {
     challengeId: overrides.challengeId,
-    adminOrganizationId: overrides.adminOrganizationId ?? 'admin-org-1',
+    adminOrganizationId: overrides.adminOrganizationId ?? oid('admin-org-1'),
     challenge: overrides.challenge ?? 'challenge-secret-1',
     expiresAt: overrides.expiresAt ?? EXPIRY,
     now: overrides.now ?? NOW,
@@ -73,7 +74,7 @@ describe('AdminChallengeStore (port contract, via InMemoryAdminChallengeStore fa
 
       expect(entry).toMatchObject({
         challengeId: 'challenge-id-1',
-        adminOrganizationId: 'admin-org-1',
+        adminOrganizationId: oid('admin-org-1'),
         challenge: 'super-secret',
         consumedAt: null,
       });

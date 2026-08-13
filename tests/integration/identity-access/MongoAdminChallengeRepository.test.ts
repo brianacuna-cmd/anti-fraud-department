@@ -1,11 +1,12 @@
+import { oid } from '../../support/oid.js';
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
-import type { Db, MongoClient } from 'mongodb';
+import { ObjectId, type Db, type MongoClient } from 'mongodb';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
 import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
 import { MongoAdminChallengeRepository } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/MongoAdminChallengeRepository.js';
 import { MongoUnitOfWork } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
-import { fromDate } from '../../../src/shared/time/Instant.js';
+import { fromDate, toDate } from '../../../src/shared/time/Instant.js';
 import type { AdminChallengeRecord } from '../../../src/modules/identity-access/domain/ports/AdminChallengeStore.js';
 import type { AdminChallengeDocument } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/documents/AdminChallengeDocument.js';
 
@@ -19,7 +20,7 @@ const PAST_EXPIRY = fromDate(new Date('2025-12-31T23:59:00.000Z'));
 function buildRecord(overrides: Partial<AdminChallengeRecord> & { challengeId: string }): AdminChallengeRecord {
   return {
     challengeId: overrides.challengeId,
-    adminOrganizationId: overrides.adminOrganizationId ?? 'admin-org-1',
+    adminOrganizationId: overrides.adminOrganizationId ?? oid('admin-org-1'),
     challenge: overrides.challenge ?? 'challenge-secret-1',
     expiresAt: overrides.expiresAt ?? EXPIRY,
     now: overrides.now ?? NOW,
@@ -50,19 +51,19 @@ describe('MongoAdminChallengeRepository (integration, real replica-set Mongo)', 
   });
 
   afterEach(async () => {
-    await db.collection('AdminChallenges').deleteMany({});
+    await db.collection('admin_challenges').deleteMany({});
   });
 
   it('appends a challenge record retrievable by challengeId (raw document check)', async () => {
     await repository.append(buildRecord({ challengeId: 'challenge-id-1' }));
 
-    const raw = await db.collection<AdminChallengeDocument>('AdminChallenges').findOne({ _id: 'challenge-id-1' });
+    const raw = await db.collection<AdminChallengeDocument>('admin_challenges').findOne({ _id: 'challenge-id-1' });
 
     expect(raw?._id).toBe('challenge-id-1');
-    expect(raw?.AdminOrganizationId).toBe('admin-org-1');
-    expect(raw?.Challenge).toBe('challenge-secret-1');
-    expect(raw?.ConsumedAt).toBeNull();
-    expect(raw?.ExpiresAtDate).toBeInstanceOf(Date);
+    expect(raw?.admin_organization_id).toEqual(new ObjectId(oid('admin-org-1')));
+    expect(raw?.challenge).toBe('challenge-secret-1');
+    expect(raw?.consumed_at).toBeNull();
+    expect(raw?.expires_at).toBeInstanceOf(Date);
   });
 
   it('rejects a duplicate challengeId with a real E11000 (design: _id enforces uniqueness)', async () => {
@@ -80,8 +81,8 @@ describe('MongoAdminChallengeRepository (integration, real replica-set Mongo)', 
       const won = await repository.consume('challenge-id-1', NOW);
 
       expect(won).toBe(true);
-      const raw = await db.collection<AdminChallengeDocument>('AdminChallenges').findOne({ _id: 'challenge-id-1' });
-      expect(raw?.ConsumedAt).toBe(NOW);
+      const raw = await db.collection<AdminChallengeDocument>('admin_challenges').findOne({ _id: 'challenge-id-1' });
+      expect(raw?.consumed_at).toEqual(toDate(NOW));
     });
 
     it('returns false for a second call — the CAS loser (replay)', async () => {
@@ -126,8 +127,8 @@ describe('MongoAdminChallengeRepository (integration, real replica-set Mongo)', 
         }),
       ).rejects.toThrow('force rollback');
 
-      const raw = await db.collection<AdminChallengeDocument>('AdminChallenges').findOne({ _id: 'challenge-id-1' });
-      expect(raw?.ConsumedAt).toBeNull();
+      const raw = await db.collection<AdminChallengeDocument>('admin_challenges').findOne({ _id: 'challenge-id-1' });
+      expect(raw?.consumed_at).toBeNull();
     });
   });
 
@@ -139,7 +140,7 @@ describe('MongoAdminChallengeRepository (integration, real replica-set Mongo)', 
 
       expect(entry).toMatchObject({
         challengeId: 'challenge-id-1',
-        adminOrganizationId: 'admin-org-1',
+        adminOrganizationId: oid('admin-org-1'),
         challenge: 'super-secret',
         consumedAt: null,
       });
@@ -159,7 +160,7 @@ describe('MongoAdminChallengeRepository (integration, real replica-set Mongo)', 
     await repository.append(buildRecord({ challengeId: 'challenge-id-guard' }));
 
     const raw = await db
-      .collection<AdminChallengeDocument>('AdminChallenges')
+      .collection<AdminChallengeDocument>('admin_challenges')
       .findOne({ _id: 'challenge-id-guard' });
 
     expect(raw).not.toBeNull();
@@ -168,12 +169,12 @@ describe('MongoAdminChallengeRepository (integration, real replica-set Mongo)', 
   });
 
   it('a TTL index exists on ExpiresAtDate (design: TTL, never on the ISO string field)', async () => {
-    const indexes = await db.collection('AdminChallenges').indexes();
+    const indexes = await db.collection('admin_challenges').indexes();
 
     const ttlIndex = indexes.find((index) => index.name === 'admin_challenge_expires_at_ttl_idx');
 
     expect(ttlIndex).toBeDefined();
-    expect(ttlIndex?.key).toEqual({ ExpiresAtDate: 1 });
+    expect(ttlIndex?.key).toEqual({ expires_at: 1 });
     expect(ttlIndex?.expireAfterSeconds).toBe(0);
   });
 });

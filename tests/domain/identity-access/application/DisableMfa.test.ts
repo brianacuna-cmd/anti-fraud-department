@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createDisableMfaUseCase } from '../../../../src/modules/identity-access/application/DisableMfa.js';
 import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
 import { InMemoryUnitOfWork } from '../../../helpers/identity-access/InMemoryUnitOfWork.js';
@@ -15,12 +16,12 @@ import { IdentityAccessError } from '../../../../src/modules/identity-access/dom
 
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const DISABLED_AT = fromDate(new Date('2026-01-02T00:00:00.000Z'));
-const AUTH = createAuthContext({ userId: 'user-1', organizationId: 'org-1', isPlatformAdmin: false });
+const AUTH = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), isPlatformAdmin: false });
 
 async function seedEnabledUser(userRepositoryFactory: InMemoryUserRepositoryFactory): Promise<void> {
-  const org = createOrganizationId('org-1');
+  const org = createOrganizationId(oid('org-1'));
   const user = User.create({
-    id: createUserId('user-1'),
+    id: createUserId(oid('user-1')),
     organizationId: org,
     email: createEmail('alice@example.com'),
     credential: createPasswordCredential('hash'),
@@ -64,7 +65,7 @@ describe('createDisableMfaUseCase', () => {
     expect(calls[0].tx).toBeDefined();
     expect(calls[0].event.action).toBe('MFA_DISABLED');
     expect(calls[0].event.resource).toBe('users');
-    expect(calls[0].event.resourceId).toBe('user-1');
+    expect(calls[0].event.resourceId).toBe(oid('user-1'));
   });
 
   it('rejects an unknown authenticated user with USER_NOT_FOUND', async () => {

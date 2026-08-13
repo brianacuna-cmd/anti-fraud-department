@@ -1,19 +1,17 @@
 import type { ObjectId } from 'mongodb';
 
 /**
- * Mongo document shape for `NotificationPreferences` (design D1/D4). One row
- * per `(OrganizationId, UserId, AlertType, Channel)`, uniqueness enforced by
- * a compound unique index (design D9) — NOT a composite `_id`. `_id` is a
- * driver-generated surrogate `ObjectId`, deliberately never mapped into the
- * domain (identity there IS the natural key, design D1).
+ * Mongo document shape for `notification_preferences`. `_id` is a driver-generated
+ * surrogate `ObjectId`, never mapped into the domain.
  */
+
 export interface NotificationPreferenceDocument {
   readonly _id: ObjectId;
-  readonly OrganizationId: string;
-  readonly UserId: string;
-  readonly AlertType: string;
-  readonly Channel: string;
-  readonly Enabled: boolean;
-  readonly CreatedAt: string;
-  readonly UpdatedAt: string;
+  readonly organization_id: ObjectId;
+  readonly user_id: ObjectId;
+  readonly alert_type: string;
+  readonly channel: string;
+  readonly enabled: boolean;
+  readonly created_at: Date;
+  readonly updated_at: Date;
 }

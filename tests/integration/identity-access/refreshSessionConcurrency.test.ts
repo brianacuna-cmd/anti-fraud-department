@@ -75,8 +75,8 @@ describe('RefreshSession concurrency (integration, real replica-set Mongo transa
   });
 
   afterEach(async () => {
-    await db.collection('Sessions').deleteMany({});
-    await db.collection('AuditLogs').deleteMany({});
+    await db.collection('sessions').deleteMany({});
+    await db.collection('audit_logs').deleteMany({});
   });
 
   function buildRefreshSession() {
@@ -129,8 +129,8 @@ describe('RefreshSession concurrency (integration, real replica-set Mongo transa
       code: 'SESSION_INVALID',
     });
 
-    const auditRows = await db.collection('AuditLogs').find({}).toArray();
-    expect(auditRows.map((row) => row.Action)).toContain('SESSION_REFRESHED');
+    const auditRows = await db.collection('audit_logs').find({}).toArray();
+    expect(auditRows.map((row) => row.action)).toContain('SESSION_REFRESHED');
   });
 
   it('reuse-replay: presenting an already-rotated refresh token revokes the whole family', async () => {
@@ -147,8 +147,8 @@ describe('RefreshSession concurrency (integration, real replica-set Mongo transa
     expect(oldSession?.deletedAt).not.toBeNull();
     expect(successorSession?.deletedAt).not.toBeNull();
 
-    const auditRows = await db.collection('AuditLogs').find({}).toArray();
-    expect(auditRows.map((row) => row.Action)).toContain('SESSION_REUSE_DETECTED');
+    const auditRows = await db.collection('audit_logs').find({}).toArray();
+    expect(auditRows.map((row) => row.action)).toContain('SESSION_REUSE_DETECTED');
   });
 
   /**
@@ -191,8 +191,8 @@ describe('RefreshSession concurrency (integration, real replica-set Mongo transa
     const successorSession = await sessions.findByTokenHash(TOKEN_SERVICE.fingerprint(winnerSession!.accessToken));
     expect(successorSession?.deletedAt).not.toBeNull();
 
-    const auditRows = await db.collection('AuditLogs').find({}).toArray();
-    expect(auditRows.map((row) => row.Action)).toContain('SESSION_REUSE_DETECTED');
-    expect(auditRows.map((row) => row.Action)).toContain('SESSION_REFRESHED');
+    const auditRows = await db.collection('audit_logs').find({}).toArray();
+    expect(auditRows.map((row) => row.action)).toContain('SESSION_REUSE_DETECTED');
+    expect(auditRows.map((row) => row.action)).toContain('SESSION_REFRESHED');
   });
 });

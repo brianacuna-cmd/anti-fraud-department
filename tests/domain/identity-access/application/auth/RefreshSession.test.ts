@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { createRefreshSessionUseCase } from '../../../../../src/modules/identity-access/application/auth/RefreshSession.js';
 import { createSessionIssuer } from '../../../../../src/modules/identity-access/application/auth/SessionIssuer.js';
 import { InMemorySessionRepository } from '../../../../helpers/identity-access/InMemorySessionRepository.js';
@@ -13,7 +14,7 @@ import { IdentityAccessError } from '../../../../../src/modules/identity-access/
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const SECRET_CIPHER = new AesGcmSecretCipher('test-secret', 1);
 const TOKEN_SERVICE = new AesGcmSessionTokenService(SECRET_CIPHER);
-const ORG_ID = createOrganizationId('org-1');
+const ORG_ID = createOrganizationId(oid('org-1'));
 
 const TTLS = { sessionSeconds: 900, refreshSeconds: 1_209_600, familySeconds: 2_592_000 };
 
@@ -40,7 +41,7 @@ function buildHarness(clock = new FixedClock(NOW)) {
 
 async function mintUserSession(harness: ReturnType<typeof buildHarness>, now = NOW) {
   return harness.unitOfWork.withTransaction((tx) =>
-    harness.issueSessionFor({ userId: 'user-1', organizationId: ORG_ID, actorType: 'USER', now, tx }),
+    harness.issueSessionFor({ userId: oid('user-1'), organizationId: ORG_ID, actorType: 'USER', now, tx }),
   );
 }
 
@@ -130,7 +131,7 @@ describe('createRefreshSessionUseCase', () => {
   it('PLATFORM_ADMIN cannot refresh — its ACCESS token is the only token it ever holds', async () => {
     const harness = buildHarness();
     const minted = await harness.unitOfWork.withTransaction((tx) =>
-      harness.issueSessionFor({ userId: 'admin-1', organizationId: null, actorType: 'PLATFORM_ADMIN', now: NOW, tx }),
+      harness.issueSessionFor({ userId: oid('admin-1'), organizationId: null, actorType: 'PLATFORM_ADMIN', now: NOW, tx }),
     );
     expect(minted.refreshToken).toBeNull();
 

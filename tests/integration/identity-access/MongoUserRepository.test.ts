@@ -23,7 +23,7 @@ const ORG_2 = createOrganizationId(oid('org-2'));
 
 function buildUser(id: string, organizationId = ORG_1, email = `${id}@example.com`): User {
   return User.create({
-    id: createUserId(oid(id)),
+    id: createUserId(id),
     organizationId,
     email: createEmail(email),
     credential: createPasswordCredential('hash'),
@@ -58,12 +58,12 @@ describe('MongoUserRepositoryFactory / MongoUserRepository (integration, real re
   });
 
   afterEach(async () => {
-    await db.collection('Users').deleteMany({});
+    await db.collection('users').deleteMany({});
   });
 
   it('persists a user and retrieves it by id, scoped to the bound tenant', async () => {
     const repository = factory.forTenant(ORG_1);
-    await repository.save(buildUser('user-1'));
+    await repository.save(buildUser(oid('user-1'), ORG_1, 'user-1@example.com'));
 
     const found = await repository.findById(createUserId(oid('user-1')));
 
@@ -72,7 +72,7 @@ describe('MongoUserRepositoryFactory / MongoUserRepository (integration, real re
   });
 
   it('never returns a user that belongs to a different tenant', async () => {
-    await factory.forTenant(ORG_1).save(buildUser('user-1', ORG_1));
+    await factory.forTenant(ORG_1).save(buildUser(oid('user-1'), ORG_1));
 
     const found = await factory.forTenant(ORG_2).findById(createUserId(oid('user-1')));
 
@@ -81,7 +81,7 @@ describe('MongoUserRepositoryFactory / MongoUserRepository (integration, real re
 
   it('finds a user by email within the bound tenant', async () => {
     const repository = factory.forTenant(ORG_1);
-    await repository.save(buildUser('user-1'));
+    await repository.save(buildUser(oid('user-1'), ORG_1, 'user-1@example.com'));
 
     const found = await repository.findByEmail(createEmail('user-1@example.com'));
 
@@ -90,11 +90,11 @@ describe('MongoUserRepositoryFactory / MongoUserRepository (integration, real re
 
   it('translates a duplicate {organizationId,email} write into USER_EMAIL_TAKEN by index name', async () => {
     const repository = factory.forTenant(ORG_1);
-    await repository.save(buildUser('user-1', ORG_1, 'dup@example.com'));
+    await repository.save(buildUser(oid('user-1'), ORG_1, 'dup@example.com'));
 
     expect.assertions(2);
     try {
-      await repository.save(buildUser('user-2', ORG_1, 'dup@example.com'));
+      await repository.save(buildUser(oid('user-2'), ORG_1, 'dup@example.com'));
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('USER_EMAIL_TAKEN');
@@ -102,16 +102,16 @@ describe('MongoUserRepositoryFactory / MongoUserRepository (integration, real re
   });
 
   it('allows the same email to be used across two different organizations', async () => {
-    await factory.forTenant(ORG_1).save(buildUser('user-1', ORG_1, 'shared@example.com'));
+    await factory.forTenant(ORG_1).save(buildUser(oid('user-1'), ORG_1, 'shared@example.com'));
 
-    await expect(factory.forTenant(ORG_2).save(buildUser('user-2', ORG_2, 'shared@example.com'))).resolves.toBeUndefined();
+    await expect(factory.forTenant(ORG_2).save(buildUser(oid('user-2'), ORG_2, 'shared@example.com'))).resolves.toBeUndefined();
   });
 
   it('paginates results within the bound tenant', async () => {
     const repository = factory.forTenant(ORG_1);
-    await repository.save(buildUser('user-1'));
-    await repository.save(buildUser('user-2'));
-    await factory.forTenant(ORG_2).save(buildUser('user-3', ORG_2));
+    await repository.save(buildUser(oid('user-1')));
+    await repository.save(buildUser(oid('user-2')));
+    await factory.forTenant(ORG_2).save(buildUser(oid('user-3'), ORG_2));
 
     const page = await repository.list(1);
 
@@ -121,7 +121,7 @@ describe('MongoUserRepositoryFactory / MongoUserRepository (integration, real re
 
   describe('existsByEmailAcrossTenants', () => {
     it('returns true when the email exists in ANY organization', async () => {
-      await factory.forTenant(ORG_1).save(buildUser('user-1', ORG_1, 'admin@example.com'));
+      await factory.forTenant(ORG_1).save(buildUser(oid('user-1'), ORG_1, 'admin@example.com'));
 
       const exists = await factory.existsByEmailAcrossTenants(createEmail('admin@example.com'));
 
@@ -142,7 +142,7 @@ describe('MongoUserRepositoryFactory / MongoUserRepository (integration, real re
 
       await expect(
         unitOfWork.withTransaction(async (tx) => {
-          await repository.save(buildUser('user-tx'), tx);
+          await repository.save(buildUser(oid('user-tx')), tx);
           throw new Error('boom');
         }),
       ).rejects.toThrow('boom');

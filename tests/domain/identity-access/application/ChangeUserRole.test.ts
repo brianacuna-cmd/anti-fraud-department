@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createChangeUserRoleUseCase } from '../../../../src/modules/identity-access/application/ChangeUserRole.js';
 import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
 import { InMemoryUnitOfWork } from '../../../helpers/identity-access/InMemoryUnitOfWork.js';
@@ -16,18 +17,18 @@ import { IdentityAccessError } from '../../../../src/modules/identity-access/dom
 
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const CHANGED_AT = fromDate(new Date('2026-01-02T00:00:00.000Z'));
-const ORG_1_ADMIN = createAuthContext({ userId: 'u1', organizationId: 'org-1', actorType: 'ORGANIZATION' });
-const ORG_2_ADMIN = createAuthContext({ userId: 'u2', organizationId: 'org-2', actorType: 'ORGANIZATION' });
-const ORG_1_USER = createAuthContext({ userId: 'u3', organizationId: 'org-1', isPlatformAdmin: false });
+const ORG_1_ADMIN = createAuthContext({ userId: oid('u1'), organizationId: oid('org-1'), actorType: 'ORGANIZATION' });
+const ORG_2_ADMIN = createAuthContext({ userId: oid('u2'), organizationId: oid('org-2'), actorType: 'ORGANIZATION' });
+const ORG_1_USER = createAuthContext({ userId: oid('u3'), organizationId: oid('org-1'), isPlatformAdmin: false });
 
 async function seedUser(
   userRepositoryFactory: InMemoryUserRepositoryFactory,
-  organizationId = 'org-1',
+  organizationId = oid('org-1'),
   roleId = 'ANALYST',
 ): Promise<void> {
   const org = createOrganizationId(organizationId);
   const user = User.create({
-    id: createUserId('user-1'),
+    id: createUserId(oid('user-1')),
     organizationId: org,
     email: createEmail('alice@example.com'),
     credential: createPasswordCredential('hash'),
@@ -61,12 +62,12 @@ describe('createChangeUserRoleUseCase', () => {
     const unitOfWork = new InMemoryUnitOfWork();
     const changeUserRole = buildUseCase(userRepositoryFactory, unitOfWork);
 
-    const user = await changeUserRole({ auth: ORG_1_ADMIN, userId: 'user-1', roleId: 'SUPERVISOR' });
+    const user = await changeUserRole({ auth: ORG_1_ADMIN, userId: oid('user-1'), roleId: 'SUPERVISOR' });
 
     expect(user.roleId).toBe('SUPERVISOR');
     expect(user.updatedAt).toBe(CHANGED_AT);
     expect(unitOfWork.transactionCount).toBe(1);
-    const persisted = await userRepositoryFactory.forTenant(createOrganizationId('org-1')).findById(user.id);
+    const persisted = await userRepositoryFactory.forTenant(createOrganizationId(oid('org-1'))).findById(user.id);
     expect(persisted?.roleId).toBe('SUPERVISOR');
   });
 
@@ -78,7 +79,7 @@ describe('createChangeUserRoleUseCase', () => {
 
     expect.assertions(2);
     try {
-      await changeUserRole({ auth: ORG_1_USER, userId: 'user-1', roleId: 'SUPERVISOR' });
+      await changeUserRole({ auth: ORG_1_USER, userId: oid('user-1'), roleId: 'SUPERVISOR' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('FORBIDDEN_CROSS_TENANT');
@@ -93,7 +94,7 @@ describe('createChangeUserRoleUseCase', () => {
 
     expect.assertions(2);
     try {
-      await changeUserRole({ auth: ORG_1_ADMIN, userId: 'user-1', roleId: 'ADMIN' });
+      await changeUserRole({ auth: ORG_1_ADMIN, userId: oid('user-1'), roleId: 'ADMIN' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('ROLE_NOT_ASSIGNABLE');
@@ -108,7 +109,7 @@ describe('createChangeUserRoleUseCase', () => {
 
     expect.assertions(2);
     try {
-      await changeUserRole({ auth: ORG_1_ADMIN, userId: 'user-1', roleId: 'NOT-A-ROLE' });
+      await changeUserRole({ auth: ORG_1_ADMIN, userId: oid('user-1'), roleId: 'NOT-A-ROLE' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('INVARIANT_VIOLATION');
@@ -126,7 +127,7 @@ describe('createChangeUserRoleUseCase', () => {
 
     expect.assertions(2);
     try {
-      await changeUserRole({ auth: ORG_1_ADMIN, userId: 'user-1', roleId: 'SUPERVISOR' });
+      await changeUserRole({ auth: ORG_1_ADMIN, userId: oid('user-1'), roleId: 'SUPERVISOR' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('ROLE_NOT_ASSIGNABLE');
@@ -140,7 +141,7 @@ describe('createChangeUserRoleUseCase', () => {
 
     expect.assertions(2);
     try {
-      await changeUserRole({ auth: ORG_1_ADMIN, userId: 'missing', roleId: 'SUPERVISOR' });
+      await changeUserRole({ auth: ORG_1_ADMIN, userId: oid('missing'), roleId: 'SUPERVISOR' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('USER_NOT_FOUND');
@@ -149,13 +150,13 @@ describe('createChangeUserRoleUseCase', () => {
 
   it('rejects a cross-tenant target user with USER_NOT_FOUND (no existence leak)', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
-    await seedUser(userRepositoryFactory, 'org-1');
+    await seedUser(userRepositoryFactory, oid('org-1'));
     const unitOfWork = new InMemoryUnitOfWork();
     const changeUserRole = buildUseCase(userRepositoryFactory, unitOfWork);
 
     expect.assertions(2);
     try {
-      await changeUserRole({ auth: ORG_2_ADMIN, userId: 'user-1', roleId: 'SUPERVISOR' });
+      await changeUserRole({ auth: ORG_2_ADMIN, userId: oid('user-1'), roleId: 'SUPERVISOR' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('USER_NOT_FOUND');
@@ -169,14 +170,14 @@ describe('createChangeUserRoleUseCase', () => {
     const auditRecorder = new InMemoryAuditRecorder();
     const changeUserRole = buildUseCase(userRepositoryFactory, unitOfWork, auditRecorder);
 
-    await changeUserRole({ auth: ORG_1_ADMIN, userId: 'user-1', roleId: 'SUPERVISOR' });
+    await changeUserRole({ auth: ORG_1_ADMIN, userId: oid('user-1'), roleId: 'SUPERVISOR' });
 
     const calls = auditRecorder.calls();
     expect(calls).toHaveLength(1);
     expect(calls[0].tx).toBeDefined();
     expect(calls[0].event.action).toBe('USER_ROLE_CHANGED');
     expect(calls[0].event.resource).toBe('users');
-    expect(calls[0].event.resourceId).toBe('user-1');
+    expect(calls[0].event.resourceId).toBe(oid('user-1'));
     expect(calls[0].event.detail).toEqual({ from: 'ANALYST', to: 'SUPERVISOR' });
   });
 
@@ -187,7 +188,7 @@ describe('createChangeUserRoleUseCase', () => {
     const changeUserRole = buildUseCase(userRepositoryFactory, unitOfWork, auditRecorder);
 
     await expect(
-      changeUserRole({ auth: ORG_1_ADMIN, userId: 'missing', roleId: 'SUPERVISOR' }),
+      changeUserRole({ auth: ORG_1_ADMIN, userId: oid('missing'), roleId: 'SUPERVISOR' }),
     ).rejects.toBeInstanceOf(IdentityAccessError);
 
     expect(auditRecorder.all()).toHaveLength(0);

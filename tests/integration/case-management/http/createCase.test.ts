@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import request from 'supertest';
 import { createApp } from '../../../../src/shared/http/createApp.js';
@@ -15,7 +16,7 @@ import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/i
 import { generateCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 
-const ORG_1_ANALYST = createAuthContext({ userId: 'analyst-1', organizationId: 'org-1', actorType: 'USER' });
+const ORG_1_ANALYST = createAuthContext({ userId: oid('analyst-1'), organizationId: oid('org-1'), actorType: 'USER' });
 
 function buildApp(actorPerRequest: () => AuthContext) {
   const cases = new InMemoryCaseRepository();
@@ -52,7 +53,7 @@ function buildApp(actorPerRequest: () => AuthContext) {
 }
 
 describe('caseRouter (e2e, in-memory repository)', () => {
-  it('POST /cases creates a Case scoped to the caller\'s organization, Status OPEN, 201 shape', async () => {
+  it('POST /cases creates a Case scoped to the caller\'s organization, status OPEN, 201 shape', async () => {
     const { app } = buildApp(() => ORG_1_ANALYST);
 
     const response = await request(app)
@@ -61,7 +62,7 @@ describe('caseRouter (e2e, in-memory repository)', () => {
 
     expect(response.status).toBe(201);
     expect(response.body).toMatchObject({
-      organizationId: 'org-1',
+      organizationId: oid('org-1'),
       customerId: 'customer-1',
       riskScore: 75,
       priority: 'HIGH',

@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { createRotateAdminKeyUseCase } from '../../../../../src/modules/identity-access/application/admin/RotateAdminKey.js';
 import { AdminOrganization } from '../../../../../src/modules/identity-access/domain/model/aggregates/AdminOrganization.js';
 import { createAdminOrganizationId } from '../../../../../src/modules/identity-access/domain/model/value-objects/AdminOrganizationId.js';
@@ -19,8 +20,8 @@ import { createFamilyId } from '../../../../../src/modules/identity-access/domai
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const CREATED_AT = fromDate(new Date('2025-12-31T00:00:00.000Z'));
-const PLATFORM_ADMIN = createAuthContext({ userId: 'admin-caller', organizationId: null, isPlatformAdmin: true });
-const REGULAR_USER = createAuthContext({ userId: 'user-1', organizationId: 'o1', isPlatformAdmin: false });
+const PLATFORM_ADMIN = createAuthContext({ userId: oid('admin-caller'), organizationId: null, isPlatformAdmin: true });
+const REGULAR_USER = createAuthContext({ userId: oid('user-1'), organizationId: oid('o1'), isPlatformAdmin: false });
 const CIPHER = new AesGcmSecretCipher('rotate-admin-key-test-secret', 1);
 
 function buildHarness() {
@@ -42,13 +43,13 @@ function buildHarness() {
   return { admins, sessions, unitOfWork, auditRecorder, keyPairs, rotateAdminKey };
 }
 
-async function seedAdminWithActiveKey(admins: InMemoryAdminOrganizationRepository, id = 'admin-1') {
+async function seedAdminWithActiveKey(admins: InMemoryAdminOrganizationRepository, id = oid('admin-1')) {
   const admin = AdminOrganization.create({
     id: createAdminOrganizationId(id),
     email: createEmail('root@platform.internal'),
     keys: [
       createAdminKey({
-        keyId: createAdminKeyId('key-old'),
+        keyId: createAdminKeyId(oid('key-old')),
         publicKey: '-----BEGIN PUBLIC KEY-----\nold\n-----END PUBLIC KEY-----\n',
         status: 'ACTIVE',
         encryptedPrivateKey: CIPHER.encrypt('old-private-pem'),
@@ -63,8 +64,8 @@ async function seedAdminWithActiveKey(admins: InMemoryAdminOrganizationRepositor
 
 async function seedSessionForAdmin(sessions: InMemorySessionRepository, adminId: string) {
   const session = Session.create({
-    id: createSessionId('session-1'),
-    familyId: createFamilyId('family-1'),
+    id: createSessionId(oid('session-1')),
+    familyId: createFamilyId(oid('family-1')),
     userId: adminId,
     organizationId: null,
     actorType: 'PLATFORM_ADMIN',
@@ -87,11 +88,11 @@ describe('createRotateAdminKeyUseCase', () => {
     const rotated = await rotateAdminKey({ auth: PLATFORM_ADMIN, adminOrganizationId: admin.id });
 
     expect(rotated.keys).toHaveLength(2);
-    const old = rotated.findKey(createAdminKeyId('key-old'));
+    const old = rotated.findKey(createAdminKeyId(oid('key-old')));
     expect(old?.status).toBe('DEPRECATED');
     expect(old?.rotatedAt).toBe(NOW);
     expect(rotated.activeKey()?.status).toBe('ACTIVE');
-    expect(rotated.activeKey()?.keyId).not.toBe('key-old');
+    expect(rotated.activeKey()?.keyId).not.toBe(oid('key-old'));
 
     // at most one ACTIVE key
     const activeCount = rotated.keys.filter((k) => k.status === 'ACTIVE').length;
@@ -137,7 +138,7 @@ describe('createRotateAdminKeyUseCase', () => {
     const { rotateAdminKey } = buildHarness();
 
     await expect(
-      rotateAdminKey({ auth: PLATFORM_ADMIN, adminOrganizationId: 'missing-admin' }),
+      rotateAdminKey({ auth: PLATFORM_ADMIN, adminOrganizationId: oid('missing-admin') }),
     ).rejects.toMatchObject({ code: 'ADMIN_ORGANIZATION_NOT_FOUND' });
   });
 

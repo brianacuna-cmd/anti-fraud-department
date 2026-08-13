@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createAuthenticateActorUseCase } from '../../../../src/modules/identity-access/application/auth/AuthenticateActor.js';
 import { InMemoryActorCredentialGateway } from '../../../helpers/identity-access/InMemoryActorCredentialGateway.js';
 import { InMemoryAuditRecorder } from '../../../helpers/identity-access/InMemoryAuditRecorder.js';
@@ -12,9 +13,9 @@ import type { ActorCredentialRecord } from '../../../../src/modules/identity-acc
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const DUMMY_CREDENTIAL = createPasswordCredential('hashed:dummy-password');
 
-const ORG_ID = createOrganizationId('org-1');
+const ORG_ID = createOrganizationId(oid('org-1'));
 const USER_RECORD: ActorCredentialRecord = {
-  actorId: 'user-1',
+  actorId: oid('user-1'),
   actorType: 'USER',
   organizationId: ORG_ID,
   credential: createPasswordCredential('hashed:correct-password'),
@@ -61,12 +62,12 @@ describe('createAuthenticateActorUseCase', () => {
     });
 
     expect(result).toEqual({
-      actorId: 'user-1',
+      actorId: oid('user-1'),
       actorType: 'USER',
       organizationId: ORG_ID,
       mfa: { enabled: false },
     });
-    expect(gateway.registeredSuccesses).toEqual(['user-1']);
+    expect(gateway.registeredSuccesses).toEqual([oid('user-1')]);
   });
 
   it('propagates mfa.enabled=true from the resolved actor record (two-step-login PR2)', async () => {
@@ -115,7 +116,7 @@ describe('createAuthenticateActorUseCase', () => {
       'INVALID_CREDENTIALS',
     );
 
-    expect(gateway.registeredFailures).toEqual([{ actorId: 'user-1', lockout: { loginAttempts: 1, blockedUntil: null } }]);
+    expect(gateway.registeredFailures).toEqual([{ actorId: oid('user-1'), lockout: { loginAttempts: 1, blockedUntil: null } }]);
   });
 
   it('locks the account with ACCOUNT_LOCKED on the 3rd consecutive failure (design D18)', async () => {
@@ -162,7 +163,7 @@ describe('createAuthenticateActorUseCase', () => {
       organizationSlug: 'acme',
     });
 
-    expect(result.actorId).toBe('user-1');
+    expect(result.actorId).toBe(oid('user-1'));
   });
 
   it('emits a LOGIN audit event on success (best-effort, no transaction)', async () => {
@@ -175,7 +176,7 @@ describe('createAuthenticateActorUseCase', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].tx).toBeUndefined();
     expect(calls[0].event.action).toBe('LOGIN');
-    expect(calls[0].event.actorId).toBe('user-1');
+    expect(calls[0].event.actorId).toBe(oid('user-1'));
     expect(calls[0].event.actorType).toBe('USER');
   });
 
@@ -208,7 +209,7 @@ describe('createAuthenticateActorUseCase', () => {
     const calls = auditRecorder.calls();
     expect(calls).toHaveLength(1);
     expect(calls[0].event.action).toBe('LOGIN_FAILED');
-    expect(calls[0].event.actorId).toBe('user-1');
+    expect(calls[0].event.actorId).toBe(oid('user-1'));
     expect(calls[0].event.detail).toEqual({ reason: 'INVALID_CREDENTIALS', email: 'alice@example.com' });
   });
 
@@ -250,6 +251,6 @@ describe('createAuthenticateActorUseCase', () => {
       organizationSlug: 'acme',
     });
 
-    expect(result.actorId).toBe('user-1');
+    expect(result.actorId).toBe(oid('user-1'));
   });
 });

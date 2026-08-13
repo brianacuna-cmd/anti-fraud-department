@@ -29,7 +29,7 @@ import { oid } from '../../support/oid.js';
 jest.setTimeout(120_000);
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const PLATFORM_ADMIN = createAuthContext({ userId: 'admin-1', organizationId: null, isPlatformAdmin: true });
+const PLATFORM_ADMIN = createAuthContext({ userId: oid('admin-1'), organizationId: null, isPlatformAdmin: true });
 
 /** Throws on the Nth call to `record`, letting earlier calls hit real Mongo — proves partial-write rollback. */
 function failOnNthCall(recorder: AuditRecorder, failAt: number): AuditRecorder {
@@ -75,9 +75,9 @@ describe('Organization Patch/Provision audit atomicity (integration, real replic
   });
 
   afterEach(async () => {
-    await db.collection('Organizations').deleteMany({});
-    await db.collection('adminOrganizations').deleteMany({});
-    await db.collection('AuditLogs').deleteMany({});
+    await db.collection('organizations').deleteMany({});
+    await db.collection('admin_organizations').deleteMany({});
+    await db.collection('audit_logs').deleteMany({});
   });
 
   async function seedOrganization(id = oid('org-1')): Promise<void> {
@@ -125,9 +125,9 @@ describe('Organization Patch/Provision audit atomicity (integration, real replic
 
       const persisted = await organizations.findById(createOrganizationId(oid('org-1')));
       expect(persisted?.name).toBe('Acme Renamed');
-      const auditRows = await db.collection('AuditLogs').find({}).toArray();
+      const auditRows = await db.collection('audit_logs').find({}).toArray();
       expect(auditRows).toHaveLength(1);
-      expect(auditRows[0]?.Action).toBe('ORGANIZATION_IDENTITY_UPDATED');
+      expect(auditRows[0]?.action).toBe('ORGANIZATION_IDENTITY_UPDATED');
     });
 
     it('rolls back the patch AND persists NO audit row when the audit write fails', async () => {
@@ -140,7 +140,7 @@ describe('Organization Patch/Provision audit atomicity (integration, real replic
 
       const persisted = await organizations.findById(createOrganizationId(oid('org-1')));
       expect(persisted?.name).toBe('Acme');
-      const auditRows = await db.collection('AuditLogs').find({}).toArray();
+      const auditRows = await db.collection('audit_logs').find({}).toArray();
       expect(auditRows).toHaveLength(0);
     });
   });
@@ -151,11 +151,11 @@ describe('Organization Patch/Provision audit atomicity (integration, real replic
 
       await provision({ auth: PLATFORM_ADMIN, email: 'root@platform.internal' });
 
-      const adminRows = await db.collection('adminOrganizations').find({}).toArray();
+      const adminRows = await db.collection('admin_organizations').find({}).toArray();
       expect(adminRows).toHaveLength(1);
-      const auditRows = await db.collection('AuditLogs').find({}).toArray();
+      const auditRows = await db.collection('audit_logs').find({}).toArray();
       expect(auditRows).toHaveLength(1);
-      expect(auditRows[0]?.Action).toBe('PLATFORM_ADMIN_PROVISIONED');
+      expect(auditRows[0]?.action).toBe('PLATFORM_ADMIN_PROVISIONED');
     });
 
     it('rolls back the AdminOrganization AND persists NO audit row when the audit write fails', async () => {
@@ -165,9 +165,9 @@ describe('Organization Patch/Provision audit atomicity (integration, real replic
         provision({ auth: PLATFORM_ADMIN, email: 'root@platform.internal' }),
       ).rejects.toThrow('induced audit failure mid-transaction');
 
-      const adminRows = await db.collection('adminOrganizations').find({}).toArray();
+      const adminRows = await db.collection('admin_organizations').find({}).toArray();
       expect(adminRows).toHaveLength(0);
-      const auditRows = await db.collection('AuditLogs').find({}).toArray();
+      const auditRows = await db.collection('audit_logs').find({}).toArray();
       expect(auditRows).toHaveLength(0);
     });
   });

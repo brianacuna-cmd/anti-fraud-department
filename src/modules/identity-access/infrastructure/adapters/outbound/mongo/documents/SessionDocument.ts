@@ -1,36 +1,25 @@
 /**
- * Mongo document shape for `Sessions` (design D14, A2: PascalCase keys).
- * `_id` is the aggregate's branded `SessionId` (a native MongoDB `ObjectId`).
- *
- * `RefreshTokenHash`/`RefreshExpiresAt` are explicitly nullable and WRITTEN
- * explicitly by the mapper, never omitted (design D38) — this repo's
- * mapper convention always writes an explicit `null`, which is exactly what
- * the `Sessions.RefreshTokenHash` partial unique index's
- * `{$exists:true,$type:'string'}` predicate is built to exclude.
- *
- * `FamilyExpiresAtDate` is a BSON `Date` MIRROR of `FamilyExpiresAt` (an
- * `Instant` ISO-8601 string) — TTL only (design D15). Mongo's TTL monitor
- * acts only on a real BSON `Date` field; a TTL index on the string field
- * would create successfully and silently delete nothing.
+ * Mongo document shape for `sessions`. `_id` is the aggregate's branded
+ * `SessionId` stored as a native BSON `ObjectId`. Instant fields are BSON `Date`
+ * so TTL can sit on `family_expires_at` directly.
  */
-import type { ObjectId } from "mongodb";
+
+import type { ObjectId } from 'mongodb';
 
 export interface SessionDocument {
   readonly _id: ObjectId;
-  readonly UserId: ObjectId | null;
-  readonly OrganizationId: ObjectId| null;
-  readonly ActorType: string;
-  readonly TokenHash: string;
-  readonly RefreshTokenHash: string | null;
-  readonly ExpiresAt: string;
-  readonly RefreshExpiresAt: string | null;
-  readonly FamilyId: ObjectId;
-  readonly FamilyExpiresAt: string;
-  readonly FamilyExpiresAtDate: Date;
-  readonly RotatedAt: string | null;
-  readonly RotatedFromSessionId: ObjectId | null;
-  readonly CreatedAt: string;
-  readonly UpdatedAt: string;
-  /** The single revocation signal (design D14). */
-  readonly DeletedAt: string | null;
+  readonly user_id: ObjectId | null;
+  readonly organization_id: ObjectId | null;
+  readonly actor_type: string;
+  readonly token_hash: string;
+  readonly refresh_token_hash: string | null;
+  readonly expires_at: Date;
+  readonly refresh_expires_at: Date | null;
+  readonly family_id: ObjectId;
+  readonly family_expires_at: Date;
+  readonly rotated_at: Date | null;
+  readonly rotated_from_session_id: ObjectId | null;
+  readonly created_at: Date;
+  readonly updated_at: Date;
+  readonly deleted_at: Date | null;
 }

@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createConfirmPasswordResetUseCase } from '../../../../src/modules/identity-access/application/auth/ConfirmPasswordReset.js';
 import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
 import { InMemoryUnitOfWork } from '../../../helpers/identity-access/InMemoryUnitOfWork.js';
@@ -21,8 +22,8 @@ import { IdentityAccessError } from '../../../../src/modules/identity-access/dom
 
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const NOW = fromDate(new Date('2026-01-02T00:00:00.000Z'));
-const ORG_ID = createOrganizationId('org-1');
-const OTHER_ORG_ID = createOrganizationId('org-2');
+const ORG_ID = createOrganizationId(oid('org-1'));
+const OTHER_ORG_ID = createOrganizationId(oid('org-2'));
 const TOKEN_SERVICE = new AesGcmSessionTokenService(new AesGcmSecretCipher('test-secret', 1));
 const NEW_PASSWORD = 'BrandNewPassw0rd';
 
@@ -57,7 +58,7 @@ async function seedUserWithPendingReset(
   const resetTokenExpiresAt = options?.resetTokenExpiresAt ?? tokenExpiresAt;
 
   const user = User.create({
-    id: createUserId('user-1'),
+    id: createUserId(oid('user-1')),
     organizationId: ORG_ID,
     email: createEmail('alice@example.com'),
     credential: createPasswordCredential('hashed:old-password'),
@@ -71,8 +72,8 @@ async function seedUserWithPendingReset(
     tokenType: 'password_reset',
     keyVersion: 1,
     jti,
-    userId: 'user-1',
-    organizationId: 'org-1',
+    userId: oid('user-1'),
+    organizationId: oid('org-1'),
     actorType: 'USER',
     expiresAt: fromDate(tokenExpiresAt),
   });
@@ -89,11 +90,11 @@ async function seedUserWithPendingReset(
 async function seedSession(sessions: InMemorySessionRepository): Promise<void> {
   const farFuture = fromDate(new Date('2099-01-01T00:00:00.000Z'));
   const session = Session.create({
-    id: createSessionId('session-1'),
-    familyId: createFamilyId('family-1'),
+    id: createSessionId(oid('session-1')),
+    familyId: createFamilyId(oid('family-1')),
     familyExpiresAt: farFuture,
     actorType: 'USER',
-    userId: 'user-1',
+    userId: oid('user-1'),
     organizationId: ORG_ID,
     tokenHash: 'token-hash-1',
     refreshTokenHash: 'refresh-hash-1',
@@ -112,7 +113,7 @@ describe('createConfirmPasswordResetUseCase', () => {
 
     await confirmPasswordReset({ token, newPassword: NEW_PASSWORD });
 
-    const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
+    const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
     expect(stored?.credential).toEqual(await passwordHasher.hash(NEW_PASSWORD));
     expect(stored?.resetToken).toBeNull();
     expect(unitOfWork.transactionCount).toBe(1);
@@ -125,7 +126,7 @@ describe('createConfirmPasswordResetUseCase', () => {
     expect(calls[0].tx).toBeDefined();
     expect(calls[0].event.action).toBe('PASSWORD_RESET_COMPLETED');
     expect(calls[0].event.resource).toBe('users');
-    expect(calls[0].event.resourceId).toBe('user-1');
+    expect(calls[0].event.resourceId).toBe(oid('user-1'));
   });
 
   it('rejects a weak new password with WEAK_PASSWORD, only AFTER the token/user checks pass, without mutating state', async () => {
@@ -136,7 +137,7 @@ describe('createConfirmPasswordResetUseCase', () => {
       code: 'WEAK_PASSWORD',
     });
 
-    const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
+    const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
     expect(stored?.resetToken).not.toBeNull();
     expect(stored?.credential.passwordHash).toBe('hashed:old-password');
     expect(unitOfWork.transactionCount).toBe(0);
@@ -154,7 +155,7 @@ describe('createConfirmPasswordResetUseCase', () => {
       code: 'PASSWORD_RESET_INVALID',
     });
 
-    const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
+    const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
     expect(stored?.resetToken).not.toBeNull();
     expect(stored?.credential.passwordHash).toBe('hashed:old-password');
     expect(auditRecorder.calls()).toHaveLength(0);
@@ -182,7 +183,7 @@ describe('createConfirmPasswordResetUseCase', () => {
       code: 'PASSWORD_RESET_INVALID',
     });
 
-    const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
+    const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
     expect(stored?.credential).toEqual(await new FakePasswordHasher().hash(NEW_PASSWORD));
   });
 
@@ -198,7 +199,7 @@ describe('createConfirmPasswordResetUseCase', () => {
 
   it('rejects a wrong tokenType (an ACCESS token presented at confirm)', async () => {
     const { confirmPasswordReset } = buildFixture();
-    const accessToken = TOKEN_SERVICE.issue({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+    const accessToken = TOKEN_SERVICE.issue({ sessionId: oid('session-1'), tokenType: 'ACCESS', keyVersion: 1 });
 
     await expect(confirmPasswordReset({ token: accessToken, newPassword: NEW_PASSWORD })).rejects.toMatchObject({
       code: 'PASSWORD_RESET_INVALID',
@@ -211,8 +212,8 @@ describe('createConfirmPasswordResetUseCase', () => {
       tokenType: 'mfa_challenge',
       keyVersion: 1,
       jti: 'mfa-jti',
-      userId: 'user-1',
-      organizationId: 'org-1',
+      userId: oid('user-1'),
+      organizationId: oid('org-1'),
       actorType: 'USER',
       expiresAt: '2099-01-01T00:00:00.000Z',
     });
@@ -228,8 +229,8 @@ describe('createConfirmPasswordResetUseCase', () => {
       tokenType: 'password_reset',
       keyVersion: 1,
       jti: 'ghost-jti',
-      userId: 'no-such-user',
-      organizationId: 'org-1',
+      userId: oid('no-such-user'),
+      organizationId: oid('org-1'),
       actorType: 'USER',
       expiresAt: '2099-01-01T00:00:00.000Z',
     });
@@ -253,7 +254,7 @@ describe('createConfirmPasswordResetUseCase', () => {
   it('rejects a syntactically valid token for a user with no pending reset at all', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
     const user = User.create({
-      id: createUserId('user-1'),
+      id: createUserId(oid('user-1')),
       organizationId: ORG_ID,
       email: createEmail('alice@example.com'),
       credential: createPasswordCredential('hashed:old-password'),
@@ -278,8 +279,8 @@ describe('createConfirmPasswordResetUseCase', () => {
       tokenType: 'password_reset',
       keyVersion: 1,
       jti: 'never-stored-jti',
-      userId: 'user-1',
-      organizationId: 'org-1',
+      userId: oid('user-1'),
+      organizationId: oid('org-1'),
       actorType: 'USER',
       expiresAt: '2099-01-01T00:00:00.000Z',
     });
@@ -294,7 +295,7 @@ describe('createConfirmPasswordResetUseCase', () => {
     const jti = 'cross-tenant-jti';
 
     const userInOtherOrg = User.create({
-      id: createUserId('user-1'),
+      id: createUserId(oid('user-1')),
       organizationId: OTHER_ORG_ID,
       email: createEmail('alice@other.example.com'),
       credential: createPasswordCredential('hashed:old-password'),
@@ -321,8 +322,8 @@ describe('createConfirmPasswordResetUseCase', () => {
       tokenType: 'password_reset',
       keyVersion: 1,
       jti,
-      userId: 'user-1',
-      organizationId: 'org-1',
+      userId: oid('user-1'),
+      organizationId: oid('org-1'),
       actorType: 'USER',
       expiresAt: '2099-01-01T00:00:00.000Z',
     });

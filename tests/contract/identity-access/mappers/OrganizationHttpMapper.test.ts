@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import {
   toOrganizationResponse,
   toOrganizationListResponse,
@@ -15,13 +16,13 @@ function buildOrganization(id: string, slug: string): Organization {
 
 describe('toOrganizationResponse', () => {
   it('maps an Organization aggregate to a plain JSON-serializable DTO', () => {
-    const organization = buildOrganization('org-1', 'acme');
+    const organization = buildOrganization(oid('org-1'), 'acme');
 
     const dto = toOrganizationResponse(organization);
 
     expect(dto).toEqual({
-      id: 'org-1',
-      name: 'Org org-1',
+      id: oid('org-1'),
+      name: `Org ${oid('org-1')}`,
       slug: 'acme',
       domain: null,
       status: 'ACTIVE',
@@ -37,14 +38,14 @@ describe('toOrganizationResponse', () => {
 describe('toOrganizationListResponse', () => {
   it('maps a cursor page of organizations to {items, nextCursor}', () => {
     const page = {
-      items: [buildOrganization('org-1', 'acme'), buildOrganization('org-2', 'globex')],
-      nextCursor: 'org-2',
+      items: [buildOrganization(oid('org-1'), 'acme'), buildOrganization(oid('org-2'), 'globex')],
+      nextCursor: oid('org-2'),
     };
 
     const dto = toOrganizationListResponse(page);
 
     expect(dto.items).toHaveLength(2);
-    expect(dto.items[0]?.id).toBe('org-1');
-    expect(dto.nextCursor).toBe('org-2');
+    expect(dto.items[0]?.id).toBe(oid('org-1'));
+    expect(dto.nextCursor).toBe(oid('org-2'));
   });
 });

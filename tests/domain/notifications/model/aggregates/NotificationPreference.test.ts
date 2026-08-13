@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { NotificationPreference } from '../../../../../src/modules/notifications/domain/model/aggregates/NotificationPreference.js';
 import { createOrganizationId } from '../../../../../src/modules/notifications/domain/model/value-objects/OrganizationId.js';
 import { createUserId } from '../../../../../src/modules/notifications/domain/model/value-objects/UserId.js';
@@ -9,8 +10,8 @@ const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 
 function baseInput() {
   return {
-    organizationId: createOrganizationId('org-1'),
-    userId: createUserId('user-1'),
+    organizationId: createOrganizationId(oid('org-1')),
+    userId: createUserId(oid('user-1')),
     alertType: createAlertType('SLA_POR_VENCER'),
     channel: createNotificationChannel('EMAIL'),
     enabled: false,
@@ -29,8 +30,8 @@ describe('NotificationPreference.create', () => {
   it('carries the given props verbatim', () => {
     const pref = NotificationPreference.create(baseInput());
 
-    expect(pref.organizationId).toBe('org-1');
-    expect(pref.userId).toBe('user-1');
+    expect(pref.organizationId).toBe(oid('org-1'));
+    expect(pref.userId).toBe(oid('user-1'));
     expect(pref.alertType).toBe('SLA_POR_VENCER');
     expect(pref.channel).toBe('EMAIL');
     expect(pref.enabled).toBe(false);

@@ -1,11 +1,12 @@
+import { oid } from '../../support/oid.js';
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
-import type { Db, MongoClient } from 'mongodb';
+import { ObjectId, type Db, type MongoClient } from 'mongodb';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
 import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
 import { MongoMfaChallengeRepository } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/MongoMfaChallengeRepository.js';
 import { MongoUnitOfWork } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
-import { fromDate } from '../../../src/shared/time/Instant.js';
+import { fromDate, toDate } from '../../../src/shared/time/Instant.js';
 import type { MfaChallengeRecord } from '../../../src/modules/identity-access/domain/ports/MfaChallengeStore.js';
 import type { MfaChallengeDocument } from '../../../src/modules/identity-access/infrastructure/adapters/outbound/mongo/documents/MfaChallengeDocument.js';
 
@@ -19,8 +20,8 @@ const PAST_EXPIRY = fromDate(new Date('2025-12-31T23:59:00.000Z'));
 function buildRecord(overrides: Partial<MfaChallengeRecord> & { jti: string }): MfaChallengeRecord {
   return {
     jti: overrides.jti,
-    userId: overrides.userId ?? 'user-1',
-    organizationId: overrides.organizationId ?? 'org-1',
+    userId: overrides.userId ?? oid('user-1'),
+    organizationId: overrides.organizationId ?? oid('org-1'),
     actorType: 'USER',
     tokenType: overrides.tokenType ?? 'mfa_challenge',
     expiresAt: overrides.expiresAt ?? EXPIRY,
@@ -52,21 +53,21 @@ describe('MongoMfaChallengeRepository (integration, real replica-set Mongo)', ()
   });
 
   afterEach(async () => {
-    await db.collection('MfaChallenges').deleteMany({});
+    await db.collection('mfa_challenges').deleteMany({});
   });
 
   it('appends a challenge record retrievable by jti (raw document check)', async () => {
     await repository.append(buildRecord({ jti: 'jti-1' }));
 
-    const raw = await db.collection<MfaChallengeDocument>('MfaChallenges').findOne({ _id: 'jti-1' });
+    const raw = await db.collection<MfaChallengeDocument>('mfa_challenges').findOne({ _id: 'jti-1' });
 
     expect(raw?._id).toBe('jti-1');
-    expect(raw?.UserId).toBe('user-1');
-    expect(raw?.OrganizationId).toBe('org-1');
-    expect(raw?.ActorType).toBe('USER');
-    expect(raw?.TokenType).toBe('mfa_challenge');
-    expect(raw?.ConsumedAt).toBeNull();
-    expect(raw?.ExpiresAtDate).toBeInstanceOf(Date);
+    expect(raw?.user_id).toEqual(new ObjectId(oid('user-1')));
+    expect(raw?.organization_id).toEqual(new ObjectId(oid('org-1')));
+    expect(raw?.actor_type).toBe('USER');
+    expect(raw?.token_type).toBe('mfa_challenge');
+    expect(raw?.consumed_at).toBeNull();
+    expect(raw?.expires_at).toBeInstanceOf(Date);
   });
 
   it('rejects a duplicate jti with a real E11000 (design: _id enforces uniqueness)', async () => {
@@ -82,8 +83,8 @@ describe('MongoMfaChallengeRepository (integration, real replica-set Mongo)', ()
       const won = await repository.consume('jti-1', NOW);
 
       expect(won).toBe(true);
-      const raw = await db.collection<MfaChallengeDocument>('MfaChallenges').findOne({ _id: 'jti-1' });
-      expect(raw?.ConsumedAt).toBe(NOW);
+      const raw = await db.collection<MfaChallengeDocument>('mfa_challenges').findOne({ _id: 'jti-1' });
+      expect(raw?.consumed_at).toEqual(toDate(NOW));
     });
 
     it('returns false for a second call — the CAS loser (replay)', async () => {
@@ -134,8 +135,8 @@ describe('MongoMfaChallengeRepository (integration, real replica-set Mongo)', ()
         }),
       ).rejects.toThrow('force rollback');
 
-      const raw = await db.collection<MfaChallengeDocument>('MfaChallenges').findOne({ _id: 'jti-1' });
-      expect(raw?.ConsumedAt).toBeNull();
+      const raw = await db.collection<MfaChallengeDocument>('mfa_challenges').findOne({ _id: 'jti-1' });
+      expect(raw?.consumed_at).toBeNull();
     });
   });
 
@@ -147,7 +148,7 @@ describe('MongoMfaChallengeRepository (integration, real replica-set Mongo)', ()
   it('round-trips the raw document by string _id (design A1/D37 regression guard)', async () => {
     await repository.append(buildRecord({ jti: 'jti-id-guard' }));
 
-    const raw = await db.collection<MfaChallengeDocument>('MfaChallenges').findOne({ _id: 'jti-id-guard' });
+    const raw = await db.collection<MfaChallengeDocument>('mfa_challenges').findOne({ _id: 'jti-id-guard' });
 
     expect(raw).not.toBeNull();
     expect(raw?._id).toBe('jti-id-guard');

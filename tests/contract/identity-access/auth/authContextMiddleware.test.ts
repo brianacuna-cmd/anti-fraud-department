@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import type { Request, Response } from 'express';
 import { createAuthContextMiddleware } from '../../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/authContextMiddleware.js';
 import type { AuthContextResolver } from '../../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/AuthContextResolver.js';
@@ -10,7 +11,7 @@ function buildResolver(result: Awaited<ReturnType<AuthContextResolver['resolve']
 
 describe('createAuthContextMiddleware', () => {
   it('attaches the resolved AuthContext to the request and calls next()', async () => {
-    const auth = createAuthContext({ userId: 'user-1', organizationId: 'org-1' });
+    const auth = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1') });
     const middleware = createAuthContextMiddleware(buildResolver(auth));
     const request = { ip: undefined } as Request;
     const next = jest.fn();
@@ -33,7 +34,7 @@ describe('createAuthContextMiddleware', () => {
   });
 
   it('populates ipAddress from req.ip (design D-A7)', async () => {
-    const auth = createAuthContext({ userId: 'user-1', organizationId: 'org-1' });
+    const auth = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1') });
     const middleware = createAuthContextMiddleware(buildResolver(auth));
     const request = { ip: '203.0.113.5' } as Request;
     const next = jest.fn();
@@ -44,7 +45,7 @@ describe('createAuthContextMiddleware', () => {
   });
 
   it('resolves ipAddress to null when req.ip is undefined (e.g. trust proxy not configured)', async () => {
-    const auth = createAuthContext({ userId: 'user-1', organizationId: 'org-1' });
+    const auth = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1') });
     const middleware = createAuthContextMiddleware(buildResolver(auth));
     const request = { ip: undefined } as Request;
     const next = jest.fn();

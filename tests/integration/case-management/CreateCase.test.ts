@@ -1,3 +1,4 @@
+import { oid } from '../../support/oid.js';
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { ObjectId, type Db, type MongoClient } from 'mongodb';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
@@ -20,7 +21,7 @@ import { generateTimelineEventId } from '../../../src/modules/case-management/do
 
 jest.setTimeout(120_000);
 
-const ANALYST = createAuthContext({ userId: 'analyst-1', organizationId: 'org-1', actorType: 'USER' });
+const ANALYST = createAuthContext({ userId: oid('analyst-1'), organizationId: oid('org-1'), actorType: 'USER' });
 
 function alwaysFailingRecorder(): AuditRecorder {
   return {
@@ -63,9 +64,9 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
   });
 
   afterEach(async () => {
-    await db.collection('Cases').deleteMany({});
-    await db.collection('CaseTimeline').deleteMany({});
-    await db.collection('AuditLogs').deleteMany({});
+    await db.collection('cases').deleteMany({});
+    await db.collection('case_timeline').deleteMany({});
+    await db.collection('audit_logs').deleteMany({});
   });
 
   function buildUseCase(auditRecorder: AuditRecorder) {
@@ -90,16 +91,16 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
     expect(kase.status).toBe('OPEN');
     const persisted = await cases.findById(kase.id);
     expect(persisted?.status).toBe('OPEN');
-    expect(persisted?.organizationId).toBe('org-1');
+    expect(persisted?.organizationId).toBe(oid('org-1'));
 
-    const timelineRows = await db.collection('CaseTimeline').find({ CaseId: new ObjectId(kase.id) }).toArray();
+    const timelineRows = await db.collection('case_timeline').find({ case_id: new ObjectId(kase.id) }).toArray();
     expect(timelineRows).toHaveLength(1);
-    expect(timelineRows[0]?.EventType).toBe('CASE_CREATED');
+    expect(timelineRows[0]?.event_type).toBe('CASE_CREATED');
 
-    const auditRows = await db.collection('AuditLogs').find({}).toArray();
+    const auditRows = await db.collection('audit_logs').find({}).toArray();
     expect(auditRows).toHaveLength(1);
-    expect(auditRows[0]?.Action).toBe('CREATE_CASE');
-    expect(auditRows[0]?.Resource).toBe('case');
+    expect(auditRows[0]?.action).toBe('CREATE_CASE');
+    expect(auditRows[0]?.resource).toBe('case');
   });
 
   it('rolls back the Case write and the timeline entry when the audit write fails mid-transaction (proves the write is truly inside the tx)', async () => {
@@ -109,11 +110,11 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
       createCase({ auth: ANALYST, customerId: 'customer-1', riskScore: 42 }),
     ).rejects.toThrow('induced audit failure mid-transaction');
 
-    const persistedCases = await db.collection('Cases').find({}).toArray();
+    const persistedCases = await db.collection('cases').find({}).toArray();
     expect(persistedCases).toHaveLength(0);
-    const timelineRows = await db.collection('CaseTimeline').find({}).toArray();
+    const timelineRows = await db.collection('case_timeline').find({}).toArray();
     expect(timelineRows).toHaveLength(0);
-    const auditRows = await db.collection('AuditLogs').find({}).toArray();
+    const auditRows = await db.collection('audit_logs').find({}).toArray();
     expect(auditRows).toHaveLength(0);
   });
 });

@@ -1,41 +1,33 @@
 import { ObjectId } from 'mongodb';
-import { brand } from '../../../../../../../shared/kernel/Brand.js';
-import { toDate } from '../../../../../../../shared/time/Instant.js';
+import { fromDate, toDate } from '../../../../../../../shared/time/Instant.js';
 import { CaseSlaTracking } from '../../../../../domain/model/aggregates/CaseSlaTracking.js';
 import { createCaseSlaTrackingId } from '../../../../../domain/model/value-objects/CaseSlaTrackingId.js';
 import { createCaseId } from '../../../../../domain/model/value-objects/CaseId.js';
 import { createSlaStatus } from '../../../../../domain/model/value-objects/SlaStatus.js';
 import type { CaseSlaTrackingDocument } from '../documents/CaseSlaTrackingDocument.js';
 
-/**
- * camelCase (domain) -> PascalCase (Mongo) translation seam (mirrors
- * `CaseDocumentMapper`). `_id` is the sole documented exception and stays
- * lowercase. `DueDateAt` is derived from `DueDate` on every write — the
- * BSON `Date` mirror (design ADR-6), same pattern as
- * `SessionDocumentMapper`'s `FamilyExpiresAtDate`.
- */
+/** camelCase (domain) -> snake_case (Mongo). Instant fields become BSON `Date`. */
 export function toDocument(tracking: CaseSlaTracking): CaseSlaTrackingDocument {
   return {
     _id: new ObjectId(tracking.id),
-    CaseId: new ObjectId(tracking.caseId),
-    DueDate: tracking.dueDate,
-    DueDateAt: toDate(tracking.dueDate),
-    Status: tracking.status,
-    NotificationSent: tracking.notificationSent,
-    CreatedAt: tracking.createdAt,
-    UpdatedAt: tracking.updatedAt,
+    case_id: new ObjectId(tracking.caseId),
+    due_date: toDate(tracking.dueDate),
+    status: tracking.status,
+    notification_sent: tracking.notificationSent,
+    created_at: toDate(tracking.createdAt),
+    updated_at: toDate(tracking.updatedAt),
   };
 }
 
-/** PascalCase (Mongo) -> camelCase (domain) translation seam (mirrors `CaseDocumentMapper`). */
+/** snake_case (Mongo) -> camelCase (domain). */
 export function toDomain(document: CaseSlaTrackingDocument): CaseSlaTracking {
   return CaseSlaTracking.rehydrate({
     id: createCaseSlaTrackingId(document._id.toString()),
-    caseId: createCaseId(document.CaseId.toString()),
-    dueDate: brand<string, 'Instant'>(document.DueDate),
-    status: createSlaStatus(document.Status),
-    notificationSent: document.NotificationSent,
-    createdAt: brand<string, 'Instant'>(document.CreatedAt),
-    updatedAt: brand<string, 'Instant'>(document.UpdatedAt),
+    caseId: createCaseId(document.case_id.toString()),
+    dueDate: fromDate(document.due_date),
+    status: createSlaStatus(document.status),
+    notificationSent: document.notification_sent,
+    createdAt: fromDate(document.created_at),
+    updatedAt: fromDate(document.updated_at),
   });
 }

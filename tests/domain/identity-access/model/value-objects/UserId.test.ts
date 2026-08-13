@@ -3,28 +3,26 @@ import {
   generateUserId,
 } from '../../../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
 
+const HEX = 'a'.repeat(24);
+
 describe('createUserId', () => {
-  it('accepts a non-empty string and returns it unchanged', () => {
-    const id = createUserId('user-123');
-
-    expect(id).toBe('user-123');
+  it('accepts a 24-character hexadecimal ObjectId', () => {
+    expect(createUserId(HEX)).toBe(HEX);
   });
 
-  it('rejects an empty string as an invariant violation', () => {
-    expect(() => createUserId('')).toThrow(/non-empty/);
-  });
-
-  it('rejects a whitespace-only string as an invariant violation', () => {
-    expect(() => createUserId('   ')).toThrow(/non-empty/);
+  it('rejects a value that is not a 24-character hex ObjectId', () => {
+    expect(() => createUserId('')).toThrow(/24-character hexadecimal ObjectId/);
+    expect(() => createUserId('   ')).toThrow(/24-character hexadecimal ObjectId/);
+    expect(() => createUserId('user-123')).toThrow(/24-character hexadecimal ObjectId/);
   });
 });
 
 describe('generateUserId', () => {
-  it('generates a fresh, non-empty id on every call', () => {
+  it('generates a unique 24-char hex id on every call', () => {
     const first = generateUserId();
     const second = generateUserId();
 
-    expect(first.length).toBeGreaterThan(0);
+    expect(first).toMatch(/^[a-f0-9]{24}$/);
     expect(first).not.toBe(second);
   });
 });

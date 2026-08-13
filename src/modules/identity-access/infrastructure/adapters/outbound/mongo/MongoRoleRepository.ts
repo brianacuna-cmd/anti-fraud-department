@@ -5,7 +5,7 @@ import type { RoleRepository, RoleView } from '../../../../domain/ports/RoleRepo
 import type { RolDocument } from './documents/RolDocument.js';
 import { toDomain } from './mappers/RolDocumentMapper.js';
 
-const COLLECTION_NAME = 'Rol';
+const COLLECTION_NAME = 'rol';
 
 /**
  * Mongo adapter for `RoleRepository` (design "3. `RoleRepository` port"),
@@ -36,7 +36,7 @@ export class MongoRoleRepository implements RoleRepository {
       return false;
     }
     const count = await this.collection.countDocuments(
-      { _id: id, Status: 'ACTIVE', DeletedAt: null },
+      { _id: id, status: 'ACTIVE', deleted_at: null },
       { limit: 1 },
     );
     return count > 0;

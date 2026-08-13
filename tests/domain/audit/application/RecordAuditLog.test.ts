@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createRecordAuditLogUseCase } from '../../../../src/modules/audit/application/RecordAuditLog.js';
 import { InMemoryAuditLogRepository } from '../../../helpers/audit/InMemoryAuditLogRepository.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
@@ -11,7 +12,7 @@ function buildUseCase() {
   const record = createRecordAuditLogUseCase({
     auditLogs,
     clock: new FixedClock(NOW),
-    generateAuditLogId: () => createAuditLogId('audit-1'),
+    generateAuditLogId: () => createAuditLogId(oid('audit-1')),
   });
   return { record, auditLogs };
 }
@@ -21,24 +22,24 @@ describe('createRecordAuditLogUseCase', () => {
     const { record, auditLogs } = buildUseCase();
 
     await record({
-      organizationId: 'org-1',
+      organizationId: oid('org-1'),
       actorType: 'USER',
-      actorId: 'user-1',
+      actorId: oid('user-1'),
       action: 'USER_CREATED',
       resource: 'users',
-      resourceId: 'user-2',
+      resourceId: oid('user-2'),
       detail: { field: 'value' },
       ipAddress: '127.0.0.1',
     });
 
     expect(auditLogs.all()).toHaveLength(1);
     const persisted = auditLogs.all()[0];
-    expect(persisted?.id).toBe('audit-1');
-    expect(persisted?.organizationId).toBe('org-1');
+    expect(persisted?.id).toBe(oid('audit-1'));
+    expect(persisted?.organizationId).toBe(oid('org-1'));
     expect(persisted?.actorType).toBe('USER');
     expect(persisted?.action).toBe('USER_CREATED');
     expect(persisted?.resource).toBe('users');
-    expect(persisted?.resourceId).toBe('user-2');
+    expect(persisted?.resourceId).toBe(oid('user-2'));
     expect(persisted?.detail).toEqual({ field: 'value' });
     expect(persisted?.ipAddress).toBe('127.0.0.1');
     expect(persisted?.createdAt).toBe(NOW);
@@ -50,7 +51,7 @@ describe('createRecordAuditLogUseCase', () => {
     await record({
       organizationId: null,
       actorType: 'PLATFORM_ADMIN',
-      actorId: 'admin-1',
+      actorId: oid('admin-1'),
       action: 'ORGANIZATION_CREATED',
       resource: 'organizations',
       resourceId: null,

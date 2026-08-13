@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createPatchOrganizationIdentityUseCase } from '../../../../src/modules/identity-access/application/PatchOrganizationIdentity.js';
 import { InMemoryOrganizationRepository } from '../../../helpers/identity-access/InMemoryOrganizationRepository.js';
 import { InMemoryUnitOfWork } from '../../../helpers/identity-access/InMemoryUnitOfWork.js';
@@ -13,8 +14,8 @@ import { IdentityAccessError } from '../../../../src/modules/identity-access/dom
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const PATCHED_AT = fromDate(new Date('2026-01-02T00:00:00.000Z'));
 const PLATFORM_ADMIN = createAuthContext({
-  userId: 'u1',
-  organizationId: 'o0',
+  userId: oid('u1'),
+  organizationId: oid('o0'),
   isPlatformAdmin: true,
   ipAddress: '203.0.113.10',
 });
@@ -22,7 +23,7 @@ const PLATFORM_ADMIN = createAuthContext({
 async function seedOrganization(organizations: InMemoryOrganizationRepository): Promise<void> {
   await organizations.save(
     Organization.create({
-      id: createOrganizationId('org-1'),
+      id: createOrganizationId(oid('org-1')),
       name: 'Acme',
       slug: createSlug('acme'),
       now: CREATED_AT,
@@ -50,7 +51,7 @@ describe('createPatchOrganizationIdentityUseCase', () => {
 
     const updated = await patchOrganizationIdentity({
       auth: PLATFORM_ADMIN,
-      organizationId: 'org-1',
+      organizationId: oid('org-1'),
       name: 'Acme Corp',
       domain: 'acme.com',
     });
@@ -67,7 +68,7 @@ describe('createPatchOrganizationIdentityUseCase', () => {
 
     expect.assertions(2);
     try {
-      await patchOrganizationIdentity({ auth: PLATFORM_ADMIN, organizationId: 'missing', name: 'X' });
+      await patchOrganizationIdentity({ auth: PLATFORM_ADMIN, organizationId: oid('missing'), name: 'X' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('ORGANIZATION_NOT_FOUND');
@@ -81,7 +82,7 @@ describe('createPatchOrganizationIdentityUseCase', () => {
 
     await patchOrganizationIdentity({
       auth: PLATFORM_ADMIN,
-      organizationId: 'org-1',
+      organizationId: oid('org-1'),
       name: 'Acme Corp',
       domain: 'acme.com',
     });
@@ -89,12 +90,12 @@ describe('createPatchOrganizationIdentityUseCase', () => {
     expect(auditRecorder.all()).toHaveLength(1);
     const [event] = auditRecorder.all();
     expect(event).toMatchObject({
-      organizationId: 'org-1',
+      organizationId: oid('org-1'),
       actorType: 'PLATFORM_ADMIN',
-      actorId: 'u1',
+      actorId: oid('u1'),
       action: 'ORGANIZATION_IDENTITY_UPDATED',
       resource: 'organizations',
-      resourceId: 'org-1',
+      resourceId: oid('org-1'),
       detail: { name: 'Acme Corp', domain: 'acme.com' },
       ipAddress: '203.0.113.10',
     });

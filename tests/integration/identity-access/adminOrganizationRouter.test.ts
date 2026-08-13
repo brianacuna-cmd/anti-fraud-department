@@ -37,8 +37,8 @@ import { fromDate } from '../../../src/shared/time/Instant.js';
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
 import { oid } from '../../support/oid.js';
 
-const PLATFORM_ADMIN = createAuthContext({ userId: 'admin-1', organizationId: null, isPlatformAdmin: true });
-const REGULAR_USER = createAuthContext({ userId: 'user-1', organizationId: 'o1', isPlatformAdmin: false });
+const PLATFORM_ADMIN = createAuthContext({ userId: oid('admin-1'), organizationId: null, isPlatformAdmin: true });
+const REGULAR_USER = createAuthContext({ userId: oid('user-1'), organizationId: oid('o1'), isPlatformAdmin: false });
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const CANONICAL_PREFIX = 'AFD-ADMIN-CHALLENGE-V1\n';
 
@@ -247,11 +247,11 @@ async function seedAdminWithActiveKey(
   id = 'admin-challenge-1',
 ) {
   const admin = AdminOrganization.create({
-    id: createAdminOrganizationId(id),
+    id: createAdminOrganizationId(oid(id)),
     email: createEmail('root@platform.internal'),
     keys: [
       createAdminKey({
-        keyId: createAdminKeyId('key-1'),
+        keyId: createAdminKeyId(oid('key-1')),
         publicKey: keyPair.publicKeySpkiPem,
         status: 'ACTIVE',
         encryptedPrivateKey: 'ciphertext',
@@ -435,7 +435,7 @@ describe('PLATFORM_ADMIN challenge-login (e2e, super-admin-auth PR1)', () => {
       email: createEmail('rotated-e2e@platform.internal'),
       keys: [
         createAdminKey({
-          keyId: createAdminKeyId('key-old'),
+          keyId: createAdminKeyId(oid('key-old')),
           publicKey: deprecatedKeyPair.publicKeySpkiPem,
           status: 'DEPRECATED',
           encryptedPrivateKey: null,
@@ -443,7 +443,7 @@ describe('PLATFORM_ADMIN challenge-login (e2e, super-admin-auth PR1)', () => {
           rotatedAt: NOW,
         }),
         createAdminKey({
-          keyId: createAdminKeyId('key-new'),
+          keyId: createAdminKeyId(oid('key-new')),
           publicKey: activeKeyPair.publicKeySpkiPem,
           status: 'ACTIVE',
           encryptedPrivateKey: 'ciphertext',
@@ -477,7 +477,7 @@ describe('PLATFORM_ADMIN challenge-login (e2e, super-admin-auth PR1)', () => {
 
     const response = await request(app)
       .post('/api/v1/admin-organizations/challenges')
-      .send({ adminOrganizationId: 'never-provisioned' });
+      .send({ adminOrganizationId: oid('never-provisioned') });
 
     expect(response.status).toBe(401);
     expect(response.body.error.code).toBe('ADMIN_CHALLENGE_INVALID');
@@ -504,7 +504,7 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
       email: createEmail('download@platform.internal'),
       keys: [
         createAdminKey({
-          keyId: createAdminKeyId('key-1'),
+          keyId: createAdminKeyId(oid('key-1')),
           publicKey: '-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----\n',
           status: 'ACTIVE',
           encryptedPrivateKey: cipher.encrypt(plaintextPem),
@@ -515,11 +515,11 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
     });
     await admins.save(admin);
 
-    const first = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/key-1/download`).send();
+    const first = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/${oid('key-1')}/download`).send();
     expect(first.status).toBe(200);
     expect(first.body.privateKeyPkcs8Pem).toBe(plaintextPem);
 
-    const second = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/key-1/download`).send();
+    const second = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/${oid('key-1')}/download`).send();
     expect(second.status).toBe(409);
     expect(second.body.error.code).toBe('ADMIN_PRIVATE_KEY_UNAVAILABLE');
   });
@@ -531,7 +531,7 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
       email: createEmail('download2@platform.internal'),
       keys: [
         createAdminKey({
-          keyId: createAdminKeyId('key-1'),
+          keyId: createAdminKeyId(oid('key-1')),
           publicKey: '-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----\n',
           status: 'ACTIVE',
           encryptedPrivateKey: cipher.encrypt('-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n'),
@@ -542,7 +542,7 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
     });
     await admins.save(admin);
 
-    const response = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/key-1/download`).send();
+    const response = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/${oid('key-1')}/download`).send();
 
     expect(response.status).toBe(200);
     expect(JSON.stringify(response.body)).not.toContain('encryptedPrivateKey');
@@ -555,7 +555,7 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
       email: createEmail('download3@platform.internal'),
       keys: [
         createAdminKey({
-          keyId: createAdminKeyId('key-1'),
+          keyId: createAdminKeyId(oid('key-1')),
           publicKey: '-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----\n',
           status: 'ACTIVE',
           encryptedPrivateKey: 'ciphertext',
@@ -566,7 +566,7 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
     });
     await admins.save(admin);
 
-    const response = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/key-1/download`).send();
+    const response = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/${oid('key-1')}/download`).send();
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe('FORBIDDEN_CROSS_TENANT');
@@ -579,7 +579,7 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
       email: createEmail('rotate@platform.internal'),
       keys: [
         createAdminKey({
-          keyId: createAdminKeyId('key-old'),
+          keyId: createAdminKeyId(oid('key-old')),
           publicKey: '-----BEGIN PUBLIC KEY-----\nold\n-----END PUBLIC KEY-----\n',
           status: 'ACTIVE',
           encryptedPrivateKey: 'ciphertext',
@@ -609,7 +609,7 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.keys).toHaveLength(2);
-    const oldKey = response.body.keys.find((k: { keyId: string }) => k.keyId === 'key-old');
+    const oldKey = response.body.keys.find((k: { keyId: string }) => k.keyId === oid('key-old'));
     expect(oldKey.status).toBe('DEPRECATED');
     const activeKeys = response.body.keys.filter((k: { status: string }) => k.status === 'ACTIVE');
     expect(activeKeys).toHaveLength(1);
@@ -621,7 +621,7 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
   it('rejects rotate for an unknown adminOrganizationId with 404', async () => {
     const { app } = buildApp(() => PLATFORM_ADMIN);
 
-    const response = await request(app).post('/api/v1/admin-organizations/never-provisioned/keys/rotate').send();
+    const response = await request(app).post(`/api/v1/admin-organizations/${oid('never-provisioned')}/keys/rotate`).send();
 
     expect(response.status).toBe(404);
     expect(response.body.error.code).toBe('ADMIN_ORGANIZATION_NOT_FOUND');
@@ -634,7 +634,7 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
       email: createEmail('revoke@platform.internal'),
       keys: [
         createAdminKey({
-          keyId: createAdminKeyId('key-1'),
+          keyId: createAdminKeyId(oid('key-1')),
           publicKey: '-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----\n',
           status: 'ACTIVE',
           encryptedPrivateKey: 'ciphertext',
@@ -645,11 +645,11 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
     });
     await admins.save(admin);
 
-    const first = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/key-1/revoke`).send();
+    const first = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/${oid('key-1')}/revoke`).send();
     expect(first.status).toBe(200);
     expect(first.body.keys[0].status).toBe('REVOKED');
 
-    const second = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/key-1/revoke`).send();
+    const second = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/${oid('key-1')}/revoke`).send();
     expect(second.status).toBe(400);
     expect(second.body.error.code).toBe('INVARIANT_VIOLATION');
   });
@@ -661,7 +661,7 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
       email: createEmail('revoke2@platform.internal'),
       keys: [
         createAdminKey({
-          keyId: createAdminKeyId('key-1'),
+          keyId: createAdminKeyId(oid('key-1')),
           publicKey: '-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----\n',
           status: 'ACTIVE',
           encryptedPrivateKey: 'ciphertext',
@@ -672,7 +672,7 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
     });
     await admins.save(admin);
 
-    const response = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/key-1/revoke`).send();
+    const response = await request(app).post(`/api/v1/admin-organizations/${admin.id}/keys/${oid('key-1')}/revoke`).send();
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe('FORBIDDEN_CROSS_TENANT');

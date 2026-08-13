@@ -1,5 +1,6 @@
+import { oid } from '../../support/oid.js';
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
-import type { Db, MongoClient } from 'mongodb';
+import { ObjectId, type Db, type MongoClient } from 'mongodb';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
 import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
@@ -35,10 +36,10 @@ describe('SetNotificationPreference atomicity (integration, real replica-set Mon
   let db: Db;
 
   const auth = createAuthContext({
-    userId: 'user-1',
-    organizationId: 'org-1',
+    userId: oid('user-1'),
+    organizationId: oid('org-1'),
     actorType: 'USER',
-    sessionId: 'session-1',
+    sessionId: oid('session-1'),
   });
 
   beforeAll(async () => {
@@ -55,8 +56,8 @@ describe('SetNotificationPreference atomicity (integration, real replica-set Mon
   });
 
   afterEach(async () => {
-    await db.collection('NotificationPreferences').deleteMany({});
-    await db.collection('AuditLogs').deleteMany({});
+    await db.collection('notification_preferences').deleteMany({});
+    await db.collection('audit_logs').deleteMany({});
   });
 
   function buildRecordAuditLog() {
@@ -78,14 +79,14 @@ describe('SetNotificationPreference atomicity (integration, real replica-set Mon
     await setNotificationPreference({ auth, alertType: 'CASO_ASIGNADO', channel: 'EMAIL', enabled: false });
 
     const prefRow = await db
-      .collection('NotificationPreferences')
-      .findOne({ OrganizationId: 'org-1', UserId: 'user-1', AlertType: 'CASO_ASIGNADO', Channel: 'EMAIL' });
-    expect(prefRow?.Enabled).toBe(false);
+      .collection('notification_preferences')
+      .findOne({ organization_id: new ObjectId(oid('org-1')), user_id: new ObjectId(oid('user-1')), alert_type: 'CASO_ASIGNADO', channel: 'EMAIL' });
+    expect(prefRow?.enabled).toBe(false);
 
-    const auditRow = await db.collection('AuditLogs').findOne({ Action: 'NOTIFICATION_PREFERENCE_UPDATED' });
-    expect(auditRow?.OrganizationId).toBe('org-1');
-    expect(auditRow?.ActorId).toBe('user-1');
-    expect(auditRow?.ResourceId).toBe('CASO_ASIGNADO:EMAIL');
+    const auditRow = await db.collection('audit_logs').findOne({ action: 'NOTIFICATION_PREFERENCE_UPDATED' });
+    expect(auditRow?.organization_id).toEqual(new ObjectId(oid('org-1')));
+    expect(auditRow?.actor_id).toBe(oid('user-1'));
+    expect(auditRow?.resource_id).toBe('CASO_ASIGNADO:EMAIL');
   });
 
   it('rolls BOTH writes back when the audit step fails inside the transaction', async () => {
@@ -111,8 +112,8 @@ describe('SetNotificationPreference atomicity (integration, real replica-set Mon
       setNotificationPreference({ auth, alertType: 'RIESGO_CRITICO', channel: 'EMAIL', enabled: false }),
     ).rejects.toThrow('audit bridge boom (post-write)');
 
-    const prefCount = await db.collection('NotificationPreferences').countDocuments({});
-    const auditCount = await db.collection('AuditLogs').countDocuments({});
+    const prefCount = await db.collection('notification_preferences').countDocuments({});
+    const auditCount = await db.collection('audit_logs').countDocuments({});
     expect(prefCount).toBe(0);
     expect(auditCount).toBe(0);
   });
