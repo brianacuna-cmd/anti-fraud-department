@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { Db } from 'mongodb';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
 import type { createProvisionAdminOrganizationUseCase } from '../../../../application/admin/ProvisionAdminOrganization.js';
 import type { createRequestAdminChallengeUseCase } from '../../../../application/admin/RequestAdminChallenge.js';
@@ -15,6 +16,7 @@ import { toAdminOrganizationResponse } from './mappers/AdminOrganizationHttpMapp
 import { parseRequest } from './parseRequest.js';
 
 export interface AdminOrganizationRouterDeps {
+  readonly db?: Db;
   readonly provisionAdminOrganization: ReturnType<typeof createProvisionAdminOrganizationUseCase>;
   /** super-admin-auth PR1, step 1 — public, no `AuthContext` yet. */
   readonly requestAdminChallenge: ReturnType<typeof createRequestAdminChallengeUseCase>;
@@ -46,6 +48,33 @@ export interface AdminOrganizationRouterDeps {
  */
 export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Router {
   const router = Router();
+
+  router.get('/admin-organizations', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.db) {
+      res.status(200).json([]);
+      return;
+    }
+    const docs = await deps.db.collection('adminOrganizations').find().toArray();
+    const items = docs.map((doc) => ({
+      id: String(doc._id),
+      email: doc.email as string,
+      keys: ((doc.keys as unknown[]) || []).map((k) => {
+        const item = k as Record<string, unknown>;
+        return {
+          keyId: item.keyId as string,
+          publicKey: item.publicKey as string,
+          status: item.status as string,
+          createdAt: item.createdAt as string,
+          rotatedAt: (item.rotatedAt as string) ?? null,
+          revokedAt: (item.revokedAt as string) ?? null,
+        };
+      }),
+      createdAt: doc.createdAt as string,
+      updatedAt: doc.updatedAt as string,
+    }));
+    res.status(200).json(items);
+  });
 
   router.post('/admin-organizations', async (req, res) => {
     const auth = requireAuthContext(req);

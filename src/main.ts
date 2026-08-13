@@ -384,6 +384,7 @@ async function bootstrap(): Promise<void> {
       clock,
       auditRecorder,
     }),
+    db,
   });
 
   // Phase 4 (design D19, D24): a fixed, valid bcrypt hash with no real
