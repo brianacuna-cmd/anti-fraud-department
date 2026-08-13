@@ -7,6 +7,7 @@ import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { CaseId } from '../domain/model/value-objects/CaseId.js';
 import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
 import type { RouteCaseInput } from './RouteCase.js';
+import type { CalculateSlaInput } from './CalculateSla.js';
 import { Case } from '../domain/model/aggregates/Case.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
 import { createRiskScore } from '../domain/model/value-objects/RiskScore.js';
@@ -40,11 +41,16 @@ export interface CreateCaseDeps {
    * decoupled from routing's own dependencies (rules repo, ZEN engine).
    */
   readonly routeCase: (input: RouteCaseInput) => Promise<Case>;
+  /**
+   * T2 SLA calculation — runs after `routeCase` inside the same transaction.
+   * Fail-closed when OrganizationFraudConfig is missing.
+   */
+  readonly calculateSla: (input: CalculateSlaInput) => Promise<Case>;
 }
 
 /**
- * T5 — manual case creation (first vertical slice, design "Transaction
- * boundaries: CreateCase (T5)"). Within ONE `unitOfWork.withTransaction`:
+ * T5 — manual case creation (design "Transaction boundaries: CreateCase
+ * (T5)"). Within ONE `unitOfWork.withTransaction`:
  * inserts the `Case` (Status OPEN, no FinturuCacheSnapshot — that field is
  * only ever populated by an automated intake path, out of scope here),
  * appends a `CASE_CREATED` `CaseTimeline` entry, and records a
@@ -53,11 +59,10 @@ export interface CreateCaseDeps {
  * T1 auto-routing (CASE-002): after the case is persisted, `RouteCase` runs
  * inside this same transaction — it evaluates the org's ACTIVE ZEN routing
  * rules against the case and, on the first match, sets `AssignedTo` and
- * appends an `ASSIGNED` timeline event. The routed case is what's returned.
- * TODO(slice 6 — T2 SLA calculation): once `CalculateSla` exists, invoke it
- * here (still inside this same transaction) to create `CaseSlaTracking`
- * and denormalize `Case.DueDate`. Until then, every case created by this
- * use case has `dueDate: null`.
+ * appends an `ASSIGNED` timeline event.
+ *
+ * T2 SLA: after routing, `CalculateSla` sets `dueDate` + ON_TRACK
+ * `CaseSlaTracking` inside the same transaction (fail-closed without fraud config).
  */
 export function createCreateCaseUseCase(deps: CreateCaseDeps) {
   return async function createCase(input: CreateCaseInput): Promise<Case> {
@@ -119,9 +124,7 @@ export function createCreateCaseUseCase(deps: CreateCaseDeps) {
         ipAddress: input.auth.ipAddress,
       });
 
-      // TODO(slice 6): CalculateSla(routed, tx) here.
-
-      return routed;
+      return deps.calculateSla({ kase: routed, tx });
     });
   };
 }

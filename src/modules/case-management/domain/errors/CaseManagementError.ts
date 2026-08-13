@@ -45,3 +45,7 @@ export function organizationFraudConfigNotFound(organizationId: string): CaseMan
     { organizationId },
   );
 }
+
+export function caseNotFound(caseId: string): CaseManagementError {
+  return new CaseManagementError('CASE_NOT_FOUND', `case "${caseId}" was not found`, { caseId });
+}
