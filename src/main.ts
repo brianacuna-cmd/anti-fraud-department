@@ -1,4 +1,13 @@
+import { existsSync } from 'node:fs';
 import { Router } from 'express';
+
+if (existsSync('.env')) {
+  try {
+    process.loadEnvFile('.env');
+  } catch {
+    // ignore
+  }
+}
 import { createApp } from './shared/http/createApp.js';
 import { parseTrustProxy } from './shared/http/parseTrustProxy.js';
 import { createErrorHandler } from './shared/http/errorHandler.js';
@@ -94,7 +103,7 @@ import { createCaseManagementAuditRecorderAdapter } from './composition/caseMana
 const PORT = Number(process.env.PORT ?? 3000);
 const MONGO_URI = process.env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/?replicaSet=rs0';
 const MONGO_DB_NAME = process.env.MONGO_DB_NAME ?? 'anti_fraud_department';
-const AUTH_MODE = process.env.AUTH_MODE ?? 'trusted-header';
+const AUTH_MODE = process.env.AUTH_MODE ?? 'session';
 // two-step-login PR1b (design D6): PLATFORM_ADMIN has no session-issuing
 // login yet, so its auth availability is decoupled from AUTH_MODE and
 // governed by its own env — default 'disabled' is prod-safe (a
@@ -406,6 +415,8 @@ async function bootstrap(): Promise<void> {
       clock,
       auditRecorder,
     }),
+    db,
+    emailSender,
   });
 
   // Phase 4 (design D19, D24): a fixed, valid bcrypt hash with no real
@@ -488,6 +499,8 @@ async function bootstrap(): Promise<void> {
       clock,
       auditRecorder,
     }),
+    emailSender,
+    db,
   });
 
   const authContextMiddleware = createAuthContextMiddleware(
