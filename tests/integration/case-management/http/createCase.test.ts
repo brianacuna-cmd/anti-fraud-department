@@ -153,6 +153,15 @@ describe('caseRouter (e2e, in-memory repository)', () => {
     expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
   });
 
+  it('POST /cases still requires manual riskScore (scoring is not part of CreateCase)', async () => {
+    const { app } = buildApp(() => ORG_1_ANALYST);
+
+    const response = await request(app).post('/api/v1/cases').send({ customerId: 'customer-1' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
+  });
+
   it('POST /cases rejects a caller with no organization context with 403 FORBIDDEN_CROSS_TENANT', async () => {
     const platformAdminNoOrg = createAuthContext({ userId: 'pa-1', organizationId: null, isPlatformAdmin: true });
     const { app } = buildApp(() => platformAdminNoOrg);

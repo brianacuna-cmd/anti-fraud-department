@@ -94,6 +94,12 @@ import { ZenRoutingEngine } from './modules/case-management/infrastructure/adapt
 import { caseRouter } from './modules/case-management/infrastructure/adapters/inbound/http/caseRouter.js';
 import { caseManagementErrorStatus } from './modules/case-management/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createCaseManagementAuditRecorderAdapter } from './composition/caseManagementAuditRecorderAdapter.js';
+import { MongoRiskScoringRuleRepository } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoRiskScoringRuleRepository.js';
+import { ZenRiskScoringEngine } from './modules/risk-assessment/infrastructure/adapters/outbound/zen/ZenRiskScoringEngine.js';
+import { createCalculateRiskScoreUseCase } from './modules/risk-assessment/application/CalculateRiskScore.js';
+import { riskScoreRouter } from './modules/risk-assessment/infrastructure/adapters/inbound/http/riskScoreRouter.js';
+import { riskAssessmentErrorStatus } from './modules/risk-assessment/infrastructure/adapters/inbound/http/errorStatus.js';
+import { createRiskAssessmentAuditRecorderAdapter } from './composition/riskAssessmentAuditRecorderAdapter.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const MONGO_URI = process.env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/?replicaSet=rs0';
@@ -270,6 +276,18 @@ async function bootstrap(): Promise<void> {
       routeCase,
     }),
   });
+
+  // risk-assessment: standalone CalculateRiskScore. Not injected into
+  // CreateCase — POST /cases still requires a caller-supplied riskScore.
+  const scoringRules = new MongoRiskScoringRuleRepository(db);
+  const scoringEngine = new ZenRiskScoringEngine();
+  const riskAssessmentAuditRecorder = createRiskAssessmentAuditRecorderAdapter(recordAuditLog);
+  const calculateRiskScore = createCalculateRiskScoreUseCase({
+    scoringRules,
+    scoringEngine,
+    auditRecorder: riskAssessmentAuditRecorder,
+  });
+  const riskScoresRouter = riskScoreRouter({ calculateRiskScore });
 
   const transitionOrganizationStatus = createTransitionOrganizationStatusUseCase({
     organizations,
@@ -532,17 +550,19 @@ async function bootstrap(): Promise<void> {
   // above to resolve the caller's AuthContext (design: no separate auth
   // path; T5 is analyst/supervisor self-service within their own org).
   identityAccessRouter.use(caseManagementCasesRouter);
+  identityAccessRouter.use(riskScoresRouter);
 
   const app = createApp({
     routers: [{ path: '/api/v1', router: identityAccessRouter }],
     // Merged status maps: identity-access + notifications + case-management
-    // closed error codes. The overlapping keys (INVARIANT_VIOLATION=400,
-    // FORBIDDEN_CROSS_TENANT=403) agree across all three, so the spread is
-    // order-independent.
+    // + risk-assessment closed error codes. The overlapping keys
+    // (INVARIANT_VIOLATION=400, FORBIDDEN_CROSS_TENANT=403) agree, so the
+    // spread is order-independent.
     errorHandler: createErrorHandler({
       ...identityAccessErrorStatus,
       ...notificationsErrorStatus,
       ...caseManagementErrorStatus,
+      ...riskAssessmentErrorStatus,
     }),
     trustProxy: TRUST_PROXY,
   });
