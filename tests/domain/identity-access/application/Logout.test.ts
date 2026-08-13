@@ -3,30 +3,15 @@ import { createLogoutUseCase } from '../../../../src/modules/identity-access/app
 import { InMemorySessionRepository } from '../../../helpers/identity-access/InMemorySessionRepository.js';
 import { InMemoryAuditRecorder } from '../../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
-import { Session } from '../../../../src/modules/identity-access/domain/model/aggregates/Session.js';
-import { createSessionId } from '../../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
-import { createFamilyId } from '../../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
-import { createOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
+import { buildSession } from '../../../helpers/identity-access/buildSession.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const LATER = fromDate(new Date('2026-01-01T00:10:00.000Z'));
 
-function buildSession(id: string): Session {
-  return Session.create({
-    id: createSessionId(id),
-    userId: oid('user-1'),
-    organizationId: createOrganizationId(oid('org-1')),
-    actorType: 'USER',
-    tokenHash: `token-hash-${id}`,
-    refreshTokenHash: `refresh-hash-${id}`,
-    expiresAt: LATER,
-    refreshExpiresAt: LATER,
-    familyId: createFamilyId(oid('family-1')),
-    familyExpiresAt: LATER,
-    now: NOW,
-  });
+function userSession(id: string) {
+  return buildSession({ id, now: NOW, expiresAt: LATER });
 }
 
 function buildUseCase() {
@@ -39,7 +24,7 @@ function buildUseCase() {
 describe('createLogoutUseCase', () => {
   it('sets deletedAt on the current session (design authentication-session spec: "Logout and Session Validation")', async () => {
     const { logout, sessions } = buildUseCase();
-    await sessions.save(buildSession(oid('session-1')));
+    await sessions.save(userSession(oid('session-1')));
     const auth = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), sessionId: oid('session-1') });
 
     await logout({ auth });
@@ -50,8 +35,8 @@ describe('createLogoutUseCase', () => {
 
   it('does not touch other sessions', async () => {
     const { logout, sessions } = buildUseCase();
-    await sessions.save(buildSession(oid('session-1')));
-    await sessions.save(buildSession(oid('session-2')));
+    await sessions.save(userSession(oid('session-1')));
+    await sessions.save(userSession(oid('session-2')));
     const auth = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), sessionId: oid('session-1') });
 
     await logout({ auth });
@@ -62,7 +47,7 @@ describe('createLogoutUseCase', () => {
 
   it('is a no-op when AuthContext carries no sessionId (e.g. trusted-header dev mode)', async () => {
     const { logout, sessions } = buildUseCase();
-    await sessions.save(buildSession(oid('session-1')));
+    await sessions.save(userSession(oid('session-1')));
     const auth = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1') });
 
     await expect(logout({ auth })).resolves.toBeUndefined();
@@ -73,7 +58,7 @@ describe('createLogoutUseCase', () => {
 
   it('emits a LOGOUT audit event when a session is revoked', async () => {
     const { logout, sessions, auditRecorder } = buildUseCase();
-    await sessions.save(buildSession(oid('session-1')));
+    await sessions.save(userSession(oid('session-1')));
     const auth = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), sessionId: oid('session-1') });
 
     await logout({ auth });
@@ -88,7 +73,7 @@ describe('createLogoutUseCase', () => {
 
   it('emits no audit event on the no-op path (no sessionId)', async () => {
     const { logout, sessions, auditRecorder } = buildUseCase();
-    await sessions.save(buildSession(oid('session-1')));
+    await sessions.save(userSession(oid('session-1')));
     const auth = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1') });
 
     await logout({ auth });
@@ -99,33 +84,23 @@ describe('createLogoutUseCase', () => {
   it('ORGANIZATION actor logout revokes ALL sessions for that organization (behavior change)', async () => {
     const { logout, sessions } = buildUseCase();
     await sessions.save(
-      Session.create({
-        id: createSessionId(oid('org-session-1')),
+      buildSession({
+        id: oid('org-session-1'),
         userId: null,
-        organizationId: createOrganizationId(oid('org-1')),
-        actorType: 'ORGANIZATION',
+        organizationId: oid('org-1'),
         tokenHash: 'token-hash-org-session-1',
-        refreshTokenHash: 'refresh-hash-org-session-1',
-        expiresAt: LATER,
-        refreshExpiresAt: LATER,
-        familyId: createFamilyId(oid('family-org-1')),
-        familyExpiresAt: LATER,
         now: NOW,
+        expiresAt: LATER,
       }),
     );
     await sessions.save(
-      Session.create({
-        id: createSessionId(oid('org-session-2')),
+      buildSession({
+        id: oid('org-session-2'),
         userId: null,
-        organizationId: createOrganizationId(oid('org-1')),
-        actorType: 'ORGANIZATION',
+        organizationId: oid('org-1'),
         tokenHash: 'token-hash-org-session-2',
-        refreshTokenHash: 'refresh-hash-org-session-2',
-        expiresAt: LATER,
-        refreshExpiresAt: LATER,
-        familyId: createFamilyId(oid('family-org-1')),
-        familyExpiresAt: LATER,
         now: NOW,
+        expiresAt: LATER,
       }),
     );
     const auth = createAuthContext({
@@ -145,8 +120,8 @@ describe('createLogoutUseCase', () => {
 
   it('USER actor logout still revokes only the current session (regression)', async () => {
     const { logout, sessions } = buildUseCase();
-    await sessions.save(buildSession(oid('session-1')));
-    await sessions.save(buildSession(oid('session-2')));
+    await sessions.save(userSession(oid('session-1')));
+    await sessions.save(userSession(oid('session-2')));
     const auth = createAuthContext({
       userId: oid('user-1'),
       organizationId: oid('org-1'),

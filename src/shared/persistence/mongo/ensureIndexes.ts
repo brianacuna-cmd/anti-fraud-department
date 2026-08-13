@@ -31,26 +31,9 @@ export async function ensureIndexes(db: Db): Promise<void> {
 
   await db.collection('sessions').createIndex({ token_hash: 1 }, { unique: true, name: 'session_token_hash_unique' });
 
-  await db.collection('sessions').createIndex(
-    { refresh_token_hash: 1 },
-    {
-      unique: true,
-      name: 'session_refresh_token_hash_unique',
-      partialFilterExpression: { refresh_token_hash: { $exists: true, $type: 'string' } },
-    },
-  );
-
-  await db.collection('sessions').createIndex({ family_id: 1 }, { name: 'session_family_id_idx' });
-
   await db
     .collection('sessions')
-    .createIndex({ family_expires_at: 1 }, { name: 'session_family_expires_at_ttl_idx', expireAfterSeconds: 0 });
-
-  await db.collection('sessions').createIndex({ organization_id: 1 }, { name: 'session_organization_id_idx' });
-
-  await db
-    .collection('sessions')
-    .createIndex({ actor_type: 1, user_id: 1 }, { name: 'session_actor_type_user_id_idx' });
+    .createIndex({ expira_en: 1, deleted_at: 1 }, { name: 'idx_expired_active' });
 
   await db
     .collection('mfa_challenges')

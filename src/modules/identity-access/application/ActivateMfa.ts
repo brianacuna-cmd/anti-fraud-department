@@ -110,7 +110,7 @@ export function createActivateMfaUseCase(deps: ActivateMfaDeps) {
         session = await deps.issueSessionFor({
           userId: confirmed.id,
           organizationId,
-          actorType: 'USER',
+          ipAddress: input.auth.ipAddress,
           now,
           tx,
         });

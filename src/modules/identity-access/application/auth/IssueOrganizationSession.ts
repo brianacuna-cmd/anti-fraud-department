@@ -46,9 +46,8 @@ export function createIssueOrganizationSessionUseCase(deps: IssueOrganizationSes
       const organizationId = createOrganizationId(actor.actorId);
 
       const minted = await deps.issueSessionFor({
-        userId: null,
         organizationId,
-        actorType: 'ORGANIZATION',
+        ipAddress: input.ipAddress ?? null,
         now,
         tx,
       });

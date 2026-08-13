@@ -7,15 +7,13 @@ import { InMemorySessionRepository } from '../../../helpers/identity-access/InMe
 import { FakePasswordHasher } from '../../../helpers/identity-access/FakePasswordHasher.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { User } from '../../../../src/modules/identity-access/domain/model/aggregates/User.js';
-import { Session } from '../../../../src/modules/identity-access/domain/model/aggregates/Session.js';
 import { createUserId } from '../../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
 import { createRoleId } from '../../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
 import { createOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
-import { createSessionId } from '../../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
-import { createFamilyId } from '../../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
 import { createEmail } from '../../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 import { createPasswordCredential } from '../../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
+import { buildSession } from '../../../helpers/identity-access/buildSession.js';
 import { AesGcmSecretCipher } from '../../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
 import { AesGcmSessionTokenService } from '../../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSessionTokenService.js';
 import { IdentityAccessError } from '../../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
@@ -89,20 +87,14 @@ async function seedUserWithPendingReset(
 
 async function seedSession(sessions: InMemorySessionRepository): Promise<void> {
   const farFuture = fromDate(new Date('2099-01-01T00:00:00.000Z'));
-  const session = Session.create({
-    id: createSessionId(oid('session-1')),
-    familyId: createFamilyId(oid('family-1')),
-    familyExpiresAt: farFuture,
-    actorType: 'USER',
-    userId: oid('user-1'),
-    organizationId: ORG_ID,
-    tokenHash: 'token-hash-1',
-    refreshTokenHash: 'refresh-hash-1',
-    expiresAt: farFuture,
-    refreshExpiresAt: farFuture,
-    now: CREATED_AT,
-  });
-  await sessions.save(session);
+  await sessions.save(
+    buildSession({
+      id: oid('session-1'),
+      tokenHash: 'token-hash-1',
+      expiresAt: farFuture,
+      now: CREATED_AT,
+    }),
+  );
 }
 
 describe('createConfirmPasswordResetUseCase', () => {

@@ -67,7 +67,11 @@ export function createRotateAdminKeyUseCase(deps: RotateAdminKeyDeps) {
       const rotated = admin.rotateKey(newKey, now);
       await deps.admins.save(rotated, tx);
 
-      await deps.sessions.revokeAllForActor({ actorType: 'PLATFORM_ADMIN', userId: admin.id }, now, tx);
+      await deps.sessions.revokeAllForActor(
+        { actorType: 'PLATFORM_ADMIN', adminOrganizationId: admin.id },
+        now,
+        tx,
+      );
 
       await deps.auditRecorder.record(
         {

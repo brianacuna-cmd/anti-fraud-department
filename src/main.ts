@@ -135,8 +135,6 @@ const AUTH_MFA_ENROLLMENT_TTL_SECONDS = Number(process.env.AUTH_MFA_ENROLLMENT_T
 // PR (`IssueSession`'s challenge path); PR3's `ActivateMfa` reuses the same
 // collaborator/TTLs for the enrollment hand-off.
 const AUTH_SESSION_TTL_SECONDS = Number(process.env.AUTH_SESSION_TTL_SECONDS ?? 900);
-const AUTH_REFRESH_TTL_SECONDS = Number(process.env.AUTH_REFRESH_TTL_SECONDS ?? 1_209_600);
-const AUTH_FAMILY_TTL_SECONDS = Number(process.env.AUTH_FAMILY_TTL_SECONDS ?? 2_592_000);
 // super-admin-auth PR1 (design "AdminChallengeStore", TTL): ~24h single-use
 // PLATFORM_ADMIN login challenge TTL. Deferred from PR 1b (`ensureIndexes.ts`'s
 // TTL index) to this PR — `RequestAdminChallenge` is the first real consumer.
@@ -317,8 +315,6 @@ async function bootstrap(): Promise<void> {
     tokenKeyVersion: TOKEN_KEY_VERSION,
     ttls: {
       sessionSeconds: AUTH_SESSION_TTL_SECONDS,
-      refreshSeconds: AUTH_REFRESH_TTL_SECONDS,
-      familySeconds: AUTH_FAMILY_TTL_SECONDS,
     },
   });
 

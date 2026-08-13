@@ -6,8 +6,8 @@ import { AesGcmSessionTokenService } from '../../../../src/modules/identity-acce
 import { InMemorySessionRepository } from '../../../helpers/identity-access/InMemorySessionRepository.js';
 import { Session } from '../../../../src/modules/identity-access/domain/model/aggregates/Session.js';
 import { createSessionId } from '../../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
-import { createFamilyId } from '../../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
 import { createOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
+import { createAdminOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/AdminOrganizationId.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
@@ -36,32 +36,29 @@ async function seedSession(
     tokenHash: string;
     userId?: string | null;
     organizationId?: string | null;
-    actorType?: 'USER' | 'ORGANIZATION' | 'PLATFORM_ADMIN';
+    adminOrganizationId?: string | null;
     expiresAt?: typeof NOW;
     deletedAt?: typeof NOW | null;
-    rotatedAt?: typeof NOW | null;
   },
 ): Promise<void> {
+  const adminOrganizationId =
+    overrides.adminOrganizationId == null ? null : createAdminOrganizationId(overrides.adminOrganizationId);
   const session = Session.rehydrate({
     id: createSessionId(overrides.id),
-    userId: overrides.userId === undefined ? oid('user-1') : overrides.userId,
-    organizationId:
-      overrides.organizationId === undefined
+    userId: adminOrganizationId ? null : overrides.userId === undefined ? oid('user-1') : overrides.userId,
+    organizationId: adminOrganizationId
+      ? null
+      : overrides.organizationId === undefined
         ? createOrganizationId(oid('org-1'))
         : overrides.organizationId === null
           ? null
           : createOrganizationId(overrides.organizationId),
-    actorType: overrides.actorType ?? 'USER',
+    adminOrganizationId,
     tokenHash: overrides.tokenHash,
-    refreshTokenHash: 'refresh-hash',
     expiresAt: overrides.expiresAt ?? FAR_FUTURE,
-    refreshExpiresAt: FAR_FUTURE,
-    familyId: createFamilyId(oid('family-1')),
-    familyExpiresAt: FAR_FUTURE,
-    rotatedAt: overrides.rotatedAt ?? null,
-    rotatedFromSessionId: null,
+    ipAddress: null,
+    userAgent: null,
     createdAt: NOW,
-    updatedAt: NOW,
     deletedAt: overrides.deletedAt ?? null,
   });
   await sessionRepository.save(session);
@@ -76,7 +73,6 @@ describe('SessionTokenAuthContextResolver', () => {
       tokenHash: tokenService.fingerprint(token),
       userId: oid('user-1'),
       organizationId: oid('org-1'),
-      actorType: 'USER',
     });
 
     const auth = await resolver.resolve(buildRequest(token));
@@ -95,7 +91,6 @@ describe('SessionTokenAuthContextResolver', () => {
       tokenHash: tokenService.fingerprint(token),
       userId: null,
       organizationId: oid('org-1'),
-      actorType: 'ORGANIZATION',
     });
 
     const auth = await resolver.resolve(buildRequest(token));
@@ -131,27 +126,13 @@ describe('SessionTokenAuthContextResolver', () => {
     expect(await resolver.resolve(buildRequest(token))).toBeNull();
   });
 
-  it('returns null immediately for a revoked session, even before ExpiresAt (design: "Revoked token rejected immediately")', async () => {
+  it('returns null immediately for a revoked session (deletedAt set), even before ExpiresAt', async () => {
     const { tokenService, sessionRepository, resolver } = buildFixture();
     const token = tokenService.issue({ sessionId: oid('session-1'), tokenType: 'ACCESS', keyVersion: 1 });
     await seedSession(sessionRepository, {
       id: oid('session-1'),
       tokenHash: tokenService.fingerprint(token),
       deletedAt: NOW,
-    });
-
-    expect(await resolver.resolve(buildRequest(token))).toBeNull();
-  });
-
-  it('returns null for a rotated session (rotatedAt set) — its old ACCESS token is superseded by the refresh successor, even though the row is not deleted (session-lifecycle PR-2)', async () => {
-    const { tokenService, sessionRepository, resolver } = buildFixture();
-    const token = tokenService.issue({ sessionId: oid('session-1'), tokenType: 'ACCESS', keyVersion: 1 });
-    await seedSession(sessionRepository, {
-      id: oid('session-1'),
-      tokenHash: tokenService.fingerprint(token),
-      rotatedAt: NOW,
-      deletedAt: null,
-      expiresAt: FAR_FUTURE,
     });
 
     expect(await resolver.resolve(buildRequest(token))).toBeNull();

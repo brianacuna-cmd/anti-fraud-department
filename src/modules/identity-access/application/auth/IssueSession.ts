@@ -79,7 +79,7 @@ export function createIssueSessionUseCase(deps: IssueSessionDeps) {
       const minted = await deps.issueSessionFor({
         userId: user.id,
         organizationId,
-        actorType: 'USER',
+        ipAddress: input.ipAddress ?? null,
         now,
         tx,
       });

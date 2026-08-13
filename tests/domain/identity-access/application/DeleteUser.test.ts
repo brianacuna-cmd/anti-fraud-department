@@ -8,15 +8,13 @@ import { InMemoryAuditRecorder } from '../../../helpers/identity-access/InMemory
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { User } from '../../../../src/modules/identity-access/domain/model/aggregates/User.js';
-import { Session } from '../../../../src/modules/identity-access/domain/model/aggregates/Session.js';
 import { createUserId } from '../../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
 import { createRoleId } from '../../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
 import { createOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createEmail } from '../../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 import { createPasswordCredential } from '../../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
-import { createSessionId } from '../../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
-import { createFamilyId } from '../../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
+import { buildSession } from '../../../helpers/identity-access/buildSession.js';
 import { IdentityAccessError } from '../../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
 
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
@@ -55,22 +53,6 @@ function buildUseCases(
   });
   const deleteUser = createDeleteUserUseCase({ transitionUserStatus });
   return { transitionUserStatus, deleteUser };
-}
-
-function buildSession(id: string): Session {
-  return Session.create({
-    id: createSessionId(id),
-    userId: oid('user-1'),
-    organizationId: createOrganizationId(oid('org-1')),
-    actorType: 'USER',
-    tokenHash: `token-hash-${id}`,
-    refreshTokenHash: `refresh-hash-${id}`,
-    expiresAt: DELETED_AT,
-    refreshExpiresAt: DELETED_AT,
-    familyId: createFamilyId(oid('family-1')),
-    familyExpiresAt: DELETED_AT,
-    now: CREATED_AT,
-  });
 }
 
 describe('createDeleteUserUseCase', () => {
@@ -118,7 +100,7 @@ describe('createDeleteUserUseCase', () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
     await seedUser(userRepositoryFactory);
     const sessions = new InMemorySessionRepository();
-    await sessions.save(buildSession(oid('session-1')));
+    await sessions.save(buildSession({ id: oid('session-1'), now: CREATED_AT, expiresAt: DELETED_AT }));
     const auditRecorder = new InMemoryAuditRecorder();
     const { deleteUser } = buildUseCases(userRepositoryFactory, sessions, auditRecorder);
 

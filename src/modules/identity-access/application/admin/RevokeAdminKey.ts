@@ -51,7 +51,11 @@ export function createRevokeAdminKeyUseCase(deps: RevokeAdminKeyDeps) {
       const revoked = admin.revokeKey(keyId, now);
       await deps.admins.save(revoked, tx);
 
-      await deps.sessions.revokeAllForActor({ actorType: 'PLATFORM_ADMIN', userId: admin.id }, now, tx);
+      await deps.sessions.revokeAllForActor(
+        { actorType: 'PLATFORM_ADMIN', adminOrganizationId: admin.id },
+        now,
+        tx,
+      );
 
       await deps.auditRecorder.record(
         {

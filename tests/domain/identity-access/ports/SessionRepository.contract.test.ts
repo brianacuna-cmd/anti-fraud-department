@@ -1,43 +1,19 @@
 import { oid } from '../../../support/oid.js';
 import { InMemorySessionRepository } from '../../../helpers/identity-access/InMemorySessionRepository.js';
-import { Session } from '../../../../src/modules/identity-access/domain/model/aggregates/Session.js';
+import { buildSession } from '../../../helpers/identity-access/buildSession.js';
 import { createSessionId } from '../../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
-import { createFamilyId } from '../../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
 import { createOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 
-const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const LATER = fromDate(new Date('2026-01-01T00:10:00.000Z'));
-
-function buildSession(overrides: {
-  id: string;
-  familyId?: string;
-  userId?: string | null;
-  organizationId?: string | null;
-  actorType?: 'USER' | 'ORGANIZATION' | 'PLATFORM_ADMIN';
-  refreshTokenHash?: string | null;
-}): Session {
-  return Session.create({
-    id: createSessionId(overrides.id),
-    userId: overrides.userId ?? oid('user-1'),
-    organizationId: overrides.organizationId === null ? null : createOrganizationId(overrides.organizationId ?? oid('org-1')),
-    actorType: overrides.actorType ?? 'USER',
-    tokenHash: `token-hash-${overrides.id}`,
-    refreshTokenHash: overrides.refreshTokenHash === undefined ? `refresh-hash-${overrides.id}` : overrides.refreshTokenHash,
-    expiresAt: NOW,
-    refreshExpiresAt: LATER,
-    familyId: createFamilyId(overrides.familyId ?? oid('family-1')),
-    familyExpiresAt: LATER,
-    now: NOW,
-  });
-}
 
 describe('SessionRepository (port contract, via InMemorySessionRepository fake)', () => {
   it('persists and retrieves a session by tokenHash', async () => {
     const repository = new InMemorySessionRepository();
-    await repository.save(buildSession({ id: oid('session-1') }));
+    const session = buildSession({ id: oid('session-1') });
+    await repository.save(session);
 
-    const found = await repository.findByTokenHash(`token-hash-${oid('session-1')}`);
+    const found = await repository.findByTokenHash(session.tokenHash);
 
     expect(found?.id).toBe(oid('session-1'));
   });
@@ -45,71 +21,16 @@ describe('SessionRepository (port contract, via InMemorySessionRepository fake)'
   it('returns null from findByTokenHash when no session matches', async () => {
     const repository = new InMemorySessionRepository();
 
-    expect(await repository.findByTokenHash(oid('missing'))).toBeNull();
+    expect(await repository.findByTokenHash('missing')).toBeNull();
   });
 
-  it('retrieves a session by refreshTokenHash', async () => {
+  it('retrieves a session by id', async () => {
     const repository = new InMemorySessionRepository();
     await repository.save(buildSession({ id: oid('session-1') }));
 
-    const found = await repository.findByRefreshTokenHash(`refresh-hash-${oid('session-1')}`);
+    const found = await repository.findById(createSessionId(oid('session-1')));
 
     expect(found?.id).toBe(oid('session-1'));
-  });
-
-  describe('markRotated', () => {
-    it('returns true on the first call (CAS win) and stamps rotatedAt', async () => {
-      const repository = new InMemorySessionRepository();
-      await repository.save(buildSession({ id: oid('session-1') }));
-
-      const won = await repository.markRotated(createSessionId(oid('session-1')), LATER);
-
-      expect(won).toBe(true);
-      const found = await repository.findByTokenHash(`token-hash-${oid('session-1')}`);
-      expect(found?.rotatedAt).toBe(LATER);
-    });
-
-    it('returns false on a second call for the same session (CAS loser)', async () => {
-      const repository = new InMemorySessionRepository();
-      await repository.save(buildSession({ id: oid('session-1') }));
-      await repository.markRotated(createSessionId(oid('session-1')), LATER);
-
-      const lost = await repository.markRotated(createSessionId(oid('session-1')), LATER);
-
-      expect(lost).toBe(false);
-    });
-
-    it('returns false for an unknown session id', async () => {
-      const repository = new InMemorySessionRepository();
-
-      expect(await repository.markRotated(createSessionId(oid('missing')), LATER)).toBe(false);
-    });
-  });
-
-  describe('revokeFamily', () => {
-    it('revokes every session sharing the familyId and returns the count', async () => {
-      const repository = new InMemorySessionRepository();
-      await repository.save(buildSession({ id: oid('session-1'), familyId: oid('family-1') }));
-      await repository.save(buildSession({ id: oid('session-2'), familyId: oid('family-1') }));
-      await repository.save(buildSession({ id: oid('session-3'), familyId: oid('family-2') }));
-
-      const count = await repository.revokeFamily(createFamilyId(oid('family-1')), LATER);
-
-      expect(count).toBe(2);
-      expect((await repository.findByTokenHash(`token-hash-${oid('session-1')}`))?.deletedAt).toBe(LATER);
-      expect((await repository.findByTokenHash(`token-hash-${oid('session-2')}`))?.deletedAt).toBe(LATER);
-      expect((await repository.findByTokenHash(`token-hash-${oid('session-3')}`))?.deletedAt).toBeNull();
-    });
-
-    it('is idempotent — a second call revokes nothing further', async () => {
-      const repository = new InMemorySessionRepository();
-      await repository.save(buildSession({ id: oid('session-1'), familyId: oid('family-1') }));
-      await repository.revokeFamily(createFamilyId(oid('family-1')), NOW);
-
-      const secondCount = await repository.revokeFamily(createFamilyId(oid('family-1')), LATER);
-
-      expect(secondCount).toBe(0);
-    });
   });
 
   describe('revokeAllForOrganization', () => {
@@ -121,21 +42,21 @@ describe('SessionRepository (port contract, via InMemorySessionRepository fake)'
       const count = await repository.revokeAllForOrganization(createOrganizationId(oid('org-1')), LATER);
 
       expect(count).toBe(1);
-      expect((await repository.findByTokenHash(`token-hash-${oid('session-1')}`))?.deletedAt).toBe(LATER);
-      expect((await repository.findByTokenHash(`token-hash-${oid('session-2')}`))?.deletedAt).toBeNull();
+      expect((await repository.findById(createSessionId(oid('session-1'))))?.deletedAt).toBe(LATER);
+      expect((await repository.findById(createSessionId(oid('session-2'))))?.deletedAt).toBeNull();
     });
   });
 
   describe('revokeSession', () => {
-    it('sets deletedAt on exactly the given session id (design Phase 4, Logout)', async () => {
+    it('sets deletedAt on exactly the given session id', async () => {
       const repository = new InMemorySessionRepository();
       await repository.save(buildSession({ id: oid('session-1') }));
       await repository.save(buildSession({ id: oid('session-2') }));
 
       await repository.revokeSession(createSessionId(oid('session-1')), LATER);
 
-      expect((await repository.findByTokenHash(`token-hash-${oid('session-1')}`))?.deletedAt).toBe(LATER);
-      expect((await repository.findByTokenHash(`token-hash-${oid('session-2')}`))?.deletedAt).toBeNull();
+      expect((await repository.findById(createSessionId(oid('session-1'))))?.deletedAt).toBe(LATER);
+      expect((await repository.findById(createSessionId(oid('session-2'))))?.deletedAt).toBeNull();
     });
 
     it('is a no-op for an unknown session id', async () => {
@@ -144,10 +65,10 @@ describe('SessionRepository (port contract, via InMemorySessionRepository fake)'
       await expect(repository.revokeSession(createSessionId(oid('missing')), LATER)).resolves.toBeUndefined();
     });
 
-    it('is idempotent — revoking an already-revoked session keeps the original deletedAt behavior a no-op-safe call', async () => {
+    it('is idempotent for an already-revoked session', async () => {
       const repository = new InMemorySessionRepository();
       await repository.save(buildSession({ id: oid('session-1') }));
-      await repository.revokeSession(createSessionId(oid('session-1')), NOW);
+      await repository.revokeSession(createSessionId(oid('session-1')), fromDate(new Date('2026-01-01T00:00:00.000Z')));
 
       await expect(repository.revokeSession(createSessionId(oid('session-1')), LATER)).resolves.toBeUndefined();
     });
@@ -156,30 +77,44 @@ describe('SessionRepository (port contract, via InMemorySessionRepository fake)'
   describe('revokeAllForActor', () => {
     it('revokes every session for a USER actor by userId', async () => {
       const repository = new InMemorySessionRepository();
-      await repository.save(buildSession({ id: oid('session-1'), userId: oid('user-1'), actorType: 'USER' }));
-      await repository.save(buildSession({ id: oid('session-2'), userId: oid('user-2'), actorType: 'USER' }));
+      await repository.save(buildSession({ id: oid('session-1'), userId: oid('user-1') }));
+      await repository.save(buildSession({ id: oid('session-2'), userId: oid('user-2') }));
 
       const count = await repository.revokeAllForActor({ actorType: 'USER', userId: oid('user-1') }, LATER);
 
       expect(count).toBe(1);
-      expect((await repository.findByTokenHash(`token-hash-${oid('session-1')}`))?.deletedAt).toBe(LATER);
-      expect((await repository.findByTokenHash(`token-hash-${oid('session-2')}`))?.deletedAt).toBeNull();
+      expect((await repository.findById(createSessionId(oid('session-1'))))?.deletedAt).toBe(LATER);
+      expect((await repository.findById(createSessionId(oid('session-2'))))?.deletedAt).toBeNull();
     });
 
-    it('revokes every session for an ORGANIZATION actor by organizationId', async () => {
+    it('revokes every session for an ORGANIZATION actor by organizationId (org-tier rows only)', async () => {
       const repository = new InMemorySessionRepository();
-      await repository.save(
-        buildSession({ id: oid('session-1'), userId: null, organizationId: oid('org-1'), actorType: 'ORGANIZATION' }),
-      );
-      await repository.save(
-        buildSession({ id: oid('session-2'), userId: null, organizationId: oid('org-2'), actorType: 'ORGANIZATION' }),
-      );
+      await repository.save(buildSession({ id: oid('session-1'), userId: null, organizationId: oid('org-1') }));
+      await repository.save(buildSession({ id: oid('session-2'), userId: null, organizationId: oid('org-2') }));
 
-      const count = await repository.revokeAllForActor({ actorType: 'ORGANIZATION', organizationId: createOrganizationId(oid('org-1')) }, LATER);
+      const count = await repository.revokeAllForActor(
+        { actorType: 'ORGANIZATION', organizationId: createOrganizationId(oid('org-1')) },
+        LATER,
+      );
 
       expect(count).toBe(1);
-      expect((await repository.findByTokenHash(`token-hash-${oid('session-1')}`))?.deletedAt).toBe(LATER);
-      expect((await repository.findByTokenHash(`token-hash-${oid('session-2')}`))?.deletedAt).toBeNull();
+      expect((await repository.findById(createSessionId(oid('session-1'))))?.deletedAt).toBe(LATER);
+      expect((await repository.findById(createSessionId(oid('session-2'))))?.deletedAt).toBeNull();
+    });
+
+    it('revokes every session for a PLATFORM_ADMIN actor by adminOrganizationId', async () => {
+      const repository = new InMemorySessionRepository();
+      await repository.save(buildSession({ id: oid('session-1'), adminOrganizationId: oid('admin-1') }));
+      await repository.save(buildSession({ id: oid('session-2'), adminOrganizationId: oid('admin-2') }));
+
+      const count = await repository.revokeAllForActor(
+        { actorType: 'PLATFORM_ADMIN', adminOrganizationId: oid('admin-1') },
+        LATER,
+      );
+
+      expect(count).toBe(1);
+      expect((await repository.findById(createSessionId(oid('session-1'))))?.deletedAt).toBe(LATER);
+      expect((await repository.findById(createSessionId(oid('session-2'))))?.deletedAt).toBeNull();
     });
   });
 });

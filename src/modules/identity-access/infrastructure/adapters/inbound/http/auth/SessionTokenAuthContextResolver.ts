@@ -64,19 +64,16 @@ export class SessionTokenAuthContextResolver implements AuthContextResolver {
     if (!session || session.isRevoked) {
       return null;
     }
-    // A rotated session is superseded by its successor (session-lifecycle
-    // PR-2): `RefreshSession` sets `rotatedAt` on the old row but does NOT
-    // delete it (the row is kept for reuse-detection). Its ACCESS token must
-    // stop authenticating the moment it is rotated — otherwise the old access
-    // token would stay valid until its natural TTL, defeating rotation.
-    if (session.rotatedAt !== null) {
-      return null;
-    }
     if (toDate(session.expiresAt).getTime() <= Date.now()) {
       return null;
     }
 
-    const userId = session.actorType === 'ORGANIZATION' ? (session.organizationId ?? '') : (session.userId ?? '');
+    const userId =
+      session.actorType === 'ORGANIZATION'
+        ? (session.organizationId ?? '')
+        : session.actorType === 'PLATFORM_ADMIN'
+          ? (session.adminOrganizationId ?? '')
+          : (session.userId ?? '');
 
     return createAuthContext({
       userId,

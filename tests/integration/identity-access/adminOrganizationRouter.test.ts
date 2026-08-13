@@ -30,12 +30,10 @@ import { createAdminOrganizationId, generateAdminOrganizationId } from '../../..
 import { createAdminKeyId, generateAdminKeyId } from '../../../src/modules/identity-access/domain/model/value-objects/AdminKeyId.js';
 import { createAdminKey } from '../../../src/modules/identity-access/domain/model/value-objects/AdminKey.js';
 import { createEmail } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
-import { Session } from '../../../src/modules/identity-access/domain/model/aggregates/Session.js';
-import { createSessionId } from '../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
-import { createFamilyId } from '../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
 import { oid } from '../../support/oid.js';
+import { buildSession } from '../../helpers/identity-access/buildSession.js';
 
 const PLATFORM_ADMIN = createAuthContext({ userId: oid('admin-1'), organizationId: null, isPlatformAdmin: true });
 const REGULAR_USER = createAuthContext({ userId: oid('user-1'), organizationId: oid('o1'), isPlatformAdmin: false });
@@ -96,7 +94,7 @@ function buildApp(actorPerRequest: () => AuthContext): {
         sessionTokenService: new AesGcmSessionTokenService(cipher),
         sessions: new InMemorySessionRepository(),
         tokenKeyVersion: 1,
-        ttls: { sessionSeconds: 900, refreshSeconds: 1_209_600, familySeconds: 2_592_000 },
+        ttls: { sessionSeconds: 900 },
       }),
       auditRecorder: new InMemoryAuditRecorder(),
     }),
@@ -195,7 +193,7 @@ function buildChallengeLoginApp(): {
         sessionTokenService,
         sessions,
         tokenKeyVersion: 1,
-        ttls: { sessionSeconds: 900, refreshSeconds: 1_209_600, familySeconds: 2_592_000 },
+        ttls: { sessionSeconds: 900 },
       }),
       auditRecorder: new InMemoryAuditRecorder(),
     }),
@@ -590,18 +588,12 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
     });
     await admins.save(admin);
     await sessions.save(
-      Session.create({
-        id: createSessionId(oid('session-rotate-1')),
-        familyId: createFamilyId(oid('family-1')),
-        userId: admin.id,
-        organizationId: null,
-        actorType: 'PLATFORM_ADMIN',
+      buildSession({
+        id: oid('session-rotate-1'),
+        adminOrganizationId: admin.id,
         tokenHash: 'rotate-token-hash',
-        refreshTokenHash: null,
-        expiresAt: fromDate(new Date('2026-02-01T00:00:00.000Z')),
-        refreshExpiresAt: null,
-        familyExpiresAt: fromDate(new Date('2026-03-01T00:00:00.000Z')),
         now: NOW,
+        expiresAt: fromDate(new Date('2026-02-01T00:00:00.000Z')),
       }),
     );
 

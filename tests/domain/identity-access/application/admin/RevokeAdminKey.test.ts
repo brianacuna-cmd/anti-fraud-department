@@ -12,9 +12,7 @@ import { InMemorySessionRepository } from '../../../../helpers/identity-access/I
 import { InMemoryUnitOfWork } from '../../../../helpers/identity-access/InMemoryUnitOfWork.js';
 import { InMemoryAuditRecorder } from '../../../../helpers/identity-access/InMemoryAuditRecorder.js';
 import { FixedClock } from '../../../../helpers/FixedClock.js';
-import { Session } from '../../../../../src/modules/identity-access/domain/model/aggregates/Session.js';
-import { createSessionId } from '../../../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
-import { createFamilyId } from '../../../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
+import { buildSession } from '../../../../helpers/identity-access/buildSession.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const CREATED_AT = fromDate(new Date('2025-12-31T00:00:00.000Z'));
@@ -56,18 +54,12 @@ async function seedAdminWithActiveKey(admins: InMemoryAdminOrganizationRepositor
 }
 
 async function seedSessionForAdmin(sessions: InMemorySessionRepository, adminId: string) {
-  const session = Session.create({
-    id: createSessionId(oid('session-1')),
-    familyId: createFamilyId(oid('family-1')),
-    userId: adminId,
-    organizationId: null,
-    actorType: 'PLATFORM_ADMIN',
+  const session = buildSession({
+    id: oid('session-1'),
+    adminOrganizationId: adminId,
     tokenHash: 'token-hash',
-    refreshTokenHash: null,
-    expiresAt: fromDate(new Date('2026-02-01T00:00:00.000Z')),
-    refreshExpiresAt: null,
-    familyExpiresAt: fromDate(new Date('2026-03-01T00:00:00.000Z')),
     now: CREATED_AT,
+    expiresAt: fromDate(new Date('2026-02-01T00:00:00.000Z')),
   });
   await sessions.save(session);
   return session;

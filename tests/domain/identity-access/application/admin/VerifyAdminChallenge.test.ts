@@ -47,7 +47,7 @@ function buildHarness() {
     sessionTokenService: TOKEN_SERVICE,
     sessions,
     tokenKeyVersion: 1,
-    ttls: { sessionSeconds: 900, refreshSeconds: 1_209_600, familySeconds: 2_592_000 },
+    ttls: { sessionSeconds: 900 },
   });
   const verifyAdminChallenge = createVerifyAdminChallengeUseCase({
     admins,
@@ -121,8 +121,8 @@ describe('createVerifyAdminChallengeUseCase', () => {
     const saved = await sessions.findByTokenHash(TOKEN_SERVICE.fingerprint(result.accessToken));
     expect(saved?.actorType).toBe('PLATFORM_ADMIN');
     expect(saved?.organizationId).toBeNull();
-    expect(saved?.userId).toBe(admin.id);
-    expect(saved?.refreshTokenHash).toBeNull();
+    expect(saved?.userId).toBeNull();
+    expect(saved?.adminOrganizationId).toBe(admin.id);
 
     const calls = auditRecorder.calls();
     expect(calls).toHaveLength(1);
