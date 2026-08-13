@@ -93,9 +93,8 @@ export function createVerifyAdminChallengeUseCase(deps: VerifyAdminChallengeDeps
       }
 
       const minted = await deps.issueSessionFor({
-        userId: admin.id,
-        organizationId: null,
-        actorType: 'PLATFORM_ADMIN',
+        adminOrganizationId: admin.id,
+        ipAddress: input.ipAddress ?? null,
         now,
         tx,
       });

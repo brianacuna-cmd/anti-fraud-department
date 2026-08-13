@@ -7,15 +7,13 @@ import { InMemoryAuditRecorder } from '../../../helpers/identity-access/InMemory
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { User } from '../../../../src/modules/identity-access/domain/model/aggregates/User.js';
-import { Session } from '../../../../src/modules/identity-access/domain/model/aggregates/Session.js';
 import { createUserId } from '../../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
 import { createRoleId } from '../../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
 import { createOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createEmail } from '../../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 import { createPasswordCredential } from '../../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
-import { createSessionId } from '../../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
-import { createFamilyId } from '../../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
+import { buildSession } from '../../../helpers/identity-access/buildSession.js';
 import { IdentityAccessError } from '../../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
 
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
@@ -58,22 +56,6 @@ function buildUseCase(
     unitOfWork,
     clock: new FixedClock(TRANSITIONED_AT),
     auditRecorder,
-  });
-}
-
-function buildSession(id: string): Session {
-  return Session.create({
-    id: createSessionId(id),
-    userId: oid('user-1'),
-    organizationId: createOrganizationId(oid('org-1')),
-    actorType: 'USER',
-    tokenHash: `token-hash-${id}`,
-    refreshTokenHash: `refresh-hash-${id}`,
-    expiresAt: TRANSITIONED_AT,
-    refreshExpiresAt: TRANSITIONED_AT,
-    familyId: createFamilyId(oid('family-1')),
-    familyExpiresAt: TRANSITIONED_AT,
-    now: CREATED_AT,
   });
 }
 
@@ -182,8 +164,8 @@ describe('createTransitionUserStatusUseCase', () => {
     const unitOfWork = new InMemoryUnitOfWork();
     const auditRecorder = new InMemoryAuditRecorder();
     const sessions = new InMemorySessionRepository();
-    await sessions.save(buildSession(oid('session-1')));
-    await sessions.save(buildSession(oid('session-2')));
+    await sessions.save(buildSession({ id: oid('session-1'), now: CREATED_AT, expiresAt: TRANSITIONED_AT }));
+    await sessions.save(buildSession({ id: oid('session-2'), now: CREATED_AT, expiresAt: TRANSITIONED_AT }));
     const transitionUserStatus = buildUseCase(userRepositoryFactory, unitOfWork, auditRecorder, sessions);
 
     await transitionUserStatus({ auth: ORG_ADMIN, userId: oid('user-1'), next: 'DISABLED' });
@@ -214,7 +196,7 @@ describe('createTransitionUserStatusUseCase', () => {
     const unitOfWork = new InMemoryUnitOfWork();
     const auditRecorder = new InMemoryAuditRecorder();
     const sessions = new InMemorySessionRepository();
-    await sessions.save(buildSession(oid('session-1')));
+    await sessions.save(buildSession({ id: oid('session-1'), now: CREATED_AT, expiresAt: TRANSITIONED_AT }));
     const transitionUserStatus = buildUseCase(userRepositoryFactory, unitOfWork, auditRecorder, sessions);
 
     await transitionUserStatus({ auth: ORG_ADMIN, userId: oid('user-1'), next: 'SUSPENDED' });

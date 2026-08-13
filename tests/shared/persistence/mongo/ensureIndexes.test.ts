@@ -67,7 +67,7 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     expect(matchingNames).toHaveLength(1);
   });
 
-  it('creates the required Sessions indexes, with a PARTIAL (not sparse) unique index on refresh_token_hash (design D38) and a TTL on the Date mirror, never the Instant string field (design D15)', async () => {
+  it('creates the required sessions indexes: unique token_hash and idx_expired_active on (expira_en, deleted_at)', async () => {
     await ensureIndexes(db);
 
     const sessionIndexes = await db.collection('sessions').indexes();
@@ -77,38 +77,9 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     expect(tokenHashIndex?.key).toEqual({ token_hash: 1 });
     expect(tokenHashIndex?.unique).toBe(true);
 
-    const refreshtoken_hashIndex = sessionIndexes.find(
-      (index) => index.name === 'session_refresh_token_hash_unique',
-    );
-    expect(refreshtoken_hashIndex).toBeDefined();
-    expect(refreshtoken_hashIndex?.key).toEqual({ refresh_token_hash: 1 });
-    expect(refreshtoken_hashIndex?.unique).toBe(true);
-    expect(refreshtoken_hashIndex?.sparse).not.toBe(true);
-    expect(refreshtoken_hashIndex?.partialFilterExpression).toEqual({
-      refresh_token_hash: { $exists: true, $type: 'string' },
-    });
-
-    const familyIdIndex = sessionIndexes.find((index) => index.name === 'session_family_id_idx');
-    expect(familyIdIndex).toBeDefined();
-    expect(familyIdIndex?.key).toEqual({ family_id: 1 });
-
-    const familyExpiresAtTtlIndex = sessionIndexes.find(
-      (index) => index.name === 'session_family_expires_at_ttl_idx',
-    );
-    expect(familyExpiresAtTtlIndex).toBeDefined();
-    expect(familyExpiresAtTtlIndex?.key).toEqual({ family_expires_at: 1 });
-    expect(familyExpiresAtTtlIndex?.expireAfterSeconds).toBe(0);
-    // Regression guard (design D15): the TTL MUST sit on the Date mirror
-    // field name, never on the ISO-string `FamilyExpiresAt` field.
-    expect(familyExpiresAtTtlIndex?.key).not.toHaveProperty('FamilyExpiresAt');
-
-    const organizationIdIndex = sessionIndexes.find((index) => index.name === 'session_organization_id_idx');
-    expect(organizationIdIndex).toBeDefined();
-    expect(organizationIdIndex?.key).toEqual({ organization_id: 1 });
-
-    const actorTypeuser_idIndex = sessionIndexes.find((index) => index.name === 'session_actor_type_user_id_idx');
-    expect(actorTypeuser_idIndex).toBeDefined();
-    expect(actorTypeuser_idIndex?.key).toEqual({ actor_type: 1, user_id: 1 });
+    const expiredActiveIndex = sessionIndexes.find((index) => index.name === 'idx_expired_active');
+    expect(expiredActiveIndex).toBeDefined();
+    expect(expiredActiveIndex?.key).toEqual({ expira_en: 1, deleted_at: 1 });
   });
 
   it('creates a PARTIAL (not sparse) unique index on Organizations.email (Phase 4, design D36 pulled forward, D38 general rule)', async () => {

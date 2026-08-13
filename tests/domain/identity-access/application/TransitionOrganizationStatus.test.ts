@@ -7,12 +7,10 @@ import { InMemoryAuditRecorder } from '../../../helpers/identity-access/InMemory
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { Organization } from '../../../../src/modules/identity-access/domain/model/aggregates/Organization.js';
-import { Session } from '../../../../src/modules/identity-access/domain/model/aggregates/Session.js';
 import { createOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createSlug } from '../../../../src/modules/identity-access/domain/model/value-objects/Slug.js';
-import { createSessionId } from '../../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
-import { createFamilyId } from '../../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
+import { buildSession } from '../../../helpers/identity-access/buildSession.js';
 import { IdentityAccessError } from '../../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
 
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
@@ -39,22 +37,6 @@ async function seedOrganization(
     organization = organization.transitionTo('CANCELLED', { isPlatformAdmin: true }, CREATED_AT);
   }
   await organizations.save(organization);
-}
-
-function buildSession(id: string): Session {
-  return Session.create({
-    id: createSessionId(id),
-    userId: oid('org-user-1'),
-    organizationId: createOrganizationId(oid('org-1')),
-    actorType: 'USER',
-    tokenHash: `token-hash-${id}`,
-    refreshTokenHash: `refresh-hash-${id}`,
-    expiresAt: TRANSITIONED_AT,
-    refreshExpiresAt: TRANSITIONED_AT,
-    familyId: createFamilyId(oid('family-1')),
-    familyExpiresAt: TRANSITIONED_AT,
-    now: CREATED_AT,
-  });
 }
 
 function buildUseCase(
@@ -198,8 +180,8 @@ describe('createTransitionOrganizationStatusUseCase', () => {
     await seedOrganization(organizations);
     const unitOfWork = new InMemoryUnitOfWork();
     const sessions = new InMemorySessionRepository();
-    await sessions.save(buildSession(oid('session-1')));
-    await sessions.save(buildSession(oid('session-2')));
+    await sessions.save(buildSession({ id: oid('session-1'), userId: oid('org-user-1'), now: CREATED_AT, expiresAt: TRANSITIONED_AT }));
+    await sessions.save(buildSession({ id: oid('session-2'), userId: oid('org-user-1'), now: CREATED_AT, expiresAt: TRANSITIONED_AT }));
     const auditRecorder = new InMemoryAuditRecorder();
     const transitionOrganizationStatus = buildUseCase(organizations, unitOfWork, sessions, auditRecorder);
 

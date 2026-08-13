@@ -52,7 +52,7 @@ function buildHarness() {
     sessionTokenService: TOKEN_SERVICE,
     sessions,
     tokenKeyVersion: 1,
-    ttls: { sessionSeconds: 900, refreshSeconds: 1_209_600, familySeconds: 2_592_000 },
+    ttls: { sessionSeconds: 900 },
   });
   const issueOrganizationSession = createIssueOrganizationSessionUseCase({
     authenticateActor,

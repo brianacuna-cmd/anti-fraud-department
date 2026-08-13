@@ -34,14 +34,12 @@ import { OtplibTotpService } from '../../../src/modules/identity-access/infrastr
 import { User } from '../../../src/modules/identity-access/domain/model/aggregates/User.js';
 import { createUserId } from '../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
 import { createEmail } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
-import { Session } from '../../../src/modules/identity-access/domain/model/aggregates/Session.js';
-import { createSessionId } from '../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
-import { createFamilyId } from '../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
 import { createOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createPasswordCredential } from '../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import type { ActorCredentialRecord } from '../../../src/modules/identity-access/domain/ports/ActorCredentialGateway.js';
 import { oid } from '../../support/oid.js';
+import { buildSession } from '../../helpers/identity-access/buildSession.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ORG_ID = createOrganizationId(oid('org-1'));
@@ -107,7 +105,7 @@ function buildApp(
     sessionTokenService: TOKEN_SERVICE,
     sessions,
     tokenKeyVersion: 1,
-    ttls: { sessionSeconds: 900, refreshSeconds: 1_209_600, familySeconds: 2_592_000 },
+    ttls: { sessionSeconds: 900 },
   });
 
   const router = authRouter({
@@ -503,7 +501,7 @@ describe('authRouter (e2e, in-memory gateways)', () => {
       expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
     });
 
-    it('a reused (already-rotated) refresh token revokes the whole family, including the successor session', async () => {
+    it('reusing an already-revoked refresh token is SESSION_INVALID; successor remains usable', async () => {
       const { app, organizationGateway } = buildApp();
       organizationGateway.seed('org@acme.example.com', ORG_RECORD);
       const loginResponse = await request(app)
@@ -515,40 +513,24 @@ describe('authRouter (e2e, in-memory gateways)', () => {
         .send({ refreshToken: loginResponse.body.refreshToken });
       expect(rotated.status).toBe(200);
 
-      // Replay the original (already-rotated) refresh token -> reuse detected.
       const reuse = await request(app)
         .post('/api/v1/auth/refresh')
         .send({ refreshToken: loginResponse.body.refreshToken });
       expect(reuse.status).toBe(401);
       expect(reuse.body.error.code).toBe('SESSION_INVALID');
 
-      // The successor minted from the (now-burned) family must also be dead.
       const successorRefresh = await request(app)
         .post('/api/v1/auth/refresh')
         .send({ refreshToken: rotated.body.refreshToken });
-      expect(successorRefresh.status).toBe(401);
-      expect(successorRefresh.body.error.code).toBe('SESSION_INVALID');
+      expect(successorRefresh.status).toBe(200);
+      expect(successorRefresh.body.accessToken).toEqual(expect.any(String));
     });
   });
 
   describe('POST /auth/logout', () => {
     it('revokes the current session and returns 204', async () => {
       const { app, sessions } = buildApp();
-      await sessions.save(
-        Session.create({
-          id: createSessionId(oid('session-1')),
-          userId: oid('user-1'),
-          organizationId: ORG_ID,
-          actorType: 'USER',
-          tokenHash: `token-hash-${oid('session-1')}`,
-          refreshTokenHash: `refresh-hash-${oid('session-1')}`,
-          expiresAt: NOW,
-          refreshExpiresAt: NOW,
-          familyId: createFamilyId(oid('family-1')),
-          familyExpiresAt: NOW,
-          now: NOW,
-        }),
-      );
+      await sessions.save(buildSession({ id: oid('session-1'), now: NOW, expiresAt: NOW }));
 
       const response = await request(app).post('/api/v1/auth/logout').send({});
 
@@ -559,36 +541,8 @@ describe('authRouter (e2e, in-memory gateways)', () => {
 
     it('USER logout revokes only the current session, other sessions remain valid (regression)', async () => {
       const { app, sessions } = buildApp();
-      await sessions.save(
-        Session.create({
-          id: createSessionId(oid('session-1')),
-          userId: oid('user-1'),
-          organizationId: ORG_ID,
-          actorType: 'USER',
-          tokenHash: `token-hash-${oid('session-1')}`,
-          refreshTokenHash: `refresh-hash-${oid('session-1')}`,
-          expiresAt: NOW,
-          refreshExpiresAt: NOW,
-          familyId: createFamilyId(oid('family-1')),
-          familyExpiresAt: NOW,
-          now: NOW,
-        }),
-      );
-      await sessions.save(
-        Session.create({
-          id: createSessionId(oid('session-2')),
-          userId: oid('user-1'),
-          organizationId: ORG_ID,
-          actorType: 'USER',
-          tokenHash: `token-hash-${oid('session-2')}`,
-          refreshTokenHash: `refresh-hash-${oid('session-2')}`,
-          expiresAt: NOW,
-          refreshExpiresAt: NOW,
-          familyId: createFamilyId(oid('family-1')),
-          familyExpiresAt: NOW,
-          now: NOW,
-        }),
-      );
+      await sessions.save(buildSession({ id: oid('session-1'), now: NOW, expiresAt: NOW }));
+      await sessions.save(buildSession({ id: oid('session-2'), now: NOW, expiresAt: NOW }));
 
       const response = await request(app).post('/api/v1/auth/logout').send({});
 
@@ -607,33 +561,23 @@ describe('authRouter (e2e, in-memory gateways)', () => {
         sessionId: oid('org-session-1'),
       });
       await sessions.save(
-        Session.create({
-          id: createSessionId(oid('org-session-1')),
+        buildSession({
+          id: oid('org-session-1'),
           userId: null,
-          organizationId: ORG_ID,
-          actorType: 'ORGANIZATION',
+          organizationId: oid('org-1'),
           tokenHash: 'token-hash-org-session-1',
-          refreshTokenHash: 'refresh-hash-org-session-1',
-          expiresAt: NOW,
-          refreshExpiresAt: NOW,
-          familyId: createFamilyId(oid('family-org-1')),
-          familyExpiresAt: NOW,
           now: NOW,
+          expiresAt: NOW,
         }),
       );
       await sessions.save(
-        Session.create({
-          id: createSessionId(oid('org-session-2')),
+        buildSession({
+          id: oid('org-session-2'),
           userId: null,
-          organizationId: ORG_ID,
-          actorType: 'ORGANIZATION',
+          organizationId: oid('org-1'),
           tokenHash: 'token-hash-org-session-2',
-          refreshTokenHash: 'refresh-hash-org-session-2',
-          expiresAt: NOW,
-          refreshExpiresAt: NOW,
-          familyId: createFamilyId(oid('family-org-1')),
-          familyExpiresAt: NOW,
           now: NOW,
+          expiresAt: NOW,
         }),
       );
 

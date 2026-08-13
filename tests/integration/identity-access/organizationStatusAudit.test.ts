@@ -16,13 +16,11 @@ import type { Transaction } from '../../../src/modules/identity-access/domain/po
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
 import { createAuthContext } from '../../../src/shared/kernel/AuthContext.js';
 import { Organization } from '../../../src/modules/identity-access/domain/model/aggregates/Organization.js';
-import { Session } from '../../../src/modules/identity-access/domain/model/aggregates/Session.js';
-import { createOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createSlug } from '../../../src/modules/identity-access/domain/model/value-objects/Slug.js';
-import { createSessionId } from '../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
-import { createFamilyId } from '../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
+import { createOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import { oid } from '../../support/oid.js';
+import { buildSession } from '../../helpers/identity-access/buildSession.js';
 
 jest.setTimeout(120_000);
 
@@ -86,18 +84,12 @@ describe('TransitionOrganizationStatus audit atomicity (integration, real replic
 
   async function seedSession(id: string, organizationId: string): Promise<void> {
     await sessions.save(
-      Session.create({
-        id: createSessionId(id),
+      buildSession({
+        id,
         userId: oid('org-user-1'),
-        organizationId: createOrganizationId(organizationId),
-        actorType: 'USER',
-        tokenHash: `token-hash-${id}`,
-        refreshTokenHash: `refresh-hash-${id}`,
-        expiresAt: NOW,
-        refreshExpiresAt: NOW,
-        familyId: createFamilyId(oid('family-1')),
-        familyExpiresAt: NOW,
+        organizationId,
         now: NOW,
+        expiresAt: NOW,
       }),
     );
   }
