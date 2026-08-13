@@ -89,6 +89,7 @@ import { generateTimelineEventId } from './modules/case-management/domain/model/
 import { createCreateCaseUseCase } from './modules/case-management/application/CreateCase.js';
 import { createCalculateSlaUseCase } from './modules/case-management/application/CalculateSla.js';
 import { createRouteCaseUseCase } from './modules/case-management/application/RouteCase.js';
+import { createReassignCaseUseCase } from './modules/case-management/application/ReassignCase.js';
 import { MongoCaseRoutingRuleRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRoutingRuleRepository.js';
 import { MongoOrganizationFraudConfigRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoOrganizationFraudConfigRepository.js';
 import { MongoCaseSlaTrackingRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseSlaTrackingRepository.js';
@@ -96,6 +97,7 @@ import { ZenRoutingEngine } from './modules/case-management/infrastructure/adapt
 import { caseRouter } from './modules/case-management/infrastructure/adapters/inbound/http/caseRouter.js';
 import { caseManagementErrorStatus } from './modules/case-management/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createCaseManagementAuditRecorderAdapter } from './composition/caseManagementAuditRecorderAdapter.js';
+import { createIdentityAssigneeDirectory } from './composition/identityAssigneeDirectory.js';
 import { generateCaseSlaTrackingId } from './modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
 import { createGetOrganizationFraudConfigUseCase } from './modules/case-management/application/GetOrganizationFraudConfig.js';
 import { createUpsertOrganizationFraudConfigUseCase } from './modules/case-management/application/UpsertOrganizationFraudConfig.js';
@@ -278,6 +280,7 @@ async function bootstrap(): Promise<void> {
     clock,
     generateCaseSlaTrackingId,
   });
+  const assigneeDirectory = createIdentityAssigneeDirectory(userRepositoryFactory, roleRepository);
   const caseManagementCasesRouter = caseRouter({
     createCase: createCreateCaseUseCase({
       cases,
@@ -289,6 +292,15 @@ async function bootstrap(): Promise<void> {
       auditRecorder: caseManagementAuditRecorder,
       routeCase,
       calculateSla,
+    }),
+    reassignCase: createReassignCaseUseCase({
+      cases,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateTimelineEventId,
+      assigneeDirectory,
     }),
   });
   const organizationFraudConfigHttpRouter = organizationFraudConfigRouter({

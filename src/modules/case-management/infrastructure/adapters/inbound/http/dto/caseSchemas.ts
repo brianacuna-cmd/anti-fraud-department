@@ -17,3 +17,11 @@ export const createCaseSchema = z.object({
 });
 
 export type CreateCaseBody = z.infer<typeof createCaseSchema>;
+
+/** POST /cases/:caseId/reassign body (manual reassignment). */
+export const reassignCaseSchema = z.object({
+  assignedToType: z.enum(['USER', 'ROLE']),
+  assignedToId: z.string().min(1),
+});
+
+export type ReassignCaseBody = z.infer<typeof reassignCaseSchema>;

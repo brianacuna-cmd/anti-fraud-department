@@ -11,6 +11,7 @@ import { caseRouter } from '../../../../src/modules/case-management/infrastructu
 import { createCreateCaseUseCase } from '../../../../src/modules/case-management/application/CreateCase.js';
 import { createCalculateSlaUseCase } from '../../../../src/modules/case-management/application/CalculateSla.js';
 import { createRouteCaseUseCase } from '../../../../src/modules/case-management/application/RouteCase.js';
+import { createReassignCaseUseCase } from '../../../../src/modules/case-management/application/ReassignCase.js';
 import { ZenRoutingEngine } from '../../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
@@ -18,6 +19,7 @@ import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-manag
 import { InMemoryCaseRoutingRuleRepository } from '../../../helpers/case-management/InMemoryCaseRoutingRuleRepository.js';
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
 import { InMemoryCaseSlaTrackingRepository } from '../../../helpers/case-management/InMemoryCaseSlaTrackingRepository.js';
+import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 import { generateCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
@@ -106,17 +108,27 @@ function buildApp(actorPerRequest: () => AuthContext, options: { seedFraudConfig
     generateCaseSlaTrackingId,
   });
 
+  const unitOfWork = new PassthroughUnitOfWork();
   const router = caseRouter({
     createCase: createCreateCaseUseCase({
       cases,
       timelineRecorder,
-      unitOfWork: new PassthroughUnitOfWork(),
+      unitOfWork,
       clock,
       generateCaseId,
       generateTimelineEventId,
       auditRecorder,
       routeCase,
       calculateSla,
+    }),
+    reassignCase: createReassignCaseUseCase({
+      cases,
+      timelineRecorder,
+      auditRecorder,
+      unitOfWork,
+      clock,
+      generateTimelineEventId,
+      assigneeDirectory: new InMemoryAssigneeDirectory(),
     }),
   });
 
