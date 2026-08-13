@@ -98,7 +98,6 @@ export function authRouter(deps: AuthRouterDeps): Router {
 
   // Organization 3-step 2FA pending state & enrolled TOTP secrets
   const pendingOrgLogins = new Map<string, { email: string; password: string; otp: string; challengeToken: string; totpSecret?: string }>();
-  const orgTotpSecrets = new Map<string, string>();
 
   router.post('/auth/organizations/login', async (req, res) => {
     const body = parseRequest(organizationsLoginSchema, req.body);
@@ -140,9 +139,9 @@ export function authRouter(deps: AuthRouterDeps): Router {
       return;
     }
 
-    // Read persistent MfaSecret from MongoDB collection Organizations
-    let existingSecret: string | null = orgTotpSecrets.get(emailKey) ?? null;
-    if (!existingSecret && deps.db) {
+    // Read persistent MfaSecret directly from MongoDB collection Organizations
+    let existingSecret: string | null = null;
+    if (deps.db) {
       const orgDoc = await deps.db.collection('Organizations').findOne({ Email: { $regex: new RegExp(`^${emailKey}$`, 'i') } });
       if (orgDoc?.MfaSecret) {
         existingSecret = orgDoc.MfaSecret as string;
@@ -198,8 +197,7 @@ export function authRouter(deps: AuthRouterDeps): Router {
       return;
     }
 
-    // Save TOTP secret in-memory & in MongoDB collection Organizations
-    orgTotpSecrets.set(matchedEmail, matchedCreds.totpSecret);
+    // Save TOTP secret in MongoDB collection Organizations
     if (deps.db) {
       await deps.db.collection('Organizations').updateOne(
         { Email: { $regex: new RegExp(`^${matchedEmail}$`, 'i') } },

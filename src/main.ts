@@ -94,7 +94,7 @@ import { notificationsErrorStatus } from './modules/notifications/infrastructure
 const PORT = Number(process.env.PORT ?? 3000);
 const MONGO_URI = process.env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/?replicaSet=rs0';
 const MONGO_DB_NAME = process.env.MONGO_DB_NAME ?? 'anti_fraud_department';
-const AUTH_MODE = process.env.AUTH_MODE ?? 'trusted-header';
+const AUTH_MODE = process.env.AUTH_MODE ?? 'session';
 // two-step-login PR1b (design D6): PLATFORM_ADMIN has no session-issuing
 // login yet, so its auth availability is decoupled from AUTH_MODE and
 // governed by its own env — default 'disabled' is prod-safe (a

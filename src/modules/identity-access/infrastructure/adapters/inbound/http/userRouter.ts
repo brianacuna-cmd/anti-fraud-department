@@ -54,6 +54,12 @@ export function userRouter(deps: UserRouterDeps): Router {
     res.status(200).json(toUserListResponse(page));
   });
 
+  router.get('/users/me', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const user = await deps.getUser({ auth, userId: auth.userId! });
+    res.status(200).json(toUserResponse(user));
+  });
+
   router.get('/users/:id', async (req, res) => {
     const auth = requireAuthContext(req);
     const user = await deps.getUser({ auth, userId: req.params.id! });
