@@ -39,10 +39,10 @@ function actorTypeOf(props: {
   readonly organizationId: OrganizationId | null;
   readonly adminOrganizationId: AdminOrganizationId | null;
 }): ActorType {
+  if (props.adminOrganizationId !== null && (props.userId !== null || props.organizationId !== null)) {
+    throw invariantViolation('PLATFORM_ADMIN session cannot carry userId or organizationId');
+  }
   if (props.adminOrganizationId !== null) {
-    if (props.userId !== null || props.organizationId !== null) {
-      throw invariantViolation('PLATFORM_ADMIN session cannot carry userId or organizationId');
-    }
     return 'PLATFORM_ADMIN';
   }
   if (props.userId !== null) {
