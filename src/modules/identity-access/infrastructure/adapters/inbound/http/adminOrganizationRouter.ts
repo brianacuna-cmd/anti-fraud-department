@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { Db } from 'mongodb';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
 import type { createProvisionAdminOrganizationUseCase } from '../../../../application/admin/ProvisionAdminOrganization.js';
 import type { createRequestAdminChallengeUseCase } from '../../../../application/admin/RequestAdminChallenge.js';
@@ -15,6 +16,7 @@ import { toAdminOrganizationResponse } from './mappers/AdminOrganizationHttpMapp
 import { parseRequest } from './parseRequest.js';
 
 export interface AdminOrganizationRouterDeps {
+  readonly db?: Db;
   readonly provisionAdminOrganization: ReturnType<typeof createProvisionAdminOrganizationUseCase>;
   /** super-admin-auth PR1, step 1 — public, no `AuthContext` yet. */
   readonly requestAdminChallenge: ReturnType<typeof createRequestAdminChallengeUseCase>;
@@ -28,24 +30,48 @@ export interface AdminOrganizationRouterDeps {
   readonly revokeAdminKey: ReturnType<typeof createRevokeAdminKeyUseCase>;
 }
 
-/**
- * `/admin-organizations` routes (design D31/D32, super-admin-auth PR1+PR2).
- * Provisioning stays platform-admin-only (`requirePlatformAdmin`, enforced
- * inside the use case) — it genuinely cannot provision the FIRST
- * `AdminOrganization`, resolved out-of-band by the bootstrap script (design
- * D43).
- *
- * The two challenge-login routes (`POST .../challenges`, `POST .../sessions`)
- * are deliberately PUBLIC — they ARE the login, exactly like `authRouter`'s
- * login routes — so they omit `requireAuthContext` entirely (design
- * "HTTP (public login routes on adminOrganizationRouter.ts)").
- *
- * The three PR2 key-lifecycle routes (download/rotate/revoke) are
- * authenticated (`requireAuthContext` + `requirePlatformAdmin` inside the
- * use case) — mirrors `provisionAdminOrganization`'s shape exactly.
- */
 export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Router {
   const router = Router();
+
+  router.get('/admin-organizations', async (req, res) => {
+    if (!req.authContext) {
+      res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
+      return;
+    }
+    if (req.authContext.actorType !== 'PLATFORM_ADMIN') {
+      res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Platform Admin required' } });
+      return;
+    }
+    if (!deps.db) {
+      res.status(200).json([]);
+      return;
+    }
+    const docs = await deps.db.collection('admin_organizations').find().toArray();
+    const items = docs.map((doc) => ({
+      id: String(doc._id),
+      email: doc.email as string,
+      keys: ((doc.keys as unknown[]) || []).map((k) => {
+        const item = k as Record<string, unknown>;
+        const asIso = (value: unknown): string | null => {
+          if (value instanceof Date) {
+            return value.toISOString();
+          }
+          return typeof value === 'string' ? value : null;
+        };
+        return {
+          keyId: String(item.key_id ?? item.keyId ?? ''),
+          publicKey: (item.public_key ?? item.publicKey) as string,
+          status: item.status as string,
+          createdAt: asIso(item.created_at ?? item.createdAt) ?? '',
+          rotatedAt: asIso(item.rotated_at ?? item.rotatedAt),
+          revokedAt: asIso(item.revoked_at ?? item.revokedAt),
+        };
+      }),
+      createdAt: doc.created_at instanceof Date ? doc.created_at.toISOString() : (doc.created_at as string),
+      updatedAt: doc.updated_at instanceof Date ? doc.updated_at.toISOString() : (doc.updated_at as string),
+    }));
+    res.status(200).json(items);
+  });
 
   router.post('/admin-organizations', async (req, res) => {
     const auth = requireAuthContext(req);

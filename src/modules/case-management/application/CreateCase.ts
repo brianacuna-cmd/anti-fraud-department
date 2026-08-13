@@ -6,6 +6,7 @@ import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { CaseId } from '../domain/model/value-objects/CaseId.js';
 import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
+import type { RouteCaseInput } from './RouteCase.js';
 import { Case } from '../domain/model/aggregates/Case.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
 import { createRiskScore } from '../domain/model/value-objects/RiskScore.js';
@@ -32,6 +33,13 @@ export interface CreateCaseDeps {
   readonly generateCaseId: () => CaseId;
   readonly generateTimelineEventId: () => TimelineEventId;
   readonly auditRecorder: AuditRecorder;
+  /**
+   * T1 auto-routing (CASE-002), invoked inside this use case's transaction so
+   * the assignment + its `ASSIGNED` timeline event commit atomically with the
+   * new case. Injected as the composed `RouteCase` use case to keep CreateCase
+   * decoupled from routing's own dependencies (rules repo, ZEN engine).
+   */
+  readonly routeCase: (input: RouteCaseInput) => Promise<Case>;
 }
 
 /**
@@ -42,9 +50,10 @@ export interface CreateCaseDeps {
  * appends a `CASE_CREATED` `CaseTimeline` entry, and records a
  * `CREATE_CASE` audit row.
  *
- * TODO(slice 9 — T1 auto-routing): once `RouteCase` exists, invoke it here
- * (still inside this same transaction) to resolve `AssignedTo` from the
- * org's ACTIVE ZEN routing rule.
+ * T1 auto-routing (CASE-002): after the case is persisted, `RouteCase` runs
+ * inside this same transaction — it evaluates the org's ACTIVE ZEN routing
+ * rules against the case and, on the first match, sets `AssignedTo` and
+ * appends an `ASSIGNED` timeline event. The routed case is what's returned.
  * TODO(slice 6 — T2 SLA calculation): once `CalculateSla` exists, invoke it
  * here (still inside this same transaction) to create `CaseSlaTracking`
  * and denormalize `Case.DueDate`. Until then, every case created by this
@@ -97,10 +106,22 @@ export function createCreateCaseUseCase(deps: CreateCaseDeps) {
         tx,
       );
 
-      // TODO(slice 9): RouteCase(kase, tx) here.
-      // TODO(slice 6): CalculateSla(kase, tx) here.
+      // T1 auto-routing (CASE-002): evaluate the org's ACTIVE routing rules and,
+      // on the first match, assign the case + append an ASSIGNED timeline event
+      // — all inside this same transaction. `createdBy: null` because the rule,
+      // not the caller, chose the assignee; actorType/ipAddress still carry the
+      // request's audit attribution.
+      const routed = await deps.routeCase({
+        kase,
+        tx,
+        createdBy: null,
+        actorType: input.auth.actorType,
+        ipAddress: input.auth.ipAddress,
+      });
 
-      return kase;
+      // TODO(slice 6): CalculateSla(routed, tx) here.
+
+      return routed;
     });
   };
 }

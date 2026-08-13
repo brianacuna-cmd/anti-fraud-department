@@ -87,6 +87,10 @@ import { MongoUnitOfWork as CaseManagementMongoUnitOfWork } from './modules/case
 import { generateCaseId } from './modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from './modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { createCreateCaseUseCase } from './modules/case-management/application/CreateCase.js';
+import { createRouteCaseUseCase } from './modules/case-management/application/RouteCase.js';
+import { MongoCaseRoutingRuleRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRoutingRuleRepository.js';
+import { MongoOrganizationFraudConfigRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoOrganizationFraudConfigRepository.js';
+import { ZenRoutingEngine } from './modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { caseRouter } from './modules/case-management/infrastructure/adapters/inbound/http/caseRouter.js';
 import { caseManagementErrorStatus } from './modules/case-management/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createCaseManagementAuditRecorderAdapter } from './composition/caseManagementAuditRecorderAdapter.js';
@@ -238,6 +242,24 @@ async function bootstrap(): Promise<void> {
   const cases = new MongoCaseRepository(db);
   const caseTimelineRecorder = new MongoTimelineRecorder(db);
   const caseManagementAuditRecorder = createCaseManagementAuditRecorderAdapter(recordAuditLog);
+  // CASE-002 (T1 auto-routing): ACTIVE routing rules are evaluated by the ZEN
+  // engine on every case creation. The composed `RouteCase` use case is injected
+  // into `CreateCase` so its assignment + ASSIGNED timeline event commit inside
+  // the same transaction as the new case. `fraudConfig` backs the per-tenant
+  // `featureFlags.autoRouting` opt-out.
+  const caseRoutingRules = new MongoCaseRoutingRuleRepository(db);
+  const caseRoutingEngine = new ZenRoutingEngine();
+  const organizationFraudConfig = new MongoOrganizationFraudConfigRepository(db);
+  const routeCase = createRouteCaseUseCase({
+    cases,
+    routingRules: caseRoutingRules,
+    routingEngine: caseRoutingEngine,
+    timelineRecorder: caseTimelineRecorder,
+    auditRecorder: caseManagementAuditRecorder,
+    fraudConfig: organizationFraudConfig,
+    clock,
+    generateTimelineEventId,
+  });
   const caseManagementCasesRouter = caseRouter({
     createCase: createCreateCaseUseCase({
       cases,
@@ -247,6 +269,7 @@ async function bootstrap(): Promise<void> {
       generateCaseId,
       generateTimelineEventId,
       auditRecorder: caseManagementAuditRecorder,
+      routeCase,
     }),
   });
 

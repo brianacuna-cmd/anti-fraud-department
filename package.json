@@ -14,6 +14,7 @@
     "bootstrap:admin": "tsx scripts/bootstrap-admin.ts"
   },
   "dependencies": {
+    "@gorules/zen-engine": "^0.54.0",
     "bcryptjs": "^3.0.3",
     "express": "^5.2.1",
     "mongodb": "^7.5.0",

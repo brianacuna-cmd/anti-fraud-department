@@ -12,6 +12,14 @@ export type CaseManagementAuditAction =
   | 'UPDATE_SCORE'
   | 'RESOLVE_CASE'
   | 'REASSIGN_CASE'
-  | 'REOPEN_CASE';
+  | 'REOPEN_CASE'
+  /**
+   * CASE-002 (T1): a rule whose JDM could not be evaluated was SKIPPED rather
+   * than aborting case creation. Not a user action — it is the only durable
+   * trail for an unusable rule while this module has no logger port. Pending
+   * confirmation with the team (design open point: "Enums de EventType/Action
+   * ... confirmar los nombres exactos").
+   */
+  | 'ROUTING_RULE_EVALUATION_FAILED';
 
 export type CaseManagementAuditResource = 'case' | 'entity' | 'user' | 'rule';

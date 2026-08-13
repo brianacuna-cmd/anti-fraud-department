@@ -178,4 +178,15 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     const matchingNames = configIndexes.filter((index) => index.name === 'org_fraud_config_unique');
     expect(matchingNames).toHaveLength(1);
   });
+
+  it('creates the CaseRoutingRules org+status index and stays idempotent on re-run', async () => {
+    await ensureIndexes(db);
+    await ensureIndexes(db);
+
+    const routingIndexes = await db.collection('case_routing_rules').indexes();
+    const orgStatusIndex = routingIndexes.find((index) => index.name === 'case_routing_rules_org_status_idx');
+
+    expect(orgStatusIndex?.key).toEqual({ organization_id: 1, status: 1 });
+    expect(routingIndexes.filter((index) => index.name === 'case_routing_rules_org_status_idx')).toHaveLength(1);
+  });
 });
