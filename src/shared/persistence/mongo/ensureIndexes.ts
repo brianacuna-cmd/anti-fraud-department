@@ -184,4 +184,12 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .createIndex({ DueDateAt: 1 }, { name: 'sla_tracking_due_date_idx' });
 
   await db.collection('CaseSlaTracking').createIndex({ Status: 1 }, { name: 'sla_tracking_status_idx' });
+
+  // `CaseRoutingRules` (case-management CASE-002 — T1 auto-routing). Tenant
+  // -scoped lookup of ACTIVE rules; `RouteCase` reads exactly this
+  // `{ OrganizationId, Status }` slice on every case creation, so the compound
+  // index keeps it off a collection scan.
+  await db
+    .collection('CaseRoutingRules')
+    .createIndex({ OrganizationId: 1, Status: 1 }, { name: 'case_routing_rules_org_status_idx' });
 }
