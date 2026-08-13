@@ -1,3 +1,4 @@
+import { ObjectId } from 'mongodb';
 import { brand } from '../../../../../../../shared/kernel/Brand.js';
 import { OrganizationFraudConfig } from '../../../../../domain/model/aggregates/OrganizationFraudConfig.js';
 import { createOrganizationFraudConfigId } from '../../../../../domain/model/value-objects/OrganizationFraudConfigId.js';
@@ -10,7 +11,7 @@ import type { OrganizationFraudConfigDocument } from '../documents/OrganizationF
  */
 export function toDocument(config: OrganizationFraudConfig): OrganizationFraudConfigDocument {
   return {
-    _id: config.id,
+    _id: new ObjectId(config.id),
     OrganizationId: config.organizationId,
     SlaLowMinutes: config.slaLowMinutes,
     SlaMediumMinutes: config.slaMediumMinutes,
@@ -40,7 +41,7 @@ export interface UpsertFields {
     readonly FeatureFlags: Readonly<Record<string, boolean>>;
     readonly UpdatedAt: string;
   };
-  readonly setOnInsert: { readonly _id: string; readonly CreatedAt: string };
+  readonly setOnInsert: { readonly _id: ObjectId; readonly CreatedAt: string };
 }
 
 /**
@@ -65,14 +66,14 @@ export function toUpsertFields(config: OrganizationFraudConfig): UpsertFields {
       FeatureFlags: config.featureFlags,
       UpdatedAt: config.updatedAt,
     },
-    setOnInsert: { _id: config.id, CreatedAt: config.createdAt },
+    setOnInsert: { _id: new ObjectId(config.id), CreatedAt: config.createdAt },
   };
 }
 
 /** PascalCase (Mongo) -> camelCase (domain) translation seam (mirrors `CaseDocumentMapper`). */
 export function toDomain(document: OrganizationFraudConfigDocument): OrganizationFraudConfig {
   return OrganizationFraudConfig.rehydrate({
-    id: createOrganizationFraudConfigId(document._id),
+    id: createOrganizationFraudConfigId(document._id.toString()),
     organizationId: document.OrganizationId,
     slaLowMinutes: document.SlaLowMinutes,
     slaMediumMinutes: document.SlaMediumMinutes,

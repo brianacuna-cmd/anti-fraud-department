@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { brand, type Brand } from '../../../../../shared/kernel/Brand.js';
 import { invariantViolation } from '../../errors/CaseManagementError.js';
 
@@ -12,7 +12,7 @@ export function createOrganizationFraudConfigId(value: string): OrganizationFrau
   return brand<string, 'OrganizationFraudConfigId'>(value);
 }
 
-/** Mints a fresh id for a brand-new config (mirrors CaseId's crypto.randomUUID()). */
+/** Mints a fresh id: a 24-char hex string the Mongo mapper stores as `ObjectId`. */
 export function generateOrganizationFraudConfigId(): OrganizationFraudConfigId {
-  return brand<string, 'OrganizationFraudConfigId'>(randomUUID());
+  return brand<string, 'OrganizationFraudConfigId'>(randomBytes(12).toString('hex'));
 }

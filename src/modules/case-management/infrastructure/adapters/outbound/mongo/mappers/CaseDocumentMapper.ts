@@ -1,3 +1,4 @@
+import { ObjectId } from 'mongodb';
 import { brand } from '../../../../../../../shared/kernel/Brand.js';
 import { Case } from '../../../../../domain/model/aggregates/Case.js';
 import { createCaseId } from '../../../../../domain/model/value-objects/CaseId.js';
@@ -15,7 +16,7 @@ import type { CaseDocument } from '../documents/CaseDocument.js';
 export function toDocument(kase: Case): CaseDocument {
   const assignedTo = kase.assignedTo;
   return {
-    _id: kase.id,
+    _id: new ObjectId(kase.id),
     OrganizationId: kase.organizationId,
     CustomerId: kase.customerId,
     CustomerEmail: kase.customerEmail,
@@ -40,7 +41,7 @@ export function toDocument(kase: Case): CaseDocument {
 /** PascalCase (Mongo) -> camelCase (domain) translation seam (mirrors `OrganizationDocumentMapper`). */
 export function toDomain(document: CaseDocument): Case {
   return Case.rehydrate({
-    id: createCaseId(document._id),
+    id: createCaseId(document._id.toString()),
     organizationId: document.OrganizationId,
     customerId: document.CustomerId,
     customerEmail: document.CustomerEmail,

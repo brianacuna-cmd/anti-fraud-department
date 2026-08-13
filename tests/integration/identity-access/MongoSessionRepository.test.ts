@@ -1,5 +1,6 @@
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
-import type { Db, MongoClient } from 'mongodb';
+import { ObjectId, type Db, type MongoClient } from 'mongodb';
+import { oid } from '../../support/oid.js';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
 import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
@@ -27,21 +28,21 @@ function buildSession(overrides: {
   refreshTokenHash?: string | null;
 }): Session {
   return Session.create({
-    id: createSessionId(overrides.id),
-    userId: overrides.userId === undefined ? 'user-1' : overrides.userId,
+    id: createSessionId(oid(overrides.id)),
+    userId: overrides.userId === undefined ? oid('user-1') : overrides.userId,
     organizationId:
       overrides.organizationId === undefined
-        ? createOrganizationId('org-1')
+        ? createOrganizationId(oid('org-1'))
         : overrides.organizationId === null
           ? null
-          : createOrganizationId(overrides.organizationId),
+          : createOrganizationId(oid(overrides.organizationId)),
     actorType: overrides.actorType ?? 'USER',
     tokenHash: overrides.tokenHash ?? `token-hash-${overrides.id}`,
     refreshTokenHash:
       overrides.refreshTokenHash === undefined ? `refresh-hash-${overrides.id}` : overrides.refreshTokenHash,
     expiresAt: NOW,
     refreshExpiresAt: LATER,
-    familyId: createFamilyId(overrides.familyId ?? 'family-1'),
+    familyId: createFamilyId(oid(overrides.familyId ?? 'family-1')),
     familyExpiresAt: LATER,
     now: NOW,
   });
@@ -79,9 +80,9 @@ describe('MongoSessionRepository (integration, real replica-set Mongo)', () => {
 
     const found = await repository.findByTokenHash('token-hash-session-1');
 
-    expect(found?.id).toBe('session-1');
-    expect(found?.userId).toBe('user-1');
-    expect(found?.organizationId).toBe('org-1');
+    expect(found?.id).toBe(oid('session-1'));
+    expect(found?.userId).toBe(oid('user-1'));
+    expect(found?.organizationId).toBe(oid('org-1'));
   });
 
   it('returns null from findByTokenHash when nothing matches', async () => {
@@ -93,7 +94,7 @@ describe('MongoSessionRepository (integration, real replica-set Mongo)', () => {
 
     const found = await repository.findByRefreshTokenHash('refresh-hash-session-1');
 
-    expect(found?.id).toBe('session-1');
+    expect(found?.id).toBe(oid('session-1'));
   });
 
   it('rejects a duplicate real TokenHash with a real E11000 (session_token_hash_unique)', async () => {
@@ -108,7 +109,7 @@ describe('MongoSessionRepository (integration, real replica-set Mongo)', () => {
     it('returns true for the first caller and stamps RotatedAt', async () => {
       await repository.save(buildSession({ id: 'session-1' }));
 
-      const won = await repository.markRotated(createSessionId('session-1'), LATER);
+      const won = await repository.markRotated(createSessionId(oid('session-1')), LATER);
 
       expect(won).toBe(true);
       const found = await repository.findByTokenHash('token-hash-session-1');
@@ -117,9 +118,9 @@ describe('MongoSessionRepository (integration, real replica-set Mongo)', () => {
 
     it('returns false for a second call — the CAS loser', async () => {
       await repository.save(buildSession({ id: 'session-1' }));
-      await repository.markRotated(createSessionId('session-1'), LATER);
+      await repository.markRotated(createSessionId(oid('session-1')), LATER);
 
-      const lost = await repository.markRotated(createSessionId('session-1'), LATER);
+      const lost = await repository.markRotated(createSessionId(oid('session-1')), LATER);
 
       expect(lost).toBe(false);
     });
@@ -128,8 +129,8 @@ describe('MongoSessionRepository (integration, real replica-set Mongo)', () => {
       await repository.save(buildSession({ id: 'session-1' }));
 
       const [first, second] = await Promise.all([
-        repository.markRotated(createSessionId('session-1'), LATER),
-        repository.markRotated(createSessionId('session-1'), LATER),
+        repository.markRotated(createSessionId(oid('session-1')), LATER),
+        repository.markRotated(createSessionId(oid('session-1')), LATER),
       ]);
 
       expect([first, second].filter(Boolean)).toHaveLength(1);
@@ -142,7 +143,7 @@ describe('MongoSessionRepository (integration, real replica-set Mongo)', () => {
       await repository.save(buildSession({ id: 'session-2', familyId: 'family-1' }));
       await repository.save(buildSession({ id: 'session-3', familyId: 'family-2' }));
 
-      const count = await repository.revokeFamily(createFamilyId('family-1'), LATER);
+      const count = await repository.revokeFamily(createFamilyId(oid('family-1')), LATER);
 
       expect(count).toBe(2);
       expect((await repository.findByTokenHash('token-hash-session-1'))?.deletedAt).toBe(LATER);
@@ -156,14 +157,14 @@ describe('MongoSessionRepository (integration, real replica-set Mongo)', () => {
       await repository.save(buildSession({ id: 'session-1' }));
       await repository.save(buildSession({ id: 'session-2' }));
 
-      await repository.revokeSession(createSessionId('session-1'), LATER);
+      await repository.revokeSession(createSessionId(oid('session-1')), LATER);
 
       expect((await repository.findByTokenHash('token-hash-session-1'))?.deletedAt).toBe(LATER);
       expect((await repository.findByTokenHash('token-hash-session-2'))?.deletedAt).toBeNull();
     });
 
     it('is a no-op for an unknown session id', async () => {
-      await expect(repository.revokeSession(createSessionId('missing'), LATER)).resolves.toBeUndefined();
+      await expect(repository.revokeSession(createSessionId(oid('missing')), LATER)).resolves.toBeUndefined();
     });
   });
 
@@ -174,7 +175,7 @@ describe('MongoSessionRepository (integration, real replica-set Mongo)', () => {
       await repository.save(buildSession({ id: 'session-2', organizationId: 'org-2' }));
 
       const count = await unitOfWork.withTransaction((tx) =>
-        repository.revokeAllForOrganization(createOrganizationId('org-1'), LATER, tx),
+        repository.revokeAllForOrganization(createOrganizationId(oid('org-1')), LATER, tx),
       );
 
       expect(count).toBe(1);
@@ -185,10 +186,10 @@ describe('MongoSessionRepository (integration, real replica-set Mongo)', () => {
 
   describe('revokeAllForActor', () => {
     it('revokes every session for a USER actor by userId', async () => {
-      await repository.save(buildSession({ id: 'session-1', userId: 'user-1' }));
-      await repository.save(buildSession({ id: 'session-2', userId: 'user-2' }));
+      await repository.save(buildSession({ id: 'session-1', userId: oid('user-1') }));
+      await repository.save(buildSession({ id: 'session-2', userId: oid('user-2') }));
 
-      const count = await repository.revokeAllForActor({ actorType: 'USER', userId: 'user-1' }, LATER);
+      const count = await repository.revokeAllForActor({ actorType: 'USER', userId: oid('user-1') }, LATER);
 
       expect(count).toBe(1);
       expect((await repository.findByTokenHash('token-hash-session-1'))?.deletedAt).toBe(LATER);
@@ -204,7 +205,7 @@ describe('MongoSessionRepository (integration, real replica-set Mongo)', () => {
       );
 
       const count = await repository.revokeAllForActor(
-        { actorType: 'ORGANIZATION', organizationId: createOrganizationId('org-1') },
+        { actorType: 'ORGANIZATION', organizationId: createOrganizationId(oid('org-1')) },
         LATER,
       );
 
@@ -226,7 +227,7 @@ describe('MongoSessionRepository (integration, real replica-set Mongo)', () => {
     await repository.save(
       buildSession({
         id: 'admin-session-1',
-        userId: 'admin-1',
+        userId: oid('admin-1'),
         organizationId: null,
         actorType: 'PLATFORM_ADMIN',
         refreshTokenHash: null,
@@ -237,7 +238,7 @@ describe('MongoSessionRepository (integration, real replica-set Mongo)', () => {
       repository.save(
         buildSession({
           id: 'admin-session-2',
-          userId: 'admin-2',
+          userId: oid('admin-2'),
           organizationId: null,
           actorType: 'PLATFORM_ADMIN',
           refreshTokenHash: null,
@@ -249,7 +250,7 @@ describe('MongoSessionRepository (integration, real replica-set Mongo)', () => {
       repository.save(
         buildSession({
           id: 'admin-session-3',
-          userId: 'admin-3',
+          userId: oid('admin-3'),
           organizationId: null,
           actorType: 'PLATFORM_ADMIN',
           refreshTokenHash: null,
@@ -282,11 +283,11 @@ describe('MongoSessionRepository (integration, real replica-set Mongo)', () => {
   it('round-trips the raw document by string _id (design A1/D37 regression guard)', async () => {
     await repository.save(buildSession({ id: 'session-id-guard' }));
 
-    const rawDocument = await db.collection<SessionDocument>('Sessions').findOne({ _id: 'session-id-guard' });
+    const rawDocument = await db.collection<SessionDocument>('Sessions').findOne({ _id: new ObjectId(oid('session-id-guard')) });
 
     expect(rawDocument).not.toBeNull();
-    expect(rawDocument?._id).toBe('session-id-guard');
-    expect(typeof rawDocument?._id).toBe('string');
+    expect(rawDocument?._id).toBeInstanceOf(ObjectId);
+    expect(rawDocument?._id.toString()).toBe(oid('session-id-guard'));
     expect(rawDocument?.FamilyExpiresAtDate).toBeInstanceOf(Date);
   });
 });

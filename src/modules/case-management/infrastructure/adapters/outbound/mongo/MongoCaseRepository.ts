@@ -1,4 +1,4 @@
-import type { ClientSession, Collection, Db } from 'mongodb';
+import { ObjectId, type ClientSession, type Collection, type Db } from 'mongodb';
 import type { Case } from '../../../../domain/model/aggregates/Case.js';
 import type { CaseRepository } from '../../../../domain/ports/CaseRepository.js';
 import type { CaseId } from '../../../../domain/model/value-objects/CaseId.js';
@@ -30,7 +30,7 @@ export class MongoCaseRepository implements CaseRepository {
   }
 
   async findById(id: CaseId, tx?: Transaction): Promise<Case | null> {
-    const document = await this.collection.findOne({ _id: id }, { session: toSession(tx) });
+    const document = await this.collection.findOne({ _id: new ObjectId(id) }, { session: toSession(tx) });
     return document ? toDomain(document) : null;
   }
 }

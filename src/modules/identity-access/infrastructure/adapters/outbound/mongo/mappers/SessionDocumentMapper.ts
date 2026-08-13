@@ -1,3 +1,4 @@
+import { ObjectId } from 'mongodb';
 import { brand } from '../../../../../../../shared/kernel/Brand.js';
 import { toDate } from '../../../../../../../shared/time/Instant.js';
 import { Session } from '../../../../../domain/model/aggregates/Session.js';
@@ -17,19 +18,19 @@ import type { SessionDocument } from '../documents/SessionDocument.js';
  */
 export function toDocument(session: Session): SessionDocument {
   return {
-    _id: session.id,
-    UserId: session.userId,
-    OrganizationId: session.organizationId,
+    _id: new ObjectId(session.id),
+    UserId: session.userId === null ? null : new ObjectId(session.userId),
+    OrganizationId: session.organizationId === null ? null : new ObjectId(session.organizationId),
     ActorType: session.actorType,
     TokenHash: session.tokenHash,
     RefreshTokenHash: session.refreshTokenHash,
     ExpiresAt: session.expiresAt,
     RefreshExpiresAt: session.refreshExpiresAt,
-    FamilyId: session.familyId,
+    FamilyId: new ObjectId(session.familyId),
     FamilyExpiresAt: session.familyExpiresAt,
     FamilyExpiresAtDate: toDate(session.familyExpiresAt),
     RotatedAt: session.rotatedAt,
-    RotatedFromSessionId: session.rotatedFromSessionId,
+    RotatedFromSessionId: session.rotatedFromSessionId === null ? null : new ObjectId(session.rotatedFromSessionId),
     CreatedAt: session.createdAt,
     UpdatedAt: session.updatedAt,
     DeletedAt: session.deletedAt,
@@ -39,19 +40,19 @@ export function toDocument(session: Session): SessionDocument {
 /** PascalCase (Mongo) -> camelCase (domain) translation seam (design A2). */
 export function toDomain(document: SessionDocument): Session {
   return Session.rehydrate({
-    id: createSessionId(document._id),
-    userId: document.UserId,
-    organizationId: document.OrganizationId === null ? null : createOrganizationId(document.OrganizationId),
+    id: createSessionId(document._id.toString()),
+    userId: document.UserId === null ? null : document.UserId.toString(),
+    organizationId: document.OrganizationId === null ? null : createOrganizationId(document.OrganizationId.toString()),
     actorType: createActorType(document.ActorType),
     tokenHash: document.TokenHash,
     refreshTokenHash: document.RefreshTokenHash,
     expiresAt: brand<string, 'Instant'>(document.ExpiresAt),
     refreshExpiresAt: document.RefreshExpiresAt === null ? null : brand<string, 'Instant'>(document.RefreshExpiresAt),
-    familyId: createFamilyId(document.FamilyId),
+    familyId: createFamilyId(document.FamilyId.toString()),
     familyExpiresAt: brand<string, 'Instant'>(document.FamilyExpiresAt),
     rotatedAt: document.RotatedAt === null ? null : brand<string, 'Instant'>(document.RotatedAt),
     rotatedFromSessionId:
-      document.RotatedFromSessionId === null ? null : createSessionId(document.RotatedFromSessionId),
+      document.RotatedFromSessionId === null ? null : createSessionId(document.RotatedFromSessionId.toString()),
     createdAt: brand<string, 'Instant'>(document.CreatedAt),
     updatedAt: brand<string, 'Instant'>(document.UpdatedAt),
     deletedAt: document.DeletedAt === null ? null : brand<string, 'Instant'>(document.DeletedAt),

@@ -1,3 +1,4 @@
+import { ObjectId } from 'mongodb';
 import { brand } from '../../../../../../../shared/kernel/Brand.js';
 import { User } from '../../../../../domain/model/aggregates/User.js';
 import { createUserId } from '../../../../../domain/model/value-objects/UserId.js';
@@ -14,8 +15,8 @@ import type { UserDocument } from '../documents/UserDocument.js';
  */
 export function toDocument(user: User): UserDocument {
   return {
-    _id: user.id,
-    OrganizationId: user.organizationId,
+    _id: new ObjectId(user.id),
+    OrganizationId: new ObjectId(user.organizationId),
     Email: user.email,
     PasswordHash: user.credential.passwordHash,
     FirstName: user.firstName,
@@ -38,8 +39,8 @@ export function toDocument(user: User): UserDocument {
 /** PascalCase (Mongo) -> camelCase (domain) translation seam (design A2). */
 export function toDomain(document: UserDocument): User {
   return User.rehydrate({
-    id: createUserId(document._id),
-    organizationId: createOrganizationId(document.OrganizationId),
+    id: createUserId(document._id.toString()),
+    organizationId: createOrganizationId(document.OrganizationId.toString()),
     email: createEmail(document.Email),
     credential: createPasswordCredential(document.PasswordHash),
     firstName: document.FirstName,

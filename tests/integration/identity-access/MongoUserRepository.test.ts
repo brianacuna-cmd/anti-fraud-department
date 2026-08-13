@@ -13,16 +13,17 @@ import { createEmail } from '../../../src/modules/identity-access/domain/model/v
 import { createPasswordCredential } from '../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import { IdentityAccessError } from '../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
+import { oid } from '../../support/oid.js';
 
 jest.setTimeout(120_000);
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const ORG_1 = createOrganizationId('org-1');
-const ORG_2 = createOrganizationId('org-2');
+const ORG_1 = createOrganizationId(oid('org-1'));
+const ORG_2 = createOrganizationId(oid('org-2'));
 
 function buildUser(id: string, organizationId = ORG_1, email = `${id}@example.com`): User {
   return User.create({
-    id: createUserId(id),
+    id: createUserId(oid(id)),
     organizationId,
     email: createEmail(email),
     credential: createPasswordCredential('hash'),
@@ -64,16 +65,16 @@ describe('MongoUserRepositoryFactory / MongoUserRepository (integration, real re
     const repository = factory.forTenant(ORG_1);
     await repository.save(buildUser('user-1'));
 
-    const found = await repository.findById(createUserId('user-1'));
+    const found = await repository.findById(createUserId(oid('user-1')));
 
     expect(found?.email).toBe('user-1@example.com');
-    expect(found?.organizationId).toBe('org-1');
+    expect(found?.organizationId).toBe(oid('org-1'));
   });
 
   it('never returns a user that belongs to a different tenant', async () => {
     await factory.forTenant(ORG_1).save(buildUser('user-1', ORG_1));
 
-    const found = await factory.forTenant(ORG_2).findById(createUserId('user-1'));
+    const found = await factory.forTenant(ORG_2).findById(createUserId(oid('user-1')));
 
     expect(found).toBeNull();
   });
@@ -84,7 +85,7 @@ describe('MongoUserRepositoryFactory / MongoUserRepository (integration, real re
 
     const found = await repository.findByEmail(createEmail('user-1@example.com'));
 
-    expect(found?.id).toBe('user-1');
+    expect(found?.id).toBe(oid('user-1'));
   });
 
   it('translates a duplicate {organizationId,email} write into USER_EMAIL_TAKEN by index name', async () => {
@@ -146,7 +147,7 @@ describe('MongoUserRepositoryFactory / MongoUserRepository (integration, real re
         }),
       ).rejects.toThrow('boom');
 
-      const found = await repository.findById(createUserId('user-tx'));
+      const found = await repository.findById(createUserId(oid('user-tx')));
       expect(found).toBeNull();
     });
   });

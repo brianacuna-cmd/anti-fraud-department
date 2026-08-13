@@ -1,3 +1,4 @@
+import { ObjectId } from 'mongodb';
 import { brand } from '../../../../../../../shared/kernel/Brand.js';
 import { toDate } from '../../../../../../../shared/time/Instant.js';
 import { CaseSlaTracking } from '../../../../../domain/model/aggregates/CaseSlaTracking.js';
@@ -15,8 +16,8 @@ import type { CaseSlaTrackingDocument } from '../documents/CaseSlaTrackingDocume
  */
 export function toDocument(tracking: CaseSlaTracking): CaseSlaTrackingDocument {
   return {
-    _id: tracking.id,
-    CaseId: tracking.caseId,
+    _id: new ObjectId(tracking.id),
+    CaseId: new ObjectId(tracking.caseId),
     DueDate: tracking.dueDate,
     DueDateAt: toDate(tracking.dueDate),
     Status: tracking.status,
@@ -29,8 +30,8 @@ export function toDocument(tracking: CaseSlaTracking): CaseSlaTrackingDocument {
 /** PascalCase (Mongo) -> camelCase (domain) translation seam (mirrors `CaseDocumentMapper`). */
 export function toDomain(document: CaseSlaTrackingDocument): CaseSlaTracking {
   return CaseSlaTracking.rehydrate({
-    id: createCaseSlaTrackingId(document._id),
-    caseId: createCaseId(document.CaseId),
+    id: createCaseSlaTrackingId(document._id.toString()),
+    caseId: createCaseId(document.CaseId.toString()),
     dueDate: brand<string, 'Instant'>(document.DueDate),
     status: createSlaStatus(document.Status),
     notificationSent: document.NotificationSent,

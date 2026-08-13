@@ -1,5 +1,6 @@
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
-import type { Db, MongoClient } from 'mongodb';
+import { ObjectId, type Db, type MongoClient } from 'mongodb';
+import { oid } from '../../support/oid.js';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
 import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
@@ -21,7 +22,7 @@ function buildAuditLog(overrides: {
   action?: string;
 }): AuditLog {
   return AuditLog.create({
-    id: createAuditLogId(overrides.id),
+    id: createAuditLogId(oid(overrides.id)),
     organizationId: overrides.organizationId === undefined ? 'org-1' : overrides.organizationId,
     actorType: 'USER',
     actorId: 'user-1',
@@ -64,7 +65,7 @@ describe('MongoAuditLogRepository (integration, real replica-set Mongo)', () => 
   it('persists an audit log', async () => {
     await repository.save(buildAuditLog({ id: 'audit-1' }));
 
-    const rawDocument = await db.collection<AuditLogDocument>('AuditLogs').findOne({ _id: 'audit-1' });
+    const rawDocument = await db.collection<AuditLogDocument>('AuditLogs').findOne({ _id: new ObjectId(oid('audit-1')) });
 
     expect(rawDocument).not.toBeNull();
     expect(rawDocument?.Action).toBe('USER_CREATED');
@@ -75,7 +76,7 @@ describe('MongoAuditLogRepository (integration, real replica-set Mongo)', () => 
   it('persists an audit log with a null OrganizationId (PLATFORM_ADMIN outside a tenant)', async () => {
     await repository.save(buildAuditLog({ id: 'audit-2', organizationId: null }));
 
-    const rawDocument = await db.collection<AuditLogDocument>('AuditLogs').findOne({ _id: 'audit-2' });
+    const rawDocument = await db.collection<AuditLogDocument>('AuditLogs').findOne({ _id: new ObjectId(oid('audit-2')) });
 
     expect(rawDocument?.OrganizationId).toBeNull();
   });
@@ -90,7 +91,7 @@ describe('MongoAuditLogRepository (integration, real replica-set Mongo)', () => 
       }),
     ).rejects.toThrow('force rollback');
 
-    const rawDocument = await db.collection<AuditLogDocument>('AuditLogs').findOne({ _id: 'audit-3' });
+    const rawDocument = await db.collection<AuditLogDocument>('AuditLogs').findOne({ _id: new ObjectId(oid('audit-3')) });
     expect(rawDocument).toBeNull();
   });
 
@@ -101,22 +102,23 @@ describe('MongoAuditLogRepository (integration, real replica-set Mongo)', () => 
       await repository.save(buildAuditLog({ id: 'audit-4' }), tx as unknown as Transaction);
     });
 
-    const rawDocument = await db.collection<AuditLogDocument>('AuditLogs').findOne({ _id: 'audit-4' });
+    const rawDocument = await db.collection<AuditLogDocument>('AuditLogs').findOne({ _id: new ObjectId(oid('audit-4')) });
     expect(rawDocument).not.toBeNull();
   });
 
   /**
-   * Regression guard for design A1: `_id` MUST stay lowercase and be
-   * `typeof 'string'` (design D37 precedent), never a driver-generated
-   * `ObjectId`.
+   * Regression guard (inverted by the UUID -> native ObjectId migration):
+   * `_id` is now persisted as a driver `ObjectId`, never a plain string.
    */
-  it('round-trips the raw document by string _id (design A1 regression guard)', async () => {
+  it('round-trips the raw document by _id as a native ObjectId', async () => {
     await repository.save(buildAuditLog({ id: 'audit-id-guard' }));
 
-    const rawDocument = await db.collection<AuditLogDocument>('AuditLogs').findOne({ _id: 'audit-id-guard' });
+    const rawDocument = await db
+      .collection<AuditLogDocument>('AuditLogs')
+      .findOne({ _id: new ObjectId(oid('audit-id-guard')) });
 
     expect(rawDocument).not.toBeNull();
-    expect(rawDocument?._id).toBe('audit-id-guard');
-    expect(typeof rawDocument?._id).toBe('string');
+    expect(rawDocument?._id).toBeInstanceOf(ObjectId);
+    expect(rawDocument?._id.toString()).toBe(oid('audit-id-guard'));
   });
 });

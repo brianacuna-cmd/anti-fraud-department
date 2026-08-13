@@ -1,5 +1,6 @@
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
-import type { Db, MongoClient } from 'mongodb';
+import { ObjectId, type Db, type MongoClient } from 'mongodb';
+import { oid } from '../../support/oid.js';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
 import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
@@ -19,12 +20,12 @@ jest.setTimeout(120_000);
 
 /** Loosely-typed raw document shape for reading collections bypassing the mapper on purpose. */
 interface RawDocument {
-  readonly _id: string;
+  readonly _id: import('mongodb').ObjectId;
   readonly [key: string]: unknown;
 }
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const ORG_ID = createOrganizationId('org-pascal-1');
+const ORG_ID = createOrganizationId(oid('org-pascal-1'));
 
 /**
  * Design A2/A4 (identity-access-schema-v2, PR3): the whole persistence layer
@@ -74,11 +75,11 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
     });
     await organizations.save(organization);
 
-    const rawDocument = await db.collection<RawDocument>('Organizations').findOne({ _id: ORG_ID });
+    const rawDocument = await db.collection<RawDocument>('Organizations').findOne({ _id: new ObjectId(ORG_ID) });
 
     expect(rawDocument).not.toBeNull();
     expect(rawDocument).toMatchObject({
-      _id: ORG_ID,
+      _id: new ObjectId(ORG_ID),
       Name: 'Acme Corp',
       Slug: 'acme-corp-pascal',
       Domain: 'acme.example.com',
@@ -99,7 +100,7 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
   });
 
   it('persists users under the PascalCase "Users" collection with PascalCase field keys', async () => {
-    const userId = createUserId('user-pascal-1');
+    const userId = createUserId(oid('user-pascal-1'));
     const user = User.create({
       id: userId,
       organizationId: ORG_ID,
@@ -113,12 +114,12 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
     });
     await userRepositoryFactory.forTenant(ORG_ID).save(user);
 
-    const rawDocument = await db.collection<RawDocument>('Users').findOne({ _id: userId });
+    const rawDocument = await db.collection<RawDocument>('Users').findOne({ _id: new ObjectId(userId) });
 
     expect(rawDocument).not.toBeNull();
     expect(rawDocument).toMatchObject({
-      _id: userId,
-      OrganizationId: ORG_ID,
+      _id: new ObjectId(userId),
+      OrganizationId: new ObjectId(ORG_ID),
       Email: 'pascal@example.com',
       PasswordHash: 'a-bcrypt-hash',
       FirstName: 'Pascal',
@@ -161,7 +162,7 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
     const persistedOrganization = await organizations.findById(ORG_ID);
     expect(persistedOrganization?.configuration).toEqual({});
 
-    const userId = createUserId('user-roundtrip-1');
+    const userId = createUserId(oid('user-roundtrip-1'));
     const user = User.create({
       id: userId,
       organizationId: ORG_ID,
@@ -189,7 +190,7 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
    * target the renamed `Organizations` collection).
    */
   it('round-trips the raw Users document by _id on the renamed collection (design A1 regression guard)', async () => {
-    const userId = createUserId('user-id-guard');
+    const userId = createUserId(oid('user-id-guard'));
     const user = User.create({
       id: userId,
       organizationId: ORG_ID,
@@ -202,11 +203,11 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
     });
     await userRepositoryFactory.forTenant(ORG_ID).save(user);
 
-    const rawDocument = await db.collection<RawDocument>('Users').findOne({ _id: 'user-id-guard' });
+    const rawDocument = await db.collection<RawDocument>('Users').findOne({ _id: new ObjectId(oid('user-id-guard')) });
 
     expect(rawDocument).not.toBeNull();
-    expect(rawDocument?._id).toBe('user-id-guard');
-    expect(typeof rawDocument?._id).toBe('string');
+    expect(rawDocument?._id).toBeInstanceOf(ObjectId);
+    expect(rawDocument?._id.toString()).toBe(oid('user-id-guard'));
     expect(rawDocument).not.toHaveProperty('_Id');
   });
 
@@ -222,12 +223,12 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
    * loudly here instead of only surfacing as a silent index-shape drift.
    */
   it('enforces per-tenant email uniqueness via the PascalCase {OrganizationId, Email} compound index', async () => {
-    const orgA = createOrganizationId('org-pascal-a');
-    const orgB = createOrganizationId('org-pascal-b');
+    const orgA = createOrganizationId(oid('org-pascal-a'));
+    const orgB = createOrganizationId(oid('org-pascal-b'));
 
     await userRepositoryFactory.forTenant(orgA).save(
       User.create({
-        id: createUserId('user-dup-a'),
+        id: createUserId(oid('user-dup-a')),
         organizationId: orgA,
         email: createEmail('dup-pascal@example.com'),
         credential: createPasswordCredential('hash'),
@@ -242,7 +243,7 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
     await expect(
       userRepositoryFactory.forTenant(orgB).save(
         User.create({
-          id: createUserId('user-dup-b'),
+          id: createUserId(oid('user-dup-b')),
           organizationId: orgB,
           email: createEmail('dup-pascal@example.com'),
           credential: createPasswordCredential('hash'),

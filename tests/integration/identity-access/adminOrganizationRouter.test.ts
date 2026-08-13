@@ -35,6 +35,7 @@ import { createSessionId } from '../../../src/modules/identity-access/domain/mod
 import { createFamilyId } from '../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
+import { oid } from '../../support/oid.js';
 
 const PLATFORM_ADMIN = createAuthContext({ userId: 'admin-1', organizationId: null, isPlatformAdmin: true });
 const REGULAR_USER = createAuthContext({ userId: 'user-1', organizationId: 'o1', isPlatformAdmin: false });
@@ -430,7 +431,7 @@ describe('PLATFORM_ADMIN challenge-login (e2e, super-admin-auth PR1)', () => {
     const deprecatedKeyPair = generateEd25519KeyPair();
     const activeKeyPair = generateEd25519KeyPair();
     const admin = AdminOrganization.create({
-      id: createAdminOrganizationId('admin-rotated-e2e'),
+      id: createAdminOrganizationId(oid('admin-rotated-e2e')),
       email: createEmail('rotated-e2e@platform.internal'),
       keys: [
         createAdminKey({
@@ -499,7 +500,7 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
     const { app, admins, cipher } = buildApp(() => PLATFORM_ADMIN);
     const plaintextPem = '-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n';
     const admin = AdminOrganization.create({
-      id: createAdminOrganizationId('admin-download-1'),
+      id: createAdminOrganizationId(oid('admin-download-1')),
       email: createEmail('download@platform.internal'),
       keys: [
         createAdminKey({
@@ -526,7 +527,7 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
   it('download response never contains the ciphertext field name', async () => {
     const { app, admins, cipher } = buildApp(() => PLATFORM_ADMIN);
     const admin = AdminOrganization.create({
-      id: createAdminOrganizationId('admin-download-2'),
+      id: createAdminOrganizationId(oid('admin-download-2')),
       email: createEmail('download2@platform.internal'),
       keys: [
         createAdminKey({
@@ -550,7 +551,7 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
   it('rejects a non-platform-admin download attempt with 403', async () => {
     const { app, admins } = buildApp(() => REGULAR_USER);
     const admin = AdminOrganization.create({
-      id: createAdminOrganizationId('admin-download-3'),
+      id: createAdminOrganizationId(oid('admin-download-3')),
       email: createEmail('download3@platform.internal'),
       keys: [
         createAdminKey({
@@ -574,7 +575,7 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
   it('POST .../keys/rotate demotes the old key and activates a new one, cascading session revocation', async () => {
     const { app, admins, sessions } = buildApp(() => PLATFORM_ADMIN);
     const admin = AdminOrganization.create({
-      id: createAdminOrganizationId('admin-rotate-1'),
+      id: createAdminOrganizationId(oid('admin-rotate-1')),
       email: createEmail('rotate@platform.internal'),
       keys: [
         createAdminKey({
@@ -590,8 +591,8 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
     await admins.save(admin);
     await sessions.save(
       Session.create({
-        id: createSessionId('session-rotate-1'),
-        familyId: createFamilyId('family-1'),
+        id: createSessionId(oid('session-rotate-1')),
+        familyId: createFamilyId(oid('family-1')),
         userId: admin.id,
         organizationId: null,
         actorType: 'PLATFORM_ADMIN',
@@ -629,7 +630,7 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
   it('POST .../keys/:keyId/revoke marks the key REVOKED (terminal) and rejects a second revoke', async () => {
     const { app, admins } = buildApp(() => PLATFORM_ADMIN);
     const admin = AdminOrganization.create({
-      id: createAdminOrganizationId('admin-revoke-1'),
+      id: createAdminOrganizationId(oid('admin-revoke-1')),
       email: createEmail('revoke@platform.internal'),
       keys: [
         createAdminKey({
@@ -656,7 +657,7 @@ describe('PLATFORM_ADMIN key lifecycle (e2e, super-admin-auth PR2)', () => {
   it('rejects a non-platform-admin revoke attempt with 403', async () => {
     const { app, admins } = buildApp(() => REGULAR_USER);
     const admin = AdminOrganization.create({
-      id: createAdminOrganizationId('admin-revoke-2'),
+      id: createAdminOrganizationId(oid('admin-revoke-2')),
       email: createEmail('revoke2@platform.internal'),
       keys: [
         createAdminKey({

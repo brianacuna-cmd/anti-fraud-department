@@ -41,12 +41,13 @@ import { createOrganizationId } from '../../../src/modules/identity-access/domai
 import { createPasswordCredential } from '../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import type { ActorCredentialRecord } from '../../../src/modules/identity-access/domain/ports/ActorCredentialGateway.js';
+import { oid } from '../../support/oid.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const ORG_ID = createOrganizationId('org-1');
+const ORG_ID = createOrganizationId(oid('org-1'));
 
 const USER_RECORD: ActorCredentialRecord = {
-  actorId: 'user-1',
+  actorId: oid('user-1'),
   actorType: 'USER',
   organizationId: ORG_ID,
   credential: createPasswordCredential('hashed:correct-password'),
@@ -56,7 +57,7 @@ const USER_RECORD: ActorCredentialRecord = {
 };
 
 const ORG_RECORD: ActorCredentialRecord = {
-  actorId: 'org-1',
+  actorId: oid('org-1'),
   actorType: 'ORGANIZATION',
   organizationId: null,
   credential: createPasswordCredential('hashed:org-password'),
@@ -181,9 +182,9 @@ function buildApp(
     attachAuthContext(
       req,
       createAuthContext({
-        userId: 'user-1',
-        organizationId: 'org-1',
-        sessionId: 'session-1',
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
+        sessionId: oid('session-1'),
         ...authOverrides,
       }),
     );
@@ -299,7 +300,7 @@ describe('authRouter (e2e, in-memory gateways)', () => {
       plaintextSecret: string,
     ): Promise<void> {
       const user = User.create({
-        id: createUserId('user-1'),
+        id: createUserId(oid('user-1')),
         organizationId: ORG_ID,
         email: createEmail('alice@example.com'),
         credential: createPasswordCredential('hash'),
@@ -358,8 +359,8 @@ describe('authRouter (e2e, in-memory gateways)', () => {
         tokenType: 'mfa_challenge',
         keyVersion: 1,
         jti: 'never-appended',
-        userId: 'user-1',
-        organizationId: 'org-1',
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
         actorType: 'USER',
         expiresAt: '2099-01-01T00:00:00.000Z',
       });
@@ -376,8 +377,8 @@ describe('authRouter (e2e, in-memory gateways)', () => {
         tokenType: 'mfa_challenge',
         keyVersion: 1,
         jti: 'expired-jti',
-        userId: 'user-1',
-        organizationId: 'org-1',
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
         actorType: 'USER',
         expiresAt: '2020-01-01T00:00:00.000Z',
       });
@@ -404,7 +405,7 @@ describe('authRouter (e2e, in-memory gateways)', () => {
 
     it('rejects an ACCESS-typed (or otherwise malformed) token at /mfa', async () => {
       const { app } = buildApp();
-      const accessToken = TOKEN_SERVICE.issue({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+      const accessToken = TOKEN_SERVICE.issue({ sessionId: oid('session-1'), tokenType: 'ACCESS', keyVersion: 1 });
 
       const response = await request(app)
         .post('/api/v1/auth/users/mfa')
@@ -535,15 +536,15 @@ describe('authRouter (e2e, in-memory gateways)', () => {
       const { app, sessions } = buildApp();
       await sessions.save(
         Session.create({
-          id: createSessionId('session-1'),
-          userId: 'user-1',
+          id: createSessionId(oid('session-1')),
+          userId: oid('user-1'),
           organizationId: ORG_ID,
           actorType: 'USER',
           tokenHash: 'token-hash-session-1',
           refreshTokenHash: 'refresh-hash-session-1',
           expiresAt: NOW,
           refreshExpiresAt: NOW,
-          familyId: createFamilyId('family-1'),
+          familyId: createFamilyId(oid('family-1')),
           familyExpiresAt: NOW,
           now: NOW,
         }),
@@ -560,30 +561,30 @@ describe('authRouter (e2e, in-memory gateways)', () => {
       const { app, sessions } = buildApp();
       await sessions.save(
         Session.create({
-          id: createSessionId('session-1'),
-          userId: 'user-1',
+          id: createSessionId(oid('session-1')),
+          userId: oid('user-1'),
           organizationId: ORG_ID,
           actorType: 'USER',
           tokenHash: 'token-hash-session-1',
           refreshTokenHash: 'refresh-hash-session-1',
           expiresAt: NOW,
           refreshExpiresAt: NOW,
-          familyId: createFamilyId('family-1'),
+          familyId: createFamilyId(oid('family-1')),
           familyExpiresAt: NOW,
           now: NOW,
         }),
       );
       await sessions.save(
         Session.create({
-          id: createSessionId('session-2'),
-          userId: 'user-1',
+          id: createSessionId(oid('session-2')),
+          userId: oid('user-1'),
           organizationId: ORG_ID,
           actorType: 'USER',
           tokenHash: 'token-hash-session-2',
           refreshTokenHash: 'refresh-hash-session-2',
           expiresAt: NOW,
           refreshExpiresAt: NOW,
-          familyId: createFamilyId('family-1'),
+          familyId: createFamilyId(oid('family-1')),
           familyExpiresAt: NOW,
           now: NOW,
         }),
@@ -600,14 +601,14 @@ describe('authRouter (e2e, in-memory gateways)', () => {
 
     it('ORGANIZATION logout revokes ALL sessions for that organization (behavior change, session-lifecycle PR-1)', async () => {
       const { app, sessions } = buildApp({
-        userId: 'org-1',
-        organizationId: 'org-1',
+        userId: oid('org-1'),
+        organizationId: oid('org-1'),
         actorType: 'ORGANIZATION',
-        sessionId: 'org-session-1',
+        sessionId: oid('org-session-1'),
       });
       await sessions.save(
         Session.create({
-          id: createSessionId('org-session-1'),
+          id: createSessionId(oid('org-session-1')),
           userId: null,
           organizationId: ORG_ID,
           actorType: 'ORGANIZATION',
@@ -615,14 +616,14 @@ describe('authRouter (e2e, in-memory gateways)', () => {
           refreshTokenHash: 'refresh-hash-org-session-1',
           expiresAt: NOW,
           refreshExpiresAt: NOW,
-          familyId: createFamilyId('family-org-1'),
+          familyId: createFamilyId(oid('family-org-1')),
           familyExpiresAt: NOW,
           now: NOW,
         }),
       );
       await sessions.save(
         Session.create({
-          id: createSessionId('org-session-2'),
+          id: createSessionId(oid('org-session-2')),
           userId: null,
           organizationId: ORG_ID,
           actorType: 'ORGANIZATION',
@@ -630,7 +631,7 @@ describe('authRouter (e2e, in-memory gateways)', () => {
           refreshTokenHash: 'refresh-hash-org-session-2',
           expiresAt: NOW,
           refreshExpiresAt: NOW,
-          familyId: createFamilyId('family-org-1'),
+          familyId: createFamilyId(oid('family-org-1')),
           familyExpiresAt: NOW,
           now: NOW,
         }),
@@ -655,7 +656,7 @@ describe('authRouter (e2e, in-memory gateways)', () => {
       await organizations.save(organization);
 
       const user = User.create({
-        id: createUserId('user-1'),
+        id: createUserId(oid('user-1')),
         organizationId: ORG_ID,
         email: createEmail('alice@example.com'),
         credential: createPasswordCredential('hash'),
@@ -727,7 +728,7 @@ describe('authRouter (e2e, in-memory gateways)', () => {
 
       const jti = 'confirm-e2e-jti';
       const user = User.create({
-        id: createUserId('user-1'),
+        id: createUserId(oid('user-1')),
         organizationId: ORG_ID,
         email: createEmail('alice@example.com'),
         credential: createPasswordCredential('hash'),
@@ -745,8 +746,8 @@ describe('authRouter (e2e, in-memory gateways)', () => {
         tokenType: 'password_reset',
         keyVersion: 1,
         jti,
-        userId: 'user-1',
-        organizationId: 'org-1',
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
         actorType: 'USER',
         expiresAt: fromDate(new Date('2026-01-01T00:15:00.000Z')),
       });
@@ -761,7 +762,7 @@ describe('authRouter (e2e, in-memory gateways)', () => {
         .send({ token, newPassword: 'BrandNewPassw0rd' });
 
       expect(response.status).toBe(204);
-      const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId('user-1'));
+      const stored = await userRepositoryFactory.forTenant(ORG_ID).findById(createUserId(oid('user-1')));
       expect(stored?.resetToken).toBeNull();
     });
 

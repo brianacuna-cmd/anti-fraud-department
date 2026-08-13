@@ -10,8 +10,10 @@
  * parent design's stated PascalCase convention, matching what
  * `OrganizationDocument`/`UserDocument` actually ship.
  */
+import type { ObjectId } from "mongodb";
+
 export interface AdminKeyDocument {
-  readonly keyId: string;
+  readonly keyId: ObjectId;
   readonly publicKey: string;
   readonly status: string;
   readonly encryptedPrivateKey: string | null;
@@ -22,7 +24,7 @@ export interface AdminKeyDocument {
 }
 
 export interface AdminOrganizationDocument {
-  readonly _id: string;
+  readonly _id: ObjectId;
   readonly email: string;
   readonly keys: readonly AdminKeyDocument[];
   readonly createdAt: string;
