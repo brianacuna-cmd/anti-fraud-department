@@ -1,4 +1,13 @@
+import { existsSync } from 'node:fs';
 import { Router } from 'express';
+
+if (existsSync('.env')) {
+  try {
+    process.loadEnvFile('.env');
+  } catch {
+    // ignore
+  }
+}
 import { createApp } from './shared/http/createApp.js';
 import { parseTrustProxy } from './shared/http/parseTrustProxy.js';
 import { createErrorHandler } from './shared/http/errorHandler.js';
@@ -457,6 +466,8 @@ async function bootstrap(): Promise<void> {
       clock,
       auditRecorder,
     }),
+    emailSender,
+    db,
   });
 
   const authContextMiddleware = createAuthContextMiddleware(

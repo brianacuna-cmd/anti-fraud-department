@@ -1,4 +1,8 @@
 import { Router } from 'express';
+import { randomUUID } from 'node:crypto';
+import { authenticator } from 'otplib';
+import QRCode from 'qrcode';
+import type { Db } from 'mongodb';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
 import type { createBeginUserLoginUseCase } from '../../../../application/auth/BeginUserLogin.js';
 import type { createIssueSessionUseCase } from '../../../../application/auth/IssueSession.js';
@@ -10,12 +14,16 @@ import type { createRefreshSessionUseCase } from '../../../../application/auth/R
 import {
   usersLoginSchema,
   organizationsLoginSchema,
+  organizationsOtpVerifySchema,
+  organizationsMfaSchema,
   usersMfaSchema,
   requestPasswordResetSchema,
   confirmPasswordResetSchema,
   refreshSchema,
 } from './dto/authSchemas.js';
 import { parseRequest } from './parseRequest.js';
+
+import type { EmailSender } from '../../../../domain/ports/EmailSender.js';
 
 export interface AuthRouterDeps {
   /**
@@ -43,6 +51,8 @@ export interface AuthRouterDeps {
    * credential, so this route never calls `requireAuthContext`.
    */
   readonly refreshSession: ReturnType<typeof createRefreshSessionUseCase>;
+  readonly emailSender?: EmailSender;
+  readonly db?: Db;
 }
 
 /**
@@ -86,9 +96,125 @@ export function authRouter(deps: AuthRouterDeps): Router {
     res.status(200).json(result);
   });
 
+  // Organization 3-step 2FA pending state & enrolled TOTP secrets
+  const pendingOrgLogins = new Map<string, { email: string; password: string; otp: string; challengeToken: string; totpSecret?: string }>();
+  const orgTotpSecrets = new Map<string, string>();
+
   router.post('/auth/organizations/login', async (req, res) => {
     const body = parseRequest(organizationsLoginSchema, req.body);
-    const result = await deps.issueOrganizationSession({ ...body, ipAddress: req.ip ?? null });
+    // Step 1: Generate OTP for email step
+    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const challengeToken = 'org_chal_' + randomUUID();
+
+    pendingOrgLogins.set(body.email.toLowerCase(), {
+      email: body.email,
+      password: body.password,
+      otp,
+      challengeToken,
+    });
+
+    if (deps.emailSender) {
+      deps.emailSender.send({
+        from: 'fraud@backendstudio.tech',
+        to: body.email,
+        subject: 'Código OTP de Inicio de Sesión - AntiFraud',
+        text: `Tu código de verificación OTP para ingresar es: ${otp}`,
+        html: `<h2>Código de Verificación</h2><p>Tu código OTP de 6 dígitos para ingresar es: <strong>${otp}</strong></p>`,
+      }).catch(() => {});
+    }
+
+    res.status(200).json({
+      status: 'OTP_REQUIRED',
+      email: body.email,
+      message: 'Código OTP enviado al email de la Organización',
+    });
+  });
+
+  router.post('/auth/organizations/otp/verify', async (req, res) => {
+    const body = parseRequest(organizationsOtpVerifySchema, req.body);
+    const emailKey = body.email.toLowerCase();
+    const pending = pendingOrgLogins.get(emailKey);
+
+    if (!pending || pending.otp !== body.otp) {
+      res.status(401).json({ message: 'Código OTP de Email incorrecto o expirado' });
+      return;
+    }
+
+    // Read persistent MfaSecret from MongoDB collection Organizations
+    let existingSecret: string | null = orgTotpSecrets.get(emailKey) ?? null;
+    if (!existingSecret && deps.db) {
+      const orgDoc = await deps.db.collection('Organizations').findOne({ Email: { $regex: new RegExp(`^${emailKey}$`, 'i') } });
+      if (orgDoc?.MfaSecret) {
+        existingSecret = orgDoc.MfaSecret as string;
+      }
+    }
+
+    if (existingSecret) {
+      // Organization has ALREADY enrolled TOTP -> challenge path
+      pending.totpSecret = existingSecret;
+      res.status(200).json({
+        status: 'MFA_CHALLENGE_REQUIRED',
+        challengeToken: pending.challengeToken,
+      });
+      return;
+    }
+
+    // Organization has NOT enrolled TOTP yet -> enrollment path (generate QR Code)
+    const secret = authenticator.generateSecret();
+    pending.totpSecret = secret;
+    const otpauth = authenticator.keyuri(pending.email, 'AntiFraud Org', secret);
+    const qrCodeUrl = await QRCode.toDataURL(otpauth);
+
+    res.status(200).json({
+      status: 'MFA_ENROLLMENT_REQUIRED',
+      challengeToken: pending.challengeToken,
+      qrCodeUrl,
+      secret,
+    });
+  });
+
+  router.post('/auth/organizations/mfa', async (req, res) => {
+    const body = parseRequest(organizationsMfaSchema, req.body);
+    let matchedEmail: string | null = null;
+    let matchedCreds: { email: string; password: string; totpSecret?: string } | null = null;
+
+    for (const [emailKey, pending] of pendingOrgLogins.entries()) {
+      if (pending.challengeToken === body.challengeToken) {
+        matchedEmail = emailKey;
+        matchedCreds = pending;
+        break;
+      }
+    }
+
+    if (!matchedCreds || !matchedEmail || !matchedCreds.totpSecret) {
+      res.status(401).json({ message: 'Challenge de Organización inválido o expirado' });
+      return;
+    }
+
+    // Verify TOTP code against secret
+    const isValidTotp = authenticator.check(body.totp, matchedCreds.totpSecret);
+    if (!isValidTotp) {
+      res.status(401).json({ message: 'Código TOTP de la App Autenticadora incorrecto' });
+      return;
+    }
+
+    // Save TOTP secret in-memory & in MongoDB collection Organizations
+    orgTotpSecrets.set(matchedEmail, matchedCreds.totpSecret);
+    if (deps.db) {
+      await deps.db.collection('Organizations').updateOne(
+        { Email: { $regex: new RegExp(`^${matchedEmail}$`, 'i') } },
+        { $set: { MfaSecret: matchedCreds.totpSecret, UpdatedAt: new Date().toISOString() } }
+      );
+    }
+
+    pendingOrgLogins.delete(matchedEmail);
+
+    const result = await deps.issueOrganizationSession({
+      email: matchedCreds.email,
+      password: matchedCreds.password,
+      ipAddress: req.ip ?? null,
+    });
+
     res.status(200).json(result);
   });
 

@@ -21,6 +21,22 @@ export const organizationsLoginSchema = z.object({
 
 export type OrganizationsLoginBody = z.infer<typeof organizationsLoginSchema>;
 
+/** POST /auth/organizations/otp/verify body */
+export const organizationsOtpVerifySchema = z.object({
+  email: z.string().min(1),
+  otp: z.string().min(1),
+});
+
+export type OrganizationsOtpVerifyBody = z.infer<typeof organizationsOtpVerifySchema>;
+
+/** POST /auth/organizations/mfa body */
+export const organizationsMfaSchema = z.object({
+  challengeToken: z.string().min(1),
+  totp: z.string().min(1),
+});
+
+export type OrganizationsMfaBody = z.infer<typeof organizationsMfaSchema>;
+
 /**
  * POST /auth/users/mfa body (two-step-login PR2, design "IssueSession
  * flow") — the challenge token travels in the BODY, not as a Bearer header
