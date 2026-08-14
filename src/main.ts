@@ -103,7 +103,13 @@ import { createIdentityAssigneeDirectory } from './composition/identityAssigneeD
 import { generateCaseSlaTrackingId } from './modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
 import { createGetOrganizationFraudConfigUseCase } from './modules/case-management/application/GetOrganizationFraudConfig.js';
 import { createUpsertOrganizationFraudConfigUseCase } from './modules/case-management/application/UpsertOrganizationFraudConfig.js';
+import { createRecordAnalystDecisionUseCase } from './modules/case-management/application/RecordAnalystDecision.js';
 import { organizationFraudConfigRouter } from './modules/case-management/infrastructure/adapters/inbound/http/organizationFraudConfigRouter.js';
+import { enforcementRouter } from './modules/case-management/infrastructure/adapters/inbound/http/enforcementRouter.js';
+import { MongoAnalystDecisionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoAnalystDecisionRepository.js';
+import { MongoEnforcementActionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoEnforcementActionRepository.js';
+import { generateAnalystDecisionId } from './modules/case-management/domain/model/value-objects/AnalystDecisionId.js';
+import { generateEnforcementActionId } from './modules/case-management/domain/model/value-objects/EnforcementActionId.js';
 import { MongoRiskScoringRuleRepository } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoRiskScoringRuleRepository.js';
 import { MongoUnitOfWork as RiskAssessmentMongoUnitOfWork } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { ZenRiskScoringEngine } from './modules/risk-assessment/infrastructure/adapters/outbound/zen/ZenRiskScoringEngine.js';
@@ -335,6 +341,22 @@ async function bootstrap(): Promise<void> {
     upsertOrganizationFraudConfig: createUpsertOrganizationFraudConfigUseCase({
       repository: organizationFraudConfig,
       clock,
+    }),
+  });
+  const analystDecisions = new MongoAnalystDecisionRepository(db);
+  const enforcementActions = new MongoEnforcementActionRepository(db);
+  const enforcementHttpRouter = enforcementRouter({
+    recordAnalystDecision: createRecordAnalystDecisionUseCase({
+      cases,
+      decisions: analystDecisions,
+      enforcementActions,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateAnalystDecisionId,
+      generateEnforcementActionId,
+      generateTimelineEventId,
     }),
   });
 
@@ -639,6 +661,7 @@ async function bootstrap(): Promise<void> {
   // `authContextMiddleware` above to resolve the caller's AuthContext.
   identityAccessRouter.use(caseManagementCasesRouter);
   identityAccessRouter.use(organizationFraudConfigHttpRouter);
+  identityAccessRouter.use(enforcementHttpRouter);
   identityAccessRouter.use(riskScoresRouter);
   identityAccessRouter.use(riskScoreProcessRouter);
   identityAccessRouter.use(riskScoringRulesRouter);
