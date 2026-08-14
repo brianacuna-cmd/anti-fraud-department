@@ -87,13 +87,23 @@ import { MongoUnitOfWork as CaseManagementMongoUnitOfWork } from './modules/case
 import { generateCaseId } from './modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from './modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { createCreateCaseUseCase } from './modules/case-management/application/CreateCase.js';
+import { createCalculateSlaUseCase } from './modules/case-management/application/CalculateSla.js';
 import { createRouteCaseUseCase } from './modules/case-management/application/RouteCase.js';
+import { createReassignCaseUseCase } from './modules/case-management/application/ReassignCase.js';
+import { createListCasesUseCase } from './modules/case-management/application/ListCases.js';
+import { createReopenCaseUseCase } from './modules/case-management/application/ReopenCase.js';
 import { MongoCaseRoutingRuleRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRoutingRuleRepository.js';
 import { MongoOrganizationFraudConfigRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoOrganizationFraudConfigRepository.js';
+import { MongoCaseSlaTrackingRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseSlaTrackingRepository.js';
 import { ZenRoutingEngine } from './modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { caseRouter } from './modules/case-management/infrastructure/adapters/inbound/http/caseRouter.js';
 import { caseManagementErrorStatus } from './modules/case-management/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createCaseManagementAuditRecorderAdapter } from './composition/caseManagementAuditRecorderAdapter.js';
+import { createIdentityAssigneeDirectory } from './composition/identityAssigneeDirectory.js';
+import { generateCaseSlaTrackingId } from './modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
+import { createGetOrganizationFraudConfigUseCase } from './modules/case-management/application/GetOrganizationFraudConfig.js';
+import { createUpsertOrganizationFraudConfigUseCase } from './modules/case-management/application/UpsertOrganizationFraudConfig.js';
+import { organizationFraudConfigRouter } from './modules/case-management/infrastructure/adapters/inbound/http/organizationFraudConfigRouter.js';
 import { MongoRiskScoringRuleRepository } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoRiskScoringRuleRepository.js';
 import { ZenRiskScoringEngine } from './modules/risk-assessment/infrastructure/adapters/outbound/zen/ZenRiskScoringEngine.js';
 import { createCalculateRiskScoreUseCase } from './modules/risk-assessment/application/CalculateRiskScore.js';
@@ -254,6 +264,7 @@ async function bootstrap(): Promise<void> {
   const caseRoutingRules = new MongoCaseRoutingRuleRepository(db);
   const caseRoutingEngine = new ZenRoutingEngine();
   const organizationFraudConfig = new MongoOrganizationFraudConfigRepository(db);
+  const caseSlaTracking = new MongoCaseSlaTrackingRepository(db);
   const routeCase = createRouteCaseUseCase({
     cases,
     routingRules: caseRoutingRules,
@@ -264,6 +275,14 @@ async function bootstrap(): Promise<void> {
     clock,
     generateTimelineEventId,
   });
+  const calculateSla = createCalculateSlaUseCase({
+    cases,
+    slaTracking: caseSlaTracking,
+    fraudConfig: organizationFraudConfig,
+    clock,
+    generateCaseSlaTrackingId,
+  });
+  const assigneeDirectory = createIdentityAssigneeDirectory(userRepositoryFactory, roleRepository);
   const caseManagementCasesRouter = caseRouter({
     createCase: createCreateCaseUseCase({
       cases,
@@ -274,6 +293,37 @@ async function bootstrap(): Promise<void> {
       generateTimelineEventId,
       auditRecorder: caseManagementAuditRecorder,
       routeCase,
+      calculateSla,
+    }),
+    reassignCase: createReassignCaseUseCase({
+      cases,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateTimelineEventId,
+      assigneeDirectory,
+    }),
+    listCases: createListCasesUseCase({ cases }),
+    reopenCase: createReopenCaseUseCase({
+      cases,
+      slaTracking: caseSlaTracking,
+      fraudConfig: organizationFraudConfig,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateTimelineEventId,
+      generateCaseSlaTrackingId,
+    }),
+  });
+  const organizationFraudConfigHttpRouter = organizationFraudConfigRouter({
+    getOrganizationFraudConfig: createGetOrganizationFraudConfigUseCase({
+      repository: organizationFraudConfig,
+    }),
+    upsertOrganizationFraudConfig: createUpsertOrganizationFraudConfigUseCase({
+      repository: organizationFraudConfig,
+      clock,
     }),
   });
 
@@ -545,11 +595,11 @@ async function bootstrap(): Promise<void> {
   // router — `notifications` routes are USER-tier self-service and rely on the
   // `authContextMiddleware` above to resolve the caller's AuthContext.
   identityAccessRouter.use(notificationPreferenceRouter({ getNotificationPreferences, setNotificationPreference }));
-  // case-management Slice 5: mounted on the SAME authenticated `/api/v1`
-  // router — case-management routes rely on the `authContextMiddleware`
-  // above to resolve the caller's AuthContext (design: no separate auth
-  // path; T5 is analyst/supervisor self-service within their own org).
+  // case-management Slice 5 + T2: cases + organization fraud config mounted
+  // on the SAME authenticated `/api/v1` router — rely on
+  // `authContextMiddleware` above to resolve the caller's AuthContext.
   identityAccessRouter.use(caseManagementCasesRouter);
+  identityAccessRouter.use(organizationFraudConfigHttpRouter);
   identityAccessRouter.use(riskScoresRouter);
 
   const app = createApp({

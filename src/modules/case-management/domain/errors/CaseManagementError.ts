@@ -38,10 +38,25 @@ export function forbiddenCrossTenant(
   return new CaseManagementError('FORBIDDEN_CROSS_TENANT', message);
 }
 
+export function forbiddenRole(
+  roleId: string | null,
+  allowed: readonly string[],
+): CaseManagementError {
+  return new CaseManagementError(
+    'FORBIDDEN_ROLE',
+    `role "${roleId ?? 'null'}" is not authorized for this operation`,
+    { roleId, allowed: [...allowed] },
+  );
+}
+
 export function organizationFraudConfigNotFound(organizationId: string): CaseManagementError {
   return new CaseManagementError(
     'ORGANIZATION_FRAUD_CONFIG_NOT_FOUND',
     `no OrganizationFraudConfig exists for organization "${organizationId}"`,
     { organizationId },
   );
+}
+
+export function caseNotFound(caseId: string): CaseManagementError {
+  return new CaseManagementError('CASE_NOT_FOUND', `case "${caseId}" was not found`, { caseId });
 }

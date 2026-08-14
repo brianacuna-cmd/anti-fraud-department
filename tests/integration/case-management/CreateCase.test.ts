@@ -12,9 +12,11 @@ import { createRecordAuditLogUseCase } from '../../../src/modules/audit/applicat
 import { generateAuditLogId } from '../../../src/modules/audit/domain/model/value-objects/AuditLogId.js';
 import { createCaseManagementAuditRecorderAdapter } from '../../../src/composition/caseManagementAuditRecorderAdapter.js';
 import { createCreateCaseUseCase } from '../../../src/modules/case-management/application/CreateCase.js';
+import { createCalculateSlaUseCase } from '../../../src/modules/case-management/application/CalculateSla.js';
 import { createRouteCaseUseCase } from '../../../src/modules/case-management/application/RouteCase.js';
 import { MongoCaseRoutingRuleRepository } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRoutingRuleRepository.js';
 import { MongoOrganizationFraudConfigRepository } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoOrganizationFraudConfigRepository.js';
+import { MongoCaseSlaTrackingRepository } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseSlaTrackingRepository.js';
 import { ZenRoutingEngine } from '../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import type { AuditEvent, AuditRecorder } from '../../../src/modules/case-management/domain/ports/AuditRecorder.js';
 import type { Transaction } from '../../../src/modules/case-management/domain/ports/UnitOfWork.js';
@@ -22,6 +24,7 @@ import { SystemClock } from '../../../src/shared/time/SystemClock.js';
 import { createAuthContext } from '../../../src/shared/kernel/AuthContext.js';
 import { generateCaseId } from '../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from '../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
+import { generateCaseSlaTrackingId } from '../../../src/modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
 
 jest.setTimeout(120_000);
 
@@ -73,7 +76,27 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
     await db.collection('audit_logs').deleteMany({});
     await db.collection('case_routing_rules').deleteMany({});
     await db.collection('organization_fraud_config').deleteMany({});
+    await db.collection('case_sla_tracking').deleteMany({});
   });
+
+  async function seedFraudConfig(overrides: Record<string, unknown> = {}): Promise<void> {
+    await db.collection('organization_fraud_config').insertOne({
+      _id: new ObjectId(),
+      organization_id: new ObjectId(oid('org-1')),
+      sla_low_minutes: 240,
+      sla_medium_minutes: 120,
+      sla_high_minutes: 60,
+      sla_critical_minutes: 30,
+      risk_threshold_low: 25,
+      risk_threshold_medium: 50,
+      risk_threshold_high: 75,
+      risk_threshold_critical: 90,
+      feature_flags: {},
+      created_at: new Date(),
+      updated_at: new Date(),
+      ...overrides,
+    });
+  }
 
   /** JDM: riskScore > 80 AND status == OPEN -> the given target. */
   function jdm(target: string, field: 'targetUserId' | 'targetRoleId'): Record<string, unknown> {
@@ -131,29 +154,40 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
   }
 
   function buildUseCase(auditRecorder: AuditRecorder) {
+    const clock = new SystemClock();
+    const fraudConfig = new MongoOrganizationFraudConfigRepository(db);
     const routeCase = createRouteCaseUseCase({
       cases,
       routingRules: new MongoCaseRoutingRuleRepository(db),
       routingEngine: new ZenRoutingEngine(),
       timelineRecorder,
       auditRecorder,
-      fraudConfig: new MongoOrganizationFraudConfigRepository(db),
-      clock: new SystemClock(),
+      fraudConfig,
+      clock,
       generateTimelineEventId,
+    });
+    const calculateSla = createCalculateSlaUseCase({
+      cases,
+      slaTracking: new MongoCaseSlaTrackingRepository(db),
+      fraudConfig,
+      clock,
+      generateCaseSlaTrackingId,
     });
     return createCreateCaseUseCase({
       cases,
       timelineRecorder,
       unitOfWork: new MongoUnitOfWork(client),
-      clock: new SystemClock(),
+      clock,
       generateCaseId,
       generateTimelineEventId,
       auditRecorder,
       routeCase,
+      calculateSla,
     });
   }
 
   it('commits the Case (Status OPEN), a CASE_CREATED timeline entry, and exactly one CREATE_CASE audit row', async () => {
+    await seedFraudConfig();
     const auditLogs = new MongoAuditLogRepository(db);
     const recordAuditLog = createRecordAuditLogUseCase({ auditLogs, clock: new SystemClock(), generateAuditLogId });
     const createCase = buildUseCase(createCaseManagementAuditRecorderAdapter(recordAuditLog));
@@ -176,6 +210,7 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
   });
 
   it('rolls back the Case write and the timeline entry when the audit write fails mid-transaction (proves the write is truly inside the tx)', async () => {
+    await seedFraudConfig();
     const createCase = buildUseCase(alwaysFailingRecorder());
 
     await expect(
@@ -195,8 +230,41 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
    * the stored JDM and the assignment, its ASSIGNED timeline entry and the
    * REASSIGN_CASE provenance row all land in the SAME transaction as the case.
    */
+  describe('T2 SLA on create', () => {
+    it('persists dueDate and an ON_TRACK CaseSlaTracking row when fraud config exists', async () => {
+      await seedFraudConfig({ sla_high_minutes: 60 });
+      const createCase = buildUseCase(realAuditRecorder());
+
+      const before = Date.now();
+      const kase = await createCase({ auth: ANALYST, customerId: 'customer-1', riskScore: 42, priority: 'HIGH' });
+      const after = Date.now();
+
+      expect(kase.dueDate).not.toBeNull();
+      const dueMs = new Date(kase.dueDate!).getTime();
+      expect(dueMs).toBeGreaterThanOrEqual(before + 60 * 60_000 - 5_000);
+      expect(dueMs).toBeLessThanOrEqual(after + 60 * 60_000 + 5_000);
+
+      const tracking = await db.collection('case_sla_tracking').findOne({ case_id: new ObjectId(kase.id) });
+      expect(tracking?.status).toBe('ON_TRACK');
+      expect(tracking?.notification_sent).toBe(false);
+    });
+
+    it('rolls back the case when OrganizationFraudConfig is missing', async () => {
+      const createCase = buildUseCase(realAuditRecorder());
+
+      await expect(
+        createCase({ auth: ANALYST, customerId: 'customer-1', riskScore: 42, priority: 'HIGH' }),
+      ).rejects.toMatchObject({ code: 'ORGANIZATION_FRAUD_CONFIG_NOT_FOUND' });
+
+      expect(await db.collection('cases').countDocuments({})).toBe(0);
+      expect(await db.collection('case_sla_tracking').countDocuments({})).toBe(0);
+      expect(await db.collection('case_timeline').countDocuments({})).toBe(0);
+    });
+  });
+
   describe('T1 auto-routing', () => {
     it('assigns the case to the rule target and persists AssignedTo/AssignedToType split', async () => {
+      await seedFraudConfig();
       await seedRule();
       const createCase = buildUseCase(realAuditRecorder());
 
@@ -209,6 +277,7 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
     });
 
     it('assigns a ROLE target when the JDM outputs targetRoleId', async () => {
+      await seedFraudConfig();
       await seedRule({ conditions: jdm('role-9', 'targetRoleId') });
       const createCase = buildUseCase(realAuditRecorder());
 
@@ -218,6 +287,7 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
     });
 
     it('appends an ASSIGNED timeline entry alongside CASE_CREATED', async () => {
+      await seedFraudConfig();
       await seedRule();
       const createCase = buildUseCase(realAuditRecorder());
 
@@ -228,6 +298,7 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
     });
 
     it('records a REASSIGN_CASE audit row tracing the rule id and conditionsVersion that assigned the case', async () => {
+      await seedFraudConfig();
       const ruleId = await seedRule();
       const createCase = buildUseCase(realAuditRecorder());
 
@@ -244,6 +315,7 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
     });
 
     it('leaves the case unassigned when the active rule does not match', async () => {
+      await seedFraudConfig();
       await seedRule();
       const createCase = buildUseCase(realAuditRecorder());
 
@@ -254,6 +326,7 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
     });
 
     it('ignores INACTIVE rules', async () => {
+      await seedFraudConfig();
       await seedRule({ status: 'INACTIVE' });
       const createCase = buildUseCase(realAuditRecorder());
 
@@ -263,6 +336,7 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
     });
 
     it('ignores rules belonging to another organization', async () => {
+      await seedFraudConfig();
       await seedRule({ organization_id: new ObjectId(oid('org-2')) });
       const createCase = buildUseCase(realAuditRecorder());
 
@@ -272,6 +346,7 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
     });
 
     it('commits the case anyway when a rule JDM is malformed, auditing the skipped rule', async () => {
+      await seedFraudConfig();
       await seedRule({ conditions: { nodes: 'not-a-graph' } });
       const createCase = buildUseCase(realAuditRecorder());
 

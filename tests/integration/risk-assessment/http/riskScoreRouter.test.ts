@@ -21,16 +21,25 @@ import { InMemoryRiskAssessmentAuditRecorder } from '../../../helpers/risk-asses
 import { caseManagementErrorStatus } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/errorStatus.js';
 import { caseRouter } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/caseRouter.js';
 import { createCreateCaseUseCase } from '../../../../src/modules/case-management/application/CreateCase.js';
+import { createCalculateSlaUseCase } from '../../../../src/modules/case-management/application/CalculateSla.js';
 import { createRouteCaseUseCase } from '../../../../src/modules/case-management/application/RouteCase.js';
+import { createReassignCaseUseCase } from '../../../../src/modules/case-management/application/ReassignCase.js';
+import { createListCasesUseCase } from '../../../../src/modules/case-management/application/ListCases.js';
+import { createReopenCaseUseCase } from '../../../../src/modules/case-management/application/ReopenCase.js';
 import { ZenRoutingEngine } from '../../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
 import { InMemoryCaseRoutingRuleRepository } from '../../../helpers/case-management/InMemoryCaseRoutingRuleRepository.js';
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
+import { InMemoryCaseSlaTrackingRepository } from '../../../helpers/case-management/InMemoryCaseSlaTrackingRepository.js';
+import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
+import { OrganizationFraudConfig } from '../../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
+import { generateOrganizationFraudConfigId } from '../../../../src/modules/case-management/domain/model/value-objects/OrganizationFraudConfigId.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 import { generateCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
+import { generateCaseSlaTrackingId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
 
 const ORG_1_ANALYST = createAuthContext({
   userId: oid('analyst-1'),
@@ -109,6 +118,24 @@ function buildApp(actorPerRequest: () => AuthContext, engine: RiskScoringEngine,
   const routingRules = new InMemoryCaseRoutingRuleRepository();
   const clock = new SystemClock();
   const fraudConfig = new InMemoryOrganizationFraudConfigRepository();
+  const slaTracking = new InMemoryCaseSlaTrackingRepository();
+  const unitOfWork = new PassthroughUnitOfWork();
+  fraudConfig.seed(
+    OrganizationFraudConfig.create({
+      id: generateOrganizationFraudConfigId(),
+      organizationId: oid('org-1'),
+      slaLowMinutes: 240,
+      slaMediumMinutes: 120,
+      slaHighMinutes: 60,
+      slaCriticalMinutes: 30,
+      riskThresholdLow: 25,
+      riskThresholdMedium: 50,
+      riskThresholdHigh: 75,
+      riskThresholdCritical: 90,
+      featureFlags: {},
+      now: NOW,
+    }),
+  );
   const routeCase = createRouteCaseUseCase({
     cases,
     routingRules,
@@ -119,18 +146,47 @@ function buildApp(actorPerRequest: () => AuthContext, engine: RiskScoringEngine,
     clock,
     generateTimelineEventId,
   });
+  const calculateSla = createCalculateSlaUseCase({
+    cases,
+    slaTracking,
+    fraudConfig,
+    clock,
+    generateCaseSlaTrackingId,
+  });
 
   const scoresRouter = riskScoreRouter({ calculateRiskScore });
   const casesRouter = caseRouter({
     createCase: createCreateCaseUseCase({
       cases,
       timelineRecorder,
-      unitOfWork: new PassthroughUnitOfWork(),
+      unitOfWork,
       clock,
       generateCaseId,
       generateTimelineEventId,
       auditRecorder: caseAuditRecorder,
       routeCase,
+      calculateSla,
+    }),
+    reassignCase: createReassignCaseUseCase({
+      cases,
+      timelineRecorder,
+      auditRecorder: caseAuditRecorder,
+      unitOfWork,
+      clock,
+      generateTimelineEventId,
+      assigneeDirectory: new InMemoryAssigneeDirectory(),
+    }),
+    listCases: createListCasesUseCase({ cases }),
+    reopenCase: createReopenCaseUseCase({
+      cases,
+      slaTracking,
+      fraudConfig,
+      timelineRecorder,
+      auditRecorder: caseAuditRecorder,
+      unitOfWork,
+      clock,
+      generateTimelineEventId,
+      generateCaseSlaTrackingId,
     }),
   });
 
