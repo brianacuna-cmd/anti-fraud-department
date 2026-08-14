@@ -6,7 +6,7 @@ import { createErrorHandler } from '../../../../src/shared/http/errorHandler.js'
 import { attachAuthContext } from '../../../../src/shared/http/requestAuthContext.js';
 import { createAuthContext, type AuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
-import { fromDate } from '../../../../src/shared/time/Instant.js';
+import { fromDate, toDate } from '../../../../src/shared/time/Instant.js';
 import { caseManagementErrorStatus } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/errorStatus.js';
 import { caseRouter } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/caseRouter.js';
 import { createCreateCaseUseCase } from '../../../../src/modules/case-management/application/CreateCase.js';
@@ -30,18 +30,67 @@ import { generateCaseSlaTrackingId } from '../../../../src/modules/case-manageme
 import { OrganizationFraudConfig } from '../../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
 import { generateOrganizationFraudConfigId } from '../../../../src/modules/case-management/domain/model/value-objects/OrganizationFraudConfigId.js';
 import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
+import { CaseSlaTracking } from '../../../../src/modules/case-management/domain/model/aggregates/CaseSlaTracking.js';
 import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
-import { createAssignedTo } from '../../../../src/modules/case-management/domain/model/value-objects/AssignedTo.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
+const OLD_DUE = fromDate(new Date('2025-12-01T00:00:00.000Z'));
 const ORG_1 = oid('org-1');
-const ORG_1_ANALYST = createAuthContext({ userId: oid('analyst-1'), organizationId: ORG_1, actorType: 'USER' });
-const EARLY = fromDate(new Date('2026-01-02T00:00:00.000Z'));
-const MID = fromDate(new Date('2026-01-03T00:00:00.000Z'));
-const LATE = fromDate(new Date('2026-01-04T00:00:00.000Z'));
+const CASE_ID = createCaseId(oid('case-reopen-http-1'));
+const EXPECTED_DUE_ISO = new Date(toDate(NOW).getTime() + 120 * 60_000).toISOString();
 
-function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
+const SUPERVISOR = createAuthContext({
+  userId: oid('supervisor-1'),
+  organizationId: ORG_1,
+  actorType: 'USER',
+  roleId: 'SUPERVISOR',
+});
+const ANALYST = createAuthContext({
+  userId: oid('analyst-1'),
+  organizationId: ORG_1,
+  actorType: 'USER',
+  roleId: 'ANALYST',
+});
+
+function buildResolvedCase(deleted = false): Case {
+  const resolved = Case.create({
+    id: CASE_ID,
+    organizationId: ORG_1,
+    customerId: 'customer-1',
+    riskScore: createRiskScore(40),
+    priority: 'MEDIUM',
+    now: NOW,
+  })
+    .transitionTo('IN_REVIEW', NOW)
+    .transitionTo('RESOLVED', NOW)
+    .withDueDate(OLD_DUE, NOW);
+
+  if (!deleted) return resolved;
+
+  return Case.rehydrate({
+    id: resolved.id,
+    organizationId: resolved.organizationId,
+    customerId: resolved.customerId,
+    customerEmail: resolved.customerEmail,
+    bridgeUserId: resolved.bridgeUserId,
+    bridgeWallet: resolved.bridgeWallet,
+    stripeCustomerId: resolved.stripeCustomerId,
+    finturuReference: resolved.finturuReference,
+    finturuCacheSnapshot: resolved.finturuCacheSnapshot,
+    riskScore: resolved.riskScore,
+    status: resolved.status,
+    priority: resolved.priority,
+    assignedTo: resolved.assignedTo,
+    dueDate: resolved.dueDate,
+    tags: resolved.tags,
+    createdAt: resolved.createdAt,
+    updatedAt: resolved.updatedAt,
+    deletedAt: NOW,
+  });
+}
+
+function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
   const cases = new InMemoryCaseRepository();
   const timelineRecorder = new InMemoryTimelineRecorder();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
@@ -49,6 +98,7 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
   const clock = new FixedClock(NOW);
   const fraudConfig = new InMemoryOrganizationFraudConfigRepository();
   const slaTracking = new InMemoryCaseSlaTrackingRepository();
+  const unitOfWork = new PassthroughUnitOfWork();
 
   fraudConfig.seed(
     OrganizationFraudConfig.create({
@@ -67,7 +117,6 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
     }),
   );
 
-  const unitOfWork = new PassthroughUnitOfWork();
   const routeCase = createRouteCaseUseCase({
     cases,
     routingRules,
@@ -135,115 +184,79 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
     errorHandler: createErrorHandler(caseManagementErrorStatus),
   });
 
-  return { app, cases };
+  return { app, cases, slaTracking, timelineRecorder, auditRecorder };
 }
 
-describe('GET /api/v1/cases (inbox list)', () => {
-  it('returns a filtered page of non-deleted cases for the tenant', async () => {
-    const { app, cases } = buildApp();
-    const assignee = oid('analyst-2');
-
-    await cases.save(
-      Case.rehydrate({
-        ...Case.create({
-          id: createCaseId(oid('inbox-match')),
-          organizationId: ORG_1,
-          customerId: 'c1',
-          riskScore: createRiskScore(70),
-          priority: 'HIGH',
-          tags: ['fraud', 'wire'],
-          now: NOW,
-        })
-          .reassign(createAssignedTo('USER', assignee), NOW)
-          .withDueDate(MID, NOW)
-          .toProps(),
-        status: 'OPEN',
-      }),
-    );
-    await cases.save(
-      Case.create({
-        id: createCaseId(oid('inbox-other')),
-        organizationId: ORG_1,
-        customerId: 'c2',
-        riskScore: createRiskScore(10),
-        priority: 'LOW',
+describe('caseRouter POST /cases/:caseId/reopen', () => {
+  it('reopens a RESOLVED case for SUPERVISOR and resets dueDate', async () => {
+    const { app, cases, slaTracking, auditRecorder, timelineRecorder } = buildApp();
+    await cases.save(buildResolvedCase());
+    await slaTracking.save(
+      CaseSlaTracking.create({
+        id: generateCaseSlaTrackingId(),
+        caseId: CASE_ID,
+        dueDate: OLD_DUE,
         now: NOW,
-      }).withDueDate(EARLY, NOW),
-    );
-    await cases.save(
-      Case.rehydrate({
-        ...Case.create({
-          id: createCaseId(oid('inbox-deleted')),
-          organizationId: ORG_1,
-          customerId: 'c3',
-          riskScore: createRiskScore(70),
-          priority: 'HIGH',
-          tags: ['fraud', 'wire'],
-          now: NOW,
-        })
-          .reassign(createAssignedTo('USER', assignee), NOW)
-          .withDueDate(MID, NOW)
-          .toProps(),
-        deletedAt: NOW,
       }),
     );
 
-    const response = await request(app).get('/api/v1/cases').query({
+    const response = await request(app)
+      .post(`/api/v1/cases/${CASE_ID}/reopen`)
+      .send({ targetStatus: 'OPEN', justification: 'Customer appeal accepted' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      id: CASE_ID,
       status: 'OPEN',
-      priority: 'HIGH',
-      assignedTo: assignee,
-      riskScoreMin: '50',
-      riskScoreMax: '80',
-      tags: ['fraud', 'wire'],
-      dueAfter: EARLY,
-      dueBefore: LATE,
-      limit: '10',
-      offset: '0',
+      dueDate: EXPECTED_DUE_ISO,
     });
-
-    expect(response.status).toBe(200);
-    expect(response.body.total).toBe(1);
-    expect(response.body.items).toHaveLength(1);
-    expect(response.body.items[0].id).toBe(oid('inbox-match'));
-    expect(response.body.items[0].dueDate).toBe(MID);
+    expect(auditRecorder.all()[0]?.action).toBe('REOPEN_CASE');
+    expect(timelineRecorder.all()[0]?.eventType).toBe('CASE_REOPENED');
+    expect(slaTracking.all()[0]?.status).toBe('ON_TRACK');
   });
 
-  it('orders null dueDate after non-null dueDates', async () => {
+  it('returns 403 FORBIDDEN_ROLE for ANALYST', async () => {
+    const { app, cases } = buildApp(() => ANALYST);
+    await cases.save(buildResolvedCase());
+
+    const response = await request(app)
+      .post(`/api/v1/cases/${CASE_ID}/reopen`)
+      .send({ targetStatus: 'OPEN', justification: 'Nope' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN_ROLE');
+  });
+
+  it('returns 404 CASE_NOT_FOUND for a soft-deleted case', async () => {
     const { app, cases } = buildApp();
-    await cases.save(
-      Case.create({
-        id: createCaseId(oid('due-null')),
-        organizationId: ORG_1,
-        customerId: 'c1',
-        riskScore: createRiskScore(1),
-        priority: 'LOW',
-        now: NOW,
-      }),
-    );
-    await cases.save(
-      Case.create({
-        id: createCaseId(oid('due-early')),
-        organizationId: ORG_1,
-        customerId: 'c2',
-        riskScore: createRiskScore(1),
-        priority: 'LOW',
-        now: NOW,
-      }).withDueDate(EARLY, NOW),
-    );
+    await cases.save(buildResolvedCase(true));
 
-    const response = await request(app).get('/api/v1/cases').query({ limit: '10', offset: '0' });
+    const response = await request(app)
+      .post(`/api/v1/cases/${CASE_ID}/reopen`)
+      .send({ targetStatus: 'OPEN', justification: 'Still deleted' });
 
-    expect(response.status).toBe(200);
-    expect(response.body.items.map((item: { id: string }) => item.id)).toEqual([
-      oid('due-early'),
-      oid('due-null'),
-    ]);
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe('CASE_NOT_FOUND');
   });
 
-  it('returns 400 for invalid query params', async () => {
+  it('returns 400 when justification is missing', async () => {
+    const { app, cases } = buildApp();
+    await cases.save(buildResolvedCase());
+
+    const response = await request(app)
+      .post(`/api/v1/cases/${CASE_ID}/reopen`)
+      .send({ targetStatus: 'OPEN' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
+  });
+
+  it('returns 400 when targetStatus is invalid', async () => {
     const { app } = buildApp();
 
-    const response = await request(app).get('/api/v1/cases').query({ limit: '0' });
+    const response = await request(app)
+      .post(`/api/v1/cases/${CASE_ID}/reopen`)
+      .send({ targetStatus: 'RESOLVED', justification: 'Bad target' });
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('INVARIANT_VIOLATION');

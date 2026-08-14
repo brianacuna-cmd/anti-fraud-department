@@ -91,6 +91,7 @@ import { createCalculateSlaUseCase } from './modules/case-management/application
 import { createRouteCaseUseCase } from './modules/case-management/application/RouteCase.js';
 import { createReassignCaseUseCase } from './modules/case-management/application/ReassignCase.js';
 import { createListCasesUseCase } from './modules/case-management/application/ListCases.js';
+import { createReopenCaseUseCase } from './modules/case-management/application/ReopenCase.js';
 import { MongoCaseRoutingRuleRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRoutingRuleRepository.js';
 import { MongoOrganizationFraudConfigRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoOrganizationFraudConfigRepository.js';
 import { MongoCaseSlaTrackingRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseSlaTrackingRepository.js';
@@ -304,6 +305,17 @@ async function bootstrap(): Promise<void> {
       assigneeDirectory,
     }),
     listCases: createListCasesUseCase({ cases }),
+    reopenCase: createReopenCaseUseCase({
+      cases,
+      slaTracking: caseSlaTracking,
+      fraudConfig: organizationFraudConfig,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateTimelineEventId,
+      generateCaseSlaTrackingId,
+    }),
   });
   const organizationFraudConfigHttpRouter = organizationFraudConfigRouter({
     getOrganizationFraudConfig: createGetOrganizationFraudConfigUseCase({

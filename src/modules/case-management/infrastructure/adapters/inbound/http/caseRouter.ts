@@ -3,7 +3,13 @@ import { requireAuthContext } from '../../../../../../shared/http/requestAuthCon
 import type { createCreateCaseUseCase } from '../../../../application/CreateCase.js';
 import type { createReassignCaseUseCase } from '../../../../application/ReassignCase.js';
 import type { createListCasesUseCase } from '../../../../application/ListCases.js';
-import { createCaseSchema, reassignCaseSchema, listCasesQuerySchema } from './dto/caseSchemas.js';
+import type { createReopenCaseUseCase } from '../../../../application/ReopenCase.js';
+import {
+  createCaseSchema,
+  reassignCaseSchema,
+  listCasesQuerySchema,
+  reopenCaseSchema,
+} from './dto/caseSchemas.js';
 import { toCaseResponse } from './mappers/CaseHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
 import type { Instant } from '../../../../../../shared/time/Instant.js';
@@ -12,11 +18,13 @@ export interface CaseRouterDeps {
   readonly createCase: ReturnType<typeof createCreateCaseUseCase>;
   readonly reassignCase: ReturnType<typeof createReassignCaseUseCase>;
   readonly listCases: ReturnType<typeof createListCasesUseCase>;
+  readonly reopenCase: ReturnType<typeof createReopenCaseUseCase>;
 }
 
 /**
  * `/cases` routes: POST /cases (create), GET /cases (inbox),
- * POST /cases/:caseId/reassign (manual reassignment). Express 5 forwards a
+ * POST /cases/:caseId/reassign (manual reassignment),
+ * POST /cases/:caseId/reopen (role-gated reopen). Express 5 forwards a
  * rejected handler promise to `errorHandler` automatically.
  */
 export function caseRouter(deps: CaseRouterDeps): Router {
@@ -59,6 +67,18 @@ export function caseRouter(deps: CaseRouterDeps): Router {
       caseId: req.params.caseId!,
       assignedToType: body.assignedToType,
       assignedToId: body.assignedToId,
+    });
+    res.status(200).json(toCaseResponse(kase));
+  });
+
+  router.post('/cases/:caseId/reopen', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(reopenCaseSchema, req.body);
+    const kase = await deps.reopenCase({
+      auth,
+      caseId: req.params.caseId!,
+      targetStatus: body.targetStatus,
+      justification: body.justification,
     });
     res.status(200).json(toCaseResponse(kase));
   });

@@ -54,3 +54,11 @@ export const listCasesQuerySchema = z.object({
 });
 
 export type ListCasesQuery = z.infer<typeof listCasesQuerySchema>;
+
+/** POST /cases/:caseId/reopen body (role-gated reopen + SLA reset). */
+export const reopenCaseSchema = z.object({
+  targetStatus: z.enum(['OPEN', 'IN_REVIEW']),
+  justification: z.string().trim().min(1),
+});
+
+export type ReopenCaseBody = z.infer<typeof reopenCaseSchema>;

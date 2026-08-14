@@ -13,6 +13,7 @@ import { createCalculateSlaUseCase } from '../../../../src/modules/case-manageme
 import { createRouteCaseUseCase } from '../../../../src/modules/case-management/application/RouteCase.js';
 import { createReassignCaseUseCase } from '../../../../src/modules/case-management/application/ReassignCase.js';
 import { createListCasesUseCase } from '../../../../src/modules/case-management/application/ListCases.js';
+import { createReopenCaseUseCase } from '../../../../src/modules/case-management/application/ReopenCase.js';
 import { ZenRoutingEngine } from '../../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
@@ -132,6 +133,17 @@ function buildApp(actorPerRequest: () => AuthContext, options: { seedFraudConfig
       assigneeDirectory: new InMemoryAssigneeDirectory(),
     }),
     listCases: createListCasesUseCase({ cases }),
+    reopenCase: createReopenCaseUseCase({
+      cases,
+      slaTracking,
+      fraudConfig,
+      timelineRecorder,
+      auditRecorder,
+      unitOfWork,
+      clock,
+      generateTimelineEventId,
+      generateCaseSlaTrackingId,
+    }),
   });
 
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {
