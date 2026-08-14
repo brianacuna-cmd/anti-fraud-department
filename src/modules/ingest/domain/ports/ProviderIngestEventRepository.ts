@@ -2,7 +2,7 @@ import type { ProviderIngestEvent } from '../model/aggregates/ProviderIngestEven
 import type { PaymentProvider } from '../model/value-objects/PaymentProvider.js';
 
 export interface ProviderIngestEventRepository {
-  insertUnique(event: ProviderIngestEvent): Promise<void>;
+  insertUnique(event: ProviderIngestEvent): Promise<'inserted' | 'duplicate'>;
   save(event: ProviderIngestEvent): Promise<void>;
   findByOrgProviderEvent(
     organizationId: string,

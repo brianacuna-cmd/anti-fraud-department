@@ -39,7 +39,7 @@ describe('ingest domain ports', () => {
       save: async () => undefined,
     };
     const events: ProviderIngestEventRepository = {
-      insertUnique: async () => undefined,
+      insertUnique: async () => 'inserted',
       save: async () => undefined,
       findByOrgProviderEvent: async () => null,
     };
