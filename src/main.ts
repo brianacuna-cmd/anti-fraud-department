@@ -143,7 +143,10 @@ import { createScoreToCaseOrchestrator } from './composition/scoreToCaseOrchestr
 import { scoreToCaseProcessRouter } from './composition/scoreToCaseProcessRouter.js';
 import { createWebhookToScoreOrchestrator } from './composition/webhookToScoreOrchestrator.js';
 import { createReceiveProviderWebhookUseCase } from './modules/ingest/application/ReceiveProviderWebhook.js';
+import { createUpsertInboundWebhookSecretUseCase } from './modules/ingest/application/UpsertInboundWebhookSecret.js';
+import { generateInboundWebhookSecretId } from './modules/ingest/domain/model/value-objects/InboundWebhookSecretId.js';
 import { ingestErrorStatus } from './modules/ingest/infrastructure/adapters/inbound/http/errorStatus.js';
+import { inboundWebhookSecretRouter } from './modules/ingest/infrastructure/adapters/inbound/http/inboundWebhookSecretRouter.js';
 import { webhookRouter } from './modules/ingest/infrastructure/adapters/inbound/http/webhookRouter.js';
 import { selectVerifier } from './modules/ingest/infrastructure/adapters/outbound/crypto/selectVerifier.js';
 import { mapProviderEnvelope } from './modules/ingest/infrastructure/adapters/outbound/mapping/mapProviderEnvelope.js';
@@ -501,6 +504,13 @@ async function bootstrap(): Promise<void> {
     clock,
   });
   const ingestWebhookRouter = webhookRouter({ receiveProviderWebhook });
+  const upsertInboundWebhookSecret = createUpsertInboundWebhookSecretUseCase({
+    secrets: inboundWebhookSecrets,
+    cipher: secretCipher,
+    clock,
+    generateInboundWebhookSecretId,
+  });
+  const inboundWebhookSecretHttpRouter = inboundWebhookSecretRouter({ upsertInboundWebhookSecret });
 
   const transitionOrganizationStatus = createTransitionOrganizationStatusUseCase({
     organizations,
@@ -768,6 +778,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(riskScoresRouter);
   identityAccessRouter.use(riskScoreProcessRouter);
   identityAccessRouter.use(riskScoringRulesRouter);
+  identityAccessRouter.use(inboundWebhookSecretHttpRouter);
 
   const app = createApp({
     routers: [{ path: '/api/v1', router: identityAccessRouter }],
