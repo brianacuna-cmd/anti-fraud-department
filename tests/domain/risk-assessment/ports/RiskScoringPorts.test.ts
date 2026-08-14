@@ -1,4 +1,7 @@
-import type { RiskScoringEngine } from '../../../../src/modules/risk-assessment/domain/ports/RiskScoringEngine.js';
+import type {
+  RiskScoringEngine,
+  RiskScoringEvaluation,
+} from '../../../../src/modules/risk-assessment/domain/ports/RiskScoringEngine.js';
 import type { RiskScoringRuleRepository } from '../../../../src/modules/risk-assessment/domain/ports/RiskScoringRuleRepository.js';
 import type { AuditRecorder, AuditEvent } from '../../../../src/modules/risk-assessment/domain/ports/AuditRecorder.js';
 import type { Transaction, UnitOfWork } from '../../../../src/modules/risk-assessment/domain/ports/UnitOfWork.js';
@@ -15,13 +18,23 @@ describe('risk-assessment domain ports', () => {
         expect(conditions).toEqual({ nodes: [{ type: 'expressionNode' }] });
         expect(context).toEqual({ amountCents: 2500 });
         expect(context).not.toHaveProperty('rawPayload');
-        return { riskScore: 42 };
+        return { riskScore: 42, hits: [] };
       },
     };
 
     const result = await engine.evaluate({ nodes: [{ type: 'expressionNode' }] }, { amountCents: 2500 });
 
-    expect(result).toEqual({ riskScore: 42 });
+    expect(result).toEqual({ riskScore: 42, hits: [] });
+  });
+
+  it('RiskScoringEvaluation carries hits alongside riskScore for evidence freeze', () => {
+    const evaluation: RiskScoringEvaluation = {
+      riskScore: 65,
+      hits: [{ points: 20 }, { points: 45 }],
+    };
+
+    expect(evaluation.riskScore).toBe(65);
+    expect(evaluation.hits).toEqual([{ points: 20 }, { points: 45 }]);
   });
 
   it('RiskScoringRuleRepository.findActiveByOrganization returns ACTIVE rules', async () => {

@@ -23,8 +23,11 @@ class ScriptedRiskScoringEngine implements RiskScoringEngine {
     context: Readonly<Record<string, unknown>>;
   }> = [];
 
-  constructor(evaluations: RiskScoringEvaluation[]) {
-    this.queue = [...evaluations];
+  constructor(evaluations: Array<{ riskScore: number; hits?: readonly unknown[] }>) {
+    this.queue = evaluations.map((evaluation) => ({
+      riskScore: evaluation.riskScore,
+      hits: evaluation.hits ?? [],
+    }));
   }
 
   async evaluate(
@@ -32,7 +35,7 @@ class ScriptedRiskScoringEngine implements RiskScoringEngine {
     context: Readonly<Record<string, unknown>>,
   ): Promise<RiskScoringEvaluation> {
     this.calls.push({ conditions, context });
-    return this.queue.shift() ?? { riskScore: -1 };
+    return this.queue.shift() ?? { riskScore: -1, hits: [] };
   }
 }
 
@@ -51,14 +54,14 @@ class ThrowingRiskScoringEngine implements RiskScoringEngine {
 class ThrowingOnceRiskScoringEngine implements RiskScoringEngine {
   calls = 0;
 
-  constructor(private readonly then: RiskScoringEvaluation) {}
+  constructor(private readonly then: { riskScore: number; hits?: readonly unknown[] }) {}
 
   async evaluate(): Promise<RiskScoringEvaluation> {
     this.calls += 1;
     if (this.calls === 1) {
       throw new Error('invalid JDM graph');
     }
-    return this.then;
+    return { riskScore: this.then.riskScore, hits: this.then.hits ?? [] };
   }
 }
 
@@ -128,6 +131,29 @@ describe('createCalculateRiskScoreUseCase', () => {
     expect(result).not.toHaveProperty('assignedTo');
     expect(event.rawPayload).toEqual({ secret: 'do-not-send' });
     expect(scoringRules.all()).toHaveLength(1);
+  });
+
+  it('passthroughs engine hits alongside riskScore without folding hit points', async () => {
+    const hits = [{ points: 20 }, { points: 30 }, { points: 15 }];
+    const engine = new ScriptedRiskScoringEngine([{ riskScore: 65, hits }]);
+    const { calculateRiskScore } = buildUseCase(engine, [buildRule()]);
+
+    const result = await calculateRiskScore({ auth: tenantAuth(), event: buildEvent() });
+
+    expect(result.riskScore).toBe(65);
+    expect(result.hits).toEqual(hits);
+    // Application MUST NOT re-sum hits into the score (Expression already folded).
+    expect(result.riskScore).not.toBe(hits.reduce((sum, hit) => sum + (hit.points as number), 0) + 1);
+  });
+
+  it('defaults hits to an empty array when the engine omits them', async () => {
+    const engine = new ScriptedRiskScoringEngine([{ riskScore: 40 }]);
+    const { calculateRiskScore } = buildUseCase(engine, [buildRule()]);
+
+    const result = await calculateRiskScore({ auth: tenantAuth(), event: buildEvent() });
+
+    expect(result.riskScore).toBe(40);
+    expect(result.hits).toEqual([]);
   });
 
   it('omits rawPayload from the engine context while keeping other camelCase fields', async () => {

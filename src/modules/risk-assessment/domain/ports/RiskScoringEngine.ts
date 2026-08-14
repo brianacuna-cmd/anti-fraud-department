@@ -1,6 +1,8 @@
-/** Output of a single scoring JDM evaluation — a raw integer validated via createRiskScore. */
+/** Output of a single scoring JDM evaluation — integer score plus optional hit evidence. */
 export interface RiskScoringEvaluation {
   readonly riskScore: number;
+  /** Collect-node evidence; empty when the graph omits a hits array. Never folded by app code. */
+  readonly hits: readonly unknown[];
 }
 
 /**

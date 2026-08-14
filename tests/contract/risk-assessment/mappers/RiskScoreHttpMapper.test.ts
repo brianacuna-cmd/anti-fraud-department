@@ -56,6 +56,7 @@ describe('toRiskScoreResponse', () => {
       ruleId: createRiskScoringRuleId(oid('rule-1')),
       name: 'dispute-score',
       conditionsVersion: 2,
+      hits: [{ points: 20 }],
     });
 
     expect(dto).toEqual({

@@ -10,9 +10,10 @@ import type {
  * mirroring `ZenRoutingEngine` in case-management.
  *
  * Each `evaluate` compiles the rule's JDM graph into a `ZenDecision` (graphs
- * differ per rule; no decision caching). Collect arrays are ignored here —
- * the graph's Expression node must emit a single integer `riskScore`. Missing
- * or non-integer output throws so `CalculateRiskScore` can fail closed.
+ * differ per rule; no decision caching). When the graph emits a `hits` array
+ * (collect node), it is passed through for evidence freeze; Expression still
+ * folds the integer `riskScore`. Missing or non-integer `riskScore` throws so
+ * `CalculateRiskScore` can fail closed. Missing/non-array `hits` defaults to `[]`.
  */
 export class ZenRiskScoringEngine implements RiskScoringEngine {
   private readonly engine: ZenEngine;
@@ -42,5 +43,6 @@ function toEvaluation(result: unknown): RiskScoringEvaluation {
   if (typeof riskScore !== 'number' || !Number.isInteger(riskScore)) {
     throw new Error('scoring engine output riskScore must be an integer');
   }
-  return { riskScore };
+  const hits = Array.isArray(output.hits) ? output.hits : [];
+  return { riskScore, hits };
 }

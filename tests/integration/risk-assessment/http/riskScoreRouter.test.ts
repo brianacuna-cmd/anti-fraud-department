@@ -55,14 +55,17 @@ class ScriptedRiskScoringEngine implements RiskScoringEngine {
     context: Readonly<Record<string, unknown>>;
   }> = [];
 
-  constructor(private readonly evaluation: RiskScoringEvaluation) {}
+  constructor(private readonly evaluation: { riskScore: number; hits?: readonly unknown[] }) {}
 
   async evaluate(
     conditions: Readonly<Record<string, unknown>>,
     context: Readonly<Record<string, unknown>>,
   ): Promise<RiskScoringEvaluation> {
     this.calls.push({ conditions, context });
-    return this.evaluation;
+    return {
+      riskScore: this.evaluation.riskScore,
+      hits: this.evaluation.hits ?? [],
+    };
   }
 }
 
