@@ -1,6 +1,8 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { Router, type Express, type Request, type Response, type NextFunction } from 'express';
 import request from 'supertest';
+import { authenticator } from 'otplib';
+import { FakeEmailSender } from '../../helpers/identity-access/FakeEmailSender.js';
 import { createApp } from '../../../src/shared/http/createApp.js';
 import { createErrorHandler } from '../../../src/shared/http/errorHandler.js';
 import { attachAuthContext } from '../../../src/shared/http/requestAuthContext.js';
@@ -156,10 +158,12 @@ function buildChallengeLoginApp(): {
   admins: InMemoryAdminOrganizationRepository;
   adminChallenges: InMemoryAdminChallengeStore;
   sessions: InMemorySessionRepository;
+  emailSender: FakeEmailSender;
 } {
   const admins = new InMemoryAdminOrganizationRepository();
   const adminChallenges = new InMemoryAdminChallengeStore();
   const sessions = new InMemorySessionRepository();
+  const emailSender = new FakeEmailSender();
   const cipher = new AesGcmSecretCipher('challenge-login-test-secret', 1);
   const sessionTokenService = new AesGcmSessionTokenService(cipher);
   // Real `SystemClock` (not `FixedClock`) — `SessionTokenAuthContextResolver`
@@ -169,6 +173,9 @@ function buildChallengeLoginApp(): {
   const clock = new SystemClock();
 
   const router = adminOrganizationRouter({
+    // 3-step admin login: el router genera el OTP del paso 2 y lo envía por
+    // aquí — el FakeEmailSender lo captura para completar el flujo en tests.
+    emailSender,
     provisionAdminOrganization: createProvisionAdminOrganizationUseCase({
       admins,
       keyPairs: new FakeAdminKeyPairGenerator(),
@@ -238,7 +245,7 @@ function buildChallengeLoginApp(): {
     errorHandler: createErrorHandler(identityAccessErrorStatus),
   });
 
-  return { app, admins, adminChallenges, sessions };
+  return { app, admins, adminChallenges, sessions, emailSender };
 }
 
 async function seedAdminWithActiveKey(
@@ -313,9 +320,25 @@ describe('adminOrganizationRouter (e2e, in-memory repository)', () => {
   });
 });
 
+/**
+ * Completa los pasos 2 y 3 del login de admin de 3 pasos tras un
+ * verify-challenge exitoso: extrae el OTP del último email capturado por el
+ * FakeEmailSender, lo verifica (devuelve el secret TOTP de enrolamiento) y
+ * responde el challenge TOTP con un código de otplib. Devuelve la respuesta
+ * final con `{ accessToken, expiresAt }`.
+ */
+async function completeAdminMfaSteps(app: Express, emailSender: FakeEmailSender, challengeToken: string) {
+  const otpMail = emailSender.sent[emailSender.sent.length - 1]!;
+  const otp = /(\d{6})/.exec(otpMail.text)![1]!;
+  const verify = await request(app).post('/api/v1/admin-organizations/otp/verify').send({ challengeToken, otp });
+  expect(verify.status).toBe(200);
+  const code = authenticator.generate(verify.body.secret as string);
+  return request(app).post('/api/v1/admin-organizations/mfa').send({ challengeToken, code });
+}
+
 describe('PLATFORM_ADMIN challenge-login (e2e, super-admin-auth PR1)', () => {
-  it('full round-trip: request-challenge -> sign with real Ed25519 key -> verify-challenge -> access a platform-admin-gated route', async () => {
-    const { app, admins } = buildChallengeLoginApp();
+  it('full round-trip: request-challenge -> sign with real Ed25519 key -> verify-challenge -> OTP -> TOTP -> access a platform-admin-gated route', async () => {
+    const { app, admins, emailSender } = buildChallengeLoginApp();
     const keyPair = generateEd25519KeyPair();
     const admin = await seedAdminWithActiveKey(admins, keyPair);
 
@@ -332,9 +355,17 @@ describe('PLATFORM_ADMIN challenge-login (e2e, super-admin-auth PR1)', () => {
       .post('/api/v1/admin-organizations/sessions')
       .send({ challengeId: challengeResponse.body.challengeId, signature });
 
-    expect(sessionResponse.status).toBe(201);
-    expect(typeof sessionResponse.body.accessToken).toBe('string');
-    expect(sessionResponse.body.refreshToken).toBeUndefined();
+    // 3-step contract: la firma válida abre el paso OTP — el token de acceso
+    // solo se entrega tras OTP + TOTP.
+    expect(sessionResponse.status).toBe(200);
+    expect(sessionResponse.body.status).toBe('OTP_REQUIRED');
+    expect(typeof sessionResponse.body.challengeToken).toBe('string');
+    expect(sessionResponse.body.accessToken).toBeUndefined();
+
+    const mfaResponse = await completeAdminMfaSteps(app, emailSender, sessionResponse.body.challengeToken);
+    expect(mfaResponse.status).toBe(200);
+    expect(typeof mfaResponse.body.accessToken).toBe('string');
+    expect(mfaResponse.body.refreshToken).toBeUndefined();
 
     // The minted PLATFORM_ADMIN access token authorizes on the existing
     // platform-admin-gated route (spec "Authenticated request after login")
@@ -342,7 +373,7 @@ describe('PLATFORM_ADMIN challenge-login (e2e, super-admin-auth PR1)', () => {
     // resolver logic.
     const protectedResponse = await request(app)
       .post('/api/v1/admin-organizations')
-      .set('Authorization', `Bearer ${sessionResponse.body.accessToken}`)
+      .set('Authorization', `Bearer ${mfaResponse.body.accessToken}`)
       .send({ email: 'second-admin@platform.internal' });
 
     expect(protectedResponse.status).toBe(201);
@@ -375,8 +406,10 @@ describe('PLATFORM_ADMIN challenge-login (e2e, super-admin-auth PR1)', () => {
       .post('/api/v1/admin-organizations/sessions')
       .send({ challengeId, signature: validSignature });
 
-    expect(retryResponse.status).toBe(201);
-    expect(typeof retryResponse.body.accessToken).toBe('string');
+    // 3-step contract: la firma válida abre el paso OTP.
+    expect(retryResponse.status).toBe(200);
+    expect(retryResponse.body.status).toBe('OTP_REQUIRED');
+    expect(typeof retryResponse.body.challengeToken).toBe('string');
   });
 
   it('rejects an expired challenge with 401 (spec "Expired challenge")', async () => {
@@ -416,7 +449,8 @@ describe('PLATFORM_ADMIN challenge-login (e2e, super-admin-auth PR1)', () => {
     const first = await request(app)
       .post('/api/v1/admin-organizations/sessions')
       .send({ challengeId, signature });
-    expect(first.status).toBe(201);
+    expect(first.status).toBe(200);
+    expect(first.body.status).toBe('OTP_REQUIRED');
 
     const replay = await request(app)
       .post('/api/v1/admin-organizations/sessions')

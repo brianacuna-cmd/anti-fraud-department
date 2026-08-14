@@ -1,4 +1,3 @@
-import { ObjectId } from 'mongodb';
 import { brand } from '../../../../../../../shared/kernel/Brand.js';
 import { Organization } from '../../../../../domain/model/aggregates/Organization.js';
 import { createOrganizationId } from '../../../../../domain/model/value-objects/OrganizationId.js';
@@ -14,7 +13,7 @@ import type { OrganizationDocument } from '../documents/OrganizationDocument.js'
  */
 export function toDocument(organization: Organization): OrganizationDocument {
   return {
-    _id: new ObjectId(organization.id),
+    _id: organization.id,
     Name: organization.name,
     Slug: organization.slug,
     Domain: organization.domain,

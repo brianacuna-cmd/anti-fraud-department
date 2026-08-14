@@ -9,6 +9,7 @@ import { createUserId } from '../domain/model/value-objects/UserId.js';
 import { createEmail } from '../domain/model/value-objects/Email.js';
 import { userNotFound, userEmailTaken } from '../domain/errors/IdentityAccessError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
+import { requireUserRole, USER_MANAGE_ROLES } from './authorization/requireUserRole.js';
 
 export interface PatchUserIdentityInput {
   readonly auth: AuthContext;
@@ -39,6 +40,12 @@ export interface PatchUserIdentityDeps {
  */
 export function createPatchUserIdentityUseCase(deps: PatchUserIdentityDeps) {
   return async function patchUserIdentity(input: PatchUserIdentityInput): Promise<User> {
+    // role-authorization: un usuario siempre puede editar SU PROPIA identidad;
+    // editar a terceros exige ORGANIZATION o rol ADMIN.
+    const isSelf = input.auth.actorType === 'USER' && input.auth.userId === input.userId;
+    if (!isSelf) {
+      await requireUserRole(input.auth, deps.userRepositoryFactory, USER_MANAGE_ROLES, 'edit other users');
+    }
     const organizationId = createOrganizationId(requireTenantContext(input.auth));
     const repository = deps.userRepositoryFactory.forTenant(organizationId);
 

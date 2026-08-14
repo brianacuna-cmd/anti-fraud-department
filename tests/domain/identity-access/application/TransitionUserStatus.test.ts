@@ -19,8 +19,8 @@ import { IdentityAccessError } from '../../../../src/modules/identity-access/dom
 
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const TRANSITIONED_AT = fromDate(new Date('2026-01-02T00:00:00.000Z'));
-const ORG_ADMIN = createAuthContext({ userId: 'u1', organizationId: 'org-1', isPlatformAdmin: false });
-const OTHER_ORG_ADMIN = createAuthContext({ userId: 'u2', organizationId: 'org-2', isPlatformAdmin: false });
+const ORG_ADMIN = createAuthContext({ userId: 'u1', organizationId: 'org-1', actorType: 'ORGANIZATION' });
+const OTHER_ORG_ADMIN = createAuthContext({ userId: 'u2', organizationId: 'org-2', actorType: 'ORGANIZATION' });
 const PLATFORM_ADMIN = createAuthContext({ userId: 'u3', organizationId: 'org-1', isPlatformAdmin: true });
 
 async function seedUser(

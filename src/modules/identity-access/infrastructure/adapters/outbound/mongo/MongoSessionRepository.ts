@@ -1,4 +1,4 @@
-import { ObjectId, type ClientSession, type Collection, type Db } from 'mongodb';
+import type { ClientSession, Collection, Db } from 'mongodb';
 import type { Session } from '../../../../domain/model/aggregates/Session.js';
 import type { SessionActorRef, SessionRepository } from '../../../../domain/ports/SessionRepository.js';
 import type { SessionId } from '../../../../domain/model/value-objects/SessionId.js';
@@ -54,7 +54,7 @@ export class MongoSessionRepository implements SessionRepository {
    */
   async markRotated(id: SessionId, rotatedAt: Instant, tx?: Transaction): Promise<boolean> {
     const result = await this.collection.updateOne(
-      { _id: new ObjectId(id), RotatedAt: null },
+      { _id: id, RotatedAt: null },
       { $set: { RotatedAt: rotatedAt, UpdatedAt: rotatedAt } },
       { session: toSession(tx) },
     );
@@ -64,7 +64,7 @@ export class MongoSessionRepository implements SessionRepository {
   /** Unsessioned by design (D16) — must survive the triggering request's own rollback. */
   async revokeFamily(familyId: FamilyId, revokedAt: Instant): Promise<number> {
     const result = await this.collection.updateMany(
-      { FamilyId: new ObjectId(familyId), DeletedAt: null },
+      { FamilyId: familyId, DeletedAt: null },
       { $set: { DeletedAt: revokedAt, UpdatedAt: revokedAt } },
     );
     return result.modifiedCount;
@@ -73,7 +73,7 @@ export class MongoSessionRepository implements SessionRepository {
   /** Sets `deletedAt` on exactly the given session (Phase 4 — `Logout`). A no-op for an unknown or already-revoked id. */
   async revokeSession(id: SessionId, revokedAt: Instant, tx?: Transaction): Promise<void> {
     await this.collection.updateOne(
-      { _id: new ObjectId(id), DeletedAt: null },
+      { _id: id, DeletedAt: null },
       { $set: { DeletedAt: revokedAt, UpdatedAt: revokedAt } },
       { session: toSession(tx) },
     );
@@ -81,7 +81,7 @@ export class MongoSessionRepository implements SessionRepository {
 
   async revokeAllForOrganization(id: OrganizationId, at: Instant, tx?: Transaction): Promise<number> {
     const result = await this.collection.updateMany(
-      { OrganizationId: new ObjectId(id), DeletedAt: null },
+      { OrganizationId: id, DeletedAt: null },
       { $set: { DeletedAt: at, UpdatedAt: at } },
       { session: toSession(tx) },
     );
@@ -91,8 +91,8 @@ export class MongoSessionRepository implements SessionRepository {
   async revokeAllForActor(actor: SessionActorRef, at: Instant, tx?: Transaction): Promise<number> {
     const filter =
       actor.actorType === 'ORGANIZATION'
-        ? { ActorType: 'ORGANIZATION', OrganizationId: new ObjectId(actor.organizationId), DeletedAt: null }
-        : { ActorType: actor.actorType, UserId: new ObjectId(actor.userId), DeletedAt: null };
+        ? { ActorType: 'ORGANIZATION', OrganizationId: actor.organizationId, DeletedAt: null }
+        : { ActorType: actor.actorType, UserId: actor.userId, DeletedAt: null };
     const result = await this.collection.updateMany(filter, { $set: { DeletedAt: at, UpdatedAt: at } }, {
       session: toSession(tx),
     });

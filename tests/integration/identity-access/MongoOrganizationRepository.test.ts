@@ -1,5 +1,5 @@
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
-import { ObjectId, type Db, type MongoClient } from 'mongodb';
+import type { Db, MongoClient } from 'mongodb';
 import { oid } from '../../support/oid.js';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
@@ -177,10 +177,10 @@ describe('MongoOrganizationRepository (integration, real replica-set Mongo)', ()
 
     const rawDocument = await db
       .collection<OrganizationDocument>('Organizations')
-      .findOne({ _id: new ObjectId(oid('org-id-guard')) });
+      .findOne({ _id: oid('org-id-guard') });
 
     expect(rawDocument).not.toBeNull();
-    expect(rawDocument?._id).toBeInstanceOf(ObjectId);
+    expect(typeof rawDocument?._id).toBe('string');
     expect(rawDocument?._id.toString()).toBe(oid('org-id-guard'));
     expect(rawDocument).not.toHaveProperty('_Id');
   });

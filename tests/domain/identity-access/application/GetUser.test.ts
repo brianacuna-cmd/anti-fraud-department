@@ -11,8 +11,8 @@ import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { IdentityAccessError } from '../../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const ORG_1_USER = createAuthContext({ userId: 'u1', organizationId: 'org-1', isPlatformAdmin: false });
-const ORG_2_USER = createAuthContext({ userId: 'u2', organizationId: 'org-2', isPlatformAdmin: false });
+const ORG_1_USER = createAuthContext({ userId: 'u1', organizationId: 'org-1', actorType: 'ORGANIZATION' });
+const ORG_2_USER = createAuthContext({ userId: 'u2', organizationId: 'org-2', actorType: 'ORGANIZATION' });
 
 async function seedUser(userRepositoryFactory: InMemoryUserRepositoryFactory, organizationId = 'org-1'): Promise<void> {
   const org = createOrganizationId(organizationId);

@@ -1,5 +1,5 @@
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
-import { ObjectId, type Db, type MongoClient } from 'mongodb';
+import type { Db, MongoClient } from 'mongodb';
 import { oid } from '../../support/oid.js';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
@@ -20,7 +20,7 @@ jest.setTimeout(120_000);
 
 /** Loosely-typed raw document shape for reading collections bypassing the mapper on purpose. */
 interface RawDocument {
-  readonly _id: import('mongodb').ObjectId;
+  readonly _id: string;
   readonly [key: string]: unknown;
 }
 
@@ -75,11 +75,11 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
     });
     await organizations.save(organization);
 
-    const rawDocument = await db.collection<RawDocument>('Organizations').findOne({ _id: new ObjectId(ORG_ID) });
+    const rawDocument = await db.collection<RawDocument>('Organizations').findOne({ _id: ORG_ID });
 
     expect(rawDocument).not.toBeNull();
     expect(rawDocument).toMatchObject({
-      _id: new ObjectId(ORG_ID),
+      _id: ORG_ID,
       Name: 'Acme Corp',
       Slug: 'acme-corp-pascal',
       Domain: 'acme.example.com',
@@ -114,12 +114,12 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
     });
     await userRepositoryFactory.forTenant(ORG_ID).save(user);
 
-    const rawDocument = await db.collection<RawDocument>('Users').findOne({ _id: new ObjectId(userId) });
+    const rawDocument = await db.collection<RawDocument>('Users').findOne({ _id: userId });
 
     expect(rawDocument).not.toBeNull();
     expect(rawDocument).toMatchObject({
-      _id: new ObjectId(userId),
-      OrganizationId: new ObjectId(ORG_ID),
+      _id: userId,
+      OrganizationId: ORG_ID,
       Email: 'pascal@example.com',
       PasswordHash: 'a-bcrypt-hash',
       FirstName: 'Pascal',
@@ -203,10 +203,10 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
     });
     await userRepositoryFactory.forTenant(ORG_ID).save(user);
 
-    const rawDocument = await db.collection<RawDocument>('Users').findOne({ _id: new ObjectId(oid('user-id-guard')) });
+    const rawDocument = await db.collection<RawDocument>('Users').findOne({ _id: oid('user-id-guard') });
 
     expect(rawDocument).not.toBeNull();
-    expect(rawDocument?._id).toBeInstanceOf(ObjectId);
+    expect(typeof rawDocument?._id).toBe('string');
     expect(rawDocument?._id.toString()).toBe(oid('user-id-guard'));
     expect(rawDocument).not.toHaveProperty('_Id');
   });

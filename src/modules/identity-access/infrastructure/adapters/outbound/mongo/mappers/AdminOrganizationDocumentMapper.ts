@@ -1,4 +1,3 @@
-import { ObjectId } from 'mongodb';
 import { brand } from '../../../../../../../shared/kernel/Brand.js';
 import { AdminOrganization } from '../../../../../domain/model/aggregates/AdminOrganization.js';
 import { createAdminOrganizationId } from '../../../../../domain/model/value-objects/AdminOrganizationId.js';
@@ -10,7 +9,7 @@ import type { AdminKeyDocument, AdminOrganizationDocument } from '../documents/A
 
 function keyToDocument(key: AdminKey): AdminKeyDocument {
   return {
-    keyId: new ObjectId(key.keyId),
+    keyId: key.keyId,
     publicKey: key.publicKey,
     status: key.status,
     encryptedPrivateKey: key.encryptedPrivateKey,
@@ -23,7 +22,7 @@ function keyToDocument(key: AdminKey): AdminKeyDocument {
 
 function keyToDomain(document: AdminKeyDocument): AdminKey {
   return createAdminKey({
-    keyId: createAdminKeyId(document.keyId.toString()),
+    keyId: createAdminKeyId(document.keyId),
     publicKey: document.publicKey,
     status: createAdminKeyStatus(document.status),
     encryptedPrivateKey: document.encryptedPrivateKey,
@@ -37,7 +36,7 @@ function keyToDomain(document: AdminKeyDocument): AdminKey {
 
 export function toDocument(admin: AdminOrganization): AdminOrganizationDocument {
   return {
-    _id: new ObjectId(admin.id),
+    _id: admin.id,
     email: admin.email,
     keys: admin.keys.map(keyToDocument),
     createdAt: admin.createdAt,
@@ -47,7 +46,7 @@ export function toDocument(admin: AdminOrganization): AdminOrganizationDocument 
 
 export function toDomain(document: AdminOrganizationDocument): AdminOrganization {
   return AdminOrganization.rehydrate({
-    id: createAdminOrganizationId(document._id.toString()),
+    id: createAdminOrganizationId(document._id),
     email: createEmail(document.email),
     keys: document.keys.map(keyToDomain),
     createdAt: brand<string, 'Instant'>(document.createdAt),

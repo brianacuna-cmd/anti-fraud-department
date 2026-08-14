@@ -37,6 +37,12 @@ export interface AdminOrganizationRouterDeps {
   readonly revokeAdminKey: ReturnType<typeof createRevokeAdminKeyUseCase>;
 }
 
+/** Vista mínima del documento `adminOrganizations` que estas rutas tocan directamente: el TOTP enrolado del paso 3. */
+interface AdminOrganizationMfaDocument {
+  readonly _id: string;
+  readonly MfaSecret?: string;
+}
+
 export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Router {
   const router = Router();
   const pendingAdminLogins = new Map<
@@ -158,9 +164,11 @@ export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Rout
 
     let existingSecret: string | null = null;
     if (deps.db && pending.adminOrganizationId) {
-      const adminDoc = await deps.db.collection<any>('adminOrganizations').findOne({ _id: pending.adminOrganizationId });
+      const adminDoc = await deps.db
+        .collection<AdminOrganizationMfaDocument>('adminOrganizations')
+        .findOne({ _id: pending.adminOrganizationId });
       if (adminDoc?.MfaSecret) {
-        existingSecret = adminDoc.MfaSecret as string;
+        existingSecret = adminDoc.MfaSecret;
       }
     }
 
@@ -203,7 +211,7 @@ export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Rout
     }
 
     if (deps.db && pending.adminOrganizationId) {
-      await deps.db.collection<any>('adminOrganizations').updateOne(
+      await deps.db.collection<AdminOrganizationMfaDocument>('adminOrganizations').updateOne(
         { _id: pending.adminOrganizationId },
         { $set: { MfaSecret: pending.totpSecret } },
       );

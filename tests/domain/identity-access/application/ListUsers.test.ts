@@ -10,7 +10,7 @@ import { createPasswordCredential } from '../../../../src/modules/identity-acces
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const ORG_1_USER = createAuthContext({ userId: 'u1', organizationId: 'org-1', isPlatformAdmin: false });
+const ORG_1_USER = createAuthContext({ userId: 'u1', organizationId: 'org-1', actorType: 'ORGANIZATION' });
 
 async function seedUser(
   userRepositoryFactory: InMemoryUserRepositoryFactory,

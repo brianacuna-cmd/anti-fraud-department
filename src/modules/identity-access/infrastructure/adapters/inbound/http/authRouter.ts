@@ -142,7 +142,8 @@ export function authRouter(deps: AuthRouterDeps): Router {
     // Read persistent MfaSecret directly from MongoDB collection Organizations
     let existingSecret: string | null = null;
     if (deps.db) {
-      const orgDoc = await deps.db.collection('Organizations').findOne({ Email: { $regex: new RegExp(`^${emailKey}$`, 'i') } });
+      const pattern = `^${emailKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
+      const orgDoc = await deps.db.collection('Organizations').findOne({ Email: { $regex: pattern, $options: 'i' } });
       if (orgDoc?.MfaSecret) {
         existingSecret = orgDoc.MfaSecret as string;
       }
@@ -199,8 +200,12 @@ export function authRouter(deps: AuthRouterDeps): Router {
 
     // Save TOTP secret in MongoDB collection Organizations
     if (deps.db) {
+      // Buscar la organización por Email: escapar regex metacaracteres y usar
+      // pattern + opciones separadas (no RegExp object directo, que MongoDB
+      // no resuelve siempre bien en filters).
+      const pattern = `^${matchedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
       await deps.db.collection('Organizations').updateOne(
-        { Email: { $regex: new RegExp(`^${matchedEmail}$`, 'i') } },
+        { Email: { $regex: pattern, $options: 'i' } },
         { $set: { MfaSecret: matchedCreds.totpSecret, UpdatedAt: new Date().toISOString() } }
       );
     }

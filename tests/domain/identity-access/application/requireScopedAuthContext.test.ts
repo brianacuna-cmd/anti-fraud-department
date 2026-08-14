@@ -35,6 +35,6 @@ describe('requireScopedAuthContext', () => {
   it('throws when no AuthContext was ever attached', () => {
     const req = buildRequest();
 
-    expect(() => requireScopedAuthContext(req, { allow: ['full'] })).toThrow(/AuthContext/);
+    expect(() => requireScopedAuthContext(req, { allow: ['full'] })).toThrow(/authentication required/);
   });
 });

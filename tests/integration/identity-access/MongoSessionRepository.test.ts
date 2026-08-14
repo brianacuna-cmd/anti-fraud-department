@@ -1,5 +1,5 @@
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
-import { ObjectId, type Db, type MongoClient } from 'mongodb';
+import type { Db, MongoClient } from 'mongodb';
 import { oid } from '../../support/oid.js';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
@@ -283,10 +283,10 @@ describe('MongoSessionRepository (integration, real replica-set Mongo)', () => {
   it('round-trips the raw document by string _id (design A1/D37 regression guard)', async () => {
     await repository.save(buildSession({ id: 'session-id-guard' }));
 
-    const rawDocument = await db.collection<SessionDocument>('Sessions').findOne({ _id: new ObjectId(oid('session-id-guard')) });
+    const rawDocument = await db.collection<SessionDocument>('Sessions').findOne({ _id: oid('session-id-guard') });
 
     expect(rawDocument).not.toBeNull();
-    expect(rawDocument?._id).toBeInstanceOf(ObjectId);
+    expect(typeof rawDocument?._id).toBe('string');
     expect(rawDocument?._id.toString()).toBe(oid('session-id-guard'));
     expect(rawDocument?.FamilyExpiresAtDate).toBeInstanceOf(Date);
   });

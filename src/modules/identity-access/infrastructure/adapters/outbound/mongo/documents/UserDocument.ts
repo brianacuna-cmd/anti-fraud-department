@@ -13,11 +13,9 @@
  * lowercase (design A1).
  */
 
-import type { ObjectId } from "mongodb";
-
 export interface UserDocument {
-  readonly _id: ObjectId;
-  readonly OrganizationId: ObjectId;
+  readonly _id: string;
+  readonly OrganizationId: string;
   readonly Email: string;
   readonly PasswordHash: string;
   readonly FirstName: string;

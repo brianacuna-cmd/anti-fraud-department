@@ -5,10 +5,8 @@
  * driver-generated `ObjectId`, and the single documented exception to the
  * PascalCase rule (design A1).
  */
-import type { ObjectId } from "mongodb";
-
 export interface OrganizationDocument {
-  readonly _id: ObjectId;
+  readonly _id: string;
   readonly Name: string;
   readonly Slug: string;
   readonly Domain: string | null;

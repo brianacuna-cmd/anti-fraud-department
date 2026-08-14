@@ -13,22 +13,20 @@
  * acts only on a real BSON `Date` field; a TTL index on the string field
  * would create successfully and silently delete nothing.
  */
-import type { ObjectId } from "mongodb";
-
 export interface SessionDocument {
-  readonly _id: ObjectId;
-  readonly UserId: ObjectId | null;
-  readonly OrganizationId: ObjectId| null;
+  readonly _id: string;
+  readonly UserId: string | null;
+  readonly OrganizationId: string | null;
   readonly ActorType: string;
   readonly TokenHash: string;
   readonly RefreshTokenHash: string | null;
   readonly ExpiresAt: string;
   readonly RefreshExpiresAt: string | null;
-  readonly FamilyId: ObjectId;
+  readonly FamilyId: string;
   readonly FamilyExpiresAt: string;
   readonly FamilyExpiresAtDate: Date;
   readonly RotatedAt: string | null;
-  readonly RotatedFromSessionId: ObjectId | null;
+  readonly RotatedFromSessionId: string | null;
   readonly CreatedAt: string;
   readonly UpdatedAt: string;
   /** The single revocation signal (design D14). */

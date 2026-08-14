@@ -1,4 +1,3 @@
-import { ObjectId } from 'mongodb';
 import { brand } from '../../../../../../../shared/kernel/Brand.js';
 import { User } from '../../../../../domain/model/aggregates/User.js';
 import { createUserId } from '../../../../../domain/model/value-objects/UserId.js';
@@ -15,8 +14,8 @@ import type { UserDocument } from '../documents/UserDocument.js';
  */
 export function toDocument(user: User): UserDocument {
   return {
-    _id: new ObjectId(user.id),
-    OrganizationId: new ObjectId(user.organizationId),
+    _id: user.id,
+    OrganizationId: user.organizationId,
     Email: user.email,
     PasswordHash: user.credential.passwordHash,
     FirstName: user.firstName,

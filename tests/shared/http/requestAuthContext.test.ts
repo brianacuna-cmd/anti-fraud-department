@@ -5,6 +5,7 @@ import {
   attachAuthContext,
 } from '../../../src/shared/http/requestAuthContext.js';
 import { createAuthContext } from '../../../src/shared/kernel/AuthContext.js';
+import { UnauthenticatedError } from '../../../src/shared/kernel/UnauthenticatedError.js';
 
 describe('attachAuthContext / requireAuthContext', () => {
   it('reads back the exact AuthContext that was attached to the request', () => {
@@ -19,7 +20,7 @@ describe('attachAuthContext / requireAuthContext', () => {
   it('throws when no AuthContext was ever attached to the request', () => {
     const req = {} as Request;
 
-    expect(() => requireAuthContext(req)).toThrow(/AuthContext/);
+    expect(() => requireAuthContext(req)).toThrow(UnauthenticatedError);
   });
 
   it('rejects a "challenge"-scoped AuthContext (design D3 default-deny)', () => {
@@ -59,6 +60,6 @@ describe('requireAuthContextAnyScope', () => {
   it('throws when no AuthContext was ever attached to the request', () => {
     const req = {} as Request;
 
-    expect(() => requireAuthContextAnyScope(req)).toThrow(/AuthContext/);
+    expect(() => requireAuthContextAnyScope(req)).toThrow(UnauthenticatedError);
   });
 });

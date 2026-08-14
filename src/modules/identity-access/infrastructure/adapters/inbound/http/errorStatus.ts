@@ -6,9 +6,11 @@ import type { StatusByCode } from '../../../../../../shared/http/errorHandler.js
  * itself (design D5).
  */
 export const identityAccessErrorStatus: StatusByCode = {
+  UNAUTHENTICATED: 401,
   INVALID_TRANSITION: 422,
   FORBIDDEN_REACTIVATION: 403,
   FORBIDDEN_CROSS_TENANT: 403,
+  FORBIDDEN_ROLE: 403,
   ORGANIZATION_SLUG_TAKEN: 409,
   USER_EMAIL_TAKEN: 409,
   ORGANIZATION_NOT_FOUND: 404,

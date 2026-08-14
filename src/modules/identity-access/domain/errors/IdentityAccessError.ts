@@ -45,6 +45,14 @@ export function forbiddenCrossTenant(
   return new IdentityAccessError('FORBIDDEN_CROSS_TENANT', message);
 }
 
+export function forbiddenRole(roleId: string | null, operation: string): IdentityAccessError {
+  return new IdentityAccessError(
+    'FORBIDDEN_ROLE',
+    `role "${roleId ?? 'unknown'}" is not authorized to ${operation}`,
+    { roleId, operation },
+  );
+}
+
 export function organizationSlugTaken(slug: string): IdentityAccessError {
   return new IdentityAccessError('ORGANIZATION_SLUG_TAKEN', `slug "${slug}" is already in use`, {
     slug,

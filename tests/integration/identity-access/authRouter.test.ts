@@ -1,5 +1,6 @@
 import { Router, type Express, type Request, type Response, type NextFunction } from 'express';
 import request from 'supertest';
+import { authenticator } from 'otplib';
 import { createApp } from '../../../src/shared/http/createApp.js';
 import { createErrorHandler } from '../../../src/shared/http/errorHandler.js';
 import { attachAuthContext } from '../../../src/shared/http/requestAuthContext.js';
@@ -111,6 +112,9 @@ function buildApp(
   });
 
   const router = authRouter({
+    // 3-step org login: el router genera el OTP y lo envía por aquí — el
+    // FakeEmailSender lo captura para que los tests completen el flujo.
+    emailSender,
     beginUserLogin: createBeginUserLoginUseCase({
       authenticateActor: authenticateUser,
       sessionTokenService: TOKEN_SERVICE,
@@ -201,6 +205,29 @@ function buildApp(
   });
 
   return { app, userGateway, organizationGateway, sessions, userRepositoryFactory, organizations, mfaChallenges, emailSender, auditRecorder };
+}
+
+/**
+ * Completa los pasos 2 y 3 del login de organización de 3 pasos: extrae el
+ * OTP del último email capturado por el FakeEmailSender, lo verifica (lo que
+ * devuelve el secret TOTP de enrolamiento) y responde el challenge TOTP con
+ * un código generado por otplib.
+ */
+async function completeOrgMfaSteps(app: Express, emailSender: FakeEmailSender, email: string) {
+  const otpMail = emailSender.sent[emailSender.sent.length - 1]!;
+  const otp = /(\d{6})/.exec(otpMail.text)![1]!;
+  const verify = await request(app).post('/api/v1/auth/organizations/otp/verify').send({ email, otp });
+  expect(verify.status).toBe(200);
+  const totp = authenticator.generate(verify.body.secret as string);
+  return request(app)
+    .post('/api/v1/auth/organizations/mfa')
+    .send({ challengeToken: verify.body.challengeToken, totp });
+}
+
+/** Login completo de organización (3 pasos) — devuelve la respuesta final con la sesión. */
+async function orgLogin3Steps(app: Express, emailSender: FakeEmailSender, email: string, password: string) {
+  await request(app).post('/api/v1/auth/organizations/login').send({ email, password });
+  return completeOrgMfaSteps(app, emailSender, email);
 }
 
 describe('authRouter (e2e, in-memory gateways)', () => {
@@ -416,14 +443,18 @@ describe('authRouter (e2e, in-memory gateways)', () => {
     });
   });
 
-  describe('POST /auth/organizations/login', () => {
-    it('does not require organizationSlug and returns a minted ACCESS+REFRESH session (session-lifecycle PR-1)', async () => {
-      const { app, organizationGateway, sessions } = buildApp();
+  describe('POST /auth/organizations/login (3 pasos: credenciales -> OTP email -> TOTP)', () => {
+    it('completes the 3-step flow and mints an ACCESS+REFRESH session at the final MFA step', async () => {
+      const { app, organizationGateway, sessions, emailSender } = buildApp();
       organizationGateway.seed('org@acme.example.com', ORG_RECORD);
 
-      const response = await request(app)
+      const login = await request(app)
         .post('/api/v1/auth/organizations/login')
         .send({ email: 'org@acme.example.com', password: 'org-password' });
+      expect(login.status).toBe(200);
+      expect(login.body.status).toBe('OTP_REQUIRED');
+
+      const response = await completeOrgMfaSteps(app, emailSender, 'org@acme.example.com');
 
       expect(response.status).toBe(200);
       expect(response.body.accessToken).toEqual(expect.any(String));
@@ -434,25 +465,41 @@ describe('authRouter (e2e, in-memory gateways)', () => {
       expect(saved?.actorType).toBe('ORGANIZATION');
     });
 
-    it('rejects an unknown email with 401 INVALID_CREDENTIALS', async () => {
-      const { app } = buildApp();
+    it('rejects an unknown email with 401 INVALID_CREDENTIALS at the final MFA step (step 1 stays opaque OTP_REQUIRED)', async () => {
+      const { app, emailSender } = buildApp();
 
-      const response = await request(app)
+      const login = await request(app)
         .post('/api/v1/auth/organizations/login')
         .send({ email: 'nobody@example.com', password: 'whatever' });
+      expect(login.status).toBe(200);
+      expect(login.body.status).toBe('OTP_REQUIRED');
+
+      const response = await completeOrgMfaSteps(app, emailSender, 'nobody@example.com');
 
       expect(response.status).toBe(401);
       expect(response.body.error.code).toBe('INVALID_CREDENTIALS');
+    });
+
+    it('rejects a wrong email OTP with 401', async () => {
+      const { app, organizationGateway } = buildApp();
+      organizationGateway.seed('org@acme.example.com', ORG_RECORD);
+      await request(app)
+        .post('/api/v1/auth/organizations/login')
+        .send({ email: 'org@acme.example.com', password: 'org-password' });
+
+      const verify = await request(app)
+        .post('/api/v1/auth/organizations/otp/verify')
+        .send({ email: 'org@acme.example.com', otp: '000000' });
+
+      expect(verify.status).toBe(401);
     });
   });
 
   describe('POST /auth/refresh (session-lifecycle PR-2)', () => {
     it('rotates a fresh refresh token: new ACCESS+REFRESH pair, old REFRESH token rejected at /auth/refresh (old ACCESS-token invalidation is covered by the resolver contract test)', async () => {
-      const { app, organizationGateway } = buildApp();
+      const { app, organizationGateway, emailSender } = buildApp();
       organizationGateway.seed('org@acme.example.com', ORG_RECORD);
-      const loginResponse = await request(app)
-        .post('/api/v1/auth/organizations/login')
-        .send({ email: 'org@acme.example.com', password: 'org-password' });
+      const loginResponse = await orgLogin3Steps(app, emailSender, 'org@acme.example.com', 'org-password');
 
       const refreshResponse = await request(app)
         .post('/api/v1/auth/refresh')
@@ -480,11 +527,9 @@ describe('authRouter (e2e, in-memory gateways)', () => {
     });
 
     it('rejects an ACCESS token presented at /auth/refresh with the SAME opaque 401', async () => {
-      const { app, organizationGateway } = buildApp();
+      const { app, organizationGateway, emailSender } = buildApp();
       organizationGateway.seed('org@acme.example.com', ORG_RECORD);
-      const loginResponse = await request(app)
-        .post('/api/v1/auth/organizations/login')
-        .send({ email: 'org@acme.example.com', password: 'org-password' });
+      const loginResponse = await orgLogin3Steps(app, emailSender, 'org@acme.example.com', 'org-password');
 
       const response = await request(app)
         .post('/api/v1/auth/refresh')
@@ -504,11 +549,9 @@ describe('authRouter (e2e, in-memory gateways)', () => {
     });
 
     it('a reused (already-rotated) refresh token revokes the whole family, including the successor session', async () => {
-      const { app, organizationGateway } = buildApp();
+      const { app, organizationGateway, emailSender } = buildApp();
       organizationGateway.seed('org@acme.example.com', ORG_RECORD);
-      const loginResponse = await request(app)
-        .post('/api/v1/auth/organizations/login')
-        .send({ email: 'org@acme.example.com', password: 'org-password' });
+      const loginResponse = await orgLogin3Steps(app, emailSender, 'org@acme.example.com', 'org-password');
 
       const rotated = await request(app)
         .post('/api/v1/auth/refresh')

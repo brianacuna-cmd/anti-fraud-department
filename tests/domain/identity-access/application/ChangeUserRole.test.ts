@@ -70,7 +70,7 @@ describe('createChangeUserRoleUseCase', () => {
     expect(persisted?.roleId).toBe('SUPERVISOR');
   });
 
-  it('rejects a USER-tier actor with FORBIDDEN_CROSS_TENANT', async () => {
+  it('rejects a non-ADMIN USER-tier actor with FORBIDDEN_ROLE', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
     await seedUser(userRepositoryFactory);
     const unitOfWork = new InMemoryUnitOfWork();
@@ -81,7 +81,7 @@ describe('createChangeUserRoleUseCase', () => {
       await changeUserRole({ auth: ORG_1_USER, userId: 'user-1', roleId: 'SUPERVISOR' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
-      expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('FORBIDDEN_CROSS_TENANT');
+      expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('FORBIDDEN_ROLE');
     }
   });
 

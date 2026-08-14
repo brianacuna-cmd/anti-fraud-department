@@ -1,4 +1,3 @@
-import { ObjectId } from 'mongodb';
 import { brand } from '../../../../../../../shared/kernel/Brand.js';
 import { toDate } from '../../../../../../../shared/time/Instant.js';
 import { Session } from '../../../../../domain/model/aggregates/Session.js';
@@ -18,19 +17,19 @@ import type { SessionDocument } from '../documents/SessionDocument.js';
  */
 export function toDocument(session: Session): SessionDocument {
   return {
-    _id: new ObjectId(session.id),
-    UserId: session.userId === null ? null : new ObjectId(session.userId),
-    OrganizationId: session.organizationId === null ? null : new ObjectId(session.organizationId),
+    _id: session.id,
+    UserId: session.userId === null ? null : session.userId,
+    OrganizationId: session.organizationId === null ? null : session.organizationId,
     ActorType: session.actorType,
     TokenHash: session.tokenHash,
     RefreshTokenHash: session.refreshTokenHash,
     ExpiresAt: session.expiresAt,
     RefreshExpiresAt: session.refreshExpiresAt,
-    FamilyId: new ObjectId(session.familyId),
+    FamilyId: session.familyId,
     FamilyExpiresAt: session.familyExpiresAt,
     FamilyExpiresAtDate: toDate(session.familyExpiresAt),
     RotatedAt: session.rotatedAt,
-    RotatedFromSessionId: session.rotatedFromSessionId === null ? null : new ObjectId(session.rotatedFromSessionId),
+    RotatedFromSessionId: session.rotatedFromSessionId === null ? null : session.rotatedFromSessionId,
     CreatedAt: session.createdAt,
     UpdatedAt: session.updatedAt,
     DeletedAt: session.deletedAt,
