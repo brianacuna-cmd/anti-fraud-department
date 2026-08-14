@@ -110,6 +110,8 @@ import { createExecuteEnforcementActionUseCase } from './modules/case-management
 import { createCreateRoutingRuleUseCase } from './modules/case-management/application/CreateRoutingRule.js';
 import { createListRoutingRulesUseCase } from './modules/case-management/application/ListRoutingRules.js';
 import { createGetRoutingRuleUseCase } from './modules/case-management/application/GetRoutingRule.js';
+import { createActivateRoutingRuleUseCase } from './modules/case-management/application/ActivateRoutingRule.js';
+import { createDeactivateRoutingRuleUseCase } from './modules/case-management/application/DeactivateRoutingRule.js';
 import { organizationFraudConfigRouter } from './modules/case-management/infrastructure/adapters/inbound/http/organizationFraudConfigRouter.js';
 import { enforcementRouter } from './modules/case-management/infrastructure/adapters/inbound/http/enforcementRouter.js';
 import { routingRuleRouter } from './modules/case-management/infrastructure/adapters/inbound/http/routingRuleRouter.js';
@@ -420,6 +422,16 @@ async function bootstrap(): Promise<void> {
     }),
     listRoutingRules: createListRoutingRulesUseCase({ routingRules: caseRoutingRules }),
     getRoutingRule: createGetRoutingRuleUseCase({ routingRules: caseRoutingRules }),
+    activateRoutingRule: createActivateRoutingRuleUseCase({
+      routingRules: caseRoutingRules,
+      auditRecorder: caseManagementAuditRecorder,
+      clock,
+    }),
+    deactivateRoutingRule: createDeactivateRoutingRuleUseCase({
+      routingRules: caseRoutingRules,
+      auditRecorder: caseManagementAuditRecorder,
+      clock,
+    }),
   });
 
   // risk-assessment: standalone CalculateRiskScore + scoring-rule draft/activate API.
