@@ -105,9 +105,16 @@ import { createGetOrganizationFraudConfigUseCase } from './modules/case-manageme
 import { createUpsertOrganizationFraudConfigUseCase } from './modules/case-management/application/UpsertOrganizationFraudConfig.js';
 import { organizationFraudConfigRouter } from './modules/case-management/infrastructure/adapters/inbound/http/organizationFraudConfigRouter.js';
 import { MongoRiskScoringRuleRepository } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoRiskScoringRuleRepository.js';
+import { MongoUnitOfWork as RiskAssessmentMongoUnitOfWork } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { ZenRiskScoringEngine } from './modules/risk-assessment/infrastructure/adapters/outbound/zen/ZenRiskScoringEngine.js';
 import { createCalculateRiskScoreUseCase } from './modules/risk-assessment/application/CalculateRiskScore.js';
+import { createCreateScoringRuleUseCase } from './modules/risk-assessment/application/CreateScoringRule.js';
+import { createActivateScoringRuleUseCase } from './modules/risk-assessment/application/ActivateScoringRule.js';
+import { createListScoringRulesUseCase } from './modules/risk-assessment/application/ListScoringRules.js';
+import { createGetScoringRuleUseCase } from './modules/risk-assessment/application/GetScoringRule.js';
+import { generateRiskScoringRuleId } from './modules/risk-assessment/domain/model/value-objects/RiskScoringRuleId.js';
 import { riskScoreRouter } from './modules/risk-assessment/infrastructure/adapters/inbound/http/riskScoreRouter.js';
+import { scoringRuleRouter } from './modules/risk-assessment/infrastructure/adapters/inbound/http/scoringRuleRouter.js';
 import { riskAssessmentErrorStatus } from './modules/risk-assessment/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createRiskAssessmentAuditRecorderAdapter } from './composition/riskAssessmentAuditRecorderAdapter.js';
 
@@ -327,17 +334,38 @@ async function bootstrap(): Promise<void> {
     }),
   });
 
-  // risk-assessment: standalone CalculateRiskScore. Not injected into
-  // CreateCase — POST /cases still requires a caller-supplied riskScore.
+  // risk-assessment: standalone CalculateRiskScore + scoring-rule draft/activate API.
+  // Not injected into CreateCase — POST /cases still requires a caller-supplied riskScore.
   const scoringRules = new MongoRiskScoringRuleRepository(db);
   const scoringEngine = new ZenRiskScoringEngine();
   const riskAssessmentAuditRecorder = createRiskAssessmentAuditRecorderAdapter(recordAuditLog);
+  const riskAssessmentUnitOfWork = new RiskAssessmentMongoUnitOfWork(client);
   const calculateRiskScore = createCalculateRiskScoreUseCase({
     scoringRules,
     scoringEngine,
     auditRecorder: riskAssessmentAuditRecorder,
   });
+  const createScoringRule = createCreateScoringRuleUseCase({
+    scoringRules,
+    auditRecorder: riskAssessmentAuditRecorder,
+    clock,
+    generateRiskScoringRuleId,
+  });
+  const activateScoringRule = createActivateScoringRuleUseCase({
+    scoringRules,
+    unitOfWork: riskAssessmentUnitOfWork,
+    auditRecorder: riskAssessmentAuditRecorder,
+    clock,
+  });
+  const listScoringRules = createListScoringRulesUseCase({ scoringRules });
+  const getScoringRule = createGetScoringRuleUseCase({ scoringRules });
   const riskScoresRouter = riskScoreRouter({ calculateRiskScore });
+  const riskScoringRulesRouter = scoringRuleRouter({
+    createScoringRule,
+    activateScoringRule,
+    listScoringRules,
+    getScoringRule,
+  });
 
   const transitionOrganizationStatus = createTransitionOrganizationStatusUseCase({
     organizations,
@@ -601,6 +629,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(caseManagementCasesRouter);
   identityAccessRouter.use(organizationFraudConfigHttpRouter);
   identityAccessRouter.use(riskScoresRouter);
+  identityAccessRouter.use(riskScoringRulesRouter);
 
   const app = createApp({
     routers: [{ path: '/api/v1', router: identityAccessRouter }],
