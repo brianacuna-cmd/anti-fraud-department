@@ -100,6 +100,7 @@ function buildApp(actorPerRequest: () => AuthContext, engine: RiskScoringEngine,
     name: 'dispute-score',
     conditions: { graph: 'oldest' },
     conditionsVersion: 4,
+    status: 'ACTIVE',
     now: NOW,
   });
   if (seedRule) {

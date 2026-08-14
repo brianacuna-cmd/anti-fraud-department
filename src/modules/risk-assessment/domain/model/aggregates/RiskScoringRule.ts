@@ -28,6 +28,7 @@ export interface CreateRiskScoringRuleInput {
 /**
  * Tenant-scoped scoring rule. Clone of CaseRoutingRule without target
  * user/role — each document holds one JDM graph evaluated by ZEN.
+ * New rules default to INACTIVE (draft); activate via `activate()`.
  */
 export class RiskScoringRule {
   private constructor(private readonly props: RiskScoringRuleProps) {}
@@ -42,7 +43,7 @@ export class RiskScoringRule {
       name: input.name,
       conditions: input.conditions,
       conditionsVersion: input.conditionsVersion,
-      status: input.status ?? 'ACTIVE',
+      status: input.status ?? 'INACTIVE',
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -51,6 +52,16 @@ export class RiskScoringRule {
   /** Reconstructs from persisted props — no business-rule validation. */
   static rehydrate(props: RiskScoringRuleProps): RiskScoringRule {
     return new RiskScoringRule(props);
+  }
+
+  /** Marks this draft as ACTIVE (immutable). Caller persists via repository. */
+  activate(now: Instant): RiskScoringRule {
+    return new RiskScoringRule({ ...this.props, status: 'ACTIVE', updatedAt: now });
+  }
+
+  /** Marks this rule as INACTIVE (immutable). Caller persists via repository. */
+  deactivate(now: Instant): RiskScoringRule {
+    return new RiskScoringRule({ ...this.props, status: 'INACTIVE', updatedAt: now });
   }
 
   get id(): RiskScoringRuleId {

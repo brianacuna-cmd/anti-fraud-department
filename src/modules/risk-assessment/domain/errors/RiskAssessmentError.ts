@@ -29,10 +29,29 @@ export function forbiddenCrossTenant(
   return new RiskAssessmentError('FORBIDDEN_CROSS_TENANT', message);
 }
 
+export function forbiddenRole(
+  roleId: string | null,
+  allowed: readonly string[],
+): RiskAssessmentError {
+  return new RiskAssessmentError(
+    'FORBIDDEN_ROLE',
+    `role "${roleId ?? 'null'}" is not authorized for this operation`,
+    { roleId, allowed: [...allowed] },
+  );
+}
+
 export function scoringRuleNotFound(organizationId: string): RiskAssessmentError {
   return new RiskAssessmentError(
     'SCORING_RULE_NOT_FOUND',
     `no ACTIVE scoring rule exists for organization "${organizationId}"`,
     { organizationId },
+  );
+}
+
+export function scoringRuleByIdNotFound(ruleId: string): RiskAssessmentError {
+  return new RiskAssessmentError(
+    'SCORING_RULE_NOT_FOUND',
+    `scoring rule "${ruleId}" was not found`,
+    { ruleId },
   );
 }

@@ -3,6 +3,7 @@ import { generateRiskScoringRuleId } from '../../../../../src/modules/risk-asses
 import { fromDate } from '../../../../../src/shared/time/Instant.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
+const LATER = fromDate(new Date('2026-01-02T00:00:00.000Z'));
 
 function create(overrides: Partial<Parameters<typeof RiskScoringRule.create>[0]> = {}): RiskScoringRule {
   return RiskScoringRule.create({
@@ -17,10 +18,10 @@ function create(overrides: Partial<Parameters<typeof RiskScoringRule.create>[0]>
 }
 
 describe('RiskScoringRule', () => {
-  it('defaults status to ACTIVE and has no routing targets', () => {
+  it('defaults status to INACTIVE and has no routing targets', () => {
     const rule = create();
 
-    expect(rule.status).toBe('ACTIVE');
+    expect(rule.status).toBe('INACTIVE');
     expect(rule.conditionsVersion).toBe(1);
     expect(rule.organizationId).toBe('org-1');
     expect(rule.name).toBe('high-risk-score');
@@ -31,10 +32,31 @@ describe('RiskScoringRule', () => {
     expect(rule).not.toHaveProperty('targetRoleId');
   });
 
-  it('retains an explicit INACTIVE status', () => {
-    const rule = create({ status: 'INACTIVE' });
+  it('retains an explicit ACTIVE status', () => {
+    const rule = create({ status: 'ACTIVE' });
 
+    expect(rule.status).toBe('ACTIVE');
+  });
+
+  it('activate sets status ACTIVE and updates updatedAt', () => {
+    const rule = create();
+
+    const activated = rule.activate(LATER);
+
+    expect(activated.status).toBe('ACTIVE');
+    expect(activated.updatedAt).toBe(LATER);
+    expect(activated.createdAt).toBe(NOW);
     expect(rule.status).toBe('INACTIVE');
+  });
+
+  it('deactivate sets status INACTIVE and updates updatedAt', () => {
+    const rule = create({ status: 'ACTIVE' });
+
+    const deactivated = rule.deactivate(LATER);
+
+    expect(deactivated.status).toBe('INACTIVE');
+    expect(deactivated.updatedAt).toBe(LATER);
+    expect(rule.status).toBe('ACTIVE');
   });
 
   it('rejects an empty organizationId', () => {
@@ -50,7 +72,7 @@ describe('RiskScoringRule', () => {
   });
 
   it('rehydrates persisted props without re-validating', () => {
-    const created = create();
+    const created = create({ status: 'ACTIVE' });
     const rehydrated = RiskScoringRule.rehydrate(created.toProps());
 
     expect(rehydrated.id).toBe(created.id);

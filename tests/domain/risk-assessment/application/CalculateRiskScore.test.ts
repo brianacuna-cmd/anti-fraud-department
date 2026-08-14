@@ -83,6 +83,7 @@ function buildRule(overrides: Partial<Parameters<typeof RiskScoringRule.create>[
     name: 'score-graph',
     conditions: { graph: 'oldest' },
     conditionsVersion: 1,
+    status: 'ACTIVE',
     now: NOW,
     ...overrides,
   });

@@ -5,6 +5,7 @@ describe('riskAssessmentErrorStatus', () => {
     expect(riskAssessmentErrorStatus).toEqual({
       INVARIANT_VIOLATION: 400,
       FORBIDDEN_CROSS_TENANT: 403,
+      FORBIDDEN_ROLE: 403,
       SCORING_RULE_NOT_FOUND: 404,
     });
   });
