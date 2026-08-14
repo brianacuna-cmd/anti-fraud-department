@@ -13,6 +13,7 @@ export type CaseManagementAuditAction =
   | 'RESOLVE_CASE'
   | 'REASSIGN_CASE'
   | 'REOPEN_CASE'
+  | 'RECORD_ANALYST_DECISION'
   /**
    * CASE-002 (T1): a rule whose JDM could not be evaluated was SKIPPED rather
    * than aborting case creation. Not a user action — it is the only durable
