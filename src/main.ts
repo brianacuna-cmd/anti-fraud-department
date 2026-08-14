@@ -117,6 +117,8 @@ import { riskScoreRouter } from './modules/risk-assessment/infrastructure/adapte
 import { scoringRuleRouter } from './modules/risk-assessment/infrastructure/adapters/inbound/http/scoringRuleRouter.js';
 import { riskAssessmentErrorStatus } from './modules/risk-assessment/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createRiskAssessmentAuditRecorderAdapter } from './composition/riskAssessmentAuditRecorderAdapter.js';
+import { createScoreToCaseOrchestrator } from './composition/scoreToCaseOrchestrator.js';
+import { scoreToCaseProcessRouter } from './composition/scoreToCaseProcessRouter.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const MONGO_URI = process.env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/?replicaSet=rs0';
@@ -290,18 +292,22 @@ async function bootstrap(): Promise<void> {
     generateCaseSlaTrackingId,
   });
   const assigneeDirectory = createIdentityAssigneeDirectory(userRepositoryFactory, roleRepository);
+  const createCase = createCreateCaseUseCase({
+    cases,
+    timelineRecorder: caseTimelineRecorder,
+    unitOfWork: caseManagementUnitOfWork,
+    clock,
+    generateCaseId,
+    generateTimelineEventId,
+    auditRecorder: caseManagementAuditRecorder,
+    routeCase,
+    calculateSla,
+  });
+  const getOrganizationFraudConfig = createGetOrganizationFraudConfigUseCase({
+    repository: organizationFraudConfig,
+  });
   const caseManagementCasesRouter = caseRouter({
-    createCase: createCreateCaseUseCase({
-      cases,
-      timelineRecorder: caseTimelineRecorder,
-      unitOfWork: caseManagementUnitOfWork,
-      clock,
-      generateCaseId,
-      generateTimelineEventId,
-      auditRecorder: caseManagementAuditRecorder,
-      routeCase,
-      calculateSla,
-    }),
+    createCase,
     reassignCase: createReassignCaseUseCase({
       cases,
       timelineRecorder: caseTimelineRecorder,
@@ -325,9 +331,7 @@ async function bootstrap(): Promise<void> {
     }),
   });
   const organizationFraudConfigHttpRouter = organizationFraudConfigRouter({
-    getOrganizationFraudConfig: createGetOrganizationFraudConfigUseCase({
-      repository: organizationFraudConfig,
-    }),
+    getOrganizationFraudConfig,
     upsertOrganizationFraudConfig: createUpsertOrganizationFraudConfigUseCase({
       repository: organizationFraudConfig,
       clock,
@@ -366,6 +370,13 @@ async function bootstrap(): Promise<void> {
     listScoringRules,
     getScoringRule,
   });
+  // Composition-only score→threshold→CreateCase path (eslint boundaries).
+  const processRiskScoreToCase = createScoreToCaseOrchestrator({
+    calculateRiskScore,
+    getOrganizationFraudConfig,
+    createCase,
+  });
+  const riskScoreProcessRouter = scoreToCaseProcessRouter({ processRiskScoreToCase });
 
   const transitionOrganizationStatus = createTransitionOrganizationStatusUseCase({
     organizations,
@@ -629,6 +640,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(caseManagementCasesRouter);
   identityAccessRouter.use(organizationFraudConfigHttpRouter);
   identityAccessRouter.use(riskScoresRouter);
+  identityAccessRouter.use(riskScoreProcessRouter);
   identityAccessRouter.use(riskScoringRulesRouter);
 
   const app = createApp({
