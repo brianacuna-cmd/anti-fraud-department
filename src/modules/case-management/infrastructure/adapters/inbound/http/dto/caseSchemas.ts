@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 /**
  * POST /cases body (T5 manual case creation). `finturuCacheSnapshot` is
- * deliberately NOT exposed here — Slice 5 is manual creation only, that
- * field is only ever populated by an automated intake path (out of scope).
+ * deliberately NOT exposed here — only the composition score→case
+ * orchestrator may pass it into CreateCase application input.
  */
 export const createCaseSchema = z.object({
   customerId: z.string().min(1),

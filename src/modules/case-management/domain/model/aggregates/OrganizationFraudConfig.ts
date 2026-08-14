@@ -169,6 +169,26 @@ export class OrganizationFraudConfig {
     }
   }
 
+  /**
+   * Highest risk band crossed for automated case open.
+   * Returns `null` when score is below `riskThresholdLow` (orchestrator skips CreateCase).
+   */
+  priorityForRiskScore(score: number): CasePriority | null {
+    if (score >= this.props.riskThresholdCritical) {
+      return 'CRITICAL';
+    }
+    if (score >= this.props.riskThresholdHigh) {
+      return 'HIGH';
+    }
+    if (score >= this.props.riskThresholdMedium) {
+      return 'MEDIUM';
+    }
+    if (score >= this.props.riskThresholdLow) {
+      return 'LOW';
+    }
+    return null;
+  }
+
   /** Partial update — undefined fields keep their current value. Used by the Upsert use case. */
   update(patch: UpdateOrganizationFraudConfigInput, now: Instant): OrganizationFraudConfig {
     for (const field of [...SLA_FIELDS, ...RISK_THRESHOLD_FIELDS]) {
