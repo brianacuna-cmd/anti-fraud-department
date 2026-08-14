@@ -102,4 +102,19 @@ describe('MongoRiskScoringRuleRepository (integration, real replica-set Mongo)',
     const [rule] = await repository.findActiveByOrganization(oid('org-1'));
     expect(rule.conditions).toEqual(JDM_CONDITIONS);
   });
+
+  it('save / findById / listByOrganization round-trip ACTIVE and INACTIVE', async () => {
+    const active = buildRule('active', '2026-01-02T00:00:00.000Z');
+    const draft = buildRule('draft', '2026-01-03T00:00:00.000Z', { status: 'INACTIVE' });
+
+    await repository.save(active);
+    await repository.save(draft);
+
+    const found = await repository.findById(draft.id);
+    expect(found?.name).toBe('draft');
+    expect(found?.status).toBe('INACTIVE');
+
+    const listed = await repository.listByOrganization(oid('org-1'));
+    expect(listed.map((r) => r.name)).toEqual(['active', 'draft']);
+  });
 });

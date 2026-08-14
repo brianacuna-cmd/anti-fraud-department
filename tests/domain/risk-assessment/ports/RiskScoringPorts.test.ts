@@ -31,6 +31,7 @@ describe('risk-assessment domain ports', () => {
       name: 'score-graph',
       conditions: { nodes: [] },
       conditionsVersion: 2,
+      status: 'ACTIVE',
       now: NOW,
     });
 
@@ -39,6 +40,13 @@ describe('risk-assessment domain ports', () => {
         expect(organizationId).toBe('org-1');
         return [rule];
       },
+      async findById() {
+        return null;
+      },
+      async listByOrganization() {
+        return [];
+      },
+      async save() {},
     };
 
     const found = await repository.findActiveByOrganization('org-1');
@@ -72,13 +80,27 @@ describe('risk-assessment domain ports', () => {
       action: 'SCORING_RULE_EVALUATION_FAILED',
       detail: { reason: 'engine threw' },
     };
+    const createAudit: AuditEvent = {
+      ...success,
+      action: 'CREATE_SCORING_RULE',
+      detail: { name: 'draft' },
+    };
+    const activateAudit: AuditEvent = {
+      ...success,
+      action: 'ACTIVATE_SCORING_RULE',
+      detail: { name: 'draft' },
+    };
 
     await recorder.record(success);
     await recorder.record(failure);
+    await recorder.record(createAudit);
+    await recorder.record(activateAudit);
 
     expect(recorded.map((event) => event.action)).toEqual([
       'CALCULATE_RISK_SCORE',
       'SCORING_RULE_EVALUATION_FAILED',
+      'CREATE_SCORING_RULE',
+      'ACTIVATE_SCORING_RULE',
     ]);
     expect(recorded[0]?.resource).toBe('rule');
   });
