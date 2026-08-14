@@ -17,10 +17,10 @@ function create(overrides: Partial<Parameters<typeof CaseRoutingRule.create>[0]>
 }
 
 describe('CaseRoutingRule', () => {
-  it('defaults status to ACTIVE and targets to null', () => {
+  it('defaults status to INACTIVE and targets to null', () => {
     const rule = create();
 
-    expect(rule.status).toBe('ACTIVE');
+    expect(rule.status).toBe('INACTIVE');
     expect(rule.targetUserId).toBeNull();
     expect(rule.targetRoleId).toBeNull();
     expect(rule.conditionsVersion).toBe(1);

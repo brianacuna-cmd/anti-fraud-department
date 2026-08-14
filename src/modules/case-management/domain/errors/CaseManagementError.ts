@@ -68,3 +68,11 @@ export function enforcementActionNotFound(enforcementActionId: string): CaseMana
     { enforcementActionId },
   );
 }
+
+export function routingRuleNotFound(ruleId: string): CaseManagementError {
+  return new CaseManagementError(
+    'ROUTING_RULE_NOT_FOUND',
+    `routing rule "${ruleId}" was not found`,
+    { ruleId },
+  );
+}
