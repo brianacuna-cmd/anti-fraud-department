@@ -18,3 +18,10 @@ export const recordAnalystDecisionSchema = z.object({
 });
 
 export type RecordAnalystDecisionBody = z.infer<typeof recordAnalystDecisionSchema>;
+
+/** POST /enforcement-actions/:id/approve|reject body. */
+export const reviewEnforcementActionSchema = z.object({
+  reviewerComment: z.string().nullable().optional(),
+});
+
+export type ReviewEnforcementActionBody = z.infer<typeof reviewEnforcementActionSchema>;

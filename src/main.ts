@@ -104,12 +104,16 @@ import { generateCaseSlaTrackingId } from './modules/case-management/domain/mode
 import { createGetOrganizationFraudConfigUseCase } from './modules/case-management/application/GetOrganizationFraudConfig.js';
 import { createUpsertOrganizationFraudConfigUseCase } from './modules/case-management/application/UpsertOrganizationFraudConfig.js';
 import { createRecordAnalystDecisionUseCase } from './modules/case-management/application/RecordAnalystDecision.js';
+import { createApproveEnforcementActionUseCase } from './modules/case-management/application/ApproveEnforcementAction.js';
+import { createRejectEnforcementActionUseCase } from './modules/case-management/application/RejectEnforcementAction.js';
 import { organizationFraudConfigRouter } from './modules/case-management/infrastructure/adapters/inbound/http/organizationFraudConfigRouter.js';
 import { enforcementRouter } from './modules/case-management/infrastructure/adapters/inbound/http/enforcementRouter.js';
 import { MongoAnalystDecisionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoAnalystDecisionRepository.js';
 import { MongoEnforcementActionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoEnforcementActionRepository.js';
+import { MongoApprovalRequestRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoApprovalRequestRepository.js';
 import { generateAnalystDecisionId } from './modules/case-management/domain/model/value-objects/AnalystDecisionId.js';
 import { generateEnforcementActionId } from './modules/case-management/domain/model/value-objects/EnforcementActionId.js';
+import { generateApprovalRequestId } from './modules/case-management/domain/model/value-objects/ApprovalRequestId.js';
 import { MongoRiskScoringRuleRepository } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoRiskScoringRuleRepository.js';
 import { MongoUnitOfWork as RiskAssessmentMongoUnitOfWork } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { ZenRiskScoringEngine } from './modules/risk-assessment/infrastructure/adapters/outbound/zen/ZenRiskScoringEngine.js';
@@ -345,6 +349,7 @@ async function bootstrap(): Promise<void> {
   });
   const analystDecisions = new MongoAnalystDecisionRepository(db);
   const enforcementActions = new MongoEnforcementActionRepository(db);
+  const approvalRequests = new MongoApprovalRequestRepository(db);
   const enforcementHttpRouter = enforcementRouter({
     recordAnalystDecision: createRecordAnalystDecisionUseCase({
       cases,
@@ -357,6 +362,22 @@ async function bootstrap(): Promise<void> {
       generateAnalystDecisionId,
       generateEnforcementActionId,
       generateTimelineEventId,
+    }),
+    approveEnforcementAction: createApproveEnforcementActionUseCase({
+      enforcementActions,
+      approvalRequests,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateApprovalRequestId,
+    }),
+    rejectEnforcementAction: createRejectEnforcementActionUseCase({
+      enforcementActions,
+      approvalRequests,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateApprovalRequestId,
     }),
   });
 

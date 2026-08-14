@@ -1,6 +1,9 @@
 import type { AnalystDecision } from '../../../../../domain/model/aggregates/AnalystDecision.js';
 import type { EnforcementAction } from '../../../../../domain/model/aggregates/EnforcementAction.js';
+import type { ApprovalRequest } from '../../../../../domain/model/aggregates/ApprovalRequest.js';
 import type { RecordAnalystDecisionResult } from '../../../../../application/RecordAnalystDecision.js';
+import type { ApproveEnforcementActionResult } from '../../../../../application/ApproveEnforcementAction.js';
+import type { RejectEnforcementActionResult } from '../../../../../application/RejectEnforcementAction.js';
 
 export interface AnalystDecisionResponseDto {
   readonly id: string;
@@ -27,10 +30,26 @@ export interface EnforcementActionResponseDto {
   readonly updatedAt: string;
 }
 
+export interface ApprovalRequestResponseDto {
+  readonly id: string;
+  readonly enforcementActionId: string;
+  readonly requesterId: string;
+  readonly reviewerId: string | null;
+  readonly status: string;
+  readonly reviewerComment: string | null;
+  readonly createdAt: string;
+  readonly reviewedAt: string | null;
+}
+
 export interface RecordAnalystDecisionResponseDto {
   readonly decision: AnalystDecisionResponseDto;
   readonly enforcementAction: EnforcementActionResponseDto | null;
   readonly caseStatus: string;
+}
+
+export interface ReviewEnforcementActionResponseDto {
+  readonly enforcementAction: EnforcementActionResponseDto;
+  readonly approvalRequest: ApprovalRequestResponseDto;
 }
 
 export function toAnalystDecisionResponse(decision: AnalystDecision): AnalystDecisionResponseDto {
@@ -62,6 +81,19 @@ export function toEnforcementActionResponse(action: EnforcementAction): Enforcem
   };
 }
 
+export function toApprovalRequestResponse(request: ApprovalRequest): ApprovalRequestResponseDto {
+  return {
+    id: request.id,
+    enforcementActionId: request.enforcementActionId,
+    requesterId: request.requesterId,
+    reviewerId: request.reviewerId,
+    status: request.status,
+    reviewerComment: request.reviewerComment,
+    createdAt: request.createdAt,
+    reviewedAt: request.reviewedAt,
+  };
+}
+
 export function toRecordAnalystDecisionResponse(
   result: RecordAnalystDecisionResult,
 ): RecordAnalystDecisionResponseDto {
@@ -70,5 +102,14 @@ export function toRecordAnalystDecisionResponse(
     enforcementAction:
       result.enforcementAction === null ? null : toEnforcementActionResponse(result.enforcementAction),
     caseStatus: result.caseStatus,
+  };
+}
+
+export function toReviewEnforcementActionResponse(
+  result: ApproveEnforcementActionResult | RejectEnforcementActionResult,
+): ReviewEnforcementActionResponseDto {
+  return {
+    enforcementAction: toEnforcementActionResponse(result.enforcementAction),
+    approvalRequest: toApprovalRequestResponse(result.approvalRequest),
   };
 }

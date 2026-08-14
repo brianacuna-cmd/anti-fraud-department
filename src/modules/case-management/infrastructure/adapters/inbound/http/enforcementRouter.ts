@@ -1,18 +1,28 @@
 import { Router } from 'express';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
 import type { createRecordAnalystDecisionUseCase } from '../../../../application/RecordAnalystDecision.js';
-import { recordAnalystDecisionSchema } from './dto/enforcementSchemas.js';
-import { toRecordAnalystDecisionResponse } from './mappers/EnforcementHttpMapper.js';
+import type { createApproveEnforcementActionUseCase } from '../../../../application/ApproveEnforcementAction.js';
+import type { createRejectEnforcementActionUseCase } from '../../../../application/RejectEnforcementAction.js';
+import {
+  recordAnalystDecisionSchema,
+  reviewEnforcementActionSchema,
+} from './dto/enforcementSchemas.js';
+import {
+  toRecordAnalystDecisionResponse,
+  toReviewEnforcementActionResponse,
+} from './mappers/EnforcementHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
 
 export interface EnforcementRouterDeps {
   readonly recordAnalystDecision: ReturnType<typeof createRecordAnalystDecisionUseCase>;
+  readonly approveEnforcementAction: ReturnType<typeof createApproveEnforcementActionUseCase>;
+  readonly rejectEnforcementAction: ReturnType<typeof createRejectEnforcementActionUseCase>;
 }
 
 /**
- * Enforcement lifecycle HTTP routes (PR2+). Starts with
- * POST /cases/:caseId/decisions (ANALYST|SUPERVISOR|ADMIN via use case).
- * Approve/reject/execute routes land in later PR slices.
+ * Enforcement lifecycle HTTP routes (PR2–PR3).
+ * Decisions: POST /cases/:caseId/decisions (ANALYST|SUPERVISOR|ADMIN).
+ * Approve/reject: POST /enforcement-actions/:id/approve|reject (SUPERVISOR|ADMIN).
  */
 export function enforcementRouter(deps: EnforcementRouterDeps): Router {
   const router = Router();
@@ -31,6 +41,28 @@ export function enforcementRouter(deps: EnforcementRouterDeps): Router {
       targetId: body.targetId,
     });
     res.status(201).json(toRecordAnalystDecisionResponse(result));
+  });
+
+  router.post('/enforcement-actions/:id/approve', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(reviewEnforcementActionSchema, req.body ?? {});
+    const result = await deps.approveEnforcementAction({
+      auth,
+      enforcementActionId: req.params.id!,
+      reviewerComment: body.reviewerComment ?? null,
+    });
+    res.status(200).json(toReviewEnforcementActionResponse(result));
+  });
+
+  router.post('/enforcement-actions/:id/reject', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(reviewEnforcementActionSchema, req.body ?? {});
+    const result = await deps.rejectEnforcementAction({
+      auth,
+      enforcementActionId: req.params.id!,
+      reviewerComment: body.reviewerComment ?? null,
+    });
+    res.status(200).json(toReviewEnforcementActionResponse(result));
   });
 
   return router;

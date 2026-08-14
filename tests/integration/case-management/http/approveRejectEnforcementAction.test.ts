@@ -23,28 +23,50 @@ import { generateAnalystDecisionId } from '../../../../src/modules/case-manageme
 import { generateEnforcementActionId } from '../../../../src/modules/case-management/domain/model/value-objects/EnforcementActionId.js';
 import { generateApprovalRequestId } from '../../../../src/modules/case-management/domain/model/value-objects/ApprovalRequestId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
-import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
+import { EnforcementAction } from '../../../../src/modules/case-management/domain/model/aggregates/EnforcementAction.js';
 import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
-import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
+import { createAnalystDecisionId } from '../../../../src/modules/case-management/domain/model/value-objects/AnalystDecisionId.js';
+import { createEnforcementActionId } from '../../../../src/modules/case-management/domain/model/value-objects/EnforcementActionId.js';
+import { createEnforcementActionType } from '../../../../src/modules/case-management/domain/model/value-objects/EnforcementActionType.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ORG_1 = oid('org-1');
-const CASE_ID = createCaseId(oid('case-decision-http-1'));
+const ACTION_ID = createEnforcementActionId(oid('action-http-approve-1'));
+const CASE_ID = createCaseId(oid('case-http-approve-1'));
 
+const SUPERVISOR = createAuthContext({
+  userId: oid('supervisor-1'),
+  organizationId: ORG_1,
+  actorType: 'USER',
+  roleId: 'SUPERVISOR',
+});
 const ANALYST = createAuthContext({
   userId: oid('analyst-1'),
   organizationId: ORG_1,
   actorType: 'USER',
   roleId: 'ANALYST',
 });
-const AUDITOR = createAuthContext({
-  userId: oid('auditor-1'),
-  organizationId: ORG_1,
-  actorType: 'USER',
-  roleId: 'AUDITOR',
-});
 
-function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
+function seedPendingAction(
+  enforcementActions: InMemoryEnforcementActionRepository,
+  actionType: 'BLOCK' | 'REVIEW' = 'BLOCK',
+): EnforcementAction {
+  const action = EnforcementAction.create({
+    id: ACTION_ID,
+    caseId: CASE_ID,
+    organizationId: ORG_1,
+    analystDecisionId: createAnalystDecisionId(oid('decision-http-1')),
+    actionType: createEnforcementActionType(actionType),
+    targetType: 'CUSTOMER',
+    targetId: 'customer-1',
+    createdBy: oid('analyst-1'),
+    now: NOW,
+  });
+  void enforcementActions.save(action);
+  return action;
+}
+
+function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
   const cases = new InMemoryCaseRepository();
   const decisions = new InMemoryAnalystDecisionRepository();
   const enforcementActions = new InMemoryEnforcementActionRepository();
@@ -99,121 +121,79 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
     errorHandler: createErrorHandler(caseManagementErrorStatus),
   });
 
-  return { app, cases, decisions, enforcementActions, timelineRecorder, auditRecorder };
+  return { app, enforcementActions, approvalRequests, auditRecorder };
 }
 
-describe('enforcementRouter POST /cases/:caseId/decisions', () => {
-  it('records FRAUD_CONFIRMED and returns decision + PENDING enforcement action', async () => {
-    const { app, cases, decisions, enforcementActions, timelineRecorder, auditRecorder } = buildApp();
-    await cases.save(
-      Case.create({
-        id: CASE_ID,
-        organizationId: ORG_1,
-        customerId: 'customer-1',
-        riskScore: createRiskScore(80),
-        priority: 'HIGH',
-        now: NOW,
-      }).transitionTo('IN_REVIEW', NOW),
-    );
+describe('enforcementRouter POST /enforcement-actions/:id/approve', () => {
+  it('approves PENDING BLOCK and returns APPROVED action + approval request', async () => {
+    const { app, enforcementActions, approvalRequests, auditRecorder } = buildApp();
+    seedPendingAction(enforcementActions);
 
     const res = await request(app)
-      .post(`/api/v1/cases/${CASE_ID}/decisions`)
-      .send({
-        decision: 'FRAUD_CONFIRMED',
-        confidence: 95,
-        comment: 'confirmed fraud',
-        actionType: 'BLOCK',
-        targetType: 'CUSTOMER',
-        targetId: 'customer-1',
-      })
-      .expect(201);
+      .post(`/api/v1/enforcement-actions/${ACTION_ID}/approve`)
+      .send({ reviewerComment: 'approved' })
+      .expect(200);
 
-    expect(res.body.decision.decision).toBe('FRAUD_CONFIRMED');
-    expect(res.body.decision.confidence).toBe(95);
-    expect(res.body.enforcementAction.status).toBe('PENDING');
+    expect(res.body.enforcementAction.status).toBe('APPROVED');
     expect(res.body.enforcementAction.actionType).toBe('BLOCK');
-    expect(res.body.caseStatus).toBe('IN_REVIEW');
-    expect(decisions.all()).toHaveLength(1);
-    expect(enforcementActions.all()).toHaveLength(1);
-    expect(timelineRecorder.all()[0]?.eventType).toBe('DECISION_MADE');
-    expect(auditRecorder.all()[0]?.action).toBe('RECORD_ANALYST_DECISION');
-    expect(cases.all()[0]?.status).toBe('IN_REVIEW');
+    expect(res.body.approvalRequest.status).toBe('APPROVED');
+    expect(res.body.approvalRequest.reviewerComment).toBe('approved');
+    expect(enforcementActions.all()[0]?.status).toBe('APPROVED');
+    expect(approvalRequests.all()[0]?.status).toBe('APPROVED');
+    expect(auditRecorder.all()[0]?.action).toBe('APPROVE_ENFORCEMENT_ACTION');
   });
 
-  it('records FALSE_POSITIVE with null enforcementAction', async () => {
-    const { app, cases, enforcementActions } = buildApp();
-    await cases.save(
-      Case.create({
-        id: CASE_ID,
-        organizationId: ORG_1,
-        customerId: 'customer-1',
-        riskScore: createRiskScore(20),
-        priority: 'LOW',
-        now: NOW,
-      }),
-    );
+  it('rejects ANALYST with 403', async () => {
+    const { app, enforcementActions } = buildApp(() => ANALYST);
+    seedPendingAction(enforcementActions);
 
     const res = await request(app)
-      .post(`/api/v1/cases/${CASE_ID}/decisions`)
-      .send({
-        decision: 'FALSE_POSITIVE',
-        confidence: 30,
-        comment: 'noise',
-      })
-      .expect(201);
-
-    expect(res.body.decision.decision).toBe('FALSE_POSITIVE');
-    expect(res.body.enforcementAction).toBeNull();
-    expect(enforcementActions.all()).toHaveLength(0);
-  });
-
-  it('rejects AUDITOR with 403', async () => {
-    const { app, cases } = buildApp(() => AUDITOR);
-    await cases.save(
-      Case.create({
-        id: CASE_ID,
-        organizationId: ORG_1,
-        customerId: 'customer-1',
-        riskScore: createRiskScore(50),
-        priority: 'MEDIUM',
-        now: NOW,
-      }),
-    );
-
-    const res = await request(app)
-      .post(`/api/v1/cases/${CASE_ID}/decisions`)
-      .send({
-        decision: 'INCONCLUSIVE',
-        confidence: 10,
-        comment: 'auditor blocked',
-      })
+      .post(`/api/v1/enforcement-actions/${ACTION_ID}/approve`)
+      .send({})
       .expect(403);
 
     expect(res.body.error.code).toBe('FORBIDDEN_ROLE');
   });
 
-  it('rejects invalid payload with 400', async () => {
-    const { app, cases } = buildApp();
-    await cases.save(
-      Case.create({
-        id: CASE_ID,
-        organizationId: ORG_1,
-        customerId: 'customer-1',
-        riskScore: createRiskScore(50),
-        priority: 'MEDIUM',
-        now: NOW,
-      }),
-    );
+  it('rejects REVIEW with 400', async () => {
+    const { app, enforcementActions } = buildApp();
+    seedPendingAction(enforcementActions, 'REVIEW');
 
     const res = await request(app)
-      .post(`/api/v1/cases/${CASE_ID}/decisions`)
-      .send({
-        decision: 'NOT_A_DECISION',
-        confidence: 10,
-        comment: 'bad',
-      })
+      .post(`/api/v1/enforcement-actions/${ACTION_ID}/approve`)
+      .send({})
       .expect(400);
 
     expect(res.body.error.code).toBe('INVARIANT_VIOLATION');
+  });
+});
+
+describe('enforcementRouter POST /enforcement-actions/:id/reject', () => {
+  it('rejects PENDING action and returns REJECTED status without execute', async () => {
+    const { app, enforcementActions, approvalRequests, auditRecorder } = buildApp();
+    seedPendingAction(enforcementActions);
+
+    const res = await request(app)
+      .post(`/api/v1/enforcement-actions/${ACTION_ID}/reject`)
+      .send({ reviewerComment: 'nope' })
+      .expect(200);
+
+    expect(res.body.enforcementAction.status).toBe('REJECTED');
+    expect(res.body.approvalRequest.status).toBe('REJECTED');
+    expect(res.body.approvalRequest.reviewerComment).toBe('nope');
+    expect(enforcementActions.all()[0]?.status).toBe('REJECTED');
+    expect(approvalRequests.all()[0]?.status).toBe('REJECTED');
+    expect(auditRecorder.all()[0]?.action).toBe('REJECT_ENFORCEMENT_ACTION');
+  });
+
+  it('returns 404 when action is missing', async () => {
+    const { app } = buildApp();
+
+    const res = await request(app)
+      .post(`/api/v1/enforcement-actions/${ACTION_ID}/reject`)
+      .send({})
+      .expect(404);
+
+    expect(res.body.error.code).toBe('ENFORCEMENT_ACTION_NOT_FOUND');
   });
 });

@@ -12,4 +12,5 @@ export const caseManagementErrorStatus: StatusByCode = {
   FORBIDDEN_ROLE: 403,
   ORGANIZATION_FRAUD_CONFIG_NOT_FOUND: 404,
   CASE_NOT_FOUND: 404,
+  ENFORCEMENT_ACTION_NOT_FOUND: 404,
 };
