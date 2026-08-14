@@ -141,6 +141,14 @@ import { riskAssessmentErrorStatus } from './modules/risk-assessment/infrastruct
 import { createRiskAssessmentAuditRecorderAdapter } from './composition/riskAssessmentAuditRecorderAdapter.js';
 import { createScoreToCaseOrchestrator } from './composition/scoreToCaseOrchestrator.js';
 import { scoreToCaseProcessRouter } from './composition/scoreToCaseProcessRouter.js';
+import { createWebhookToScoreOrchestrator } from './composition/webhookToScoreOrchestrator.js';
+import { createReceiveProviderWebhookUseCase } from './modules/ingest/application/ReceiveProviderWebhook.js';
+import { ingestErrorStatus } from './modules/ingest/infrastructure/adapters/inbound/http/errorStatus.js';
+import { webhookRouter } from './modules/ingest/infrastructure/adapters/inbound/http/webhookRouter.js';
+import { selectVerifier } from './modules/ingest/infrastructure/adapters/outbound/crypto/selectVerifier.js';
+import { mapProviderEnvelope } from './modules/ingest/infrastructure/adapters/outbound/mapping/mapProviderEnvelope.js';
+import { MongoInboundWebhookSecretRepository } from './modules/ingest/infrastructure/adapters/outbound/mongo/MongoInboundWebhookSecretRepository.js';
+import { MongoProviderIngestEventRepository } from './modules/ingest/infrastructure/adapters/outbound/mongo/MongoProviderIngestEventRepository.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const MONGO_URI = process.env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/?replicaSet=rs0';
@@ -474,6 +482,26 @@ async function bootstrap(): Promise<void> {
   });
   const riskScoreProcessRouter = scoreToCaseProcessRouter({ processRiskScoreToCase });
 
+  // provider-risk-ingest PR5b: webhook mount is not JWT. Same AesGcmSecretCipher
+  // instance as identity-access (injected — ingest must not import that module).
+  const inboundWebhookSecrets = new MongoInboundWebhookSecretRepository(db);
+  const providerIngestEvents = new MongoProviderIngestEventRepository(db);
+  const webhookToScore = createWebhookToScoreOrchestrator({
+    processRiskScoreToCase,
+    events: providerIngestEvents,
+    clock,
+  });
+  const receiveProviderWebhook = createReceiveProviderWebhookUseCase({
+    secrets: inboundWebhookSecrets,
+    events: providerIngestEvents,
+    cipher: secretCipher,
+    verifiers: selectVerifier,
+    mapper: { map: mapProviderEnvelope },
+    composer: webhookToScore,
+    clock,
+  });
+  const ingestWebhookRouter = webhookRouter({ receiveProviderWebhook });
+
   const transitionOrganizationStatus = createTransitionOrganizationStatusUseCase({
     organizations,
     sessions,
@@ -743,8 +771,9 @@ async function bootstrap(): Promise<void> {
 
   const app = createApp({
     routers: [{ path: '/api/v1', router: identityAccessRouter }],
+    webhookRouters: [{ path: '/webhooks', router: ingestWebhookRouter }],
     // Merged status maps: identity-access + notifications + case-management
-    // + risk-assessment closed error codes. The overlapping keys
+    // + risk-assessment + ingest closed error codes. Overlapping keys
     // (INVARIANT_VIOLATION=400, FORBIDDEN_CROSS_TENANT=403) agree, so the
     // spread is order-independent.
     errorHandler: createErrorHandler({
@@ -752,6 +781,7 @@ async function bootstrap(): Promise<void> {
       ...notificationsErrorStatus,
       ...caseManagementErrorStatus,
       ...riskAssessmentErrorStatus,
+      ...ingestErrorStatus,
     }),
     trustProxy: TRUST_PROXY,
   });
