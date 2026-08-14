@@ -161,6 +161,37 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     expect(routingIndexes.filter((index) => index.name === 'case_routing_rules_org_status_idx')).toHaveLength(1);
   });
 
+  it('creates enforcement + outbox indexes and stays idempotent on re-run', async () => {
+    await ensureIndexes(db);
+    await ensureIndexes(db);
+
+    const decisionIndexes = await db.collection('analyst_decisions').indexes();
+    expect(
+      decisionIndexes.find((index) => index.name === 'analyst_decisions_case_created_idx')?.key,
+    ).toEqual({ case_id: 1, created_at: -1 });
+
+    const actionIndexes = await db.collection('enforcement_actions').indexes();
+    expect(
+      actionIndexes.find((index) => index.name === 'enforcement_actions_case_status_idx')?.key,
+    ).toEqual({ case_id: 1, status: 1 });
+    expect(
+      actionIndexes.find((index) => index.name === 'enforcement_actions_org_status_idx')?.key,
+    ).toEqual({ organization_id: 1, status: 1 });
+
+    const approvalIndexes = await db.collection('approval_requests').indexes();
+    expect(approvalIndexes.find((index) => index.name === 'approval_requests_action_idx')?.key).toEqual({
+      enforcement_action_id: 1,
+    });
+
+    const outboxIndexes = await db.collection('customer_outgoing_events').indexes();
+    expect(
+      outboxIndexes.find((index) => index.name === 'customer_outgoing_events_poll_idx')?.key,
+    ).toEqual({ status: 1, last_attempt_at: 1 });
+    expect(
+      outboxIndexes.find((index) => index.name === 'customer_outgoing_events_action_idx')?.key,
+    ).toEqual({ enforcement_action_id: 1 });
+  });
+
   it('creates a unique partial ACTIVE index on RiskScoringRules and drops the old non-unique org+status index', async () => {
     await ensureIndexes(db);
     await ensureIndexes(db);

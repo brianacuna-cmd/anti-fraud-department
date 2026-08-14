@@ -61,6 +61,7 @@ function buildRule(overrides: Partial<Parameters<typeof CaseRoutingRule.create>[
     name: 'rule',
     conditions: {},
     conditionsVersion: 1,
+    status: 'ACTIVE',
     now: NOW,
     ...overrides,
   });

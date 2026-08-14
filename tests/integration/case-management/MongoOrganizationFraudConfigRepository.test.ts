@@ -68,6 +68,17 @@ describe('MongoOrganizationFraudConfigRepository (integration, real replica-set 
     expect(found?.organizationId).toBe(oid('org-1'));
     expect(found?.slaHighMinutes).toBe(60);
     expect(found?.riskThresholdCritical).toBe(90);
+    expect(found?.outboundWebhookUrl).toBeNull();
+  });
+
+  it('persists and reads outboundWebhookUrl', async () => {
+    await repository.upsert(
+      buildConfig('config-1').update({ outboundWebhookUrl: 'https://hooks.example/fraud' }, NOW),
+    );
+
+    const found = await repository.findByOrganization(oid('org-1'));
+
+    expect(found?.outboundWebhookUrl).toBe('https://hooks.example/fraud');
   });
 
   it('returns null when no config matches the given organization', async () => {

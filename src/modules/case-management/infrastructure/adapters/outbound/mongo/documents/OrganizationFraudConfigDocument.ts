@@ -17,6 +17,8 @@ export interface OrganizationFraudConfigDocument {
   readonly risk_threshold_high: number;
   readonly risk_threshold_critical: number;
   readonly feature_flags: Readonly<Record<string, boolean>>;
+  /** Present on new writes; legacy docs may omit — mapper defaults to null. */
+  readonly outbound_webhook_url?: string | null;
   readonly created_at: Date;
   readonly updated_at: Date;
 }

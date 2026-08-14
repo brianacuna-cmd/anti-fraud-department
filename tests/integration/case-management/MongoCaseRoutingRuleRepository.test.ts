@@ -78,4 +78,25 @@ describe('MongoCaseRoutingRuleRepository (integration, real replica-set Mongo)',
 
     expect(rules).toEqual([]);
   });
+
+  it('save/findById/listByOrganization round-trip ACTIVE and INACTIVE drafts', async () => {
+    const active = buildRule('live', '2026-01-01T00:00:00.000Z', { status: 'ACTIVE' });
+    const draft = buildRule('draft', '2026-01-02T00:00:00.000Z', { status: 'INACTIVE' });
+    const otherOrg = buildRule('other', '2026-01-01T00:00:00.000Z', {
+      organizationId: oid('org-2'),
+      status: 'INACTIVE',
+    });
+
+    await repository.save(active);
+    await repository.save(draft);
+    await repository.save(otherOrg);
+
+    const found = await repository.findById(draft.id);
+    expect(found).not.toBeNull();
+    expect(found?.name).toBe('draft');
+    expect(found?.status).toBe('INACTIVE');
+
+    const listed = await repository.listByOrganization(oid('org-1'));
+    expect(listed.map((r) => r.name)).toEqual(['live', 'draft']);
+  });
 });

@@ -15,6 +15,8 @@ export interface OrganizationFraudConfigProps {
   readonly riskThresholdHigh: number;
   readonly riskThresholdCritical: number;
   readonly featureFlags: Readonly<Record<string, boolean>>;
+  /** Tenant webhook URL for enforcement outbox delivery; null/empty = unset. */
+  readonly outboundWebhookUrl: string | null;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
 }
@@ -31,6 +33,7 @@ export interface CreateOrganizationFraudConfigInput {
   readonly riskThresholdHigh: number;
   readonly riskThresholdCritical: number;
   readonly featureFlags?: Readonly<Record<string, boolean>>;
+  readonly outboundWebhookUrl?: string | null;
   readonly now: Instant;
 }
 
@@ -44,6 +47,7 @@ export interface UpdateOrganizationFraudConfigInput {
   readonly riskThresholdHigh?: number;
   readonly riskThresholdCritical?: number;
   readonly featureFlags?: Readonly<Record<string, boolean>>;
+  readonly outboundWebhookUrl?: string | null;
 }
 
 const SLA_FIELDS = [
@@ -89,6 +93,7 @@ export class OrganizationFraudConfig {
       riskThresholdHigh: input.riskThresholdHigh,
       riskThresholdCritical: input.riskThresholdCritical,
       featureFlags: input.featureFlags ?? {},
+      outboundWebhookUrl: input.outboundWebhookUrl ?? null,
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -141,6 +146,10 @@ export class OrganizationFraudConfig {
 
   get featureFlags(): Readonly<Record<string, boolean>> {
     return this.props.featureFlags;
+  }
+
+  get outboundWebhookUrl(): string | null {
+    return this.props.outboundWebhookUrl;
   }
 
   get createdAt(): Instant {
@@ -197,6 +206,10 @@ export class OrganizationFraudConfig {
     return new OrganizationFraudConfig({
       ...this.props,
       ...patch,
+      outboundWebhookUrl:
+        patch.outboundWebhookUrl === undefined
+          ? this.props.outboundWebhookUrl
+          : patch.outboundWebhookUrl,
       updatedAt: now,
     });
   }

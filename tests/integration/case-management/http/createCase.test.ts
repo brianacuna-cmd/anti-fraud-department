@@ -239,6 +239,7 @@ describe('caseRouter (e2e, in-memory repository)', () => {
         name: 'high-risk -> auto-user',
         conditions: highRiskToUserJdm(),
         conditionsVersion: 1,
+        status: 'ACTIVE',
         now: fromDate(new Date('2026-01-01T00:00:00.000Z')),
       }),
     );
@@ -262,6 +263,7 @@ describe('caseRouter (e2e, in-memory repository)', () => {
         name: 'high-risk -> auto-user',
         conditions: highRiskToUserJdm(),
         conditionsVersion: 1,
+        status: 'ACTIVE',
         now: fromDate(new Date('2026-01-01T00:00:00.000Z')),
       }),
     );
@@ -294,6 +296,7 @@ describe('caseRouter (e2e, in-memory repository)', () => {
       name: 'high-risk -> auto-user',
       conditions: highRiskToUserJdm(),
       conditionsVersion: 4,
+      status: 'ACTIVE',
       now: fromDate(new Date('2026-01-01T00:00:00.000Z')),
     });
     routingRules.add(rule);
@@ -319,6 +322,7 @@ describe('caseRouter (e2e, in-memory repository)', () => {
         name: 'broken-rule',
         conditions: { nodes: 'not-a-jdm-graph' },
         conditionsVersion: 1,
+        status: 'ACTIVE',
         now: fromDate(new Date('2026-01-01T00:00:00.000Z')),
       }),
     );
@@ -341,6 +345,7 @@ describe('caseRouter (e2e, in-memory repository)', () => {
         name: 'high-risk -> auto-user',
         conditions: highRiskToUserJdm(),
         conditionsVersion: 1,
+        status: 'ACTIVE',
         now: fromDate(new Date('2026-01-01T00:00:00.000Z')),
       }),
     );

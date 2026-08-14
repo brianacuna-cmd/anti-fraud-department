@@ -103,7 +103,29 @@ import { createIdentityAssigneeDirectory } from './composition/identityAssigneeD
 import { generateCaseSlaTrackingId } from './modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
 import { createGetOrganizationFraudConfigUseCase } from './modules/case-management/application/GetOrganizationFraudConfig.js';
 import { createUpsertOrganizationFraudConfigUseCase } from './modules/case-management/application/UpsertOrganizationFraudConfig.js';
+import { createRecordAnalystDecisionUseCase } from './modules/case-management/application/RecordAnalystDecision.js';
+import { createApproveEnforcementActionUseCase } from './modules/case-management/application/ApproveEnforcementAction.js';
+import { createRejectEnforcementActionUseCase } from './modules/case-management/application/RejectEnforcementAction.js';
+import { createExecuteEnforcementActionUseCase } from './modules/case-management/application/ExecuteEnforcementAction.js';
+import { createCreateRoutingRuleUseCase } from './modules/case-management/application/CreateRoutingRule.js';
+import { createListRoutingRulesUseCase } from './modules/case-management/application/ListRoutingRules.js';
+import { createGetRoutingRuleUseCase } from './modules/case-management/application/GetRoutingRule.js';
+import { createActivateRoutingRuleUseCase } from './modules/case-management/application/ActivateRoutingRule.js';
+import { createDeactivateRoutingRuleUseCase } from './modules/case-management/application/DeactivateRoutingRule.js';
 import { organizationFraudConfigRouter } from './modules/case-management/infrastructure/adapters/inbound/http/organizationFraudConfigRouter.js';
+import { enforcementRouter } from './modules/case-management/infrastructure/adapters/inbound/http/enforcementRouter.js';
+import { routingRuleRouter } from './modules/case-management/infrastructure/adapters/inbound/http/routingRuleRouter.js';
+import { MongoAnalystDecisionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoAnalystDecisionRepository.js';
+import { MongoEnforcementActionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoEnforcementActionRepository.js';
+import { MongoApprovalRequestRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoApprovalRequestRepository.js';
+import { MongoCustomerOutgoingEventRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCustomerOutgoingEventRepository.js';
+import { HttpOutgoingWebhookClient } from './modules/case-management/infrastructure/adapters/outbound/http/HttpOutgoingWebhookClient.js';
+import { createCustomerOutgoingEventDispatcher } from './modules/case-management/infrastructure/adapters/outbound/CustomerOutgoingEventDispatcher.js';
+import { generateAnalystDecisionId } from './modules/case-management/domain/model/value-objects/AnalystDecisionId.js';
+import { generateEnforcementActionId } from './modules/case-management/domain/model/value-objects/EnforcementActionId.js';
+import { generateApprovalRequestId } from './modules/case-management/domain/model/value-objects/ApprovalRequestId.js';
+import { generateCustomerOutgoingEventId } from './modules/case-management/domain/model/value-objects/CustomerOutgoingEventId.js';
+import { generateCaseRoutingRuleId } from './modules/case-management/domain/model/value-objects/CaseRoutingRuleId.js';
 import { MongoRiskScoringRuleRepository } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoRiskScoringRuleRepository.js';
 import { MongoUnitOfWork as RiskAssessmentMongoUnitOfWork } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { ZenRiskScoringEngine } from './modules/risk-assessment/infrastructure/adapters/outbound/zen/ZenRiskScoringEngine.js';
@@ -175,6 +197,10 @@ const AUTH_PASSWORD_RESET_TTL_SECONDS = Number(process.env.AUTH_PASSWORD_RESET_T
 const PASSWORD_RESET_EMAIL_FROM = process.env.PASSWORD_RESET_EMAIL_FROM ?? 'fraud@backendstudio.tech';
 const PASSWORD_RESET_LINK_BASE_URL = process.env.PASSWORD_RESET_LINK_BASE_URL ?? 'http://localhost:3000/reset-password';
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
+/** Poll interval for customer_outgoing_events webhook dispatcher (PR5). */
+const OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS = Number(
+  process.env.OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS ?? 5000,
+);
 
 async function bootstrap(): Promise<void> {
   // Fail-closed (design D4, D6): AUTH_MODE=trusted-header trusts client
@@ -334,6 +360,76 @@ async function bootstrap(): Promise<void> {
     getOrganizationFraudConfig,
     upsertOrganizationFraudConfig: createUpsertOrganizationFraudConfigUseCase({
       repository: organizationFraudConfig,
+      clock,
+    }),
+  });
+  const analystDecisions = new MongoAnalystDecisionRepository(db);
+  const enforcementActions = new MongoEnforcementActionRepository(db);
+  const approvalRequests = new MongoApprovalRequestRepository(db);
+  const customerOutgoingEvents = new MongoCustomerOutgoingEventRepository(db);
+  const outgoingWebhookClient = new HttpOutgoingWebhookClient();
+  const customerOutgoingEventDispatcher = createCustomerOutgoingEventDispatcher({
+    outgoingEvents: customerOutgoingEvents,
+    webhookClient: outgoingWebhookClient,
+    clock,
+  });
+  const enforcementHttpRouter = enforcementRouter({
+    recordAnalystDecision: createRecordAnalystDecisionUseCase({
+      cases,
+      decisions: analystDecisions,
+      enforcementActions,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateAnalystDecisionId,
+      generateEnforcementActionId,
+      generateTimelineEventId,
+    }),
+    approveEnforcementAction: createApproveEnforcementActionUseCase({
+      enforcementActions,
+      approvalRequests,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateApprovalRequestId,
+    }),
+    rejectEnforcementAction: createRejectEnforcementActionUseCase({
+      enforcementActions,
+      approvalRequests,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateApprovalRequestId,
+    }),
+    executeEnforcementAction: createExecuteEnforcementActionUseCase({
+      enforcementActions,
+      outgoingEvents: customerOutgoingEvents,
+      cases,
+      fraudConfig: organizationFraudConfig,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateCustomerOutgoingEventId,
+    }),
+  });
+  const routingRuleHttpRouter = routingRuleRouter({
+    createRoutingRule: createCreateRoutingRuleUseCase({
+      routingRules: caseRoutingRules,
+      auditRecorder: caseManagementAuditRecorder,
+      clock,
+      generateCaseRoutingRuleId,
+    }),
+    listRoutingRules: createListRoutingRulesUseCase({ routingRules: caseRoutingRules }),
+    getRoutingRule: createGetRoutingRuleUseCase({ routingRules: caseRoutingRules }),
+    activateRoutingRule: createActivateRoutingRuleUseCase({
+      routingRules: caseRoutingRules,
+      auditRecorder: caseManagementAuditRecorder,
+      clock,
+    }),
+    deactivateRoutingRule: createDeactivateRoutingRuleUseCase({
+      routingRules: caseRoutingRules,
+      auditRecorder: caseManagementAuditRecorder,
       clock,
     }),
   });
@@ -639,6 +735,8 @@ async function bootstrap(): Promise<void> {
   // `authContextMiddleware` above to resolve the caller's AuthContext.
   identityAccessRouter.use(caseManagementCasesRouter);
   identityAccessRouter.use(organizationFraudConfigHttpRouter);
+  identityAccessRouter.use(enforcementHttpRouter);
+  identityAccessRouter.use(routingRuleHttpRouter);
   identityAccessRouter.use(riskScoresRouter);
   identityAccessRouter.use(riskScoreProcessRouter);
   identityAccessRouter.use(riskScoringRulesRouter);
@@ -675,6 +773,11 @@ async function bootstrap(): Promise<void> {
     PLATFORM_ADMIN_AUTH === 'trusted-header'
       ? 'PLATFORM_ADMIN auth: trusted-header (non-prod interim path — forbidden in production)'
       : 'PLATFORM_ADMIN auth: disabled until identity-access-super-admin-auth ships a real admin login',
+  );
+
+  customerOutgoingEventDispatcher.start(OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS);
+  console.log(
+    `Customer outgoing webhook dispatcher started (interval=${OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS}ms)`,
   );
 
   app.listen(PORT, () => {

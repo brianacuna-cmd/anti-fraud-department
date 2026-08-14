@@ -32,6 +32,7 @@ export interface CreateCaseRoutingRuleInput {
 /**
  * Tenant-scoped routing rule (design: "CaseRoutingRules"). Each document holds
  * one JDM graph evaluated by ZEN Engine during T1 auto-routing.
+ * New rules default to INACTIVE (draft); activate via a later use case.
  */
 export class CaseRoutingRule {
   private constructor(private readonly props: CaseRoutingRuleProps) {}
@@ -48,7 +49,7 @@ export class CaseRoutingRule {
       conditionsVersion: input.conditionsVersion,
       targetRoleId: input.targetRoleId ?? null,
       targetUserId: input.targetUserId ?? null,
-      status: input.status ?? 'ACTIVE',
+      status: input.status ?? 'INACTIVE',
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -57,6 +58,16 @@ export class CaseRoutingRule {
   /** Reconstructs from persisted props — no business-rule validation. */
   static rehydrate(props: CaseRoutingRuleProps): CaseRoutingRule {
     return new CaseRoutingRule(props);
+  }
+
+  /** Marks this draft as ACTIVE (immutable). Caller persists via repository. */
+  activate(now: Instant): CaseRoutingRule {
+    return new CaseRoutingRule({ ...this.props, status: 'ACTIVE', updatedAt: now });
+  }
+
+  /** Marks this rule as INACTIVE (immutable). Caller persists via repository. */
+  deactivate(now: Instant): CaseRoutingRule {
+    return new CaseRoutingRule({ ...this.props, status: 'INACTIVE', updatedAt: now });
   }
 
   get id(): CaseRoutingRuleId {

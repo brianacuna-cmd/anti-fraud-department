@@ -78,7 +78,22 @@ describe('organizationFraudConfigRouter', () => {
       slaMediumMinutes: 120,
       slaHighMinutes: 60,
       slaCriticalMinutes: 30,
+      outboundWebhookUrl: null,
     });
+  });
+
+  it('PUT persists optional outboundWebhookUrl and GET returns it', async () => {
+    const { app } = buildApp();
+
+    const put = await request(app)
+      .put('/api/v1/organization-fraud-config')
+      .send({ ...FULL_BODY, outboundWebhookUrl: 'https://hooks.example/fraud' });
+    expect(put.status).toBe(200);
+    expect(put.body.outboundWebhookUrl).toBe('https://hooks.example/fraud');
+
+    const get = await request(app).get('/api/v1/organization-fraud-config');
+    expect(get.status).toBe(200);
+    expect(get.body.outboundWebhookUrl).toBe('https://hooks.example/fraud');
   });
 
   it('PUT that changes only SLA minutes preserves other fields on GET', async () => {

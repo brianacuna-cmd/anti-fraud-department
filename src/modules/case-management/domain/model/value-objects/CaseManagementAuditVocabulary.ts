@@ -13,6 +13,13 @@ export type CaseManagementAuditAction =
   | 'RESOLVE_CASE'
   | 'REASSIGN_CASE'
   | 'REOPEN_CASE'
+  | 'RECORD_ANALYST_DECISION'
+  | 'APPROVE_ENFORCEMENT_ACTION'
+  | 'REJECT_ENFORCEMENT_ACTION'
+  | 'EXECUTE_ENFORCEMENT_ACTION'
+  | 'CREATE_ROUTING_RULE'
+  | 'ACTIVATE_ROUTING_RULE'
+  | 'DEACTIVATE_ROUTING_RULE'
   /**
    * CASE-002 (T1): a rule whose JDM could not be evaluated was SKIPPED rather
    * than aborting case creation. Not a user action — it is the only durable
