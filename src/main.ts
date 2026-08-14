@@ -113,6 +113,8 @@ import { MongoAnalystDecisionRepository } from './modules/case-management/infras
 import { MongoEnforcementActionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoEnforcementActionRepository.js';
 import { MongoApprovalRequestRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoApprovalRequestRepository.js';
 import { MongoCustomerOutgoingEventRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCustomerOutgoingEventRepository.js';
+import { HttpOutgoingWebhookClient } from './modules/case-management/infrastructure/adapters/outbound/http/HttpOutgoingWebhookClient.js';
+import { createCustomerOutgoingEventDispatcher } from './modules/case-management/infrastructure/adapters/outbound/CustomerOutgoingEventDispatcher.js';
 import { generateAnalystDecisionId } from './modules/case-management/domain/model/value-objects/AnalystDecisionId.js';
 import { generateEnforcementActionId } from './modules/case-management/domain/model/value-objects/EnforcementActionId.js';
 import { generateApprovalRequestId } from './modules/case-management/domain/model/value-objects/ApprovalRequestId.js';
@@ -188,6 +190,10 @@ const AUTH_PASSWORD_RESET_TTL_SECONDS = Number(process.env.AUTH_PASSWORD_RESET_T
 const PASSWORD_RESET_EMAIL_FROM = process.env.PASSWORD_RESET_EMAIL_FROM ?? 'fraud@backendstudio.tech';
 const PASSWORD_RESET_LINK_BASE_URL = process.env.PASSWORD_RESET_LINK_BASE_URL ?? 'http://localhost:3000/reset-password';
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
+/** Poll interval for customer_outgoing_events webhook dispatcher (PR5). */
+const OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS = Number(
+  process.env.OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS ?? 5000,
+);
 
 async function bootstrap(): Promise<void> {
   // Fail-closed (design D4, D6): AUTH_MODE=trusted-header trusts client
@@ -354,6 +360,12 @@ async function bootstrap(): Promise<void> {
   const enforcementActions = new MongoEnforcementActionRepository(db);
   const approvalRequests = new MongoApprovalRequestRepository(db);
   const customerOutgoingEvents = new MongoCustomerOutgoingEventRepository(db);
+  const outgoingWebhookClient = new HttpOutgoingWebhookClient();
+  const customerOutgoingEventDispatcher = createCustomerOutgoingEventDispatcher({
+    outgoingEvents: customerOutgoingEvents,
+    webhookClient: outgoingWebhookClient,
+    clock,
+  });
   const enforcementHttpRouter = enforcementRouter({
     recordAnalystDecision: createRecordAnalystDecisionUseCase({
       cases,
@@ -733,6 +745,11 @@ async function bootstrap(): Promise<void> {
     PLATFORM_ADMIN_AUTH === 'trusted-header'
       ? 'PLATFORM_ADMIN auth: trusted-header (non-prod interim path — forbidden in production)'
       : 'PLATFORM_ADMIN auth: disabled until identity-access-super-admin-auth ships a real admin login',
+  );
+
+  customerOutgoingEventDispatcher.start(OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS);
+  console.log(
+    `Customer outgoing webhook dispatcher started (interval=${OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS}ms)`,
   );
 
   app.listen(PORT, () => {
