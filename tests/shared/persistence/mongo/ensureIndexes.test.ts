@@ -311,4 +311,126 @@ describe('ensureIndexes (integration, real Mongo)', () => {
 
     await expect(ensureIndexes(db)).rejects.toMatchObject({ code: 11000 });
   });
+
+  async function restoreScoringRulesCollection(): Promise<void> {
+    await db.collection('risk_scoring_rules').deleteMany({});
+    try {
+      await db.collection('risk_scoring_rules').dropIndex('risk_scoring_rules_org_active_unique');
+    } catch {
+      // may already be absent after the fail-closed duplicate-index test
+    }
+  }
+
+  it('creates unique inbound webhook secrets index on (organization_id, provider)', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+    await ensureIndexes(db);
+
+    const indexes = await db.collection('organization_inbound_webhook_secrets').indexes();
+    const uniqueIndex = indexes.find((index) => index.name === 'inbound_webhook_secret_org_provider_unique');
+
+    expect(uniqueIndex?.key).toEqual({ organization_id: 1, provider: 1 });
+    expect(uniqueIndex?.unique).toBe(true);
+    expect(indexes.filter((index) => index.name === 'inbound_webhook_secret_org_provider_unique')).toHaveLength(1);
+  });
+
+  it('rejects a second inbound webhook secret for the same organization and provider with E11000', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+
+    const organizationId = new ObjectId();
+    const now = new Date('2026-01-01T00:00:00.000Z');
+    await db.collection('organization_inbound_webhook_secrets').insertOne({
+      _id: new ObjectId(),
+      organization_id: organizationId,
+      provider: 'stripe',
+      ciphertext: 'cipher-a',
+      created_at: now,
+      updated_at: now,
+    });
+
+    await expect(
+      db.collection('organization_inbound_webhook_secrets').insertOne({
+        _id: new ObjectId(),
+        organization_id: organizationId,
+        provider: 'stripe',
+        ciphertext: 'cipher-b',
+        created_at: now,
+        updated_at: now,
+      }),
+    ).rejects.toMatchObject({ code: 11000 });
+  });
+
+  it('allows inbound webhook secrets for the same organization with different providers', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+
+    const organizationId = new ObjectId();
+    const now = new Date('2026-01-01T00:00:00.000Z');
+    await db.collection('organization_inbound_webhook_secrets').insertOne({
+      _id: new ObjectId(),
+      organization_id: organizationId,
+      provider: 'stripe',
+      ciphertext: 'cipher-stripe',
+      created_at: now,
+      updated_at: now,
+    });
+    await db.collection('organization_inbound_webhook_secrets').insertOne({
+      _id: new ObjectId(),
+      organization_id: organizationId,
+      provider: 'bridge',
+      ciphertext: 'cipher-bridge',
+      created_at: now,
+      updated_at: now,
+    });
+
+    const count = await db.collection('organization_inbound_webhook_secrets').countDocuments({
+      organization_id: organizationId,
+    });
+    expect(count).toBe(2);
+  });
+
+  it('creates unique provider ingest event index on (organization_id, provider, provider_event_id)', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+    await ensureIndexes(db);
+
+    const indexes = await db.collection('provider_ingest_events').indexes();
+    const uniqueIndex = indexes.find((index) => index.name === 'provider_ingest_event_org_provider_event_unique');
+
+    expect(uniqueIndex?.key).toEqual({ organization_id: 1, provider: 1, provider_event_id: 1 });
+    expect(uniqueIndex?.unique).toBe(true);
+    expect(indexes.filter((index) => index.name === 'provider_ingest_event_org_provider_event_unique')).toHaveLength(
+      1,
+    );
+  });
+
+  it('rejects a duplicate provider ingest event for the same org, provider, and provider_event_id with E11000', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+
+    const organizationId = new ObjectId();
+    const now = new Date('2026-01-01T00:00:00.000Z');
+    await db.collection('provider_ingest_events').insertOne({
+      _id: new ObjectId(),
+      organization_id: organizationId,
+      provider: 'coinflow',
+      provider_event_id: 'Card Payment Authorized:pay_1:2026-01-01',
+      status: 'RECEIVED',
+      created_at: now,
+      updated_at: now,
+    });
+
+    await expect(
+      db.collection('provider_ingest_events').insertOne({
+        _id: new ObjectId(),
+        organization_id: organizationId,
+        provider: 'coinflow',
+        provider_event_id: 'Card Payment Authorized:pay_1:2026-01-01',
+        status: 'RECEIVED',
+        created_at: now,
+        updated_at: now,
+      }),
+    ).rejects.toMatchObject({ code: 11000 });
+  });
 });
