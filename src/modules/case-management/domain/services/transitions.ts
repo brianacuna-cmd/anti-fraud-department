@@ -1,5 +1,8 @@
 import type { CaseStatus } from '../model/value-objects/CaseStatus.js';
 import type { SlaStatus } from '../model/value-objects/SlaStatus.js';
+import type { EnforcementActionStatus } from '../model/value-objects/EnforcementActionStatus.js';
+import type { ApprovalRequestStatus } from '../model/value-objects/ApprovalRequestStatus.js';
+import type { CustomerOutgoingEventStatus } from '../model/value-objects/CustomerOutgoingEventStatus.js';
 
 /**
  * Lookup table shape shared by every entity's transition table (mirrors
@@ -31,4 +34,29 @@ export const slaStatusTransitions: TransitionTable<SlaStatus> = {
   ON_TRACK: ['WARNING'],
   WARNING: ['BREACHED'],
   BREACHED: [],
+};
+
+/**
+ * EnforcementAction status edges (spec: approval gate + execute + revert).
+ * REVIEW may execute from PENDING; non-REVIEW must pass through APPROVED first.
+ * Those rules are enforced by `EnforcementAction.execute`, not this table alone.
+ */
+export const enforcementActionStatusTransitions: TransitionTable<EnforcementActionStatus> = {
+  PENDING: ['APPROVED', 'REJECTED', 'EXECUTED'],
+  APPROVED: ['EXECUTED'],
+  EXECUTED: ['REVERTED'],
+  REJECTED: [],
+  REVERTED: [],
+};
+
+export const approvalRequestStatusTransitions: TransitionTable<ApprovalRequestStatus> = {
+  PENDING: ['APPROVED', 'REJECTED'],
+  APPROVED: [],
+  REJECTED: [],
+};
+
+export const customerOutgoingEventStatusTransitions: TransitionTable<CustomerOutgoingEventStatus> = {
+  PENDING: ['SENT', 'FAILED'],
+  SENT: [],
+  FAILED: [],
 };
