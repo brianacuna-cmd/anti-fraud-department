@@ -88,6 +88,30 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .collection('case_routing_rules')
     .createIndex({ organization_id: 1, status: 1 }, { name: 'case_routing_rules_org_status_idx' });
 
+  await db
+    .collection('analyst_decisions')
+    .createIndex({ case_id: 1, created_at: -1 }, { name: 'analyst_decisions_case_created_idx' });
+
+  await db
+    .collection('enforcement_actions')
+    .createIndex({ case_id: 1, status: 1 }, { name: 'enforcement_actions_case_status_idx' });
+
+  await db
+    .collection('enforcement_actions')
+    .createIndex({ organization_id: 1, status: 1 }, { name: 'enforcement_actions_org_status_idx' });
+
+  await db
+    .collection('approval_requests')
+    .createIndex({ enforcement_action_id: 1 }, { name: 'approval_requests_action_idx' });
+
+  await db
+    .collection('customer_outgoing_events')
+    .createIndex({ status: 1, last_attempt_at: 1 }, { name: 'customer_outgoing_events_poll_idx' });
+
+  await db
+    .collection('customer_outgoing_events')
+    .createIndex({ enforcement_action_id: 1 }, { name: 'customer_outgoing_events_action_idx' });
+
   // Unique ACTIVE per organization. Create before dropping the legacy
   // non-unique org+status index so duplicates fail closed (E11000) rather
   // than leaving the collection without a usable constraint.
