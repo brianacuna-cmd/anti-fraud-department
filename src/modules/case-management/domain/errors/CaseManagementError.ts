@@ -60,3 +60,11 @@ export function organizationFraudConfigNotFound(organizationId: string): CaseMan
 export function caseNotFound(caseId: string): CaseManagementError {
   return new CaseManagementError('CASE_NOT_FOUND', `case "${caseId}" was not found`, { caseId });
 }
+
+export function enforcementActionNotFound(enforcementActionId: string): CaseManagementError {
+  return new CaseManagementError(
+    'ENFORCEMENT_ACTION_NOT_FOUND',
+    `enforcement action "${enforcementActionId}" was not found`,
+    { enforcementActionId },
+  );
+}
