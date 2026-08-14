@@ -28,15 +28,22 @@ import { generateApprovalRequestId } from '../../../../src/modules/case-manageme
 import { generateCustomerOutgoingEventId } from '../../../../src/modules/case-management/domain/model/value-objects/CustomerOutgoingEventId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { EnforcementAction } from '../../../../src/modules/case-management/domain/model/aggregates/EnforcementAction.js';
+import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
+import { OrganizationFraudConfig } from '../../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
 import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { createAnalystDecisionId } from '../../../../src/modules/case-management/domain/model/value-objects/AnalystDecisionId.js';
 import { createEnforcementActionId } from '../../../../src/modules/case-management/domain/model/value-objects/EnforcementActionId.js';
 import { createEnforcementActionType } from '../../../../src/modules/case-management/domain/model/value-objects/EnforcementActionType.js';
+import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
+import { createCasePriority } from '../../../../src/modules/case-management/domain/model/value-objects/CasePriority.js';
+import { createOrganizationFraudConfigId } from '../../../../src/modules/case-management/domain/model/value-objects/OrganizationFraudConfigId.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ORG_1 = oid('org-1');
-const ACTION_ID = createEnforcementActionId(oid('action-http-approve-1'));
-const CASE_ID = createCaseId(oid('case-http-approve-1'));
+const ACTION_ID = createEnforcementActionId(oid('action-http-execute-1'));
+const CASE_ID = createCaseId(oid('case-http-execute-1'));
+const CUSTOMER_ID = 'customer-1';
+const WEBHOOK_URL = 'https://hooks.example/fraud';
 
 const SUPERVISOR = createAuthContext({
   userId: oid('supervisor-1'),
@@ -51,26 +58,48 @@ const ANALYST = createAuthContext({
   roleId: 'ANALYST',
 });
 
-function seedPendingAction(
+function seedCase(cases: InMemoryCaseRepository): Case {
+  const kase = Case.create({
+    id: CASE_ID,
+    organizationId: ORG_1,
+    customerId: CUSTOMER_ID,
+    riskScore: createRiskScore(80),
+    priority: createCasePriority('HIGH'),
+    now: NOW,
+  });
+  void cases.save(kase);
+  return kase;
+}
+
+function seedApprovedAction(
   enforcementActions: InMemoryEnforcementActionRepository,
   actionType: 'BLOCK' | 'REVIEW' = 'BLOCK',
 ): EnforcementAction {
-  const action = EnforcementAction.create({
+  let action = EnforcementAction.create({
     id: ACTION_ID,
     caseId: CASE_ID,
     organizationId: ORG_1,
-    analystDecisionId: createAnalystDecisionId(oid('decision-http-1')),
+    analystDecisionId: createAnalystDecisionId(oid('decision-http-execute-1')),
     actionType: createEnforcementActionType(actionType),
     targetType: 'CUSTOMER',
-    targetId: 'customer-1',
+    targetId: CUSTOMER_ID,
     createdBy: oid('analyst-1'),
     now: NOW,
   });
+  if (actionType !== 'REVIEW') {
+    action = action.approve(NOW);
+  }
   void enforcementActions.save(action);
   return action;
 }
 
-function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
+function buildApp(
+  options: {
+    actorPerRequest?: () => AuthContext;
+    webhookUrl?: string | null;
+    skipFraudConfig?: boolean;
+  } = {},
+) {
   const cases = new InMemoryCaseRepository();
   const decisions = new InMemoryAnalystDecisionRepository();
   const enforcementActions = new InMemoryEnforcementActionRepository();
@@ -81,6 +110,27 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
   const clock = new FixedClock(NOW);
   const unitOfWork = new PassthroughUnitOfWork();
+
+  seedCase(cases);
+  if (options.skipFraudConfig !== true) {
+    fraudConfig.seed(
+      OrganizationFraudConfig.create({
+        id: createOrganizationFraudConfigId(oid('config-http-execute-1')),
+        organizationId: ORG_1,
+        slaLowMinutes: 240,
+        slaMediumMinutes: 120,
+        slaHighMinutes: 60,
+        slaCriticalMinutes: 30,
+        riskThresholdLow: 25,
+        riskThresholdMedium: 50,
+        riskThresholdHigh: 75,
+        riskThresholdCritical: 90,
+        featureFlags: {},
+        outboundWebhookUrl: options.webhookUrl === undefined ? WEBHOOK_URL : options.webhookUrl,
+        now: NOW,
+      }),
+    );
+  }
 
   const router = enforcementRouter({
     recordAnalystDecision: createRecordAnalystDecisionUseCase({
@@ -124,7 +174,7 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
   });
 
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {
-    attachAuthContext(req, actorPerRequest());
+    attachAuthContext(req, (options.actorPerRequest ?? (() => SUPERVISOR))());
     next();
   }
 
@@ -137,76 +187,96 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
     errorHandler: createErrorHandler(caseManagementErrorStatus),
   });
 
-  return { app, enforcementActions, approvalRequests, auditRecorder };
+  return { app, enforcementActions, outgoingEvents, cases, auditRecorder };
 }
 
-describe('enforcementRouter POST /enforcement-actions/:id/approve', () => {
-  it('approves PENDING BLOCK and returns APPROVED action + approval request', async () => {
-    const { app, enforcementActions, approvalRequests, auditRecorder } = buildApp();
-    seedPendingAction(enforcementActions);
+describe('enforcementRouter POST /enforcement-actions/:id/execute', () => {
+  it('executes APPROVED BLOCK and returns EXECUTED action + PENDING outbox', async () => {
+    const { app, enforcementActions, outgoingEvents, cases, auditRecorder } = buildApp();
+    seedApprovedAction(enforcementActions);
+    const statusBefore = cases.all()[0]!.status;
 
     const res = await request(app)
-      .post(`/api/v1/enforcement-actions/${ACTION_ID}/approve`)
-      .send({ reviewerComment: 'approved' })
+      .post(`/api/v1/enforcement-actions/${ACTION_ID}/execute`)
+      .send({})
       .expect(200);
 
-    expect(res.body.enforcementAction.status).toBe('APPROVED');
+    expect(res.body.enforcementAction.status).toBe('EXECUTED');
     expect(res.body.enforcementAction.actionType).toBe('BLOCK');
-    expect(res.body.approvalRequest.status).toBe('APPROVED');
-    expect(res.body.approvalRequest.reviewerComment).toBe('approved');
+    expect(res.body.outgoingEvent.status).toBe('PENDING');
+    expect(res.body.outgoingEvent.payload).toEqual({
+      enforcement_action_id: ACTION_ID,
+      case_id: CASE_ID,
+      action_type: 'BLOCK',
+      target_type: 'CUSTOMER',
+      target_id: CUSTOMER_ID,
+      organization_id: ORG_1,
+    });
+    expect(enforcementActions.all()[0]?.status).toBe('EXECUTED');
+    expect(outgoingEvents.all()).toHaveLength(1);
+    expect(cases.all()[0]?.status).toBe(statusBefore);
+    expect(auditRecorder.all()[0]?.action).toBe('EXECUTE_ENFORCEMENT_ACTION');
+  });
+
+  it('auto-executes PENDING REVIEW without approval', async () => {
+    const { app, enforcementActions } = buildApp();
+    seedApprovedAction(enforcementActions, 'REVIEW');
+
+    const res = await request(app)
+      .post(`/api/v1/enforcement-actions/${ACTION_ID}/execute`)
+      .send({})
+      .expect(200);
+
+    expect(res.body.enforcementAction.status).toBe('EXECUTED');
+    expect(res.body.enforcementAction.actionType).toBe('REVIEW');
+    expect(res.body.outgoingEvent.status).toBe('PENDING');
+  });
+
+  it('returns 400 fail-closed for BLOCK without webhook URL', async () => {
+    const { app, enforcementActions, outgoingEvents } = buildApp({ webhookUrl: null });
+    seedApprovedAction(enforcementActions);
+
+    const res = await request(app)
+      .post(`/api/v1/enforcement-actions/${ACTION_ID}/execute`)
+      .send({})
+      .expect(400);
+
+    expect(res.body.error.code).toBe('INVARIANT_VIOLATION');
     expect(enforcementActions.all()[0]?.status).toBe('APPROVED');
-    expect(approvalRequests.all()[0]?.status).toBe('APPROVED');
-    expect(auditRecorder.all()[0]?.action).toBe('APPROVE_ENFORCEMENT_ACTION');
+    expect(outgoingEvents.all()).toHaveLength(0);
+  });
+
+  it('executes REVIEW without outbox when webhook URL is missing', async () => {
+    const { app, enforcementActions, outgoingEvents } = buildApp({ webhookUrl: null });
+    seedApprovedAction(enforcementActions, 'REVIEW');
+
+    const res = await request(app)
+      .post(`/api/v1/enforcement-actions/${ACTION_ID}/execute`)
+      .send({})
+      .expect(200);
+
+    expect(res.body.enforcementAction.status).toBe('EXECUTED');
+    expect(res.body.outgoingEvent).toBeNull();
+    expect(outgoingEvents.all()).toHaveLength(0);
   });
 
   it('rejects ANALYST with 403', async () => {
-    const { app, enforcementActions } = buildApp(() => ANALYST);
-    seedPendingAction(enforcementActions);
+    const { app, enforcementActions } = buildApp({ actorPerRequest: () => ANALYST });
+    seedApprovedAction(enforcementActions);
 
     const res = await request(app)
-      .post(`/api/v1/enforcement-actions/${ACTION_ID}/approve`)
+      .post(`/api/v1/enforcement-actions/${ACTION_ID}/execute`)
       .send({})
       .expect(403);
 
     expect(res.body.error.code).toBe('FORBIDDEN_ROLE');
   });
 
-  it('rejects REVIEW with 400', async () => {
-    const { app, enforcementActions } = buildApp();
-    seedPendingAction(enforcementActions, 'REVIEW');
-
-    const res = await request(app)
-      .post(`/api/v1/enforcement-actions/${ACTION_ID}/approve`)
-      .send({})
-      .expect(400);
-
-    expect(res.body.error.code).toBe('INVARIANT_VIOLATION');
-  });
-});
-
-describe('enforcementRouter POST /enforcement-actions/:id/reject', () => {
-  it('rejects PENDING action and returns REJECTED status without execute', async () => {
-    const { app, enforcementActions, approvalRequests, auditRecorder } = buildApp();
-    seedPendingAction(enforcementActions);
-
-    const res = await request(app)
-      .post(`/api/v1/enforcement-actions/${ACTION_ID}/reject`)
-      .send({ reviewerComment: 'nope' })
-      .expect(200);
-
-    expect(res.body.enforcementAction.status).toBe('REJECTED');
-    expect(res.body.approvalRequest.status).toBe('REJECTED');
-    expect(res.body.approvalRequest.reviewerComment).toBe('nope');
-    expect(enforcementActions.all()[0]?.status).toBe('REJECTED');
-    expect(approvalRequests.all()[0]?.status).toBe('REJECTED');
-    expect(auditRecorder.all()[0]?.action).toBe('REJECT_ENFORCEMENT_ACTION');
-  });
-
   it('returns 404 when action is missing', async () => {
     const { app } = buildApp();
 
     const res = await request(app)
-      .post(`/api/v1/enforcement-actions/${ACTION_ID}/reject`)
+      .post(`/api/v1/enforcement-actions/${ACTION_ID}/execute`)
       .send({})
       .expect(404);
 

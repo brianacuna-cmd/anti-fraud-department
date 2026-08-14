@@ -1,9 +1,11 @@
 import type { AnalystDecision } from '../../../../../domain/model/aggregates/AnalystDecision.js';
 import type { EnforcementAction } from '../../../../../domain/model/aggregates/EnforcementAction.js';
 import type { ApprovalRequest } from '../../../../../domain/model/aggregates/ApprovalRequest.js';
+import type { CustomerOutgoingEvent } from '../../../../../domain/model/aggregates/CustomerOutgoingEvent.js';
 import type { RecordAnalystDecisionResult } from '../../../../../application/RecordAnalystDecision.js';
 import type { ApproveEnforcementActionResult } from '../../../../../application/ApproveEnforcementAction.js';
 import type { RejectEnforcementActionResult } from '../../../../../application/RejectEnforcementAction.js';
+import type { ExecuteEnforcementActionResult } from '../../../../../application/ExecuteEnforcementAction.js';
 
 export interface AnalystDecisionResponseDto {
   readonly id: string;
@@ -50,6 +52,33 @@ export interface RecordAnalystDecisionResponseDto {
 export interface ReviewEnforcementActionResponseDto {
   readonly enforcementAction: EnforcementActionResponseDto;
   readonly approvalRequest: ApprovalRequestResponseDto;
+}
+
+export interface CustomerOutgoingEventResponseDto {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly customerId: string;
+  readonly enforcementActionId: string;
+  readonly webhookUrl: string;
+  readonly eventType: string;
+  readonly payload: {
+    readonly enforcement_action_id: string;
+    readonly case_id: string;
+    readonly action_type: string;
+    readonly target_type: string;
+    readonly target_id: string;
+    readonly organization_id: string;
+  };
+  readonly status: string;
+  readonly responseStatus: number | null;
+  readonly attempts: number;
+  readonly lastAttemptAt: string | null;
+  readonly createdAt: string;
+}
+
+export interface ExecuteEnforcementActionResponseDto {
+  readonly enforcementAction: EnforcementActionResponseDto;
+  readonly outgoingEvent: CustomerOutgoingEventResponseDto | null;
 }
 
 export function toAnalystDecisionResponse(decision: AnalystDecision): AnalystDecisionResponseDto {
@@ -111,5 +140,34 @@ export function toReviewEnforcementActionResponse(
   return {
     enforcementAction: toEnforcementActionResponse(result.enforcementAction),
     approvalRequest: toApprovalRequestResponse(result.approvalRequest),
+  };
+}
+
+export function toCustomerOutgoingEventResponse(
+  event: CustomerOutgoingEvent,
+): CustomerOutgoingEventResponseDto {
+  return {
+    id: event.id,
+    organizationId: event.organizationId,
+    customerId: event.customerId,
+    enforcementActionId: event.enforcementActionId,
+    webhookUrl: event.webhookUrl,
+    eventType: event.eventType,
+    payload: event.payload,
+    status: event.status,
+    responseStatus: event.responseStatus,
+    attempts: event.attempts,
+    lastAttemptAt: event.lastAttemptAt,
+    createdAt: event.createdAt,
+  };
+}
+
+export function toExecuteEnforcementActionResponse(
+  result: ExecuteEnforcementActionResult,
+): ExecuteEnforcementActionResponseDto {
+  return {
+    enforcementAction: toEnforcementActionResponse(result.enforcementAction),
+    outgoingEvent:
+      result.outgoingEvent === null ? null : toCustomerOutgoingEventResponse(result.outgoingEvent),
   };
 }
