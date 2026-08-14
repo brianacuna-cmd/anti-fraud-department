@@ -3,8 +3,8 @@ import type { RiskScoringRuleRepository } from '../../../src/modules/risk-assess
 
 /**
  * In-memory `RiskScoringRuleRepository` fake. `findActiveByOrganization`
- * mirrors the Mongo adapter: only ACTIVE rules for the org, ordered by
- * `createdAt` ascending (oldest ACTIVE wins).
+ * mirrors the Mongo adapter: only ACTIVE rules for the org. With the unique
+ * partial ACTIVE index there is at most one; ordering is stable for fakes.
  */
 export class InMemoryRiskScoringRuleRepository implements RiskScoringRuleRepository {
   private readonly rules: RiskScoringRule[] = [];

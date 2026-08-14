@@ -36,8 +36,9 @@ function toScoringContext(event: CanonicalRiskEvent): Readonly<Record<string, un
 }
 
 /**
- * Standalone scoring orchestrator. Loads ACTIVE rules (oldest first),
- * evaluates only `rules[0]`, fails closed, and never creates a Case.
+ * Standalone scoring orchestrator. Loads the organization's ACTIVE scoring
+ * rule (unique partial index ⇒ at most one; `rules[0]` is that sole ACTIVE),
+ * evaluates it, fails closed when none exist, and never creates a Case.
  * Does not wrap work in `withTransaction` (read + audit only).
  */
 export function createCalculateRiskScoreUseCase(deps: CalculateRiskScoreDeps) {

@@ -1,5 +1,5 @@
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
-import type { Db, MongoClient } from 'mongodb';
+import { ObjectId, type Db, type MongoClient } from 'mongodb';
 import { connectMongo } from '../../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../../src/shared/persistence/mongo/ensureIndexes.js';
 import { startReplicaSetMongo } from '../../../helpers/mongoTestServer.js';
@@ -161,14 +161,123 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     expect(routingIndexes.filter((index) => index.name === 'case_routing_rules_org_status_idx')).toHaveLength(1);
   });
 
-  it('creates the RiskScoringRules org+status index and stays idempotent on re-run', async () => {
+  it('creates a unique partial ACTIVE index on RiskScoringRules and drops the old non-unique org+status index', async () => {
     await ensureIndexes(db);
     await ensureIndexes(db);
 
     const scoringIndexes = await db.collection('risk_scoring_rules').indexes();
-    const orgStatusIndex = scoringIndexes.find((index) => index.name === 'risk_scoring_rules_org_status_idx');
+    const activeUnique = scoringIndexes.find((index) => index.name === 'risk_scoring_rules_org_active_unique');
 
-    expect(orgStatusIndex?.key).toEqual({ organization_id: 1, status: 1 });
-    expect(scoringIndexes.filter((index) => index.name === 'risk_scoring_rules_org_status_idx')).toHaveLength(1);
+    expect(activeUnique?.key).toEqual({ organization_id: 1 });
+    expect(activeUnique?.unique).toBe(true);
+    expect(activeUnique?.partialFilterExpression).toEqual({ status: 'ACTIVE' });
+    expect(scoringIndexes.filter((index) => index.name === 'risk_scoring_rules_org_active_unique')).toHaveLength(1);
+    expect(scoringIndexes.find((index) => index.name === 'risk_scoring_rules_org_status_idx')).toBeUndefined();
+  });
+
+  it('rejects a second ACTIVE risk_scoring_rules insert for the same organization with E11000', async () => {
+    await ensureIndexes(db);
+
+    const organizationId = new ObjectId();
+    const now = new Date('2026-01-01T00:00:00.000Z');
+    await db.collection('risk_scoring_rules').insertOne({
+      _id: new ObjectId(),
+      organization_id: organizationId,
+      name: 'first-active',
+      conditions: { contentType: 'application/vnd.gorules.decision', nodes: [], edges: [] },
+      conditions_version: 1,
+      status: 'ACTIVE',
+      created_at: now,
+      updated_at: now,
+    });
+
+    await expect(
+      db.collection('risk_scoring_rules').insertOne({
+        _id: new ObjectId(),
+        organization_id: organizationId,
+        name: 'second-active',
+        conditions: { contentType: 'application/vnd.gorules.decision', nodes: [], edges: [] },
+        conditions_version: 1,
+        status: 'ACTIVE',
+        created_at: now,
+        updated_at: now,
+      }),
+    ).rejects.toMatchObject({ code: 11000 });
+  });
+
+  it('still allows multiple ACTIVE case_routing_rules for the same organization', async () => {
+    await ensureIndexes(db);
+
+    const organizationId = new ObjectId();
+    const now = new Date('2026-01-01T00:00:00.000Z');
+    await db.collection('case_routing_rules').insertOne({
+      _id: new ObjectId(),
+      organization_id: organizationId,
+      name: 'route-a',
+      conditions: { contentType: 'application/vnd.gorules.decision', nodes: [], edges: [] },
+      conditions_version: 1,
+      status: 'ACTIVE',
+      created_at: now,
+      updated_at: now,
+    });
+    await db.collection('case_routing_rules').insertOne({
+      _id: new ObjectId(),
+      organization_id: organizationId,
+      name: 'route-b',
+      conditions: { contentType: 'application/vnd.gorules.decision', nodes: [], edges: [] },
+      conditions_version: 1,
+      status: 'ACTIVE',
+      created_at: now,
+      updated_at: now,
+    });
+
+    const count = await db.collection('case_routing_rules').countDocuments({
+      organization_id: organizationId,
+      status: 'ACTIVE',
+    });
+    expect(count).toBe(2);
+  });
+
+  it('fails closed when unique ACTIVE index creation is attempted while ACTIVE duplicates remain', async () => {
+    // Seed duplicate ACTIVE rows before indexes exist on this collection path.
+    const organizationId = new ObjectId();
+    const now = new Date('2026-01-01T00:00:00.000Z');
+    await db.collection('risk_scoring_rules').deleteMany({});
+    // Drop any prior unique index from earlier tests so we can re-attempt creation.
+    try {
+      await db.collection('risk_scoring_rules').dropIndex('risk_scoring_rules_org_active_unique');
+    } catch {
+      // index may not exist yet on first failure path
+    }
+    try {
+      await db.collection('risk_scoring_rules').dropIndex('risk_scoring_rules_org_status_idx');
+    } catch {
+      // optional legacy index
+    }
+
+    await db.collection('risk_scoring_rules').insertMany([
+      {
+        _id: new ObjectId(),
+        organization_id: organizationId,
+        name: 'dup-a',
+        conditions: {},
+        conditions_version: 1,
+        status: 'ACTIVE',
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        _id: new ObjectId(),
+        organization_id: organizationId,
+        name: 'dup-b',
+        conditions: {},
+        conditions_version: 1,
+        status: 'ACTIVE',
+        created_at: now,
+        updated_at: now,
+      },
+    ]);
+
+    await expect(ensureIndexes(db)).rejects.toMatchObject({ code: 11000 });
   });
 });

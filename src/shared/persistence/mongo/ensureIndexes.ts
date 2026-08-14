@@ -88,7 +88,20 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .collection('case_routing_rules')
     .createIndex({ organization_id: 1, status: 1 }, { name: 'case_routing_rules_org_status_idx' });
 
-  await db
-    .collection('risk_scoring_rules')
-    .createIndex({ organization_id: 1, status: 1 }, { name: 'risk_scoring_rules_org_status_idx' });
+  // Unique ACTIVE per organization. Create before dropping the legacy
+  // non-unique org+status index so duplicates fail closed (E11000) rather
+  // than leaving the collection without a usable constraint.
+  await db.collection('risk_scoring_rules').createIndex(
+    { organization_id: 1 },
+    {
+      unique: true,
+      name: 'risk_scoring_rules_org_active_unique',
+      partialFilterExpression: { status: 'ACTIVE' },
+    },
+  );
+
+  const scoringIndexes = await db.collection('risk_scoring_rules').indexes();
+  if (scoringIndexes.some((index) => index.name === 'risk_scoring_rules_org_status_idx')) {
+    await db.collection('risk_scoring_rules').dropIndex('risk_scoring_rules_org_status_idx');
+  }
 }

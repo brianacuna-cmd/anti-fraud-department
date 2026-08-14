@@ -147,19 +147,18 @@ describe('createCalculateRiskScoreUseCase', () => {
     });
   });
 
-  it('evaluates only the oldest ACTIVE rule and ignores a newer ACTIVE graph', async () => {
-    const engine = new ScriptedRiskScoringEngine([{ riskScore: 11 }, { riskScore: 99 }]);
-    const oldest = buildRule({ name: 'oldest', conditions: { graph: 'oldest' }, now: NOW });
-    const newest = buildRule({ name: 'newest', conditions: { graph: 'newest' }, now: LATER });
-    const { calculateRiskScore } = buildUseCase(engine, [newest, oldest]);
+  it('evaluates the sole ACTIVE rule returned by the repository (unique ACTIVE per org)', async () => {
+    const engine = new ScriptedRiskScoringEngine([{ riskScore: 11 }]);
+    const soleActive = buildRule({ name: 'sole-active', conditions: { graph: 'sole' }, now: NOW });
+    const { calculateRiskScore } = buildUseCase(engine, [soleActive]);
 
     const result = await calculateRiskScore({ auth: tenantAuth(), event: buildEvent() });
 
     expect(result.riskScore).toBe(11);
-    expect(result.ruleId).toBe(oldest.id);
-    expect(result.name).toBe('oldest');
+    expect(result.ruleId).toBe(soleActive.id);
+    expect(result.name).toBe('sole-active');
     expect(engine.calls).toHaveLength(1);
-    expect(engine.calls[0]?.conditions).toEqual({ graph: 'oldest' });
+    expect(engine.calls[0]?.conditions).toEqual({ graph: 'sole' });
   });
 
   it('records CALCULATE_RISK_SCORE on success with rule provenance', async () => {

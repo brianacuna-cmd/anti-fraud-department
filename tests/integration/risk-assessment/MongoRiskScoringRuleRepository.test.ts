@@ -72,15 +72,14 @@ describe('MongoRiskScoringRuleRepository (integration, real replica-set Mongo)',
     await db.collection('risk_scoring_rules').deleteMany({});
   });
 
-  it('returns only ACTIVE rules for the given organization, ordered by created_at ascending', async () => {
-    await seed(db, buildRule('second', '2026-01-02T00:00:00.000Z'));
-    await seed(db, buildRule('first', '2026-01-01T00:00:00.000Z'));
+  it('returns the sole ACTIVE rule for the given organization (unique ACTIVE per org)', async () => {
+    await seed(db, buildRule('active', '2026-01-02T00:00:00.000Z'));
     await seed(db, buildRule('inactive', '2026-01-03T00:00:00.000Z', { status: 'INACTIVE' }));
     await seed(db, buildRule('other-org', '2026-01-01T00:00:00.000Z', { organizationId: oid('org-2') }));
 
     const rules = await repository.findActiveByOrganization(oid('org-1'));
 
-    expect(rules.map((r) => r.name)).toEqual(['first', 'second']);
+    expect(rules.map((r) => r.name)).toEqual(['active']);
   });
 
   it('returns an empty array when the organization has no active rules', async () => {

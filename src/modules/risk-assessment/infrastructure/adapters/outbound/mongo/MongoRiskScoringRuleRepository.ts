@@ -14,9 +14,9 @@ const COLLECTION_NAME = 'risk_scoring_rules';
 
 /**
  * Mongo adapter for `RiskScoringRuleRepository`. Scoring only reads ACTIVE
- * rules for an organization, ordered by `created_at` ascending so
- * `CalculateRiskScore` can take `rules[0]` (oldest ACTIVE wins). The
- * `{ organization_id, status }` index keeps this off a collection scan.
+ * rules for an organization. The unique partial ACTIVE index guarantees at
+ * most one row; `CalculateRiskScore` takes `rules[0]` as that sole ACTIVE.
+ * `created_at` ascending remains a stable order if a fake returns more than one.
  */
 export class MongoRiskScoringRuleRepository implements RiskScoringRuleRepository {
   private readonly collection: Collection<RiskScoringRuleDocument>;
