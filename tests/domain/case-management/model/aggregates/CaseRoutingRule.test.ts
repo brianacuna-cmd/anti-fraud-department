@@ -45,4 +45,26 @@ describe('CaseRoutingRule', () => {
   it('rejects a negative conditionsVersion', () => {
     expect(() => create({ conditionsVersion: -1 })).toThrow(/conditionsVersion/);
   });
+
+  it('activate flips INACTIVE to ACTIVE and updates updatedAt', () => {
+    const later = fromDate(new Date('2026-02-01T00:00:00.000Z'));
+    const rule = create({ status: 'INACTIVE' });
+
+    const activated = rule.activate(later);
+
+    expect(activated.status).toBe('ACTIVE');
+    expect(activated.updatedAt).toBe(later);
+    expect(rule.status).toBe('INACTIVE');
+  });
+
+  it('deactivate flips ACTIVE to INACTIVE and updates updatedAt', () => {
+    const later = fromDate(new Date('2026-02-01T00:00:00.000Z'));
+    const rule = create({ status: 'ACTIVE' });
+
+    const deactivated = rule.deactivate(later);
+
+    expect(deactivated.status).toBe('INACTIVE');
+    expect(deactivated.updatedAt).toBe(later);
+    expect(rule.status).toBe('ACTIVE');
+  });
 });

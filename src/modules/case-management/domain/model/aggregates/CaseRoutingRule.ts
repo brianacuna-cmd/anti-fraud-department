@@ -60,6 +60,16 @@ export class CaseRoutingRule {
     return new CaseRoutingRule(props);
   }
 
+  /** Marks this draft as ACTIVE (immutable). Caller persists via repository. */
+  activate(now: Instant): CaseRoutingRule {
+    return new CaseRoutingRule({ ...this.props, status: 'ACTIVE', updatedAt: now });
+  }
+
+  /** Marks this rule as INACTIVE (immutable). Caller persists via repository. */
+  deactivate(now: Instant): CaseRoutingRule {
+    return new CaseRoutingRule({ ...this.props, status: 'INACTIVE', updatedAt: now });
+  }
+
   get id(): CaseRoutingRuleId {
     return this.props.id;
   }
