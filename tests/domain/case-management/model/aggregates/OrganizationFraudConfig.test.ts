@@ -94,3 +94,41 @@ describe('OrganizationFraudConfig#update', () => {
     expect(updated.createdAt).toBe(NOW);
   });
 });
+
+describe('OrganizationFraudConfig#priorityForRiskScore', () => {
+  // Thresholds: low=25, medium=50, high=75, critical=90
+  it('returns the highest band crossed (critical ≥ high ≥ medium ≥ low)', () => {
+    const config = buildConfig();
+
+    expect(config.priorityForRiskScore(90)).toBe('CRITICAL');
+    expect(config.priorityForRiskScore(100)).toBe('CRITICAL');
+    expect(config.priorityForRiskScore(75)).toBe('HIGH');
+    expect(config.priorityForRiskScore(89)).toBe('HIGH');
+    expect(config.priorityForRiskScore(50)).toBe('MEDIUM');
+    expect(config.priorityForRiskScore(74)).toBe('MEDIUM');
+    expect(config.priorityForRiskScore(25)).toBe('LOW');
+    expect(config.priorityForRiskScore(49)).toBe('LOW');
+  });
+
+  it('returns null when score is below risk_threshold_low (no case open)', () => {
+    const config = buildConfig();
+
+    expect(config.priorityForRiskScore(24)).toBeNull();
+    expect(config.priorityForRiskScore(0)).toBeNull();
+  });
+
+  it('uses the org config thresholds, not hardcoded bands', () => {
+    const config = buildConfig({
+      riskThresholdLow: 10,
+      riskThresholdMedium: 20,
+      riskThresholdHigh: 30,
+      riskThresholdCritical: 40,
+    });
+
+    expect(config.priorityForRiskScore(40)).toBe('CRITICAL');
+    expect(config.priorityForRiskScore(30)).toBe('HIGH');
+    expect(config.priorityForRiskScore(20)).toBe('MEDIUM');
+    expect(config.priorityForRiskScore(10)).toBe('LOW');
+    expect(config.priorityForRiskScore(9)).toBeNull();
+  });
+});

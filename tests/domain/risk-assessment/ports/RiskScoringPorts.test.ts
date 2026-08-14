@@ -1,4 +1,7 @@
-import type { RiskScoringEngine } from '../../../../src/modules/risk-assessment/domain/ports/RiskScoringEngine.js';
+import type {
+  RiskScoringEngine,
+  RiskScoringEvaluation,
+} from '../../../../src/modules/risk-assessment/domain/ports/RiskScoringEngine.js';
 import type { RiskScoringRuleRepository } from '../../../../src/modules/risk-assessment/domain/ports/RiskScoringRuleRepository.js';
 import type { AuditRecorder, AuditEvent } from '../../../../src/modules/risk-assessment/domain/ports/AuditRecorder.js';
 import type { Transaction, UnitOfWork } from '../../../../src/modules/risk-assessment/domain/ports/UnitOfWork.js';
@@ -15,13 +18,23 @@ describe('risk-assessment domain ports', () => {
         expect(conditions).toEqual({ nodes: [{ type: 'expressionNode' }] });
         expect(context).toEqual({ amountCents: 2500 });
         expect(context).not.toHaveProperty('rawPayload');
-        return { riskScore: 42 };
+        return { riskScore: 42, hits: [] };
       },
     };
 
     const result = await engine.evaluate({ nodes: [{ type: 'expressionNode' }] }, { amountCents: 2500 });
 
-    expect(result).toEqual({ riskScore: 42 });
+    expect(result).toEqual({ riskScore: 42, hits: [] });
+  });
+
+  it('RiskScoringEvaluation carries hits alongside riskScore for evidence freeze', () => {
+    const evaluation: RiskScoringEvaluation = {
+      riskScore: 65,
+      hits: [{ points: 20 }, { points: 45 }],
+    };
+
+    expect(evaluation.riskScore).toBe(65);
+    expect(evaluation.hits).toEqual([{ points: 20 }, { points: 45 }]);
   });
 
   it('RiskScoringRuleRepository.findActiveByOrganization returns ACTIVE rules', async () => {
@@ -31,6 +44,7 @@ describe('risk-assessment domain ports', () => {
       name: 'score-graph',
       conditions: { nodes: [] },
       conditionsVersion: 2,
+      status: 'ACTIVE',
       now: NOW,
     });
 
@@ -39,6 +53,13 @@ describe('risk-assessment domain ports', () => {
         expect(organizationId).toBe('org-1');
         return [rule];
       },
+      async findById() {
+        return null;
+      },
+      async listByOrganization() {
+        return [];
+      },
+      async save() {},
     };
 
     const found = await repository.findActiveByOrganization('org-1');
@@ -72,13 +93,27 @@ describe('risk-assessment domain ports', () => {
       action: 'SCORING_RULE_EVALUATION_FAILED',
       detail: { reason: 'engine threw' },
     };
+    const createAudit: AuditEvent = {
+      ...success,
+      action: 'CREATE_SCORING_RULE',
+      detail: { name: 'draft' },
+    };
+    const activateAudit: AuditEvent = {
+      ...success,
+      action: 'ACTIVATE_SCORING_RULE',
+      detail: { name: 'draft' },
+    };
 
     await recorder.record(success);
     await recorder.record(failure);
+    await recorder.record(createAudit);
+    await recorder.record(activateAudit);
 
     expect(recorded.map((event) => event.action)).toEqual([
       'CALCULATE_RISK_SCORE',
       'SCORING_RULE_EVALUATION_FAILED',
+      'CREATE_SCORING_RULE',
+      'ACTIVATE_SCORING_RULE',
     ]);
     expect(recorded[0]?.resource).toBe('rule');
   });

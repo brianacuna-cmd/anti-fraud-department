@@ -38,7 +38,11 @@ function collectThenExpressionJdm(): Record<string, unknown> {
         name: 'FoldScore',
         position: { x: 400, y: 0 },
         content: {
-          expressions: [{ id: 'e1', key: 'riskScore', value: 'sum(map(hits, #.points))' }],
+          expressions: [
+            { id: 'e1', key: 'riskScore', value: 'sum(map(hits, #.points))' },
+            // Re-emit collect evidence — Expression output replaces context otherwise.
+            { id: 'e2', key: 'hits', value: 'hits' },
+          ],
         },
       },
       { id: 'output', type: 'outputNode', name: 'Response', position: { x: 600, y: 0 } },
@@ -128,7 +132,31 @@ describe('ZenRiskScoringEngine (real @gorules/zen-engine collect+Expression)', (
   it('folds collect hits via Expression into an integer riskScore (all three rules)', async () => {
     const result = await engine.evaluate(collectThenExpressionJdm(), HIGH_CHARGEBACK);
 
-    expect(result).toEqual({ riskScore: 65 });
+    expect(result.riskScore).toBe(65);
+    expect(result.hits).toEqual([{ points: 20 }, { points: 30 }, { points: 15 }]);
+  });
+
+  it('fixture-locks collect+Expression JDM contract: contentType, collect outputPath, Expression fold', () => {
+    const graph = collectThenExpressionJdm();
+    const nodes = graph.nodes as Array<Record<string, unknown>>;
+    const collect = nodes.find((node) => node.id === 'collect') as {
+      content: { hitPolicy: string; outputPath: string };
+    };
+    const fold = nodes.find((node) => node.id === 'fold') as {
+      content: { expressions: Array<{ key: string; value: string }> };
+    };
+
+    expect(graph.contentType).toBe('application/vnd.gorules.decision');
+    expect(collect.content.hitPolicy).toBe('collect');
+    expect(collect.content.outputPath).toBe('hits');
+    expect(fold.content.expressions[0]).toMatchObject({
+      key: 'riskScore',
+      value: 'sum(map(hits, #.points))',
+    });
+    expect(fold.content.expressions[1]).toMatchObject({
+      key: 'hits',
+      value: 'hits',
+    });
   });
 
   it('produces a different integer when only the amountCents collect row matches', async () => {
@@ -138,7 +166,8 @@ describe('ZenRiskScoringEngine (real @gorules/zen-engine collect+Expression)', (
       riskSignals: { providerRiskScore: 10 },
     });
 
-    expect(result).toEqual({ riskScore: 20 });
+    expect(result.riskScore).toBe(20);
+    expect(result.hits).toEqual([{ points: 20 }]);
   });
 
   it('produces a different integer when only providerEventType collect row matches', async () => {
@@ -148,7 +177,34 @@ describe('ZenRiskScoringEngine (real @gorules/zen-engine collect+Expression)', (
       riskSignals: { providerRiskScore: 10 },
     });
 
-    expect(result).toEqual({ riskScore: 15 });
+    expect(result.riskScore).toBe(15);
+    expect(result.hits).toEqual([{ points: 15 }]);
+  });
+
+  it('defaults hits to [] when Expression emits riskScore without a hits array', async () => {
+    const result = await engine.evaluate(
+      {
+        contentType: 'application/vnd.gorules.decision',
+        nodes: [
+          { id: 'input', type: 'inputNode', name: 'Request', position: { x: 0, y: 0 } },
+          {
+            id: 'expr',
+            type: 'expressionNode',
+            name: 'ScoreOnly',
+            position: { x: 200, y: 0 },
+            content: { expressions: [{ id: 'e1', key: 'riskScore', value: '42' }] },
+          },
+          { id: 'output', type: 'outputNode', name: 'Response', position: { x: 400, y: 0 } },
+        ],
+        edges: [
+          { id: 'e1', sourceId: 'input', targetId: 'expr' },
+          { id: 'e2', sourceId: 'expr', targetId: 'output' },
+        ],
+      },
+      HIGH_CHARGEBACK,
+    );
+
+    expect(result).toEqual({ riskScore: 42, hits: [] });
   });
 
   it('throws when the graph emits a collect array instead of an Expression integer', async () => {

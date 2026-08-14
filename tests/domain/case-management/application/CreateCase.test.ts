@@ -156,3 +156,43 @@ describe('createCreateCaseUseCase (T2 SLA after RouteCase)', () => {
     expect(slaTracking.all()).toHaveLength(0);
   });
 });
+
+describe('createCreateCaseUseCase optional finturuCacheSnapshot', () => {
+  it('persists finturuCacheSnapshot and caller-supplied priority when provided (automated path)', async () => {
+    const { createCase, cases } = buildCreateCase();
+    const snapshot = {
+      event: { provider: 'stripe', caseCustomerId: 'cust-1' },
+      ruleId: 'rule-1',
+      conditionsVersion: 3,
+      riskScore: 88,
+      hits: [{ id: 'hit-1' }],
+    };
+
+    const kase = await createCase({
+      auth: ANALYST,
+      customerId: 'customer-1',
+      riskScore: 88,
+      priority: 'CRITICAL',
+      finturuCacheSnapshot: snapshot,
+    });
+
+    expect(kase.priority).toBe('CRITICAL');
+    expect(kase.finturuCacheSnapshot).toEqual(snapshot);
+    expect(cases.all()[0]?.finturuCacheSnapshot).toEqual(snapshot);
+  });
+
+  it('leaves finturuCacheSnapshot null when omitted (manual path regression)', async () => {
+    const { createCase, cases } = buildCreateCase();
+
+    const kase = await createCase({
+      auth: ANALYST,
+      customerId: 'customer-1',
+      riskScore: 42,
+      priority: 'MEDIUM',
+    });
+
+    expect(kase.finturuCacheSnapshot).toBeNull();
+    expect(cases.all()[0]?.finturuCacheSnapshot).toBeNull();
+    expect(kase.priority).toBe('MEDIUM');
+  });
+});

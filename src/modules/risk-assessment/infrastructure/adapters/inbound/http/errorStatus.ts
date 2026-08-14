@@ -8,5 +8,6 @@ import type { StatusByCode } from '../../../../../../shared/http/errorHandler.js
 export const riskAssessmentErrorStatus: StatusByCode = {
   INVARIANT_VIOLATION: 400,
   FORBIDDEN_CROSS_TENANT: 403,
+  FORBIDDEN_ROLE: 403,
   SCORING_RULE_NOT_FOUND: 404,
 };

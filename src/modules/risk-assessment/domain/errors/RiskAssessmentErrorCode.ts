@@ -5,4 +5,5 @@
 export type RiskAssessmentErrorCode =
   | 'INVARIANT_VIOLATION'
   | 'FORBIDDEN_CROSS_TENANT'
+  | 'FORBIDDEN_ROLE'
   | 'SCORING_RULE_NOT_FOUND';

@@ -13,6 +13,16 @@ describe('src/main.ts risk-assessment wiring', () => {
     expect(MAIN).toContain('riskScoreRouter');
   });
 
+  it('wires scoring-rule draft/activate API with RiskAssessment MongoUnitOfWork', () => {
+    expect(MAIN).toContain('RiskAssessmentMongoUnitOfWork');
+    expect(MAIN).toContain('createCreateScoringRuleUseCase');
+    expect(MAIN).toContain('createActivateScoringRuleUseCase');
+    expect(MAIN).toContain('createListScoringRulesUseCase');
+    expect(MAIN).toContain('createGetScoringRuleUseCase');
+    expect(MAIN).toContain('scoringRuleRouter');
+    expect(MAIN).toContain('generateRiskScoringRuleId');
+  });
+
   it('does not inject scoring into createCreateCaseUseCase', () => {
     const createCaseBlock = MAIN.slice(
       MAIN.indexOf('createCreateCaseUseCase({'),

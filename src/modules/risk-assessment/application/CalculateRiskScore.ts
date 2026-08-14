@@ -20,6 +20,8 @@ export interface CalculateRiskScoreResult {
   readonly ruleId: RiskScoringRuleId;
   readonly name: string;
   readonly conditionsVersion: number;
+  /** Engine collect evidence; passthrough only — never folded into riskScore here. */
+  readonly hits: readonly unknown[];
 }
 
 export interface CalculateRiskScoreDeps {
@@ -36,8 +38,9 @@ function toScoringContext(event: CanonicalRiskEvent): Readonly<Record<string, un
 }
 
 /**
- * Standalone scoring orchestrator. Loads ACTIVE rules (oldest first),
- * evaluates only `rules[0]`, fails closed, and never creates a Case.
+ * Standalone scoring orchestrator. Loads the organization's ACTIVE scoring
+ * rule (unique partial index ⇒ at most one; `rules[0]` is that sole ACTIVE),
+ * evaluates it, fails closed when none exist, and never creates a Case.
  * Does not wrap work in `withTransaction` (read + audit only).
  */
 export function createCalculateRiskScoreUseCase(deps: CalculateRiskScoreDeps) {
@@ -49,7 +52,7 @@ export function createCalculateRiskScoreUseCase(deps: CalculateRiskScoreDeps) {
       throw scoringRuleNotFound(organizationId);
     }
 
-    const riskScore = await evaluateFirstRule(deps, rule, input);
+    const { riskScore, hits } = await evaluateFirstRule(deps, rule, input);
 
     await deps.auditRecorder.record({
       organizationId,
@@ -71,6 +74,7 @@ export function createCalculateRiskScoreUseCase(deps: CalculateRiskScoreDeps) {
       ruleId: rule.id,
       name: rule.name,
       conditionsVersion: rule.conditionsVersion,
+      hits,
     };
   };
 }
@@ -79,11 +83,13 @@ async function evaluateFirstRule(
   deps: CalculateRiskScoreDeps,
   rule: RiskScoringRule,
   input: CalculateRiskScoreInput,
-): Promise<RiskScore> {
+): Promise<{ riskScore: RiskScore; hits: readonly unknown[] }> {
   let rawScore: number;
+  let hits: readonly unknown[];
   try {
     const evaluation = await deps.scoringEngine.evaluate(rule.conditions, toScoringContext(input.event));
     rawScore = evaluation.riskScore;
+    hits = Array.isArray(evaluation.hits) ? evaluation.hits : [];
   } catch (error) {
     await deps.auditRecorder.record({
       organizationId: rule.organizationId,
@@ -104,5 +110,5 @@ async function evaluateFirstRule(
     });
   }
 
-  return createRiskScore(rawScore);
+  return { riskScore: createRiskScore(rawScore), hits };
 }

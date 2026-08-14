@@ -24,6 +24,11 @@ export interface CreateCaseInput {
   readonly bridgeWallet?: string | null;
   readonly stripeCustomerId?: string | null;
   readonly tags?: readonly string[];
+  /**
+   * Optional evidence freeze for automated score→case opens.
+   * Manual `POST /cases` omits this; Case stores `null`.
+   */
+  readonly finturuCacheSnapshot?: Record<string, unknown> | null;
 }
 
 export interface CreateCaseDeps {
@@ -49,10 +54,9 @@ export interface CreateCaseDeps {
 }
 
 /**
- * T5 — manual case creation (design "Transaction boundaries: CreateCase
- * (T5)"). Within ONE `unitOfWork.withTransaction`:
- * inserts the `Case` (Status OPEN, no FinturuCacheSnapshot — that field is
- * only ever populated by an automated intake path, out of scope here),
+ * Manual + automated case creation. Within ONE `unitOfWork.withTransaction`:
+ * inserts the `Case` (Status OPEN; `finturuCacheSnapshot` optional — set by
+ * the composition score→case orchestrator, omitted/null on manual POST /cases),
  * appends a `CASE_CREATED` `CaseTimeline` entry, and records a
  * `CREATE_CASE` audit row.
  *
@@ -78,6 +82,7 @@ export function createCreateCaseUseCase(deps: CreateCaseDeps) {
         bridgeUserId: input.bridgeUserId,
         bridgeWallet: input.bridgeWallet,
         stripeCustomerId: input.stripeCustomerId,
+        finturuCacheSnapshot: input.finturuCacheSnapshot,
         riskScore: createRiskScore(input.riskScore),
         priority: createCasePriority(input.priority ?? 'LOW'),
         tags: input.tags,
