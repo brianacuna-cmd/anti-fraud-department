@@ -12,6 +12,7 @@ export interface OrganizationFraudConfigResponseDto {
   readonly riskThresholdHigh: number;
   readonly riskThresholdCritical: number;
   readonly featureFlags: Readonly<Record<string, boolean>>;
+  readonly outboundWebhookUrl: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -31,6 +32,7 @@ export function toOrganizationFraudConfigResponse(
     riskThresholdHigh: config.riskThresholdHigh,
     riskThresholdCritical: config.riskThresholdCritical,
     featureFlags: config.featureFlags,
+    outboundWebhookUrl: config.outboundWebhookUrl,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
   };

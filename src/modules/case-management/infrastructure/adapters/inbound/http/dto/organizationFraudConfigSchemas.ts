@@ -16,6 +16,7 @@ export const upsertOrganizationFraudConfigSchema = z
     riskThresholdHigh: z.number().int().nonnegative(),
     riskThresholdCritical: z.number().int().nonnegative(),
     featureFlags: z.record(z.string(), z.boolean()).optional(),
+    outboundWebhookUrl: z.string().url().nullable().optional(),
   })
   .strict();
 

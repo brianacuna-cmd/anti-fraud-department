@@ -34,8 +34,15 @@ describe('OrganizationFraudConfig.create', () => {
     expect(config.slaCriticalMinutes).toBe(30);
     expect(config.riskThresholdCritical).toBe(90);
     expect(config.featureFlags).toEqual({});
+    expect(config.outboundWebhookUrl).toBeNull();
     expect(config.createdAt).toBe(NOW);
     expect(config.updatedAt).toBe(NOW);
+  });
+
+  it('stores an optional outboundWebhookUrl when provided', () => {
+    const config = buildConfig({ outboundWebhookUrl: 'https://hooks.example/fraud' });
+
+    expect(config.outboundWebhookUrl).toBe('https://hooks.example/fraud');
   });
 
   it('rejects an empty organizationId', () => {
@@ -92,6 +99,17 @@ describe('OrganizationFraudConfig#update', () => {
     // unchanged fields survive
     expect(updated.slaMediumMinutes).toBe(120);
     expect(updated.createdAt).toBe(NOW);
+  });
+
+  it('can set and clear outboundWebhookUrl', () => {
+    const withUrl = buildConfig().update(
+      { outboundWebhookUrl: 'https://hooks.example/fraud' },
+      LATER,
+    );
+    const cleared = withUrl.update({ outboundWebhookUrl: null }, LATER);
+
+    expect(withUrl.outboundWebhookUrl).toBe('https://hooks.example/fraud');
+    expect(cleared.outboundWebhookUrl).toBeNull();
   });
 });
 
