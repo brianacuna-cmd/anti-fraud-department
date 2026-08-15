@@ -128,4 +128,14 @@ export async function ensureIndexes(db: Db): Promise<void> {
   if (scoringIndexes.some((index) => index.name === 'risk_scoring_rules_org_status_idx')) {
     await db.collection('risk_scoring_rules').dropIndex('risk_scoring_rules_org_status_idx');
   }
+
+  await db.collection('organization_inbound_webhook_secrets').createIndex(
+    { organization_id: 1, provider: 1 },
+    { unique: true, name: 'inbound_webhook_secret_org_provider_unique' },
+  );
+
+  await db.collection('provider_ingest_events').createIndex(
+    { organization_id: 1, provider: 1, provider_event_id: 1 },
+    { unique: true, name: 'provider_ingest_event_org_provider_event_unique' },
+  );
 }

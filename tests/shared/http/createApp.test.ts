@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import request from 'supertest';
 import { DomainError } from '../../../src/shared/kernel/DomainError.js';
 import { createErrorHandler } from '../../../src/shared/http/errorHandler.js';
@@ -78,5 +78,131 @@ describe('createApp', () => {
     const response = await request(app).get('/ip').set('X-Forwarded-For', '203.0.113.9');
 
     expect(response.body.ip).toBe('203.0.113.9');
+  });
+
+  it('exposes the exact raw Buffer on webhook mounts so HMAC can verify the posted bytes', async () => {
+    const webhookRouter = Router();
+    webhookRouter.post('/stripe/:organizationId', (req, res) => {
+      const body = req.body as unknown;
+      res.json({
+        isBuffer: Buffer.isBuffer(body),
+        hex: Buffer.isBuffer(body) ? body.toString('hex') : null,
+      });
+    });
+    const app = createApp({
+      routers: [],
+      webhookRouters: [{ path: '/webhooks', router: webhookRouter }],
+      errorHandler: createErrorHandler({}),
+    });
+    const raw = '{"id":"evt_1","type":"charge.succeeded"}';
+
+    const response = await request(app)
+      .post('/webhooks/stripe/org-a')
+      .set('Content-Type', 'application/json')
+      .send(raw);
+
+    expect(response.status).toBe(200);
+    expect(response.body.isBuffer).toBe(true);
+    expect(response.body.hex).toBe(Buffer.from(raw, 'utf8').toString('hex'));
+  });
+
+  it('keeps /api/v1 JSON parsing when a webhook mount is also registered', async () => {
+    const webhookRouter = Router();
+    webhookRouter.post('/probe', (req, res) => {
+      res.json({ webhookIsBuffer: Buffer.isBuffer(req.body) });
+    });
+    const apiRouter = Router();
+    apiRouter.post('/echo', (req, res) => {
+      res.json({ parsed: req.body });
+    });
+    const app = createApp({
+      routers: [{ path: '/api/v1', router: apiRouter }],
+      webhookRouters: [{ path: '/webhooks', router: webhookRouter }],
+      errorHandler: createErrorHandler({}),
+    });
+
+    const apiResponse = await request(app).post('/api/v1/echo').send({ amountCents: 1500 });
+    const webhookResponse = await request(app)
+      .post('/webhooks/probe')
+      .set('Content-Type', 'application/json')
+      .send('{"probe":true}');
+
+    expect(apiResponse.status).toBe(200);
+    expect(apiResponse.body.parsed).toEqual({ amountCents: 1500 });
+    expect(webhookResponse.status).toBe(200);
+    expect(webhookResponse.body.webhookIsBuffer).toBe(true);
+  });
+
+  it('does not run JWT auth middleware on webhook mounts and does not treat Coinflow Authorization as Bearer', async () => {
+    const requireBearer: (req: Request, res: Response, next: NextFunction) => void = (req, res, next) => {
+      const authorization = req.header('authorization');
+      if (authorization === undefined || !authorization.startsWith('Bearer ')) {
+        res.status(401).json({ error: { code: 'UNAUTHENTICATED', message: 'missing bearer' } });
+        return;
+      }
+      next();
+    };
+    const apiRouter = Router();
+    apiRouter.use(requireBearer);
+    apiRouter.post('/secure', (req, res) => {
+      res.json({ parsed: req.body, jwt: true });
+    });
+    const webhookRouter = Router();
+    webhookRouter.post('/coinflow/:organizationId', (req, res) => {
+      res.json({
+        isBuffer: Buffer.isBuffer(req.body),
+        authorization: req.header('authorization'),
+      });
+    });
+    const app = createApp({
+      routers: [{ path: '/api/v1', router: apiRouter }],
+      webhookRouters: [{ path: '/webhooks', router: webhookRouter }],
+      errorHandler: createErrorHandler({}),
+    });
+    const validationKey = 'coinflow-validation-key-not-jwt';
+
+    const webhookResponse = await request(app)
+      .post('/webhooks/coinflow/org-a')
+      .set('Authorization', validationKey)
+      .set('Content-Type', 'application/json')
+      .send('{"eventType":"Card Payment Authorized"}');
+    const unauthenticatedApi = await request(app).post('/api/v1/secure').send({ keep: 'json' });
+    const authenticatedApi = await request(app)
+      .post('/api/v1/secure')
+      .set('Authorization', 'Bearer session-token')
+      .send({ keep: 'json' });
+
+    expect(webhookResponse.status).toBe(200);
+    expect(webhookResponse.body.isBuffer).toBe(true);
+    expect(webhookResponse.body.authorization).toBe(validationKey);
+    expect(unauthenticatedApi.status).toBe(401);
+    expect(unauthenticatedApi.body.error.code).toBe('UNAUTHENTICATED');
+    expect(authenticatedApi.status).toBe(200);
+    expect(authenticatedApi.body).toEqual({ parsed: { keep: 'json' }, jwt: true });
+  });
+
+  it('mounts webhook routers on a configured path other than /webhooks', async () => {
+    const webhookRouter = Router();
+    webhookRouter.post('/hook', (req, res) => {
+      res.json({
+        isBuffer: Buffer.isBuffer(req.body),
+        utf8: Buffer.isBuffer(req.body) ? req.body.toString('utf8') : null,
+      });
+    });
+    const app = createApp({
+      routers: [],
+      webhookRouters: [{ path: '/inbound', router: webhookRouter }],
+      errorHandler: createErrorHandler({}),
+    });
+    const raw = '{"spaced": true}';
+
+    const response = await request(app)
+      .post('/inbound/hook')
+      .set('Content-Type', 'application/json')
+      .send(raw);
+
+    expect(response.status).toBe(200);
+    expect(response.body.isBuffer).toBe(true);
+    expect(response.body.utf8).toBe(raw);
   });
 });
