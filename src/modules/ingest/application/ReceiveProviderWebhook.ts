@@ -50,10 +50,7 @@ export function createReceiveProviderWebhookUseCase(deps: ReceiveProviderWebhook
     await verifyFailClosed(deps, input, provider);
 
     const payload = parseJson(input.rawBody);
-    const mapped: EnvelopeMapResult =
-      payload === undefined
-        ? { status: 'failed', reason: 'unparsable_amount' }
-        : deps.mapper.map(provider, payload);
+    const mapped = resolveMappedResult(payload, provider, deps.mapper);
 
     const providerEventId = resolveProviderEventId(provider, payload, mapped, input.rawBody);
     const now = deps.clock.now();
@@ -128,6 +125,23 @@ function isDuplicateKeyError(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: number }).code === DUPLICATE_KEY_CODE;
 }
 
+/**
+ * Resolves the envelope mapping outcome. `payload === undefined` means the
+ * raw JSON body itself failed to parse (REQ-E3) — distinct from a mapper
+ * reporting `unparsable_amount` for a genuine amount-parse failure on an
+ * otherwise-valid payload. Exported for direct unit testing since `mapped`
+ * is otherwise local to `receiveProviderWebhook` and not observable.
+ */
+export function resolveMappedResult(
+  payload: unknown,
+  provider: PaymentProvider,
+  mapper: ProviderEnvelopeMapper,
+): EnvelopeMapResult {
+  return payload === undefined
+    ? { status: 'failed', reason: 'unparseable_body' }
+    : mapper.map(provider, payload);
+}
+
 function initialStatus(mapped: EnvelopeMapResult): 'RECEIVED' | 'IGNORED' | 'FAILED' {
   if (mapped.status === 'mapped') {
     return 'RECEIVED';
@@ -184,6 +198,15 @@ function nonEmptyString(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
+/**
+ * Weak 32-bit rolling hash — collision risk exists for the synthetic
+ * `unparsed:{length}:{hash}` fallback id used only when no real
+ * provider/idempotency id can be extracted from the payload. Low urgency
+ * (E9, descoped from this slice per design): a real hash (e.g.
+ * `crypto.createHash('sha256')`) would remove the collision risk if this
+ * fallback id path is ever relied on for correctness beyond best-effort
+ * dedupe.
+ */
 function hashSeed(rawBody: Buffer): string {
   let hash = 0;
   for (const byte of rawBody) {
