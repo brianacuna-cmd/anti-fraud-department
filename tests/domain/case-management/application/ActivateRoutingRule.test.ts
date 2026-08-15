@@ -22,6 +22,9 @@ import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemor
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
+import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
+import type { AuditEvent, AuditRecorder } from '../../../../src/modules/case-management/domain/ports/AuditRecorder.js';
+import type { Transaction } from '../../../../src/modules/case-management/domain/ports/UnitOfWork.js';
 
 const ORG = oid('org-1');
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
@@ -87,6 +90,7 @@ describe('ActivateRoutingRule', () => {
     const activate = createActivateRoutingRuleUseCase({
       routingRules,
       auditRecorder,
+      unitOfWork: new PassthroughUnitOfWork(),
       clock: { now: () => LATER },
     });
 
@@ -115,6 +119,7 @@ describe('ActivateRoutingRule', () => {
     const activate = createActivateRoutingRuleUseCase({
       routingRules,
       auditRecorder: new InMemoryCaseManagementAuditRecorder(),
+      unitOfWork: new PassthroughUnitOfWork(),
       clock: { now: () => LATER },
     });
 
@@ -141,6 +146,7 @@ describe('ActivateRoutingRule', () => {
     const activate = createActivateRoutingRuleUseCase({
       routingRules,
       auditRecorder: new InMemoryCaseManagementAuditRecorder(),
+      unitOfWork: new PassthroughUnitOfWork(),
       clock: { now: () => LATER },
     });
 
@@ -160,6 +166,7 @@ describe('ActivateRoutingRule', () => {
     const activate = createActivateRoutingRuleUseCase({
       routingRules,
       auditRecorder: new InMemoryCaseManagementAuditRecorder(),
+      unitOfWork: new PassthroughUnitOfWork(),
       clock: { now: () => LATER },
     });
 
@@ -180,6 +187,7 @@ describe('ActivateRoutingRule', () => {
     const activate = createActivateRoutingRuleUseCase({
       routingRules,
       auditRecorder: new InMemoryCaseManagementAuditRecorder(),
+      unitOfWork: new PassthroughUnitOfWork(),
       clock: { now: () => LATER },
     });
 
@@ -203,6 +211,7 @@ describe('ActivateRoutingRule', () => {
     const activate = createActivateRoutingRuleUseCase({
       routingRules,
       auditRecorder: new InMemoryCaseManagementAuditRecorder(),
+      unitOfWork: new PassthroughUnitOfWork(),
       clock: { now: () => LATER },
     });
     await activate({ auth: supervisorAuth(), ruleId: newer.id });
@@ -244,5 +253,77 @@ describe('ActivateRoutingRule', () => {
 
     expect(result.assignedTo).toEqual({ type: 'USER', id: 'user-older' });
     expect(engine.contexts).toHaveLength(1);
+  });
+
+  it('records no ACTIVATE_ROUTING_RULE audit event when the rule is already ACTIVE (REQ-E2.1)', async () => {
+    const routingRules = new InMemoryCaseRoutingRuleRepository();
+    const active = buildRule('ACTIVE', { name: 'A' });
+    routingRules.add(active);
+    const auditRecorder = new InMemoryCaseManagementAuditRecorder();
+
+    const activate = createActivateRoutingRuleUseCase({
+      routingRules,
+      auditRecorder,
+      unitOfWork: new PassthroughUnitOfWork(),
+      clock: { now: () => LATER },
+    });
+
+    const result = await activate({ auth: supervisorAuth(), ruleId: active.id });
+
+    expect(result.status).toBe('ACTIVE');
+    expect(auditRecorder.all()).toHaveLength(0);
+  });
+
+  it('records exactly one ACTIVATE_ROUTING_RULE audit event when activating an INACTIVE rule (REQ-E2.2)', async () => {
+    const routingRules = new InMemoryCaseRoutingRuleRepository();
+    const draft = buildRule('INACTIVE', { name: 'B' });
+    routingRules.add(draft);
+    const auditRecorder = new InMemoryCaseManagementAuditRecorder();
+
+    const activate = createActivateRoutingRuleUseCase({
+      routingRules,
+      auditRecorder,
+      unitOfWork: new PassthroughUnitOfWork(),
+      clock: { now: () => LATER },
+    });
+
+    const result = await activate({ auth: supervisorAuth(), ruleId: draft.id });
+
+    expect(result.status).toBe('ACTIVE');
+    expect(auditRecorder.all()).toHaveLength(1);
+    expect(auditRecorder.all()[0]).toEqual(
+      expect.objectContaining({ action: 'ACTIVATE_ROUTING_RULE', resourceId: draft.id }),
+    );
+  });
+
+  it('threads the same transaction handle into both save() and auditRecorder.record() (REQ-E1.1 mirrored for activate)', async () => {
+    const routingRules = new InMemoryCaseRoutingRuleRepository();
+    const draft = buildRule('INACTIVE', { name: 'B' });
+    routingRules.add(draft);
+    const seenTx: Array<Transaction | undefined> = [];
+    const auditRecorder: AuditRecorder = {
+      record: async (event: AuditEvent, tx?: Transaction) => {
+        seenTx.push(tx);
+        void event;
+      },
+    };
+    const originalSave = routingRules.save.bind(routingRules);
+    routingRules.save = async (rule, tx) => {
+      seenTx.push(tx);
+      return originalSave(rule, tx);
+    };
+
+    const activate = createActivateRoutingRuleUseCase({
+      routingRules,
+      auditRecorder,
+      unitOfWork: new PassthroughUnitOfWork(),
+      clock: { now: () => LATER },
+    });
+
+    await activate({ auth: supervisorAuth(), ruleId: draft.id });
+
+    expect(seenTx).toHaveLength(2);
+    expect(seenTx[0]).toBeDefined();
+    expect(seenTx[0]).toBe(seenTx[1]);
   });
 });

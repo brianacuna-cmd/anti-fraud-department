@@ -4,6 +4,7 @@ import type { CaseRoutingRule } from '../domain/model/aggregates/CaseRoutingRule
 import { createCaseRoutingRuleId } from '../domain/model/value-objects/CaseRoutingRuleId.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { CaseRoutingRuleRepository } from '../domain/ports/CaseRoutingRuleRepository.js';
+import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import {
   forbiddenCrossTenant,
   routingRuleNotFound,
@@ -21,12 +22,16 @@ export interface DeactivateRoutingRuleInput {
 export interface DeactivateRoutingRuleDeps {
   readonly routingRules: CaseRoutingRuleRepository;
   readonly auditRecorder: AuditRecorder;
+  readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
 }
 
 /**
  * Deactivates one ACTIVE rule to INACTIVE without affecting siblings.
- * Single-document update — no UnitOfWork. SUPERVISOR|ADMIN only.
+ * SUPERVISOR|ADMIN only. Already-INACTIVE is a no-op — no save, no audit
+ * event (mirrors ActivateRoutingRule's REQ-E2 no-op suppression). A real
+ * transition's save+audit pair runs inside one UnitOfWork (REQ-E1, folded
+ * into this slice for invariant consistency with create/activate).
  */
 export function createDeactivateRoutingRuleUseCase(deps: DeactivateRoutingRuleDeps) {
   return async function deactivateRoutingRule(
@@ -43,27 +48,34 @@ export function createDeactivateRoutingRuleUseCase(deps: DeactivateRoutingRuleDe
     if (rule.organizationId !== organizationId) {
       throw forbiddenCrossTenant('routing rule does not belong to the actor organization');
     }
-
-    const now = deps.clock.now();
-    const deactivated = rule.status === 'INACTIVE' ? rule : rule.deactivate(now);
-    if (deactivated !== rule) {
-      await deps.routingRules.save(deactivated);
+    if (rule.status === 'INACTIVE') {
+      return rule;
     }
 
-    await deps.auditRecorder.record({
-      organizationId,
-      actorType: input.auth.actorType,
-      actorId: input.auth.userId,
-      action: 'DEACTIVATE_ROUTING_RULE',
-      resource: 'rule',
-      resourceId: deactivated.id,
-      detail: {
-        name: deactivated.name,
-        previousStatus: rule.status,
-      },
-      ipAddress: input.auth.ipAddress,
-    });
+    const now = deps.clock.now();
+    const deactivated = rule.deactivate(now);
 
-    return deactivated;
+    return deps.unitOfWork.withTransaction(async (tx) => {
+      await deps.routingRules.save(deactivated, tx);
+
+      await deps.auditRecorder.record(
+        {
+          organizationId,
+          actorType: input.auth.actorType,
+          actorId: input.auth.userId,
+          action: 'DEACTIVATE_ROUTING_RULE',
+          resource: 'rule',
+          resourceId: deactivated.id,
+          detail: {
+            name: deactivated.name,
+            previousStatus: rule.status,
+          },
+          ipAddress: input.auth.ipAddress,
+        },
+        tx,
+      );
+
+      return deactivated;
+    });
   };
 }
