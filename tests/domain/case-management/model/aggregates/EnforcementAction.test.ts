@@ -70,8 +70,10 @@ describe('EnforcementAction status transitions', () => {
     expect(() => build().reject(NOW).approve(LATER)).toThrow('cannot transition');
   });
 
-  it('reverts EXECUTED -> REVERTED', () => {
-    expect(build().approve(NOW).execute(NOW).revert(LATER).status).toBe('REVERTED');
+  it('keeps EXECUTED as a terminal state (no revert path)', () => {
+    const executed = build().approve(NOW).execute(NOW);
+    expect(executed.status).toBe('EXECUTED');
+    expect('revert' in executed).toBe(false);
   });
 });
 
