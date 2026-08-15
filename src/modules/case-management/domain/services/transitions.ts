@@ -37,16 +37,15 @@ export const slaStatusTransitions: TransitionTable<SlaStatus> = {
 };
 
 /**
- * EnforcementAction status edges (spec: approval gate + execute + revert).
+ * EnforcementAction status edges (spec: approval gate + execute).
  * REVIEW may execute from PENDING; non-REVIEW must pass through APPROVED first.
  * Those rules are enforced by `EnforcementAction.execute`, not this table alone.
  */
 export const enforcementActionStatusTransitions: TransitionTable<EnforcementActionStatus> = {
   PENDING: ['APPROVED', 'REJECTED', 'EXECUTED'],
   APPROVED: ['EXECUTED'],
-  EXECUTED: ['REVERTED'],
+  EXECUTED: [],
   REJECTED: [],
-  REVERTED: [],
 };
 
 export const approvalRequestStatusTransitions: TransitionTable<ApprovalRequestStatus> = {
