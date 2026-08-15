@@ -9,13 +9,13 @@ const { publicKey, privateKey } = generateKeyPairSync('rsa', {
   privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
 });
 
-function bridgeSignature(rawBody: Buffer, timestampMs = Date.now()): string {
-  const signedPayload = `${timestampMs}.${rawBody.toString('utf8')}`;
+function bridgeSignature(rawBody: Buffer, timestamp = Date.now()): string {
+  const signedPayload = `${timestamp}.${rawBody.toString('utf8')}`;
   const signer = createSign('RSA-SHA256');
   signer.update(signedPayload);
   signer.end();
   const v0 = signer.sign(privateKey, 'base64');
-  return `t=${timestampMs},v0=${v0}`;
+  return `t=${timestamp},v0=${v0}`;
 }
 
 describe('BridgePkiVerifier', () => {
@@ -55,8 +55,21 @@ describe('BridgePkiVerifier', () => {
     expect(verifier.verify(BODY, { 'X-Webhook-Signature': header }, otherPublic)).toBe(false);
   });
 
-  it('fails closed when the timestamp is older than ten minutes', () => {
+  it('fails closed when the timestamp is older than ten minutes (ms-magnitude)', () => {
     const header = bridgeSignature(BODY, Date.now() - 11 * 60 * 1000);
+
+    expect(verifier.verify(BODY, { 'X-Webhook-Signature': header }, publicKey)).toBe(false);
+  });
+
+  it('accepts a fresh seconds-magnitude timestamp (unix seconds, not ms)', () => {
+    const header = bridgeSignature(BODY, Math.floor(Date.now() / 1000));
+
+    expect(verifier.verify(BODY, { 'X-Webhook-Signature': header }, publicKey)).toBe(true);
+  });
+
+  it('fails closed when the seconds-magnitude timestamp is older than ten minutes', () => {
+    const staleSeconds = Math.floor((Date.now() - 11 * 60 * 1000) / 1000);
+    const header = bridgeSignature(BODY, staleSeconds);
 
     expect(verifier.verify(BODY, { 'X-Webhook-Signature': header }, publicKey)).toBe(false);
   });
