@@ -1,5 +1,8 @@
 import { createIngestSystemAuthContext } from '../../../../src/modules/ingest/application/createIngestSystemAuthContext.js';
-import { createReceiveProviderWebhookUseCase } from '../../../../src/modules/ingest/application/ReceiveProviderWebhook.js';
+import {
+  createReceiveProviderWebhookUseCase,
+  resolveMappedResult,
+} from '../../../../src/modules/ingest/application/ReceiveProviderWebhook.js';
 import { InboundWebhookSecret } from '../../../../src/modules/ingest/domain/model/aggregates/InboundWebhookSecret.js';
 import { ProviderIngestEvent } from '../../../../src/modules/ingest/domain/model/aggregates/ProviderIngestEvent.js';
 import { generateInboundWebhookSecretId } from '../../../../src/modules/ingest/domain/model/value-objects/InboundWebhookSecretId.js';
@@ -423,6 +426,29 @@ describe('createReceiveProviderWebhookUseCase', () => {
     await Promise.resolve();
 
     expect(postAckErrors).toHaveLength(1);
+  });
+});
+
+describe('resolveMappedResult (REQ-E3)', () => {
+  it('surfaces unparseable_body (not unparsable_amount) when the raw body fails to parse as JSON', () => {
+    const result = resolveMappedResult(undefined, 'stripe', { map: mapProviderEnvelope });
+
+    expect(result).toEqual({ status: 'failed', reason: 'unparseable_body' });
+  });
+
+  it('delegates to the mapper and preserves unparsable_amount for a genuine amount-parse failure', () => {
+    const result = resolveMappedResult(
+      {
+        event_id: 'wh_bad',
+        event_type: 'transfer.updated',
+        event_created_at: '2026-01-01T00:00:00.000Z',
+        event_object: { amount: 'abc', currency: 'usd', customer_id: 'c1' },
+      },
+      'bridge',
+      { map: mapProviderEnvelope },
+    );
+
+    expect(result).toEqual({ status: 'failed', reason: 'unparsable_amount' });
   });
 });
 
