@@ -111,6 +111,10 @@ class InMemoryEvents implements ProviderIngestEventRepository {
       ) ?? null
     );
   }
+
+  async findById(id: string): Promise<ProviderIngestEvent | null> {
+    return this.rows.find((row) => row.id === id) ?? null;
+  }
 }
 
 class RecordingComposer implements PostAckComposer {

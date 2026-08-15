@@ -108,6 +108,10 @@ class InMemoryEvents implements ProviderIngestEventRepository {
       ) ?? null
     );
   }
+
+  async findById(id: string): Promise<ProviderIngestEvent | null> {
+    return this.inserted.find((row) => row.id === id) ?? null;
+  }
 }
 
 function seedStripeSecret(secrets: InMemorySecrets): void {
@@ -374,6 +378,51 @@ describe('createReceiveProviderWebhookUseCase', () => {
 
     expect(result.status).toBe('PROCESSED');
     expect(() => scheduled[0]?.()).not.toThrow();
+  });
+
+  it('keeps the ACK synchronous 2xx and routes post-ack composer failures to onPostAckError (REQ-A4)', async () => {
+    const composer: PostAckComposer = {
+      compose: async () => {
+        throw new Error('composer exploded');
+      },
+    };
+    const scheduled: Array<() => void> = [];
+    const postAckErrors: unknown[] = [];
+    const secrets = new InMemorySecrets();
+    seedStripeSecret(secrets);
+    const events = new InMemoryEvents();
+    const verifier: WebhookSignatureVerifier = { verify: () => true };
+    const receive = createReceiveProviderWebhookUseCase({
+      secrets,
+      events,
+      cipher: new FakeCipher(),
+      verifiers: () => verifier,
+      mapper: { map: mapProviderEnvelope },
+      composer,
+      clock: new FixedClock(NOW),
+      schedulePostAck: (work) => {
+        scheduled.push(work);
+      },
+      onPostAckError: (error) => {
+        postAckErrors.push(error);
+      },
+    });
+
+    const result = await receive({
+      organizationId: ORG,
+      provider: 'stripe',
+      rawBody: Buffer.from(JSON.stringify(STRIPE_CHARGE), 'utf8'),
+      headers: { 'stripe-signature': 't=1,v1=abc' },
+    });
+
+    expect(result.status).toBe('PROCESSED');
+    expect(postAckErrors).toHaveLength(0);
+
+    scheduled[0]?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(postAckErrors).toHaveLength(1);
   });
 });
 

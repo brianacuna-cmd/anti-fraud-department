@@ -42,6 +42,7 @@ describe('ingest domain ports', () => {
       insertUnique: async () => 'inserted',
       save: async () => undefined,
       findByOrgProviderEvent: async () => null,
+      findById: async () => null,
     };
     const verifier: WebhookSignatureVerifier = {
       verify: () => true,

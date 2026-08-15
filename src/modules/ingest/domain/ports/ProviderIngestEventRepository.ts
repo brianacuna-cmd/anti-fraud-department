@@ -1,5 +1,6 @@
 import type { ProviderIngestEvent } from '../model/aggregates/ProviderIngestEvent.js';
 import type { PaymentProvider } from '../model/value-objects/PaymentProvider.js';
+import type { ProviderIngestEventId } from '../model/value-objects/ProviderIngestEventId.js';
 
 export interface ProviderIngestEventRepository {
   insertUnique(event: ProviderIngestEvent): Promise<'inserted' | 'duplicate'>;
@@ -9,4 +10,5 @@ export interface ProviderIngestEventRepository {
     provider: PaymentProvider,
     providerEventId: string,
   ): Promise<ProviderIngestEvent | null>;
+  findById(id: ProviderIngestEventId): Promise<ProviderIngestEvent | null>;
 }

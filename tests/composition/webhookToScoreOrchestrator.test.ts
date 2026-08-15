@@ -1,7 +1,10 @@
 import { createWebhookToScoreOrchestrator } from '../../src/composition/webhookToScoreOrchestrator.js';
 import { createIngestedPaymentEvent } from '../../src/modules/ingest/domain/model/IngestedPaymentEvent.js';
 import { ProviderIngestEvent } from '../../src/modules/ingest/domain/model/aggregates/ProviderIngestEvent.js';
-import { generateProviderIngestEventId } from '../../src/modules/ingest/domain/model/value-objects/ProviderIngestEventId.js';
+import {
+  generateProviderIngestEventId,
+  type ProviderIngestEventId,
+} from '../../src/modules/ingest/domain/model/value-objects/ProviderIngestEventId.js';
 import type { PaymentProvider } from '../../src/modules/ingest/domain/model/value-objects/PaymentProvider.js';
 import type { ProviderIngestEventRepository } from '../../src/modules/ingest/domain/ports/ProviderIngestEventRepository.js';
 import type { CanonicalRiskEvent } from '../../src/modules/risk-assessment/domain/model/CanonicalRiskEvent.js';
@@ -37,6 +40,13 @@ class InMemoryEvents implements ProviderIngestEventRepository {
       this.row.provider === provider &&
       this.row.providerEventId === providerEventId
     ) {
+      return this.row;
+    }
+    return null;
+  }
+
+  async findById(id: ProviderIngestEventId): Promise<ProviderIngestEvent | null> {
+    if (this.row && this.row.id === id) {
       return this.row;
     }
     return null;
@@ -173,5 +183,92 @@ describe('webhookToScoreOrchestrator', () => {
     ).resolves.toBeUndefined();
 
     expect(events.current()?.status).toBe('FAILED');
+  });
+
+  it('resolves and marks the row via ingestEventId even when providerEventId is undefined (REQ-A1 regression)', async () => {
+    const events = new InMemoryEvents(receivedRow());
+    const composer = createWebhookToScoreOrchestrator({
+      processRiskScoreToCase: async () => ({
+        riskScore: 12,
+        ruleId: 'rule-zen',
+        conditionsVersion: 1,
+        opened: false,
+      }),
+      events,
+      clock: new FixedClock(NOW),
+    });
+
+    await composer.compose({
+      organizationId: ORG,
+      provider: 'stripe',
+      event: createIngestedPaymentEvent({
+        provider: 'stripe',
+        providerEventType: 'charge.succeeded',
+        caseCustomerId: 'cus_1',
+        amountCents: 2500,
+        currency: 'usd',
+        riskSignals: { stripeRiskScore: 68, stripeRiskLevel: 'elevated' },
+        createdAt: NOW,
+      }),
+      ingestEventId: INGEST_ID,
+    });
+
+    expect(events.current()?.status).toBe('PROCESSED');
+  });
+
+  it('invokes onError with {stage, ingestEventId} and marks FAILED when the composer throws (REQ-A2, REQ-A3.2)', async () => {
+    const events = new InMemoryEvents(receivedRow());
+    const errors: Array<{ error: unknown; ctx: { stage: string; ingestEventId?: string } }> = [];
+    const composer = createWebhookToScoreOrchestrator({
+      processRiskScoreToCase: async () => {
+        throw new Error('boom');
+      },
+      events,
+      clock: new FixedClock(NOW),
+      onError: (error, ctx) => {
+        errors.push({ error, ctx });
+      },
+    });
+
+    await composer.compose({
+      organizationId: ORG,
+      provider: 'stripe',
+      event: ingestedCharge(),
+      ingestEventId: INGEST_ID,
+    });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.ctx).toMatchObject({ stage: 'compose', ingestEventId: INGEST_ID });
+    expect(events.current()?.status).toBe('FAILED');
+  });
+
+  it('calls onError and does not throw when findById returns null on success path (observability, not silent)', async () => {
+    const events = new InMemoryEvents(null);
+    const errors: unknown[] = [];
+    const composer = createWebhookToScoreOrchestrator({
+      processRiskScoreToCase: async () => ({
+        riskScore: 12,
+        ruleId: 'rule-zen',
+        conditionsVersion: 1,
+        opened: false,
+      }),
+      events,
+      clock: new FixedClock(NOW),
+      onError: (error) => {
+        errors.push(error);
+      },
+    });
+
+    await expect(
+      composer.compose({
+        organizationId: ORG,
+        provider: 'stripe',
+        event: ingestedCharge(),
+        ingestEventId: INGEST_ID,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(errors).toHaveLength(1);
+    expect(events.current()).toBeNull();
   });
 });
