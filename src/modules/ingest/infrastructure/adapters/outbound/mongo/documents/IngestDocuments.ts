@@ -1,5 +1,5 @@
 import type { ObjectId } from 'mongodb';
-import type { PaymentProvider } from '../../../../domain/model/value-objects/PaymentProvider.js';
+import type { PaymentProvider } from '../../../../../domain/model/value-objects/PaymentProvider.js';
 
 export interface ProviderIngestEventDocument {
   readonly _id: ObjectId;
