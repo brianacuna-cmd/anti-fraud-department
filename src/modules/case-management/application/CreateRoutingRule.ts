@@ -5,6 +5,7 @@ import { CaseRoutingRule as CaseRoutingRuleAggregate } from '../domain/model/agg
 import type { CaseRoutingRuleId } from '../domain/model/value-objects/CaseRoutingRuleId.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { CaseRoutingRuleRepository } from '../domain/ports/CaseRoutingRuleRepository.js';
+import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireRole } from './authorization/requireRole.js';
 
@@ -22,13 +23,17 @@ export interface CreateRoutingRuleInput {
 export interface CreateRoutingRuleDeps {
   readonly routingRules: CaseRoutingRuleRepository;
   readonly auditRecorder: AuditRecorder;
+  readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
   readonly generateCaseRoutingRuleId: () => CaseRoutingRuleId;
 }
 
 /**
- * Draft create: SUPERVISOR|ADMIN only. Always persists INACTIVE.
- * Structural JDM validation happens at the HTTP boundary before this use case.
+ * Draft create: SUPERVISOR|ADMIN only. Always persists INACTIVE. Structural
+ * JDM validation happens at the HTTP boundary before this use case.
+ * REQ-E1: save + audit run inside one UnitOfWork (mirrors
+ * ApproveEnforcementAction.ts) so the rule is never persisted without its
+ * audit trail.
  */
 export function createCreateRoutingRuleUseCase(deps: CreateRoutingRuleDeps) {
   return async function createRoutingRule(input: CreateRoutingRuleInput): Promise<CaseRoutingRule> {
@@ -47,25 +52,30 @@ export function createCreateRoutingRuleUseCase(deps: CreateRoutingRuleDeps) {
       now,
     });
 
-    await deps.routingRules.save(rule);
+    return deps.unitOfWork.withTransaction(async (tx) => {
+      await deps.routingRules.save(rule, tx);
 
-    await deps.auditRecorder.record({
-      organizationId,
-      actorType: input.auth.actorType,
-      actorId: input.auth.userId,
-      action: 'CREATE_ROUTING_RULE',
-      resource: 'rule',
-      resourceId: rule.id,
-      detail: {
-        name: rule.name,
-        conditionsVersion: rule.conditionsVersion,
-        status: rule.status,
-        targetRoleId: rule.targetRoleId,
-        targetUserId: rule.targetUserId,
-      },
-      ipAddress: input.auth.ipAddress,
+      await deps.auditRecorder.record(
+        {
+          organizationId,
+          actorType: input.auth.actorType,
+          actorId: input.auth.userId,
+          action: 'CREATE_ROUTING_RULE',
+          resource: 'rule',
+          resourceId: rule.id,
+          detail: {
+            name: rule.name,
+            conditionsVersion: rule.conditionsVersion,
+            status: rule.status,
+            targetRoleId: rule.targetRoleId,
+            targetUserId: rule.targetUserId,
+          },
+          ipAddress: input.auth.ipAddress,
+        },
+        tx,
+      );
+
+      return rule;
     });
-
-    return rule;
   };
 }
