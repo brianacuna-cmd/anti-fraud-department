@@ -428,6 +428,7 @@ async function bootstrap(): Promise<void> {
     createRoutingRule: createCreateRoutingRuleUseCase({
       routingRules: caseRoutingRules,
       auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
       clock,
       generateCaseRoutingRuleId,
     }),
