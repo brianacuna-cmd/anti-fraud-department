@@ -58,6 +58,11 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { unique: true, name: 'notification_preference_user_alert_channel_unique' },
   );
 
+  await db.collection('notifications').createIndex(
+    { organization_id: 1, recipient_user_id: 1, created_at: -1 },
+    { name: 'notification_recipient_created_idx' },
+  );
+
   await db.collection('cases').createIndex({ organization_id: 1, status: 1 }, { name: 'case_org_status_idx' });
 
   await db.collection('cases').createIndex({ organization_id: 1, priority: 1 }, { name: 'case_org_priority_idx' });
