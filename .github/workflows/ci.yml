@@ -46,4 +46,6 @@ jobs:
 
       - run: pnpm run typecheck
 
+      # Jest worker cap lives in jest.config.js (maxWorkers: 2) so mongod
+      # startup isn't overwhelmed by parallel workers.
       - run: pnpm test

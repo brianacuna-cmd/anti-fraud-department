@@ -9,6 +9,7 @@ import { generateTimelineEventId } from '../../../../src/modules/case-management
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
+import { InMemoryCaseManagementNotificationSender } from '../../../helpers/case-management/InMemoryCaseManagementNotificationSender.js';
 import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
@@ -67,6 +68,7 @@ function buildUseCase(seed?: Case, directorySeed?: AssignedTo[]) {
   }
   const timelineRecorder = new InMemoryTimelineRecorder();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
+  const notificationSender = new InMemoryCaseManagementNotificationSender();
   const assigneeDirectory = new InMemoryAssigneeDirectory();
   for (const member of directorySeed ?? []) {
     assigneeDirectory.allow(ORG_1, member);
@@ -79,8 +81,9 @@ function buildUseCase(seed?: Case, directorySeed?: AssignedTo[]) {
     clock: new FixedClock(NOW),
     generateTimelineEventId,
     assigneeDirectory,
+    notificationSender,
   });
-  return { reassignCase, cases, timelineRecorder, auditRecorder, assigneeDirectory };
+  return { reassignCase, cases, timelineRecorder, auditRecorder, assigneeDirectory, notificationSender };
 }
 
 describe('createReassignCaseUseCase (manual reassign)', () => {
@@ -113,6 +116,43 @@ describe('createReassignCaseUseCase (manual reassign)', () => {
       assignedToId: oid('analyst-2'),
       assignedToType: 'USER',
     });
+  });
+
+  it('sends CASO_ASIGNADO to the new USER assignee inside the same transaction (atomic)', async () => {
+    const target = createAssignedTo('USER', oid('analyst-2'));
+    const { reassignCase, notificationSender } = buildUseCase(buildCase(), [target]);
+
+    await reassignCase({
+      auth: ANALYST,
+      caseId: CASE_ID,
+      assignedToType: 'USER',
+      assignedToId: oid('analyst-2'),
+    });
+
+    const requests = notificationSender.all();
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      organizationId: ORG_1,
+      recipientUserId: oid('analyst-2'),
+      alertType: 'CASO_ASIGNADO',
+    });
+    expect(requests[0]?.context).toMatchObject({ caseId: CASE_ID });
+  });
+
+  it('does NOT send a notification when reassigning to a ROLE (ADR-D4 default)', async () => {
+    const target = createAssignedTo('ROLE', oid('role-1'));
+    const { reassignCase, notificationSender, cases } = buildUseCase(buildCase(), [target]);
+
+    const result = await reassignCase({
+      auth: ANALYST,
+      caseId: CASE_ID,
+      assignedToType: 'ROLE',
+      assignedToId: oid('role-1'),
+    });
+
+    expect(result.assignedTo).toEqual({ type: 'ROLE', id: oid('role-1') });
+    expect(cases.all()[0]?.assignedTo).toEqual({ type: 'ROLE', id: oid('role-1') });
+    expect(notificationSender.all()).toHaveLength(0);
   });
 
   it('returns CASE_NOT_FOUND when the case is soft-deleted', async () => {

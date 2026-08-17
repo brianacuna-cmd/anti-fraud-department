@@ -75,7 +75,11 @@ import { createRecordAuditLogUseCase } from './modules/audit/application/RecordA
 import { generateAuditLogId } from './modules/audit/domain/model/value-objects/AuditLogId.js';
 import { createAuditRecorderAdapter } from './composition/auditRecorderAdapter.js';
 import { createNotificationsAuditRecorderAdapter } from './composition/notificationsAuditRecorderAdapter.js';
+import { createCaseManagementNotificationSenderAdapter } from './composition/caseManagementNotificationSenderAdapter.js';
 import { MongoNotificationPreferenceRepository } from './modules/notifications/infrastructure/adapters/outbound/mongo/MongoNotificationPreferenceRepository.js';
+import { MongoNotificationRepository } from './modules/notifications/infrastructure/adapters/outbound/mongo/MongoNotificationRepository.js';
+import { createSendNotificationUseCase } from './modules/notifications/application/SendNotification.js';
+import { generateNotificationId } from './modules/notifications/domain/model/value-objects/NotificationId.js';
 import { MongoUnitOfWork as NotificationsMongoUnitOfWork } from './modules/notifications/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { createGetNotificationPreferencesUseCase } from './modules/notifications/application/GetNotificationPreferences.js';
 import { createSetNotificationPreferenceUseCase } from './modules/notifications/application/SetNotificationPreference.js';
@@ -292,6 +296,22 @@ async function bootstrap(): Promise<void> {
     auditRecorder: notificationsAuditRecorder,
   });
 
+  // casemgmt-notifications-sla-sweep PR1 (Slice 10.5): `SendNotification`
+  // persists an in-app row for a machine-to-machine trigger (no
+  // `AuthContext` — consults `notificationPreferences.findOne` directly,
+  // design ADR-D3). `caseManagementNotificationSenderAdapter` bridges
+  // case-management's OWN `NotificationSender` port to this use case (exact
+  // twin of `caseManagementAuditRecorderAdapter`), so notifications commit
+  // atomically with the triggering case-management transaction.
+  const notifications = new MongoNotificationRepository(db);
+  const sendNotification = createSendNotificationUseCase({
+    notifications,
+    preferences: notificationPreferences,
+    clock,
+    generateNotificationId,
+  });
+  const caseManagementNotificationSender = createCaseManagementNotificationSenderAdapter(sendNotification);
+
   // case-management Slice 5 (T5 manual case creation): own `MongoUnitOfWork`
   // instance (same pattern as `notificationsUnitOfWork` above) so the Case
   // insert + CaseTimeline CASE_CREATED entry + CREATE_CASE audit row commit
@@ -353,6 +373,7 @@ async function bootstrap(): Promise<void> {
       clock,
       generateTimelineEventId,
       assigneeDirectory,
+      notificationSender: caseManagementNotificationSender,
     }),
     listCases: createListCasesUseCase({ cases }),
     reopenCase: createReopenCaseUseCase({
