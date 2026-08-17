@@ -5,7 +5,8 @@ import type { createListCasesUseCase } from '../../../../application/ListCases.j
 import type { createGetCaseUseCase } from '../../../../application/GetCase.js';
 import type { createTransitionCaseStatusUseCase } from '../../../../application/TransitionCaseStatus.js';
 import type { createGetCaseTimelineUseCase } from '../../../../application/GetCaseTimeline.js';
-import type { createSyncFinturuDataUseCase } from '../../../../application/SyncFinturuData.js';
+import type { createGetFinturuDirectoryUseCase } from '../../../../application/GetFinturuDirectory.js';
+import type { createOpenFraudCaseUseCase } from '../../../../application/OpenFraudCaseFromCustomer.js';
 import type { FinturuApiClient } from '../../outbound/finturu/FinturuApiClient.js';
 import { createCaseSchema } from './dto/caseSchemas.js';
 import { toCaseResponse } from './mappers/CaseHttpMapper.js';
@@ -18,6 +19,8 @@ export interface CaseRouterDeps {
   readonly transitionCaseStatus: ReturnType<typeof createTransitionCaseStatusUseCase>;
   readonly getCaseTimeline: ReturnType<typeof createGetCaseTimelineUseCase>;
   readonly syncFinturuData?: ReturnType<typeof createSyncFinturuDataUseCase>;
+  readonly getFinturuDirectory?: ReturnType<typeof createGetFinturuDirectoryUseCase>;
+  readonly openFraudCase?: ReturnType<typeof createOpenFraudCaseUseCase>;
   readonly finturuClient?: FinturuApiClient;
 }
 
@@ -102,6 +105,60 @@ export function caseRouter(deps: CaseRouterDeps): Router {
     if (!email) return res.status(400).json({ message: 'Email query parameter required' });
     const data = await deps.finturuClient.getStripeCustomerByEmail(email);
     res.status(200).json(data);
+  });
+
+  router.get('/cases/directory/finturu', async (req, res) => {
+    const auth = requireAuthContext(req);
+    if (!deps.getFinturuDirectory) {
+      res.status(501).json({ message: 'Directory service is not enabled' });
+      return;
+    }
+    const directory = await deps.getFinturuDirectory({ auth });
+    res.status(200).json({
+      total: directory.length,
+      customers: directory,
+    });
+  });
+
+  router.post('/cases/open-from-customer', async (req, res) => {
+    const auth = requireAuthContext(req);
+    if (!deps.openFraudCase) {
+      res.status(501).json({ message: 'Open case service is not enabled' });
+      return;
+    }
+    const {
+      customerId,
+      customerEmail,
+      bridgeUserId,
+      bridgeWallet,
+      stripeCustomerId,
+      riskScore,
+      priority,
+      reason,
+      tags,
+      rawSnapshot,
+    } = req.body ?? {};
+
+    if (!customerId || !rawSnapshot) {
+      res.status(400).json({ message: 'customerId and rawSnapshot are required' });
+      return;
+    }
+
+    const kase = await deps.openFraudCase({
+      auth,
+      customerId,
+      customerEmail,
+      bridgeUserId,
+      bridgeWallet,
+      stripeCustomerId,
+      riskScore: riskScore ? Number(riskScore) : undefined,
+      priority: typeof priority === 'string' ? priority : undefined,
+      reason: typeof reason === 'string' ? reason : undefined,
+      tags: Array.isArray(tags) ? tags : undefined,
+      rawSnapshot,
+    });
+
+    res.status(201).json(toCaseResponse(kase));
   });
 
   router.post('/cases/sync/finturu', async (req, res) => {

@@ -102,6 +102,8 @@ import { createGetCaseUseCase } from './modules/case-management/application/GetC
 import { createTransitionCaseStatusUseCase } from './modules/case-management/application/TransitionCaseStatus.js';
 import { createGetCaseTimelineUseCase } from './modules/case-management/application/GetCaseTimeline.js';
 import { createSyncFinturuDataUseCase } from './modules/case-management/application/SyncFinturuData.js';
+import { createGetFinturuDirectoryUseCase } from './modules/case-management/application/GetFinturuDirectory.js';
+import { createOpenFraudCaseUseCase } from './modules/case-management/application/OpenFraudCaseFromCustomer.js';
 import { createIngestFinturuCaseUseCase } from './modules/case-management/application/IngestFinturuCase.js';
 import { FinturuApiClient } from './modules/case-management/infrastructure/adapters/outbound/finturu/FinturuApiClient.js';
 import { caseRouter } from './modules/case-management/infrastructure/adapters/inbound/http/caseRouter.js';
@@ -280,6 +282,23 @@ async function bootstrap(): Promise<void> {
     defaultOrganizationId: process.env.DEFAULT_ORGANIZATION_ID ?? '019d7e58aed0777318d11d4d',
   });
 
+  const getFinturuDirectory = createGetFinturuDirectoryUseCase({
+    finturuClient: finturuApiClient,
+    cases,
+    defaultOrganizationId: process.env.DEFAULT_ORGANIZATION_ID ?? '019d7e58aed0777318d11d4d',
+  });
+
+  const openFraudCase = createOpenFraudCaseUseCase({
+    cases,
+    timelineRecorder: caseTimelineRecorder,
+    outbox: outboxEvents,
+    unitOfWork: caseManagementUnitOfWork,
+    clock,
+    generateCaseId,
+    generateTimelineEventId,
+    auditRecorder: caseManagementAuditRecorder,
+  });
+
   const caseManagementCasesRouter = caseRouter({
     createCase: createCreateCaseUseCase({
       cases,
@@ -305,6 +324,8 @@ async function bootstrap(): Promise<void> {
       timelineRecorder: caseTimelineRecorder,
     }),
     syncFinturuData,
+    getFinturuDirectory,
+    openFraudCase,
     finturuClient: finturuApiClient,
   });
 
@@ -621,17 +642,6 @@ async function bootstrap(): Promise<void> {
 
   app.listen(PORT, () => {
     console.log(`anti-fraud-department listening on port ${PORT}`);
-
-    // Automatic Finturu API sync on server startup
-    syncFinturuData({}).catch(() => {});
-
-    // Periodic background sync every 60 seconds
-    const SYNC_INTERVAL_MS = Number(process.env.FINTURU_SYNC_INTERVAL_MS ?? 60_000);
-    if (SYNC_INTERVAL_MS > 0) {
-      setInterval(() => {
-        syncFinturuData({}).catch(() => {});
-      }, SYNC_INTERVAL_MS);
-    }
   });
 }
 
