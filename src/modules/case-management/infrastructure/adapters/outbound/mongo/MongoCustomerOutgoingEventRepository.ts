@@ -17,6 +17,9 @@ const COLLECTION_NAME = 'customer_outgoing_events';
 /** Fixed backoff schedule (seconds): 1, 2, 4, 8, 16 for attempts 0..4. */
 const BACKOFF_SECONDS = [1, 2, 4, 8, 16] as const;
 
+/** Claim lease duration: long enough to cover one dispatcher tick, short enough to recover fast from a crash. */
+const LEASE_TTL_MS = 5 * 60 * 1000;
+
 export class MongoCustomerOutgoingEventRepository implements CustomerOutgoingEventRepository {
   private readonly collection: Collection<CustomerOutgoingEventDocument>;
 
@@ -49,21 +52,38 @@ export class MongoCustomerOutgoingEventRepository implements CustomerOutgoingEve
   }
 
   async claimPending(now: Instant, limit: number, tx?: Transaction): Promise<CustomerOutgoingEvent[]> {
-    const documents = await this.collection
-      .find({ status: 'PENDING', attempts: { $lt: 5 } }, { session: toSession(tx) })
-      .sort({ created_at: 1 })
-      .toArray();
-
     const nowMs = toDate(now).getTime();
-    const due = documents.filter((document) => {
-      if (document.last_attempt_at === null) {
-        return true;
-      }
-      const delaySeconds =
-        BACKOFF_SECONDS[Math.min(document.attempts, BACKOFF_SECONDS.length - 1)] ?? 16;
-      return nowMs >= document.last_attempt_at.getTime() + delaySeconds * 1000;
-    });
+    const nowDate = new Date(nowMs);
+    const leaseExpiry = new Date(nowMs - LEASE_TTL_MS);
 
-    return due.slice(0, limit).map(toDomain);
+    const backoffDueOr = BACKOFF_SECONDS.map((delaySeconds, attempts) => ({
+      attempts,
+      $or: [{ last_attempt_at: null }, { last_attempt_at: { $lte: new Date(nowMs - delaySeconds * 1000) } }],
+    }));
+
+    const claimed: CustomerOutgoingEventDocument[] = [];
+    // Exclusive lease claim: each findOneAndUpdate atomically reserves one row,
+    // so concurrent claimers (multiple dispatcher instances) never overlap.
+    for (let i = 0; i < limit; i += 1) {
+      const result = await this.collection.findOneAndUpdate(
+        {
+          status: 'PENDING',
+          attempts: { $lt: 5 },
+          $and: [
+            { $or: [{ claimed_at: null }, { claimed_at: { $exists: false } }, { claimed_at: { $lte: leaseExpiry } }] },
+            { $or: backoffDueOr },
+          ],
+        },
+        { $set: { claimed_at: nowDate } },
+        { sort: { created_at: 1 }, returnDocument: 'after', session: toSession(tx) },
+      );
+
+      if (!result) {
+        break;
+      }
+      claimed.push(result);
+    }
+
+    return claimed.map(toDomain);
   }
 }
