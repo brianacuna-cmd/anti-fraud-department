@@ -96,6 +96,8 @@ import { createRouteCaseUseCase } from './modules/case-management/application/Ro
 import { createReassignCaseUseCase } from './modules/case-management/application/ReassignCase.js';
 import { createListCasesUseCase } from './modules/case-management/application/ListCases.js';
 import { createReopenCaseUseCase } from './modules/case-management/application/ReopenCase.js';
+import { createSweepSlaTrackingUseCase } from './modules/case-management/application/SweepSlaTracking.js';
+import { createSlaSweepScheduler } from './modules/case-management/infrastructure/scheduler/SlaSweepScheduler.js';
 import { MongoCaseRoutingRuleRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRoutingRuleRepository.js';
 import { MongoOrganizationFraudConfigRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoOrganizationFraudConfigRepository.js';
 import { MongoCaseSlaTrackingRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseSlaTrackingRepository.js';
@@ -216,6 +218,13 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS = Number(
   process.env.OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS ?? 5000,
 );
+/**
+ * Poll interval for the background SLA sweep (casemgmt-notifications-sla-sweep
+ * PR2, Slice 13). SINGLE-INSTANCE CAVEAT: see `SlaSweepScheduler.ts` header —
+ * running more than one instance of this process races multiple sweep loops
+ * against the same due rows; `markNotified` idempotency is the only guard.
+ */
+const SLA_SWEEP_INTERVAL_MS = Number(process.env.SLA_SWEEP_INTERVAL_MS ?? 60_000);
 
 async function bootstrap(): Promise<void> {
   // Fail-closed (design D4, D6): AUTH_MODE=trusted-header trusts client
@@ -405,6 +414,17 @@ async function bootstrap(): Promise<void> {
     webhookClient: outgoingWebhookClient,
     clock,
   });
+  // casemgmt-notifications-sla-sweep PR2 (Slice 13): advances due
+  // `CaseSlaTracking` rows and sends SLA_POR_VENCER via the same
+  // `caseManagementNotificationSender` adapter used by `ReassignCase`.
+  const sweepSlaTracking = createSweepSlaTrackingUseCase({
+    slaTracking: caseSlaTracking,
+    cases,
+    notificationSender: caseManagementNotificationSender,
+    unitOfWork: caseManagementUnitOfWork,
+    clock,
+  });
+  const slaSweepScheduler = createSlaSweepScheduler({ sweepSlaTracking });
   const enforcementHttpRouter = enforcementRouter({
     recordAnalystDecision: createRecordAnalystDecisionUseCase({
       cases,
@@ -844,6 +864,9 @@ async function bootstrap(): Promise<void> {
   console.log(
     `Customer outgoing webhook dispatcher started (interval=${OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS}ms)`,
   );
+
+  slaSweepScheduler.start(SLA_SWEEP_INTERVAL_MS);
+  console.log(`SLA sweep scheduler started (interval=${SLA_SWEEP_INTERVAL_MS}ms)`);
 
   app.listen(PORT, () => {
     console.log(`anti-fraud-department listening on port ${PORT}`);

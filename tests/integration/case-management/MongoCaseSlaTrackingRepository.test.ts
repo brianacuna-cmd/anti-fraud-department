@@ -120,13 +120,13 @@ describe('MongoCaseSlaTrackingRepository (integration, real replica-set Mongo)',
   });
 
   /**
-   * Query-shape correctness for `findDueForSweep` (Slice 4 task 4) — not
-   * functionally exercised by a real scheduler yet (that lands in Slice 13),
-   * but the range query against `DueDateAt` (BSON Date mirror) + the
-   * `Status != BREACHED` filter must already behave correctly.
+   * Contract coverage for `findDueForSweep` (Slice 13: `SweepSlaTracking`
+   * is the consumer of this query). The range query against `DueDateAt`
+   * (BSON Date mirror) + the `Status != BREACHED` filter must exclude both
+   * not-yet-due rows and already-BREACHED rows.
    */
-  describe('findDueForSweep (query shape only — sweep logic lands in Slice 13)', () => {
-    it('returns rows whose DueDateAt has passed and are not yet BREACHED', async () => {
+  describe('findDueForSweep (contract: due-scoping, backs the SLA sweep)', () => {
+    it('excludes a not-yet-due row and an already-BREACHED row, includes only due rows', async () => {
       await repository.save(buildTracking(oid('tracking-due'), oid('case-due'), { dueDate: NOW }));
       await repository.save(buildTracking(oid('tracking-future'), oid('case-future'), { dueDate: LATER }));
       const breached = buildTracking(oid('tracking-breached'), oid('case-breached'), { dueDate: NOW }).advanceTo(
