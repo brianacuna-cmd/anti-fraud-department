@@ -26,6 +26,8 @@ import { createCalculateSlaUseCase } from '../../../../src/modules/case-manageme
 import { createRouteCaseUseCase } from '../../../../src/modules/case-management/application/RouteCase.js';
 import { createReassignCaseUseCase } from '../../../../src/modules/case-management/application/ReassignCase.js';
 import { createListCasesUseCase } from '../../../../src/modules/case-management/application/ListCases.js';
+import { createGetCaseUseCase } from '../../../../src/modules/case-management/application/GetCase.js';
+import { createGetCaseTimelineUseCase } from '../../../../src/modules/case-management/application/GetCaseTimeline.js';
 import { createReopenCaseUseCase } from '../../../../src/modules/case-management/application/ReopenCase.js';
 import { createGetOrganizationFraudConfigUseCase } from '../../../../src/modules/case-management/application/GetOrganizationFraudConfig.js';
 import { ZenRoutingEngine } from '../../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
@@ -194,6 +196,8 @@ function buildApp(
       notificationSender: new InMemoryCaseManagementNotificationSender(),
     }),
     listCases: createListCasesUseCase({ cases }),
+    getCase: createGetCaseUseCase({ cases }),
+    getCaseTimeline: createGetCaseTimelineUseCase({ cases, timelineReader: timelineRecorder }),
     reopenCase: createReopenCaseUseCase({
       cases,
       slaTracking,
