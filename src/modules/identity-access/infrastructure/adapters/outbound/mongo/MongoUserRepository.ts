@@ -3,6 +3,7 @@ import { buildCursorPage } from '../../../../../../shared/http/pagination.js';
 import type { User } from '../../../../domain/model/aggregates/User.js';
 import type { UserListPage, UserRepository } from '../../../../domain/ports/UserRepository.js';
 import type { UserId } from '../../../../domain/model/value-objects/UserId.js';
+import type { RoleId } from '../../../../domain/model/value-objects/RoleId.js';
 import type { OrganizationId } from '../../../../domain/model/value-objects/OrganizationId.js';
 import type { Email } from '../../../../domain/model/value-objects/Email.js';
 import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
@@ -68,5 +69,17 @@ export class MongoUserRepository implements UserRepository {
     const wrapped = documents.map((document) => ({ value: toDomain(document), cursorId: document._id.toString() }));
     const page = buildCursorPage(wrapped, limit);
     return { items: page.items.map((entry) => entry.value), nextCursor: page.nextCursor };
+  }
+
+  async listByRole(roleId: RoleId): Promise<readonly User[]> {
+    const documents = await this.collection
+      .find({
+        organization_id: new ObjectId(this.organizationId),
+        role_id: roleId as string,
+        status: 'ACTIVE',
+      })
+      .sort({ _id: 1 })
+      .toArray();
+    return documents.map(toDomain);
   }
 }

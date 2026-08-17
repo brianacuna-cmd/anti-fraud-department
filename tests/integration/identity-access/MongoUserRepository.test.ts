@@ -79,6 +79,26 @@ describe('MongoUserRepositoryFactory / MongoUserRepository (integration, real re
     expect(found).toBeNull();
   });
 
+  it('listByRole returns only ACTIVE users with the given role, scoped to the bound tenant', async () => {
+    const repo1 = factory.forTenant(ORG_1);
+    await repo1.save(buildUser(oid('user-analyst'), ORG_1, 'analyst@example.com'));
+    await repo1.save(
+      buildUser(oid('user-sup'), ORG_1, 'sup@example.com').changeRole(createRoleId('SUPERVISOR'), NOW),
+    );
+    await repo1.save(
+      buildUser(oid('user-disabled'), ORG_1, 'disabled@example.com').transitionTo(
+        'DISABLED',
+        { isPlatformAdmin: true },
+        NOW,
+      ),
+    );
+    await factory.forTenant(ORG_2).save(buildUser(oid('user-other-org'), ORG_2, 'other@example.com'));
+
+    const recipients = await repo1.listByRole(createRoleId('ANALYST'));
+
+    expect(recipients.map((user) => user.id)).toEqual([oid('user-analyst')]);
+  });
+
   it('finds a user by email within the bound tenant', async () => {
     const repository = factory.forTenant(ORG_1);
     await repository.save(buildUser(oid('user-1'), ORG_1, 'user-1@example.com'));
