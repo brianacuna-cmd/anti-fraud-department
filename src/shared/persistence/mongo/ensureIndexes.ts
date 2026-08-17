@@ -184,4 +184,13 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .createIndex({ DueDateAt: 1 }, { name: 'sla_tracking_due_date_idx' });
 
   await db.collection('CaseSlaTracking').createIndex({ Status: 1 }, { name: 'sla_tracking_status_idx' });
+
+  // `OutboxEvents` (transactional outbox events for webhook ingestion & messaging).
+  await db
+    .collection('OutboxEvents')
+    .createIndex({ Status: 1, CreatedAt: 1 }, { name: 'outbox_status_created_idx' });
+
+  await db
+    .collection('OutboxEvents')
+    .createIndex({ AggregateId: 1 }, { name: 'outbox_aggregate_id_idx' });
 }

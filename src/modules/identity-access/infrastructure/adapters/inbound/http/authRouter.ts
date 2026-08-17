@@ -139,13 +139,18 @@ export function authRouter(deps: AuthRouterDeps): Router {
       return;
     }
 
-    // Read persistent MfaSecret directly from MongoDB collection Organizations
+    // Read persistent MfaSecret directly from MongoDB collection Organizations or Users
     let existingSecret: string | null = null;
     if (deps.db) {
       const pattern = `^${emailKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
       const orgDoc = await deps.db.collection('Organizations').findOne({ Email: { $regex: pattern, $options: 'i' } });
       if (orgDoc?.MfaSecret) {
         existingSecret = orgDoc.MfaSecret as string;
+      } else {
+        const userDoc = await deps.db.collection('Users').findOne({ Email: { $regex: pattern, $options: 'i' }, 'Mfa.Enabled': true });
+        if (userDoc?.Mfa?.Secret) {
+          existingSecret = userDoc.Mfa.Secret as string;
+        }
       }
     }
 
@@ -174,6 +179,7 @@ export function authRouter(deps: AuthRouterDeps): Router {
   });
 
   router.post('/auth/organizations/mfa', async (req, res) => {
+    console.log('[auth/organizations/mfa] POST /auth/organizations/mfa inicio, deps.db:', !!deps.db);
     const body = parseRequest(organizationsMfaSchema, req.body);
     let matchedEmail: string | null = null;
     let matchedCreds: { email: string; password: string; totpSecret?: string } | null = null;
@@ -185,6 +191,7 @@ export function authRouter(deps: AuthRouterDeps): Router {
         break;
       }
     }
+    console.log('[auth/organizations/mfa] matched:', { matchedEmail, hasTotpSecret: !!matchedCreds?.totpSecret });
 
     if (!matchedCreds || !matchedEmail || !matchedCreds.totpSecret) {
       res.status(401).json({ message: 'Challenge de Organización inválido o expirado' });
@@ -198,16 +205,27 @@ export function authRouter(deps: AuthRouterDeps): Router {
       return;
     }
 
-    // Save TOTP secret in MongoDB collection Organizations
+    // Save TOTP secret in MongoDB collection Organizations and Users
     if (deps.db) {
-      // Buscar la organización por Email: escapar regex metacaracteres y usar
-      // pattern + opciones separadas (no RegExp object directo, que MongoDB
-      // no resuelve siempre bien en filters).
       const pattern = `^${matchedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
-      await deps.db.collection('Organizations').updateOne(
+      const result = await deps.db.collection('Organizations').updateOne(
         { Email: { $regex: pattern, $options: 'i' } },
         { $set: { MfaSecret: matchedCreds.totpSecret, UpdatedAt: new Date().toISOString() } }
       );
+      console.log('[auth/organizations/mfa] updateOne Organizations:', { matchedEmail, pattern, matched: result.matchedCount, modified: result.modifiedCount });
+
+      // Synchronize in Users collection so admin user document also shows MFA active
+      const userResult = await deps.db.collection('Users').updateMany(
+        { Email: { $regex: pattern, $options: 'i' } },
+        {
+          $set: {
+            'Mfa.Secret': matchedCreds.totpSecret,
+            'Mfa.Enabled': true,
+            UpdatedAt: new Date().toISOString(),
+          },
+        }
+      );
+      console.log('[auth/organizations/mfa] updateMany Users:', { matchedEmail, matched: userResult.matchedCount, modified: userResult.modifiedCount });
     }
 
     pendingOrgLogins.delete(matchedEmail);

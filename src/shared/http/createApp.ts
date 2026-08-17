@@ -32,6 +32,14 @@ export function createApp({ routers, errorHandler, trustProxy = false }: CreateA
   app.set('trust proxy', trustProxy);
   app.use(express.json());
 
+  // Global logging for debugging
+  app.use((req, res, next) => {
+    if (req.method === 'POST' && req.path.includes('/auth/organizations')) {
+      console.log(`[express middleware] ${req.method} ${req.path}`);
+    }
+    next();
+  });
+
   for (const { path, router } of routers) {
     app.use(path, router);
   }

@@ -10,15 +10,37 @@ export class MongoUnitOfWork implements UnitOfWork {
   constructor(private readonly client: MongoClient) {}
 
   async withTransaction<T>(work: (tx: Transaction) => Promise<T>): Promise<T> {
-    const session = this.client.startSession();
     try {
-      let result: T;
-      await session.withTransaction(async () => {
-        result = await work(session as unknown as Transaction);
-      });
-      return result!;
-    } finally {
-      await session.endSession();
+      const session = this.client.startSession();
+      try {
+        let result: T;
+        await session.withTransaction(async () => {
+          result = await work(session as unknown as Transaction);
+        });
+        return result!;
+      } catch (err: any) {
+        if (
+          err?.code === 20 ||
+          err?.codeName === 'IllegalOperation' ||
+          err?.message?.includes('replica set') ||
+          err?.message?.includes('retryable writes')
+        ) {
+          return await work(undefined as unknown as Transaction);
+        }
+        throw err;
+      } finally {
+        await session.endSession();
+      }
+    } catch (err: any) {
+      if (
+        err?.code === 20 ||
+        err?.codeName === 'IllegalOperation' ||
+        err?.message?.includes('replica set') ||
+        err?.message?.includes('retryable writes')
+      ) {
+        return await work(undefined as unknown as Transaction);
+      }
+      throw err;
     }
   }
 }

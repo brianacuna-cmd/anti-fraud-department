@@ -195,6 +195,29 @@ export class Case {
   withDueDate(dueDate: Instant | null, now: Instant): Case {
     return new Case({ ...this.props, dueDate, updatedAt: now });
   }
+
+  updateFinturuSnapshot(input: {
+    readonly finturuCacheSnapshot: Record<string, unknown>;
+    readonly riskScore?: RiskScore;
+    readonly priority?: CasePriority;
+    readonly customerEmail?: string | null;
+    readonly bridgeUserId?: string | null;
+    readonly bridgeWallet?: string | null;
+    readonly stripeCustomerId?: string | null;
+    readonly now: Instant;
+  }): Case {
+    return new Case({
+      ...this.props,
+      finturuCacheSnapshot: input.finturuCacheSnapshot,
+      riskScore: input.riskScore ?? this.props.riskScore,
+      priority: input.priority ?? this.props.priority,
+      customerEmail: input.customerEmail ?? this.props.customerEmail,
+      bridgeUserId: input.bridgeUserId ?? this.props.bridgeUserId,
+      bridgeWallet: input.bridgeWallet ?? this.props.bridgeWallet,
+      stripeCustomerId: input.stripeCustomerId ?? this.props.stripeCustomerId,
+      updatedAt: input.now,
+    });
+  }
 }
 
 function assertNonEmpty(field: 'organizationId' | 'customerId', value: string): void {

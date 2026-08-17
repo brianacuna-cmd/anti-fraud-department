@@ -92,15 +92,24 @@ import { notificationPreferenceRouter } from './modules/notifications/infrastruc
 import { notificationsErrorStatus } from './modules/notifications/infrastructure/adapters/inbound/http/errorStatus.js';
 import { MongoCaseRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRepository.js';
 import { MongoTimelineRecorder } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoTimelineRecorder.js';
+import { MongoOutboxRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoOutboxRepository.js';
 import { MongoUnitOfWork as CaseManagementMongoUnitOfWork } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { generateCaseId } from './modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from './modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { createCreateCaseUseCase } from './modules/case-management/application/CreateCase.js';
+import { createListCasesUseCase } from './modules/case-management/application/ListCases.js';
+import { createGetCaseUseCase } from './modules/case-management/application/GetCase.js';
+import { createTransitionCaseStatusUseCase } from './modules/case-management/application/TransitionCaseStatus.js';
+import { createGetCaseTimelineUseCase } from './modules/case-management/application/GetCaseTimeline.js';
+import { createSyncFinturuDataUseCase } from './modules/case-management/application/SyncFinturuData.js';
+import { createIngestFinturuCaseUseCase } from './modules/case-management/application/IngestFinturuCase.js';
+import { FinturuApiClient } from './modules/case-management/infrastructure/adapters/outbound/finturu/FinturuApiClient.js';
 import { caseRouter } from './modules/case-management/infrastructure/adapters/inbound/http/caseRouter.js';
+import { finturuWebhookRouter } from './modules/case-management/infrastructure/adapters/inbound/http/finturuWebhookRouter.js';
 import { caseManagementErrorStatus } from './modules/case-management/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createCaseManagementAuditRecorderAdapter } from './composition/caseManagementAuditRecorderAdapter.js';
 
-const PORT = Number(process.env.PORT ?? 3000);
+const PORT = Number(process.env.PORT ?? 4000);
 const MONGO_URI = process.env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/?replicaSet=rs0';
 const MONGO_DB_NAME = process.env.MONGO_DB_NAME ?? 'anti_fraud_department';
 const AUTH_MODE = process.env.AUTH_MODE ?? 'session';
@@ -246,7 +255,31 @@ async function bootstrap(): Promise<void> {
   const caseManagementUnitOfWork = new CaseManagementMongoUnitOfWork(client);
   const cases = new MongoCaseRepository(db);
   const caseTimelineRecorder = new MongoTimelineRecorder(db);
+  const outboxEvents = new MongoOutboxRepository(db);
   const caseManagementAuditRecorder = createCaseManagementAuditRecorderAdapter(recordAuditLog);
+
+  const ingestFinturuCase = createIngestFinturuCaseUseCase({
+    cases,
+    timelineRecorder: caseTimelineRecorder,
+    outbox: outboxEvents,
+    unitOfWork: caseManagementUnitOfWork,
+    clock,
+    generateCaseId,
+    generateTimelineEventId,
+    auditRecorder: caseManagementAuditRecorder,
+  });
+
+  const finturuApiClient = new FinturuApiClient({
+    baseUrl: process.env.FINTURU_API_URL ?? 'http://localhost:3001',
+    encryptionKey: process.env.FRAUD_DEPARTMENT_KEY,
+  });
+
+  const syncFinturuData = createSyncFinturuDataUseCase({
+    finturuClient: finturuApiClient,
+    ingestFinturuCase,
+    defaultOrganizationId: process.env.DEFAULT_ORGANIZATION_ID ?? '019d7e58aed0777318d11d4d',
+  });
+
   const caseManagementCasesRouter = caseRouter({
     createCase: createCreateCaseUseCase({
       cases,
@@ -257,6 +290,28 @@ async function bootstrap(): Promise<void> {
       generateTimelineEventId,
       auditRecorder: caseManagementAuditRecorder,
     }),
+    listCases: createListCasesUseCase({ cases }),
+    getCase: createGetCaseUseCase({ cases }),
+    transitionCaseStatus: createTransitionCaseStatusUseCase({
+      cases,
+      timelineRecorder: caseTimelineRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateTimelineEventId,
+      auditRecorder: caseManagementAuditRecorder,
+    }),
+    getCaseTimeline: createGetCaseTimelineUseCase({
+      cases,
+      timelineRecorder: caseTimelineRecorder,
+    }),
+    syncFinturuData,
+    finturuClient: finturuApiClient,
+  });
+
+  const finturuWebhook = finturuWebhookRouter({
+    ingestFinturuCase,
+    defaultOrganizationId: process.env.DEFAULT_ORGANIZATION_ID ?? '019d7e58aed0777318d11d4d',
+    encryptionKey: process.env.FRAUD_DEPARTMENT_KEY,
   });
 
   const transitionOrganizationStatus = createTransitionOrganizationStatusUseCase({
@@ -526,9 +581,13 @@ async function bootstrap(): Promise<void> {
   // above to resolve the caller's AuthContext (design: no separate auth
   // path; T5 is analyst/supervisor self-service within their own org).
   identityAccessRouter.use(caseManagementCasesRouter);
+  identityAccessRouter.use(finturuWebhook);
 
   const app = createApp({
-    routers: [{ path: '/api/v1', router: identityAccessRouter }],
+    routers: [
+      { path: '/api/v1', router: identityAccessRouter },
+      { path: '/', router: finturuWebhook },
+    ],
     // Merged status maps: identity-access + notifications + case-management
     // closed error codes. The overlapping keys (INVARIANT_VIOLATION=400,
     // FORBIDDEN_CROSS_TENANT=403) agree across all three, so the spread is
@@ -562,6 +621,17 @@ async function bootstrap(): Promise<void> {
 
   app.listen(PORT, () => {
     console.log(`anti-fraud-department listening on port ${PORT}`);
+
+    // Automatic Finturu API sync on server startup
+    syncFinturuData({}).catch(() => {});
+
+    // Periodic background sync every 60 seconds
+    const SYNC_INTERVAL_MS = Number(process.env.FINTURU_SYNC_INTERVAL_MS ?? 60_000);
+    if (SYNC_INTERVAL_MS > 0) {
+      setInterval(() => {
+        syncFinturuData({}).catch(() => {});
+      }, SYNC_INTERVAL_MS);
+    }
   });
 }
 

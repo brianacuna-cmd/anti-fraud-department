@@ -10,4 +10,5 @@ export const caseManagementErrorStatus: StatusByCode = {
   INVALID_TRANSITION: 422,
   FORBIDDEN_CROSS_TENANT: 403,
   ORGANIZATION_FRAUD_CONFIG_NOT_FOUND: 404,
+  CASE_NOT_FOUND: 404,
 };
