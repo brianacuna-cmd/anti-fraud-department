@@ -1,7 +1,10 @@
 import { ObjectId, type Collection, type Db } from 'mongodb';
 import { fromDate, toDate } from '../../../../../../shared/time/Instant.js';
 import { ProviderIngestEvent } from '../../../../domain/model/aggregates/ProviderIngestEvent.js';
-import { createProviderIngestEventId } from '../../../../domain/model/value-objects/ProviderIngestEventId.js';
+import {
+  createProviderIngestEventId,
+  type ProviderIngestEventId,
+} from '../../../../domain/model/value-objects/ProviderIngestEventId.js';
 import { createPaymentProvider, type PaymentProvider } from '../../../../domain/model/value-objects/PaymentProvider.js';
 import { createProviderIngestStatus } from '../../../../domain/model/value-objects/ProviderIngestStatus.js';
 import type { ProviderIngestEventRepository } from '../../../../domain/ports/ProviderIngestEventRepository.js';
@@ -48,6 +51,11 @@ export class MongoProviderIngestEventRepository implements ProviderIngestEventRe
       provider,
       provider_event_id: providerEventId,
     });
+    return document ? toDomain(document) : null;
+  }
+
+  async findById(id: ProviderIngestEventId): Promise<ProviderIngestEvent | null> {
+    const document = await this.collection.findOne({ _id: new ObjectId(id) });
     return document ? toDomain(document) : null;
   }
 }

@@ -30,12 +30,18 @@ export interface ReceiveProviderWebhookDeps {
   readonly composer: PostAckComposer;
   readonly clock: Clock;
   readonly schedulePostAck?: (work: () => void) => void;
+  readonly onPostAckError?: (error: unknown) => void;
 }
 
 const DUPLICATE_KEY_CODE = 11000;
 
+function defaultOnPostAckError(error: unknown): void {
+  console.error('postAck', error);
+}
+
 export function createReceiveProviderWebhookUseCase(deps: ReceiveProviderWebhookDeps) {
   const schedule = deps.schedulePostAck ?? ((work: () => void) => setImmediate(work));
+  const onPostAckError = deps.onPostAckError ?? defaultOnPostAckError;
 
   return async function receiveProviderWebhook(
     input: ReceiveProviderWebhookInput,
@@ -76,7 +82,7 @@ export function createReceiveProviderWebhookUseCase(deps: ReceiveProviderWebhook
             event,
             ingestEventId,
           })
-          .catch(() => undefined);
+          .catch(onPostAckError);
       });
       return { status: 'PROCESSED' };
     }

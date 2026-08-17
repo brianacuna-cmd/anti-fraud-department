@@ -99,6 +99,10 @@ class InMemoryEvents implements ProviderIngestEventRepository {
   async findByOrgProviderEvent(): Promise<ProviderIngestEvent | null> {
     return null;
   }
+
+  async findById(): Promise<ProviderIngestEvent | null> {
+    return null;
+  }
 }
 
 class NoopComposer implements PostAckComposer {
