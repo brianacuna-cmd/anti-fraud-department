@@ -76,6 +76,7 @@ import { generateAuditLogId } from './modules/audit/domain/model/value-objects/A
 import { createAuditRecorderAdapter } from './composition/auditRecorderAdapter.js';
 import { createNotificationsAuditRecorderAdapter } from './composition/notificationsAuditRecorderAdapter.js';
 import { createCaseManagementNotificationSenderAdapter } from './composition/caseManagementNotificationSenderAdapter.js';
+import { createNotificationEmailSenderAdapter } from './composition/notificationEmailSenderAdapter.js';
 import { MongoNotificationPreferenceRepository } from './modules/notifications/infrastructure/adapters/outbound/mongo/MongoNotificationPreferenceRepository.js';
 import { MongoNotificationRepository } from './modules/notifications/infrastructure/adapters/outbound/mongo/MongoNotificationRepository.js';
 import { createSendNotificationUseCase } from './modules/notifications/application/SendNotification.js';
@@ -212,6 +213,7 @@ const AUTH_ADMIN_CHALLENGE_TTL_SECONDS = Number(process.env.AUTH_ADMIN_CHALLENGE
 // with no API key").
 const AUTH_PASSWORD_RESET_TTL_SECONDS = Number(process.env.AUTH_PASSWORD_RESET_TTL_SECONDS ?? 900);
 const PASSWORD_RESET_EMAIL_FROM = process.env.PASSWORD_RESET_EMAIL_FROM ?? 'fraud@backendstudio.tech';
+const NOTIFICATION_EMAIL_FROM = process.env.NOTIFICATION_EMAIL_FROM ?? PASSWORD_RESET_EMAIL_FROM;
 const PASSWORD_RESET_LINK_BASE_URL = process.env.PASSWORD_RESET_LINK_BASE_URL ?? 'http://localhost:3000/reset-password';
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 /** Poll interval for customer_outgoing_events webhook dispatcher (PR5). */
@@ -313,11 +315,20 @@ async function bootstrap(): Promise<void> {
   // twin of `caseManagementAuditRecorderAdapter`), so notifications commit
   // atomically with the triggering case-management transaction.
   const notifications = new MongoNotificationRepository(db);
+  const notificationEmailSender = createNotificationEmailSenderAdapter(
+    emailSender,
+    userRepositoryFactory,
+    NOTIFICATION_EMAIL_FROM,
+  );
   const sendNotification = createSendNotificationUseCase({
     notifications,
     preferences: notificationPreferences,
     clock,
     generateNotificationId,
+    emailSender: notificationEmailSender,
+    onEmailError: (error) => {
+      console.error('Notification email delivery failed:', error);
+    },
   });
   const caseManagementNotificationSender = createCaseManagementNotificationSenderAdapter(sendNotification);
 

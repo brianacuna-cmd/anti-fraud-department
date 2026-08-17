@@ -9,6 +9,10 @@ import { createNotificationId, generateNotificationId } from '../../../../src/mo
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 import type { Transaction } from '../../../../src/modules/notifications/domain/ports/UnitOfWork.js';
+import type {
+  NotificationEmailInput,
+  NotificationEmailSender,
+} from '../../../../src/modules/notifications/domain/ports/NotificationEmailSender.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ORG_1 = createOrganizationId(oid('org-1'));
@@ -136,5 +140,98 @@ describe('createSendNotificationUseCase', () => {
 
     const [row] = notifications.all();
     expect(() => createNotificationId(row!.id)).not.toThrow();
+  });
+});
+
+describe('createSendNotificationUseCase — email delivery (optional emailSender)', () => {
+  function buildWithEmail(emailSender: NotificationEmailSender, onEmailError?: (error: unknown) => void) {
+    const notifications = new InMemoryNotificationRepository();
+    const preferences = new InMemoryNotificationPreferenceRepository();
+    const sendNotification = createSendNotificationUseCase({
+      notifications,
+      preferences,
+      clock: new FixedClock(NOW),
+      generateNotificationId,
+      emailSender,
+      onEmailError,
+    });
+    return { sendNotification, notifications, preferences };
+  }
+
+  it('also delivers an email for an opted-in recipient after the in-app persist', async () => {
+    const sent: NotificationEmailInput[] = [];
+    const { sendNotification, notifications } = buildWithEmail({
+      send: async (input) => {
+        sent.push(input);
+      },
+    });
+
+    await sendNotification({
+      organizationId: ORG_1,
+      recipientUserId: USER_1,
+      alertType: 'CASO_ASIGNADO',
+      context: { caseId: oid('case-1') },
+    });
+
+    expect(notifications.all()).toHaveLength(1);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({
+      organizationId: ORG_1,
+      recipientUserId: USER_1,
+      alertType: 'CASO_ASIGNADO',
+    });
+  });
+
+  it('does not send an email when the recipient has opted out', async () => {
+    const sent: NotificationEmailInput[] = [];
+    const { sendNotification, notifications, preferences } = buildWithEmail({
+      send: async (input) => {
+        sent.push(input);
+      },
+    });
+    preferences.seed(
+      NotificationPreference.create({
+        organizationId: ORG_1,
+        userId: USER_1,
+        alertType: 'CASO_ASIGNADO',
+        channel: 'EMAIL',
+        enabled: false,
+        now: NOW,
+      }),
+    );
+
+    await sendNotification({
+      organizationId: ORG_1,
+      recipientUserId: USER_1,
+      alertType: 'CASO_ASIGNADO',
+      context: {},
+    });
+
+    expect(notifications.all()).toHaveLength(0);
+    expect(sent).toHaveLength(0);
+  });
+
+  it('swallows an email failure via onEmailError without rolling back the in-app row', async () => {
+    const errors: unknown[] = [];
+    const { sendNotification, notifications } = buildWithEmail(
+      {
+        send: async () => {
+          throw new Error('resend down');
+        },
+      },
+      (error) => errors.push(error),
+    );
+
+    await expect(
+      sendNotification({
+        organizationId: ORG_1,
+        recipientUserId: USER_1,
+        alertType: 'CASO_ASIGNADO',
+        context: {},
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(notifications.all()).toHaveLength(1);
+    expect(errors).toHaveLength(1);
   });
 });

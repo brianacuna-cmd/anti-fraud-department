@@ -1,5 +1,6 @@
 import type { NotificationRepository } from '../domain/ports/NotificationRepository.js';
 import type { NotificationPreferenceRepository } from '../domain/ports/NotificationPreferenceRepository.js';
+import type { NotificationEmailSender } from '../domain/ports/NotificationEmailSender.js';
 import type { Transaction } from '../domain/ports/UnitOfWork.js';
 import type { Clock } from '../../../shared/time/Clock.js';
 import type { OrganizationId } from '../domain/model/value-objects/OrganizationId.js';
@@ -20,6 +21,14 @@ export interface SendNotificationDeps {
   readonly preferences: NotificationPreferenceRepository;
   readonly clock: Clock;
   readonly generateNotificationId: () => NotificationId;
+  /**
+   * Optional email transport. When wired, an enabled notification is ALSO
+   * delivered by email best-effort AFTER the in-app persist. A send failure
+   * is swallowed (reported via `onEmailError`) so it never rolls back the
+   * caller's transaction — the in-app row remains the source of truth.
+   */
+  readonly emailSender?: NotificationEmailSender;
+  readonly onEmailError?: (error: unknown) => void;
 }
 
 /**
@@ -59,5 +68,18 @@ export function createSendNotificationUseCase(deps: SendNotificationDeps) {
       now,
     });
     await deps.notifications.save(notification, tx);
+
+    if (deps.emailSender) {
+      try {
+        await deps.emailSender.send({
+          organizationId: input.organizationId,
+          recipientUserId: input.recipientUserId,
+          alertType: input.alertType,
+          context: input.context,
+        });
+      } catch (error) {
+        deps.onEmailError?.(error);
+      }
+    }
   };
 }
