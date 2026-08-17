@@ -120,24 +120,38 @@ describe('MongoCaseSlaTrackingRepository (integration, real replica-set Mongo)',
   });
 
   /**
-   * Contract coverage for `findDueForSweep` (Slice 13: `SweepSlaTracking`
-   * is the consumer of this query). The range query against `DueDateAt`
-   * (BSON Date mirror) + the `Status != BREACHED` filter must exclude both
-   * not-yet-due rows and already-BREACHED rows.
+   * Contract coverage for `claimDueForSweep` (Slice 13 / PR6: `SweepSlaTracking`
+   * is the consumer). The range query against `due_date` + the `status != BREACHED`
+   * filter must exclude not-yet-due and already-BREACHED rows; the exclusive
+   * per-row lease must prevent two concurrent claimers from grabbing the same row.
    */
-  describe('findDueForSweep (contract: due-scoping, backs the SLA sweep)', () => {
-    it('excludes a not-yet-due row and an already-BREACHED row, includes only due rows', async () => {
+  describe('claimDueForSweep (contract: due-scoping + exclusive lease)', () => {
+    it('excludes a not-yet-due row and an already-BREACHED row, claims only due rows', async () => {
       await repository.save(buildTracking(oid('tracking-due'), oid('case-due'), { dueDate: NOW }));
       await repository.save(buildTracking(oid('tracking-future'), oid('case-future'), { dueDate: LATER }));
-      const breached = buildTracking(oid('tracking-breached'), oid('case-breached'), { dueDate: NOW }).advanceTo(
-        'WARNING',
-        NOW,
-      ).advanceTo('BREACHED', NOW);
+      const breached = buildTracking(oid('tracking-breached'), oid('case-breached'), { dueDate: NOW })
+        .advanceTo('WARNING', NOW)
+        .advanceTo('BREACHED', NOW);
       await repository.save(breached);
 
-      const due = await repository.findDueForSweep(NOW);
+      const due = await repository.claimDueForSweep(NOW, 10);
 
       expect(due.map((row) => row.caseId).sort()).toEqual([oid('case-due')]);
+    });
+
+    it('two concurrent claimers never claim the same due row (exclusive lease)', async () => {
+      await repository.save(buildTracking(oid('tracking-a'), oid('case-a'), { dueDate: NOW }));
+      await repository.save(buildTracking(oid('tracking-b'), oid('case-b'), { dueDate: NOW }));
+
+      const [first, second] = await Promise.all([
+        repository.claimDueForSweep(NOW, 10),
+        repository.claimDueForSweep(NOW, 10),
+      ]);
+
+      const firstIds = first.map((row) => row.caseId);
+      const secondIds = second.map((row) => row.caseId);
+      expect([...firstIds, ...secondIds].sort()).toEqual([oid('case-a'), oid('case-b')]);
+      expect(firstIds.some((id) => secondIds.includes(id))).toBe(false);
     });
   });
 

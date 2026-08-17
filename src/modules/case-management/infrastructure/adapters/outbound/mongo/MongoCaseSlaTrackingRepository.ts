@@ -13,6 +13,9 @@ function toSession(tx: Transaction | undefined): ClientSession | undefined {
 
 const COLLECTION_NAME = 'case_sla_tracking';
 
+/** Sweep lease TTL: a claim older than this is considered abandoned (crashed claimer) and reclaimable. */
+const LEASE_TTL_MS = 5 * 60 * 1000;
+
 export class MongoCaseSlaTrackingRepository implements CaseSlaTrackingRepository {
   private readonly collection: Collection<CaseSlaTrackingDocument>;
 
@@ -33,13 +36,31 @@ export class MongoCaseSlaTrackingRepository implements CaseSlaTrackingRepository
     return document ? toDomain(document) : null;
   }
 
-  async findDueForSweep(now: Instant, tx?: Transaction): Promise<CaseSlaTracking[]> {
-    const documents = await this.collection
-      .find(
-        { due_date: { $lte: toDate(now) }, status: { $ne: 'BREACHED' } },
-        { session: toSession(tx) },
-      )
-      .toArray();
-    return documents.map(toDomain);
+  async claimDueForSweep(now: Instant, limit: number, tx?: Transaction): Promise<CaseSlaTracking[]> {
+    const nowMs = toDate(now).getTime();
+    const nowDate = new Date(nowMs);
+    const leaseExpiry = new Date(nowMs - LEASE_TTL_MS);
+
+    const claimed: CaseSlaTrackingDocument[] = [];
+    // Exclusive lease claim: each findOneAndUpdate atomically reserves one due
+    // row, so concurrent sweep instances never process the same row twice.
+    for (let i = 0; i < limit; i += 1) {
+      const result = await this.collection.findOneAndUpdate(
+        {
+          due_date: { $lte: nowDate },
+          status: { $ne: 'BREACHED' },
+          $or: [{ claimed_at: null }, { claimed_at: { $exists: false } }, { claimed_at: { $lte: leaseExpiry } }],
+        },
+        { $set: { claimed_at: nowDate } },
+        { sort: { due_date: 1 }, returnDocument: 'after', session: toSession(tx) },
+      );
+
+      if (!result) {
+        break;
+      }
+      claimed.push(result);
+    }
+
+    return claimed.map(toDomain);
   }
 }
