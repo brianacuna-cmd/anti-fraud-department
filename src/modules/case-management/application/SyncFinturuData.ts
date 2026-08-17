@@ -45,11 +45,24 @@ export function createSyncFinturuDataUseCase(deps: SyncFinturuDataDeps) {
       }
     }
 
-    // Map Stripe customers by email / idCustomer
+    // Map Stripe customers by email, idCustomer, and metadata
     const stripeByEmail = new Map<string, any>();
-    for (const sc of stripeCustomers) {
-      if (sc.email) stripeByEmail.set(sc.email.toLowerCase(), sc);
-      if (sc.idCustomer) stripeByEmail.set(sc.idCustomer, sc);
+    const stripeByIdCustomer = new Map<string, any>();
+    const stripeByIdUser = new Map<string, any>();
+    const stripeByIdUserBridge = new Map<string, any>();
+
+    for (const sc of stripeCustomers as any[]) {
+      if (sc.email) stripeByEmail.set(String(sc.email).trim().toLowerCase(), sc);
+      if (sc.idCustomer) stripeByIdCustomer.set(String(sc.idCustomer).trim(), sc);
+      if (sc.id) stripeByIdCustomer.set(String(sc.id).trim(), sc);
+      const meta = sc.metadata;
+      if (meta && typeof meta === 'object') {
+        if (meta.idUser) stripeByIdUser.set(String(meta.idUser).trim(), sc);
+        if (meta.userId) stripeByIdUser.set(String(meta.userId).trim(), sc);
+        if (meta.idUserBridge) stripeByIdUserBridge.set(String(meta.idUserBridge).trim(), sc);
+        if (meta.bridgeUserId) stripeByIdUserBridge.set(String(meta.bridgeUserId).trim(), sc);
+        if (meta.email) stripeByEmail.set(String(meta.email).trim().toLowerCase(), sc);
+      }
     }
 
     // Map Stripe transfers by customerId
@@ -65,8 +78,9 @@ export function createSyncFinturuDataUseCase(deps: SyncFinturuDataDeps) {
 
     // 2. Correlate and ingest each customer
     for (const customer of customers) {
-      const bridgeUserId = customer.idUserBridge ?? '';
-      const email = customer.email?.toLowerCase() ?? '';
+      const bridgeUserId = customer.idUserBridge ? String(customer.idUserBridge).trim() : '';
+      const email = customer.email ? String(customer.email).trim().toLowerCase() : '';
+      const idUser = customer.idUser ? String(customer.idUser).trim() : '';
       const userWallets = bridgeUserId ? walletsByUser.get(bridgeUserId) ?? [] : [];
       const userWalletIds = new Set(userWallets.map((w) => w.idWallet).filter(Boolean));
       const userWalletAddresses = new Set(userWallets.map((w) => String(w.address ?? '').toLowerCase()).filter(Boolean));
@@ -81,8 +95,26 @@ export function createSyncFinturuDataUseCase(deps: SyncFinturuDataDeps) {
         return false;
       });
 
-      const stripeData = email ? stripeByEmail.get(email) ?? null : null;
-      const stripeTransfersList = stripeData?.idCustomer ? stripeTransfersByUser.get(stripeData.idCustomer) ?? [] : [];
+      let stripeData: any =
+        (email ? stripeByEmail.get(email) : null) ??
+        (idUser ? stripeByIdUser.get(idUser) : null) ??
+        (bridgeUserId ? stripeByIdUserBridge.get(bridgeUserId) : null) ??
+        null;
+
+      // Fallback: Query Stripe directly by email if not found in list (useful for staging)
+      if (!stripeData && email) {
+        try {
+          const directStripe = await deps.finturuClient.getStripeCustomerByEmail(email);
+          if (directStripe && directStripe.idCustomer) {
+            stripeData = directStripe;
+          }
+        } catch {
+          // ignore fallback error
+        }
+      }
+
+      const stripeCustomerId = stripeData?.idCustomer ?? stripeData?.id ?? (customer as any).idCustomer ?? null;
+      const stripeTransfersList = stripeCustomerId ? stripeTransfersByUser.get(stripeCustomerId) ?? [] : [];
 
       const primaryWallet = userWallets[0]?.address ?? '';
 
@@ -103,10 +135,10 @@ export function createSyncFinturuDataUseCase(deps: SyncFinturuDataDeps) {
         phone: customer.phone,
         status: customer.status,
         address: primaryWallet,
-        idCustomer: stripeData?.idCustomer,
+        idCustomer: stripeCustomerId,
         wallets: userWallets,
         transfers: userTransfers,
-        stripe: stripeData ? { ...stripeData, transfers: stripeTransfersList } : null,
+        stripe: stripeData ? { ...stripeData, idCustomer: stripeCustomerId, transfers: stripeTransfersList } : null,
         risk_score: riskScore,
         coinflow: null,
       };
@@ -114,6 +146,7 @@ export function createSyncFinturuDataUseCase(deps: SyncFinturuDataDeps) {
       const result = await deps.ingestFinturuCase({
         rawPayload: consolidatedPayload,
         organizationId: orgId,
+        recordTimeline: false, // Never pollute CaseTimeline during client load/sync
       });
 
       casesCreatedOrUpdated.push(result.case);

@@ -17,6 +17,7 @@ export interface IngestFinturuCaseInput {
   readonly organizationId?: string;
   readonly defaultOrganizationId?: string;
   readonly ipAddress?: string;
+  readonly recordTimeline?: boolean;
 }
 
 export interface IngestFinturuCaseDeps {
@@ -177,17 +178,19 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
 
       await deps.cases.save(kase, tx);
 
-      // 2. Record Timeline Event
-      const timelineEvent = CaseTimelineEvent.create({
-        id: deps.generateTimelineEventId(),
-        caseId: kase.id,
-        eventType: 'CASE_CREATED',
-        previousValue: null,
-        newValue: 'OPEN',
-        createdBy: 'SYSTEM_WEBHOOK',
-        createdAt: now,
-      });
-      await deps.timelineRecorder.record(timelineEvent, tx);
+      // 2. Record Timeline Event (only if not explicitly disabled by bulk sync)
+      if (input.recordTimeline !== false) {
+        const timelineEvent = CaseTimelineEvent.create({
+          id: deps.generateTimelineEventId(),
+          caseId: kase.id,
+          eventType: 'CASE_CREATED',
+          previousValue: null,
+          newValue: 'OPEN',
+          createdBy: 'SYSTEM_WEBHOOK',
+          createdAt: now,
+        });
+        await deps.timelineRecorder.record(timelineEvent, tx);
+      }
 
       // 3. Record Audit Log
       await deps.auditRecorder.record(
