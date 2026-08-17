@@ -5,6 +5,7 @@ import type { createListCasesUseCase } from '../../../../application/ListCases.j
 import type { createGetCaseUseCase } from '../../../../application/GetCase.js';
 import type { createTransitionCaseStatusUseCase } from '../../../../application/TransitionCaseStatus.js';
 import type { createGetCaseTimelineUseCase } from '../../../../application/GetCaseTimeline.js';
+import type { createSyncFinturuDataUseCase } from '../../../../application/SyncFinturuData.js';
 import type { createGetFinturuDirectoryUseCase } from '../../../../application/GetFinturuDirectory.js';
 import type { createOpenFraudCaseUseCase } from '../../../../application/OpenFraudCaseFromCustomer.js';
 import type { FinturuApiClient } from '../../outbound/finturu/FinturuApiClient.js';
