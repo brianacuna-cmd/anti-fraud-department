@@ -42,7 +42,7 @@ function buildTracking(id: string, caseId: string, dueDate: typeof NOW, override
     tracking = tracking.advanceTo('WARNING', CREATED);
   }
   if (overrides.notified) {
-    tracking = tracking.markNotified(CREATED);
+    tracking = tracking.markNotified(tracking.status, CREATED);
   }
   return tracking;
 }
@@ -130,24 +130,28 @@ describe('createSweepSlaTrackingUseCase', () => {
       alertType: 'SLA_POR_VENCER',
     });
     const row = await slaTracking.findByCaseId(createCaseId(oid('case-1')));
-    expect(row?.notificationSent).toBe(true);
+    expect(row?.hasNotified('WARNING')).toBe(true);
   });
 
-  it('does not duplicate the notification when the row is already notified and has not transitioned further', async () => {
+  it('re-notifies when an already-notified WARNING row advances into BREACHED (PR1: per-status re-notify)', async () => {
     const { sweepSlaTracking, cases, slaTracking, notificationSender } = buildUseCase();
     const assignee = createAssignedTo('USER', oid('analyst-1'));
     await cases.save(buildCase(oid('case-1'), assignee));
-    const alreadyNotifiedButStillDue = buildTracking(oid('tracking-1'), oid('case-1'), PAST_DUE, {
+    const warnedButStillDue = buildTracking(oid('tracking-1'), oid('case-1'), PAST_DUE, {
       status: 'WARNING',
       notified: true,
     });
-    await slaTracking.save(alreadyNotifiedButStillDue);
+    await slaTracking.save(warnedButStillDue);
 
     await sweepSlaTracking();
 
-    // The row advances WARNING->BREACHED (still due), but notificationSent stays true
-    // and no NEW notification is sent for this already-notified row's prior state.
-    expect(notificationSender.all()).toHaveLength(0);
+    // The row advances WARNING->BREACHED. BREACHED has not been notified yet,
+    // so a fresh SLA_POR_VENCER is sent for the new status.
+    expect(notificationSender.all()).toHaveLength(1);
+    const row = await slaTracking.findByCaseId(createCaseId(oid('case-1')));
+    expect(row?.status).toBe('BREACHED');
+    expect(row?.hasNotified('WARNING')).toBe(true);
+    expect(row?.hasNotified('BREACHED')).toBe(true);
   });
 
   it('suppresses notification for a ROLE-assigned case but still advances and marks notified (ADR-D4)', async () => {
@@ -162,7 +166,7 @@ describe('createSweepSlaTrackingUseCase', () => {
     expect(result.notified).toBe(0);
     expect(notificationSender.all()).toHaveLength(0);
     const row = await slaTracking.findByCaseId(createCaseId(oid('case-1')));
-    expect(row?.notificationSent).toBe(true);
+    expect(row?.hasNotified('WARNING')).toBe(true);
   });
 
   it('suppresses notification for an unassigned case but still advances and marks notified', async () => {
@@ -175,7 +179,7 @@ describe('createSweepSlaTrackingUseCase', () => {
     expect(result.advanced).toBe(1);
     expect(notificationSender.all()).toHaveLength(0);
     const row = await slaTracking.findByCaseId(createCaseId(oid('case-1')));
-    expect(row?.notificationSent).toBe(true);
+    expect(row?.hasNotified('WARNING')).toBe(true);
   });
 
   it('processes each row in its own transaction: one row is unaffected by another failing (ADR-D6)', async () => {

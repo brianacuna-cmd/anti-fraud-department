@@ -64,7 +64,7 @@ export function createSweepSlaTrackingUseCase(deps: SweepSlaTrackingDeps) {
           advancedCount += 1;
         }
 
-        if (!advanced.notificationSent) {
+        if (!advanced.hasNotified(advanced.status)) {
           const kase = await deps.cases.findById(advanced.caseId, tx);
           if (kase !== null && kase.assignedTo !== null && kase.assignedTo.type === 'USER') {
             await deps.notificationSender.send(
@@ -78,7 +78,7 @@ export function createSweepSlaTrackingUseCase(deps: SweepSlaTrackingDeps) {
             );
             notifiedCount += 1;
           }
-          advanced = advanced.markNotified(now);
+          advanced = advanced.markNotified(advanced.status, now);
         }
 
         await deps.slaTracking.save(advanced, tx);

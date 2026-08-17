@@ -85,7 +85,7 @@ describe('createCalculateSlaUseCase', () => {
     expect(tracking[0]?.caseId).toBe(kase.id);
     expect(tracking[0]?.status).toBe('ON_TRACK');
     expect(tracking[0]?.dueDate).toBe(expectedDue);
-    expect(tracking[0]?.notificationSent).toBe(false);
+    expect(tracking[0]?.notifiedStatuses.size).toBe(0);
   });
 
   it('maps each priority to its distinct SLA minutes when computing dueDate', async () => {

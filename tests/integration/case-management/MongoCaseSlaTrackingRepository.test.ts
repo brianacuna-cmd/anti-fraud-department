@@ -67,7 +67,7 @@ describe('MongoCaseSlaTrackingRepository (integration, real replica-set Mongo)',
 
     expect(found?.caseId).toBe(oid('case-1'));
     expect(found?.status).toBe('ON_TRACK');
-    expect(found?.notificationSent).toBe(false);
+    expect(found?.notifiedStatuses.size).toBe(0);
   });
 
   it('returns null when no tracking row matches the given CaseId', async () => {
@@ -107,7 +107,7 @@ describe('MongoCaseSlaTrackingRepository (integration, real replica-set Mongo)',
         case_id: new ObjectId(oid('case-1')),
         due_date: toDate(DUE),
         status: 'ON_TRACK',
-        notification_sent: false,
+        notified_statuses: [],
         created_at: toDate(NOW),
         updated_at: toDate(NOW),
       });

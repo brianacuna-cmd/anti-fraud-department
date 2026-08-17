@@ -10,7 +10,7 @@ export interface CaseSlaTrackingProps {
   readonly caseId: CaseId;
   readonly dueDate: Instant;
   readonly status: SlaStatus;
-  readonly notificationSent: boolean;
+  readonly notifiedStatuses: ReadonlySet<SlaStatus>;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
 }
@@ -38,7 +38,7 @@ export class CaseSlaTracking {
       caseId: input.caseId,
       dueDate: input.dueDate,
       status: 'ON_TRACK',
-      notificationSent: false,
+      notifiedStatuses: new Set(),
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -65,8 +65,12 @@ export class CaseSlaTracking {
     return this.props.status;
   }
 
-  get notificationSent(): boolean {
-    return this.props.notificationSent;
+  get notifiedStatuses(): ReadonlySet<SlaStatus> {
+    return this.props.notifiedStatuses;
+  }
+
+  hasNotified(status: SlaStatus): boolean {
+    return this.props.notifiedStatuses.has(status);
   }
 
   get createdAt(): Instant {
@@ -87,9 +91,13 @@ export class CaseSlaTracking {
     return new CaseSlaTracking({ ...this.props, status: next, updatedAt: now });
   }
 
-  /** Marks the sweep's notification as sent — idempotency guard for `SweepSlaTracking` (Slice 13). */
-  markNotified(now: Instant): CaseSlaTracking {
-    return new CaseSlaTracking({ ...this.props, notificationSent: true, updatedAt: now });
+  /** Marks the sweep's notification as sent FOR THIS STATUS — idempotency guard for `SweepSlaTracking` (Slice 13, PR1: per-status re-notify). */
+  markNotified(status: SlaStatus, now: Instant): CaseSlaTracking {
+    return new CaseSlaTracking({
+      ...this.props,
+      notifiedStatuses: new Set([...this.props.notifiedStatuses, status]),
+      updatedAt: now,
+    });
   }
 
   /**
@@ -103,7 +111,7 @@ export class CaseSlaTracking {
       ...this.props,
       dueDate,
       status: 'ON_TRACK',
-      notificationSent: false,
+      notifiedStatuses: new Set(),
       updatedAt: now,
     });
   }

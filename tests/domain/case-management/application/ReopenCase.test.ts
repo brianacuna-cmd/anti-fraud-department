@@ -170,7 +170,7 @@ describe('createReopenCaseUseCase (role-gated reopen + SLA reset)', () => {
     expect(tracking).toBeDefined();
     expect(tracking?.status).toBe('ON_TRACK');
     expect(tracking?.dueDate).toEqual(EXPECTED_DUE);
-    expect(tracking?.notificationSent).toBe(false);
+    expect(tracking?.notifiedStatuses.size).toBe(0);
 
     const events = timelineRecorder.all();
     expect(events).toHaveLength(1);

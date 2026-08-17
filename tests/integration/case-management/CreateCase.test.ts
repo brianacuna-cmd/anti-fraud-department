@@ -246,7 +246,7 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
 
       const tracking = await db.collection('case_sla_tracking').findOne({ case_id: new ObjectId(kase.id) });
       expect(tracking?.status).toBe('ON_TRACK');
-      expect(tracking?.notification_sent).toBe(false);
+      expect(tracking?.notified_statuses).toEqual([]);
     });
 
     it('rolls back the case when OrganizationFraudConfig is missing', async () => {
