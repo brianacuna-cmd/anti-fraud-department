@@ -16,6 +16,10 @@ export class InMemoryTimelineRecorder implements TimelineRecorder {
     this.byId.set(event.id, event);
   }
 
+  async listByCaseId(caseId: string): Promise<readonly CaseTimelineEvent[]> {
+    return [...this.byId.values()].filter((e) => e.caseId === caseId);
+  }
+
   /** Test-only accessor — the real port exposes no read methods (append-only). */
   all(): readonly CaseTimelineEvent[] {
     return [...this.byId.values()];

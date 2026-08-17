@@ -15,23 +15,41 @@ import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/i
 import { generateCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 
+import { createListCasesUseCase } from '../../../../src/modules/case-management/application/ListCases.js';
+import { createGetCaseUseCase } from '../../../../src/modules/case-management/application/GetCase.js';
+import { createTransitionCaseStatusUseCase } from '../../../../src/modules/case-management/application/TransitionCaseStatus.js';
+import { createGetCaseTimelineUseCase } from '../../../../src/modules/case-management/application/GetCaseTimeline.js';
+
 const ORG_1_ANALYST = createAuthContext({ userId: 'analyst-1', organizationId: 'org-1', actorType: 'USER' });
 
 function buildApp(actorPerRequest: () => AuthContext) {
   const cases = new InMemoryCaseRepository();
   const timelineRecorder = new InMemoryTimelineRecorder();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
+  const unitOfWork = new PassthroughUnitOfWork();
+  const clock = new SystemClock();
 
   const router = caseRouter({
     createCase: createCreateCaseUseCase({
       cases,
       timelineRecorder,
-      unitOfWork: new PassthroughUnitOfWork(),
-      clock: new SystemClock(),
+      unitOfWork,
+      clock,
       generateCaseId,
       generateTimelineEventId,
       auditRecorder,
     }),
+    listCases: createListCasesUseCase({ cases }),
+    getCase: createGetCaseUseCase({ cases }),
+    transitionCaseStatus: createTransitionCaseStatusUseCase({
+      cases,
+      timelineRecorder,
+      unitOfWork,
+      clock,
+      generateTimelineEventId,
+      auditRecorder,
+    }),
+    getCaseTimeline: createGetCaseTimelineUseCase({ cases, timelineRecorder }),
   });
 
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {

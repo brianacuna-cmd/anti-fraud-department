@@ -73,7 +73,7 @@ describe('MongoTimelineRecorder (integration, real replica-set Mongo)', () => {
       (name) => name !== 'constructor',
     );
 
-    expect(publicMethods).toEqual(['record']);
+    expect(publicMethods.sort()).toEqual(['listByCaseId', 'record']);
   });
 
   /**
