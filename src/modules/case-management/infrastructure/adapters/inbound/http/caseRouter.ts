@@ -4,6 +4,8 @@ import type { createCreateCaseUseCase } from '../../../../application/CreateCase
 import type { createReassignCaseUseCase } from '../../../../application/ReassignCase.js';
 import type { createListCasesUseCase } from '../../../../application/ListCases.js';
 import type { createReopenCaseUseCase } from '../../../../application/ReopenCase.js';
+import type { createGetCaseUseCase } from '../../../../application/GetCase.js';
+import type { createGetCaseTimelineUseCase } from '../../../../application/GetCaseTimeline.js';
 import {
   createCaseSchema,
   reassignCaseSchema,
@@ -11,6 +13,7 @@ import {
   reopenCaseSchema,
 } from './dto/caseSchemas.js';
 import { toCaseResponse } from './mappers/CaseHttpMapper.js';
+import { toTimelineEventResponse } from './mappers/CaseTimelineHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
 import type { Instant } from '../../../../../../shared/time/Instant.js';
 
@@ -19,6 +22,8 @@ export interface CaseRouterDeps {
   readonly reassignCase: ReturnType<typeof createReassignCaseUseCase>;
   readonly listCases: ReturnType<typeof createListCasesUseCase>;
   readonly reopenCase: ReturnType<typeof createReopenCaseUseCase>;
+  readonly getCase: ReturnType<typeof createGetCaseUseCase>;
+  readonly getCaseTimeline: ReturnType<typeof createGetCaseTimelineUseCase>;
 }
 
 /**
@@ -57,6 +62,18 @@ export function caseRouter(deps: CaseRouterDeps): Router {
     const body = parseRequest(createCaseSchema, req.body);
     const kase = await deps.createCase({ auth, ...body });
     res.status(201).json(toCaseResponse(kase));
+  });
+
+  router.get('/cases/:caseId', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const kase = await deps.getCase({ auth, caseId: req.params.caseId! });
+    res.status(200).json(toCaseResponse(kase));
+  });
+
+  router.get('/cases/:caseId/timeline', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const events = await deps.getCaseTimeline({ auth, caseId: req.params.caseId! });
+    res.status(200).json({ items: events.map(toTimelineEventResponse) });
   });
 
   router.post('/cases/:caseId/reassign', async (req, res) => {
