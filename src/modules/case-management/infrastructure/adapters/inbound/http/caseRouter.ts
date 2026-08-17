@@ -6,14 +6,18 @@ import type { createListCasesUseCase } from '../../../../application/ListCases.j
 import type { createReopenCaseUseCase } from '../../../../application/ReopenCase.js';
 import type { createGetCaseUseCase } from '../../../../application/GetCase.js';
 import type { createGetCaseTimelineUseCase } from '../../../../application/GetCaseTimeline.js';
+import type { createAddCaseNoteUseCase } from '../../../../application/AddCaseNote.js';
+import type { createListCaseNotesUseCase } from '../../../../application/ListCaseNotes.js';
 import {
   createCaseSchema,
   reassignCaseSchema,
   listCasesQuerySchema,
   reopenCaseSchema,
+  addCaseNoteSchema,
 } from './dto/caseSchemas.js';
 import { toCaseResponse } from './mappers/CaseHttpMapper.js';
 import { toTimelineEventResponse } from './mappers/CaseTimelineHttpMapper.js';
+import { toCaseNoteResponse } from './mappers/CaseNoteHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
 import type { Instant } from '../../../../../../shared/time/Instant.js';
 
@@ -24,6 +28,8 @@ export interface CaseRouterDeps {
   readonly reopenCase: ReturnType<typeof createReopenCaseUseCase>;
   readonly getCase: ReturnType<typeof createGetCaseUseCase>;
   readonly getCaseTimeline: ReturnType<typeof createGetCaseTimelineUseCase>;
+  readonly addCaseNote: ReturnType<typeof createAddCaseNoteUseCase>;
+  readonly listCaseNotes: ReturnType<typeof createListCaseNotesUseCase>;
 }
 
 /**
@@ -74,6 +80,19 @@ export function caseRouter(deps: CaseRouterDeps): Router {
     const auth = requireAuthContext(req);
     const events = await deps.getCaseTimeline({ auth, caseId: req.params.caseId! });
     res.status(200).json({ items: events.map(toTimelineEventResponse) });
+  });
+
+  router.post('/cases/:caseId/notes', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(addCaseNoteSchema, req.body);
+    const note = await deps.addCaseNote({ auth, caseId: req.params.caseId!, body: body.body });
+    res.status(201).json(toCaseNoteResponse(note));
+  });
+
+  router.get('/cases/:caseId/notes', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const notes = await deps.listCaseNotes({ auth, caseId: req.params.caseId! });
+    res.status(200).json({ items: notes.map(toCaseNoteResponse) });
   });
 
   router.post('/cases/:caseId/reassign', async (req, res) => {

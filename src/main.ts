@@ -89,6 +89,7 @@ import { notificationsErrorStatus } from './modules/notifications/infrastructure
 import { MongoCaseRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRepository.js';
 import { MongoTimelineRecorder } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoTimelineRecorder.js';
 import { MongoTimelineReader } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoTimelineReader.js';
+import { MongoCaseNoteRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseNoteRepository.js';
 import { MongoUnitOfWork as CaseManagementMongoUnitOfWork } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { generateCaseId } from './modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from './modules/case-management/domain/model/value-objects/TimelineEventId.js';
@@ -100,6 +101,9 @@ import { createListCasesUseCase } from './modules/case-management/application/Li
 import { createReopenCaseUseCase } from './modules/case-management/application/ReopenCase.js';
 import { createGetCaseUseCase } from './modules/case-management/application/GetCase.js';
 import { createGetCaseTimelineUseCase } from './modules/case-management/application/GetCaseTimeline.js';
+import { createAddCaseNoteUseCase } from './modules/case-management/application/AddCaseNote.js';
+import { createListCaseNotesUseCase } from './modules/case-management/application/ListCaseNotes.js';
+import { generateCaseNoteId } from './modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { createSweepSlaTrackingUseCase } from './modules/case-management/application/SweepSlaTracking.js';
 import { createSlaSweepScheduler } from './modules/case-management/infrastructure/scheduler/SlaSweepScheduler.js';
 import { MongoCaseRoutingRuleRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRoutingRuleRepository.js';
@@ -345,6 +349,7 @@ async function bootstrap(): Promise<void> {
   const cases = new MongoCaseRepository(db);
   const caseTimelineRecorder = new MongoTimelineRecorder(db);
   const caseTimelineReader = new MongoTimelineReader(db);
+  const caseNotes = new MongoCaseNoteRepository(db);
   const caseManagementAuditRecorder = createCaseManagementAuditRecorderAdapter(recordAuditLog);
   // CASE-002 (T1 auto-routing): ACTIVE routing rules are evaluated by the ZEN
   // engine on every case creation. The composed `RouteCase` use case is injected
@@ -413,6 +418,17 @@ async function bootstrap(): Promise<void> {
     }),
     getCase: createGetCaseUseCase({ cases }),
     getCaseTimeline: createGetCaseTimelineUseCase({ cases, timelineReader: caseTimelineReader }),
+    addCaseNote: createAddCaseNoteUseCase({
+      cases,
+      notes: caseNotes,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateCaseNoteId,
+      generateTimelineEventId,
+    }),
+    listCaseNotes: createListCaseNotesUseCase({ cases, notes: caseNotes }),
   });
   const organizationFraudConfigHttpRouter = organizationFraudConfigRouter({
     getOrganizationFraudConfig,

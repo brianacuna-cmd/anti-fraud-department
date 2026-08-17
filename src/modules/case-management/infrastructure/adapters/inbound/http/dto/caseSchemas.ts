@@ -62,3 +62,10 @@ export const reopenCaseSchema = z.object({
 });
 
 export type ReopenCaseBody = z.infer<typeof reopenCaseSchema>;
+
+/** POST /cases/:caseId/notes body. */
+export const addCaseNoteSchema = z.object({
+  body: z.string().trim().min(1),
+});
+
+export type AddCaseNoteBody = z.infer<typeof addCaseNoteSchema>;
