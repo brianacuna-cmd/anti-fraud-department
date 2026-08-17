@@ -20,11 +20,13 @@ function buildTracking(
 }
 
 describe('CaseSlaTracking.create', () => {
-  it('creates a tracking row with Status ON_TRACK and NotificationSent false', () => {
+  it('creates a tracking row with Status ON_TRACK and no NotifiedStatuses', () => {
     const tracking = buildTracking();
 
     expect(tracking.status).toBe('ON_TRACK');
-    expect(tracking.notificationSent).toBe(false);
+    expect(tracking.hasNotified('ON_TRACK')).toBe(false);
+    expect(tracking.hasNotified('WARNING')).toBe(false);
+    expect(tracking.hasNotified('BREACHED')).toBe(false);
     expect(tracking.dueDate).toBe(NOW);
     expect(tracking.caseId).toBe(oid('case-1'));
   });
@@ -67,24 +69,37 @@ describe('CaseSlaTracking.advanceTo (forward-only sweep)', () => {
   });
 });
 
-describe('CaseSlaTracking.markNotified', () => {
-  it('sets notificationSent to true', () => {
-    const tracking = buildTracking().markNotified(LATER);
+describe('CaseSlaTracking.markNotified (PR1: per-status re-notify)', () => {
+  it('marks only the given status notified; other statuses remain un-notified', () => {
+    const tracking = buildTracking().markNotified('ON_TRACK', LATER);
 
-    expect(tracking.notificationSent).toBe(true);
+    expect(tracking.hasNotified('ON_TRACK')).toBe(true);
+    expect(tracking.hasNotified('WARNING')).toBe(false);
     expect(tracking.updatedAt).toBe(LATER);
+  });
+
+  it('accumulates notified statuses across hops: WARNING then BREACHED both marked independently', () => {
+    const tracking = buildTracking()
+      .advanceTo('WARNING', NOW)
+      .markNotified('WARNING', NOW)
+      .advanceTo('BREACHED', LATER)
+      .markNotified('BREACHED', LATER);
+
+    expect(tracking.hasNotified('WARNING')).toBe(true);
+    expect(tracking.hasNotified('BREACHED')).toBe(true);
   });
 });
 
 describe('CaseSlaTracking.reset (T6)', () => {
-  it('resets Status to ON_TRACK, notificationSent to false, and recomputes DueDate', () => {
+  it('resets Status to ON_TRACK, clears NotifiedStatuses, and recomputes DueDate', () => {
     const tracking = buildTracking()
       .advanceTo('WARNING', NOW)
-      .markNotified(NOW)
+      .markNotified('WARNING', NOW)
       .reset(LATER, LATER);
 
     expect(tracking.status).toBe('ON_TRACK');
-    expect(tracking.notificationSent).toBe(false);
+    expect(tracking.hasNotified('WARNING')).toBe(false);
+    expect(tracking.hasNotified('ON_TRACK')).toBe(false);
     expect(tracking.dueDate).toBe(LATER);
   });
 });
