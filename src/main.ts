@@ -432,6 +432,7 @@ async function bootstrap(): Promise<void> {
     slaTracking: caseSlaTracking,
     cases,
     notificationSender: caseManagementNotificationSender,
+    assigneeDirectory,
     unitOfWork: caseManagementUnitOfWork,
     clock,
   });

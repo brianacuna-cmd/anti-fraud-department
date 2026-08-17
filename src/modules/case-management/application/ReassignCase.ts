@@ -40,9 +40,9 @@ export interface ReassignCaseDeps {
  * Manual case reassignment (PR2). Loads the case, enforces tenant + soft-delete
  * gates, validates the assignee belongs to the organization, then clones the
  * RouteCase audit/timeline pattern with `trigger: MANUAL`. Dispatches
- * CASO_ASIGNADO via `NotificationSender` inside the same transaction when the
- * new assignee is a USER (ADR-D4: ROLE assignments have no per-user inbox, so
- * the notification is suppressed for ROLE — a documented no-op, not a bug).
+ * CASO_ASIGNADO via `NotificationSender` inside the same transaction: to the
+ * single USER assignee, or fanned out to every active member of a ROLE
+ * assignee (each recipient's own EMAIL opt-out is still honored downstream).
  *
  * Same-assignee is rejected with INVARIANT_VIOLATION to keep history clean.
  */
@@ -114,11 +114,15 @@ export function createReassignCaseUseCase(deps: ReassignCaseDeps) {
         tx,
       );
 
-      if (assignedTo.type === 'USER') {
+      const recipientUserIds =
+        assignedTo.type === 'USER'
+          ? [assignedTo.id]
+          : await deps.assigneeDirectory.listRoleRecipients(organizationId, assignedTo.id);
+      for (const recipientUserId of recipientUserIds) {
         await deps.notificationSender.send(
           {
             organizationId,
-            recipientUserId: assignedTo.id,
+            recipientUserId,
             alertType: 'CASO_ASIGNADO',
             context: { caseId: updated.id, previousAssigneeId },
           },

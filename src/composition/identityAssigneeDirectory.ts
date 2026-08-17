@@ -26,6 +26,16 @@ export function createIdentityAssigneeDirectory(
       }
       return roleIsAssignable(roleRepository, assignedTo.id);
     },
+    async listRoleRecipients(organizationId: string, roleId: string): Promise<readonly string[]> {
+      try {
+        const users = await userRepositoryFactory
+          .forTenant(createOrganizationId(organizationId))
+          .listByRole(createRoleId(roleId));
+        return users.map((user) => user.id as string);
+      } catch {
+        return [];
+      }
+    },
   };
 }
 
