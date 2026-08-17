@@ -14,6 +14,12 @@ export interface CaseSlaTrackingDocument {
   readonly notified_statuses?: readonly string[];
   /** Legacy field — read-only tolerance for pre-PR1 docs, never written going forward. */
   readonly notification_sent?: boolean;
+  /**
+   * Sweep lease marker (PR6: multi-instance safety). Infra-only — set by
+   * `claimDueForSweep`, never mapped into the domain aggregate, and dropped by
+   * `toDocument` on the next `save` so processing a row releases its lease.
+   */
+  readonly claimed_at?: Date | null;
   readonly created_at: Date;
   readonly updated_at: Date;
 }

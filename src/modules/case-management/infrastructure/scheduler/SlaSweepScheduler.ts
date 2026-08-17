@@ -22,15 +22,13 @@ const defaultSleeper: Sleeper = (ms) =>
  * `node-cron` as a new dependency — a fixed-interval single-process loop is
  * all this needs, and the repo already ships a tested idiom for it.
  *
- * SINGLE-INSTANCE CAVEAT (spec: "Single-instance scheduler caveat", A3):
- * this scheduler assumes exactly one running instance. If the process is
- * horizontally scaled (multiple instances), EACH instance runs its own
- * independent sweep loop and they will race to process the SAME due rows —
- * the sweep can double-run across instances. The ONLY safeguard in this
- * change is `CaseSlaTracking.markNotified` idempotency (a second sweep of
- * an already-notified row re-applies the same, safe, status advance and
- * skips re-sending the notification) — there is NO distributed lock. Do
- * not deploy multiple instances of this scheduler without adding one.
+ * MULTI-INSTANCE SAFE (PR6): running several instances of this scheduler
+ * is safe. Each instance still runs its own poll loop, but the underlying
+ * `SweepSlaTracking` use case claims due rows through
+ * `CaseSlaTrackingRepository.claimDueForSweep`, an exclusive per-row lease
+ * (5-minute TTL) mirroring the outbox `claimPending`. Two instances never
+ * claim the same row in the same window, and `markNotified` per-status
+ * idempotency covers the rare lease-expiry overlap. No external lock needed.
  */
 export function createSlaSweepScheduler(deps: SlaSweepSchedulerDeps) {
   const sleeper = deps.sleeper ?? defaultSleeper;

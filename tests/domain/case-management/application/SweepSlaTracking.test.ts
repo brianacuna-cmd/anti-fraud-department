@@ -91,7 +91,7 @@ describe('createSweepSlaTrackingUseCase', () => {
     expect(row?.status).toBe('BREACHED');
   });
 
-  it('skips already-BREACHED rows (never returned by findDueForSweep, defensive re-check)', async () => {
+  it('skips already-BREACHED rows (never claimed by claimDueForSweep, defensive re-check)', async () => {
     const { sweepSlaTracking, cases, slaTracking } = buildUseCase();
     const assignee = createAssignedTo('USER', oid('analyst-1'));
     await cases.save(buildCase(oid('case-1'), assignee));

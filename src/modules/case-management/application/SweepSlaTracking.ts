@@ -23,17 +23,21 @@ export interface SweepSlaTrackingResult {
   readonly notified: number;
 }
 
-/** Single forward-only hop per due row (ON_TRACK->WARNING or WARNING->BREACHED). BREACHED rows are never returned by `findDueForSweep`. */
+/** Single forward-only hop per due row (ON_TRACK->WARNING or WARNING->BREACHED). BREACHED rows are never claimed by `claimDueForSweep`. */
 function nextStatus(tracking: CaseSlaTracking): SlaStatus | null {
   const [next] = slaStatusTransitions[tracking.status];
   return next ?? null;
 }
 
+/** Max rows claimed per sweep tick (bounds the atomic-claim loop, mirrors the outbox dispatcher). */
+const SWEEP_CLAIM_LIMIT = 100;
+
 /**
  * Background sweep (Slice 13, design D6): advances each due `CaseSlaTracking`
- * row by one status hop and sends `SLA_POR_VENCER` exactly once per row
- * (idempotency guard: `notificationSent`/`markNotified`, NOT a distributed
- * lock — see `SlaSweepScheduler`'s single-instance caveat).
+ * row by one status hop and sends `SLA_POR_VENCER` once per status.
+ * Multi-instance safe: `claimDueForSweep` takes an exclusive per-row lease,
+ * so concurrent sweep instances never process the same due row twice
+ * (mirrors the outbox `claimPending`).
  *
  * Each row is processed in its OWN `unitOfWork.withTransaction` (ADR-D6): a
  * mid-batch failure leaves already-processed rows committed and the failing
@@ -47,7 +51,7 @@ function nextStatus(tracking: CaseSlaTracking): SlaStatus | null {
 export function createSweepSlaTrackingUseCase(deps: SweepSlaTrackingDeps) {
   return async function sweepSlaTracking(): Promise<SweepSlaTrackingResult> {
     const now = deps.clock.now();
-    const due = await deps.slaTracking.findDueForSweep(now);
+    const due = await deps.slaTracking.claimDueForSweep(now, SWEEP_CLAIM_LIMIT);
 
     let advancedCount = 0;
     let notifiedCount = 0;
