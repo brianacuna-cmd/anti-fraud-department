@@ -8,6 +8,9 @@ import type { Transaction } from '../../../src/modules/case-management/domain/po
 /** Fixed backoff schedule (seconds): 1, 2, 4, 8, 16 for attempts 0..4. */
 const BACKOFF_SECONDS = [1, 2, 4, 8, 16] as const;
 
+/** Mirrors MongoCustomerOutgoingEventRepository's LEASE_TTL_MS. */
+const LEASE_TTL_MS = 5 * 60 * 1000;
+
 function isDue(event: CustomerOutgoingEvent, now: Instant): boolean {
   if (event.status !== 'PENDING' || event.attempts >= 5) {
     return false;
@@ -22,9 +25,13 @@ function isDue(event: CustomerOutgoingEvent, now: Instant): boolean {
 
 export class InMemoryCustomerOutgoingEventRepository implements CustomerOutgoingEventRepository {
   private readonly byId = new Map<string, CustomerOutgoingEvent>();
+  /** Infra-only claim lease marker, mirrors the Mongo adapter's `claimed_at` field. */
+  private readonly claimedAtById = new Map<string, number>();
 
   async save(event: CustomerOutgoingEvent, _tx?: Transaction): Promise<void> {
     this.byId.set(event.id, event);
+    // Mirrors Mongo's replaceOne(toDocument(event)): a save always drops the lease.
+    this.claimedAtById.delete(event.id);
   }
 
   async findById(id: CustomerOutgoingEventId, _tx?: Transaction): Promise<CustomerOutgoingEvent | null> {
@@ -41,10 +48,22 @@ export class InMemoryCustomerOutgoingEventRepository implements CustomerOutgoing
   }
 
   async claimPending(now: Instant, limit: number, _tx?: Transaction): Promise<CustomerOutgoingEvent[]> {
-    return [...this.byId.values()]
-      .filter((event) => isDue(event, now))
+    const nowMs = toDate(now).getTime();
+    const isLeased = (id: string): boolean => {
+      const claimedAtMs = this.claimedAtById.get(id);
+      return claimedAtMs !== undefined && nowMs - claimedAtMs < LEASE_TTL_MS;
+    };
+
+    const claimable = [...this.byId.values()]
+      .filter((event) => isDue(event, now) && !isLeased(event.id))
       .sort((a, b) => toDate(a.createdAt).getTime() - toDate(b.createdAt).getTime())
       .slice(0, limit);
+
+    for (const event of claimable) {
+      this.claimedAtById.set(event.id, nowMs);
+    }
+
+    return claimable;
   }
 
   all(): readonly CustomerOutgoingEvent[] {

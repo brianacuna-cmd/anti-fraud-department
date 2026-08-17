@@ -6,6 +6,9 @@ import { CaseManagementError } from '../../../../src/modules/case-management/dom
 import { generateCaseRoutingRuleId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseRoutingRuleId.js';
 import { InMemoryCaseRoutingRuleRepository } from '../../../helpers/case-management/InMemoryCaseRoutingRuleRepository.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
+import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
+import type { AuditEvent, AuditRecorder } from '../../../../src/modules/case-management/domain/ports/AuditRecorder.js';
+import type { Transaction } from '../../../../src/modules/case-management/domain/ports/UnitOfWork.js';
 
 const ORG = oid('org-1');
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
@@ -33,6 +36,7 @@ describe('CreateRoutingRule', () => {
     const create = createCreateRoutingRuleUseCase({
       routingRules,
       auditRecorder,
+      unitOfWork: new PassthroughUnitOfWork(),
       clock: { now: () => NOW },
       generateCaseRoutingRuleId: () => ruleId,
     });
@@ -69,6 +73,7 @@ describe('CreateRoutingRule', () => {
     const create = createCreateRoutingRuleUseCase({
       routingRules,
       auditRecorder: new InMemoryCaseManagementAuditRecorder(),
+      unitOfWork: new PassthroughUnitOfWork(),
       clock: { now: () => NOW },
       generateCaseRoutingRuleId,
     });
@@ -88,6 +93,7 @@ describe('CreateRoutingRule', () => {
     const create = createCreateRoutingRuleUseCase({
       routingRules,
       auditRecorder: new InMemoryCaseManagementAuditRecorder(),
+      unitOfWork: new PassthroughUnitOfWork(),
       clock: { now: () => NOW },
       generateCaseRoutingRuleId,
     });
@@ -111,6 +117,7 @@ describe('CreateRoutingRule', () => {
     const create = createCreateRoutingRuleUseCase({
       routingRules,
       auditRecorder: new InMemoryCaseManagementAuditRecorder(),
+      unitOfWork: new PassthroughUnitOfWork(),
       clock: { now: () => NOW },
       generateCaseRoutingRuleId,
     });
@@ -127,5 +134,57 @@ describe('CreateRoutingRule', () => {
       expect((error as CaseManagementError).code).toBe('FORBIDDEN_ROLE');
     }
     expect(routingRules.all()).toHaveLength(0);
+  });
+
+  it('threads the same transaction handle into both save() and auditRecorder.record() (REQ-E1.1)', async () => {
+    const routingRules = new InMemoryCaseRoutingRuleRepository();
+    const seenTx: Array<Transaction | undefined> = [];
+    const savedRules: string[] = [];
+    const auditRecorder: AuditRecorder = {
+      record: async (event: AuditEvent, tx?: Transaction) => {
+        seenTx.push(tx);
+        void event;
+      },
+    };
+    const originalSave = routingRules.save.bind(routingRules);
+    routingRules.save = async (rule, tx) => {
+      savedRules.push(rule.id);
+      seenTx.push(tx);
+      return originalSave(rule, tx);
+    };
+    const create = createCreateRoutingRuleUseCase({
+      routingRules,
+      auditRecorder,
+      unitOfWork: new PassthroughUnitOfWork(),
+      clock: { now: () => NOW },
+      generateCaseRoutingRuleId,
+    });
+
+    await create({ auth: supervisorAuth(), name: 'draft-tx', conditions: VALID_JDM });
+
+    expect(savedRules).toHaveLength(1);
+    expect(seenTx).toHaveLength(2);
+    expect(seenTx[0]).toBeDefined();
+    expect(seenTx[0]).toBe(seenTx[1]);
+  });
+
+  it('propagates audit recorder failures so the rule is not left persisted without its audit trail (REQ-E1.2)', async () => {
+    const routingRules = new InMemoryCaseRoutingRuleRepository();
+    const failingAuditRecorder: AuditRecorder = {
+      record: async () => {
+        throw new Error('audit sink unavailable');
+      },
+    };
+    const create = createCreateRoutingRuleUseCase({
+      routingRules,
+      auditRecorder: failingAuditRecorder,
+      unitOfWork: new PassthroughUnitOfWork(),
+      clock: { now: () => NOW },
+      generateCaseRoutingRuleId,
+    });
+
+    await expect(
+      create({ auth: supervisorAuth(), name: 'draft-fail', conditions: VALID_JDM }),
+    ).rejects.toThrow('audit sink unavailable');
   });
 });

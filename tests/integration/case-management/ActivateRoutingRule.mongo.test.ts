@@ -7,6 +7,7 @@ import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
 import { createAuthContext } from '../../../src/shared/kernel/AuthContext.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import { MongoCaseRoutingRuleRepository } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRoutingRuleRepository.js';
+import { MongoUnitOfWork } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { createActivateRoutingRuleUseCase } from '../../../src/modules/case-management/application/ActivateRoutingRule.js';
 import { createDeactivateRoutingRuleUseCase } from '../../../src/modules/case-management/application/DeactivateRoutingRule.js';
 import { CaseRoutingRule } from '../../../src/modules/case-management/domain/model/aggregates/CaseRoutingRule.js';
@@ -42,6 +43,7 @@ describe('ActivateRoutingRule with Mongo (non-exclusive)', () => {
   let client: MongoClient;
   let db: Db;
   let repository: MongoCaseRoutingRuleRepository;
+  let unitOfWork: MongoUnitOfWork;
 
   beforeAll(async () => {
     replicaSet = await startReplicaSetMongo();
@@ -58,6 +60,7 @@ describe('ActivateRoutingRule with Mongo (non-exclusive)', () => {
 
   beforeEach(() => {
     repository = new MongoCaseRoutingRuleRepository(db);
+    unitOfWork = new MongoUnitOfWork(client);
   });
 
   afterEach(async () => {
@@ -73,6 +76,7 @@ describe('ActivateRoutingRule with Mongo (non-exclusive)', () => {
     const activate = createActivateRoutingRuleUseCase({
       routingRules: repository,
       auditRecorder: new InMemoryCaseManagementAuditRecorder(),
+      unitOfWork,
       clock: { now: () => LATER },
     });
 
@@ -100,6 +104,7 @@ describe('ActivateRoutingRule with Mongo (non-exclusive)', () => {
     const deactivate = createDeactivateRoutingRuleUseCase({
       routingRules: repository,
       auditRecorder: new InMemoryCaseManagementAuditRecorder(),
+      unitOfWork,
       clock: { now: () => LATER },
     });
 

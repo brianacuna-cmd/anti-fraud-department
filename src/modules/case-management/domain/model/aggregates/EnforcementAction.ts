@@ -133,10 +133,6 @@ export class EnforcementAction {
     return this.transitionTo('EXECUTED', now);
   }
 
-  revert(now: Instant): EnforcementAction {
-    return this.transitionTo('REVERTED', now);
-  }
-
   private transitionTo(next: EnforcementActionStatus, now: Instant): EnforcementAction {
     assertTransitionAllowed(enforcementActionStatusTransitions, this.props.status, next);
     return new EnforcementAction({ ...this.props, status: next, updatedAt: now });

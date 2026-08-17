@@ -7,6 +7,7 @@ import { CaseRoutingRule } from '../../../../src/modules/case-management/domain/
 import { generateCaseRoutingRuleId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseRoutingRuleId.js';
 import { InMemoryCaseRoutingRuleRepository } from '../../../helpers/case-management/InMemoryCaseRoutingRuleRepository.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
+import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 
 const ORG = oid('org-1');
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
@@ -54,6 +55,7 @@ describe('DeactivateRoutingRule', () => {
     const deactivate = createDeactivateRoutingRuleUseCase({
       routingRules,
       auditRecorder,
+      unitOfWork: new PassthroughUnitOfWork(),
       clock: { now: () => LATER },
     });
 
@@ -71,14 +73,16 @@ describe('DeactivateRoutingRule', () => {
     ]);
   });
 
-  it('is idempotent when the rule is already INACTIVE', async () => {
+  it('is idempotent when the rule is already INACTIVE and records no audit event (no-op suppression)', async () => {
     const routingRules = new InMemoryCaseRoutingRuleRepository();
     const draft = buildRule('INACTIVE', { name: 'draft' });
     routingRules.add(draft);
+    const auditRecorder = new InMemoryCaseManagementAuditRecorder();
 
     const deactivate = createDeactivateRoutingRuleUseCase({
       routingRules,
-      auditRecorder: new InMemoryCaseManagementAuditRecorder(),
+      auditRecorder,
+      unitOfWork: new PassthroughUnitOfWork(),
       clock: { now: () => LATER },
     });
 
@@ -88,6 +92,7 @@ describe('DeactivateRoutingRule', () => {
     expect(result.id).toBe(draft.id);
     expect(routingRules.all()).toHaveLength(1);
     expect(routingRules.all()[0]?.status).toBe('INACTIVE');
+    expect(auditRecorder.all()).toHaveLength(0);
   });
 
   it('rejects AUDITOR without changing statuses', async () => {
@@ -98,6 +103,7 @@ describe('DeactivateRoutingRule', () => {
     const deactivate = createDeactivateRoutingRuleUseCase({
       routingRules,
       auditRecorder: new InMemoryCaseManagementAuditRecorder(),
+      unitOfWork: new PassthroughUnitOfWork(),
       clock: { now: () => LATER },
     });
 
@@ -116,6 +122,7 @@ describe('DeactivateRoutingRule', () => {
     const deactivate = createDeactivateRoutingRuleUseCase({
       routingRules,
       auditRecorder: new InMemoryCaseManagementAuditRecorder(),
+      unitOfWork: new PassthroughUnitOfWork(),
       clock: { now: () => LATER },
     });
 
@@ -136,6 +143,7 @@ describe('DeactivateRoutingRule', () => {
     const deactivate = createDeactivateRoutingRuleUseCase({
       routingRules,
       auditRecorder: new InMemoryCaseManagementAuditRecorder(),
+      unitOfWork: new PassthroughUnitOfWork(),
       clock: { now: () => LATER },
     });
 

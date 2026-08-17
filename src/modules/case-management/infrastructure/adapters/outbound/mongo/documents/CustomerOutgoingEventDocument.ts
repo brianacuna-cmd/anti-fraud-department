@@ -22,4 +22,13 @@ export interface CustomerOutgoingEventDocument {
   readonly attempts: number;
   readonly last_attempt_at: Date | null;
   readonly created_at: Date;
+  /**
+   * Infra-only claim lease marker (not part of the domain aggregate).
+   * Set by `claimPending`'s atomic `findOneAndUpdate`; dropped on every
+   * `save()` (replaceOne via `toDocument`, which never sets this field),
+   * releasing the lease once markSent/recordFailure persist the outcome.
+   * A crashed claimer leaves it stale until LEASE_TTL_MS elapses, after
+   * which the row becomes reclaimable again.
+   */
+  readonly claimed_at?: Date | null;
 }

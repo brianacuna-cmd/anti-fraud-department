@@ -16,6 +16,7 @@ import { createDeactivateRoutingRuleUseCase } from '../../../../src/modules/case
 import { generateCaseRoutingRuleId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseRoutingRuleId.js';
 import { InMemoryCaseRoutingRuleRepository } from '../../../helpers/case-management/InMemoryCaseRoutingRuleRepository.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
+import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const LATER = fromDate(new Date('2026-02-01T00:00:00.000Z'));
@@ -30,9 +31,11 @@ function buildApp(actorPerRequest: () => AuthContext, clockNow: typeof NOW = NOW
   const routingRules = new InMemoryCaseRoutingRuleRepository();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
   const clock = { now: () => clockNow };
+  const unitOfWork = new PassthroughUnitOfWork();
   const createRoutingRule = createCreateRoutingRuleUseCase({
     routingRules,
     auditRecorder,
+    unitOfWork,
     clock,
     generateCaseRoutingRuleId,
   });
@@ -41,11 +44,13 @@ function buildApp(actorPerRequest: () => AuthContext, clockNow: typeof NOW = NOW
   const activateRoutingRule = createActivateRoutingRuleUseCase({
     routingRules,
     auditRecorder,
+    unitOfWork,
     clock,
   });
   const deactivateRoutingRule = createDeactivateRoutingRuleUseCase({
     routingRules,
     auditRecorder,
+    unitOfWork,
     clock,
   });
 
