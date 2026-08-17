@@ -46,8 +46,6 @@ jobs:
 
       - run: pnpm run typecheck
 
-      # Cap Jest workers so parallel workers don't each race to boot a
-      # mongodb-memory-server instance and exhaust the runner (causing
-      # "Instance failed to start within 10000ms"). Integration suites are
-      # heavy; 2 workers is the stable ceiling on GitHub-hosted runners.
-      - run: pnpm test -- --maxWorkers=2
+      # Jest worker cap lives in jest.config.js (maxWorkers: 2) so mongod
+      # startup isn't overwhelmed by parallel workers.
+      - run: pnpm test
