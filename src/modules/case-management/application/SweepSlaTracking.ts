@@ -2,6 +2,7 @@ import type { Clock } from '../../../shared/time/Clock.js';
 import type { CaseRepository } from '../domain/ports/CaseRepository.js';
 import type { CaseSlaTrackingRepository } from '../domain/ports/CaseSlaTrackingRepository.js';
 import type { NotificationSender } from '../domain/ports/NotificationSender.js';
+import type { AssigneeDirectory } from '../domain/ports/AssigneeDirectory.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import type { CaseSlaTracking } from '../domain/model/aggregates/CaseSlaTracking.js';
 import type { SlaStatus } from '../domain/model/value-objects/SlaStatus.js';
@@ -11,6 +12,7 @@ export interface SweepSlaTrackingDeps {
   readonly slaTracking: CaseSlaTrackingRepository;
   readonly cases: CaseRepository;
   readonly notificationSender: NotificationSender;
+  readonly assigneeDirectory: AssigneeDirectory;
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
 }
@@ -37,10 +39,10 @@ function nextStatus(tracking: CaseSlaTracking): SlaStatus | null {
  * mid-batch failure leaves already-processed rows committed and the failing
  * row retried on the next tick, instead of rolling back the whole batch.
  *
- * Notification recipient rule mirrors `ReassignCase` (ADR-D4): only a `USER`
- * assignee has a per-user inbox/opt-out row, so a `ROLE`-assigned or
- * unassigned case still advances status and is marked notified, but no
- * notification is sent.
+ * Notification recipient rule mirrors `ReassignCase`: a `USER` assignee is
+ * notified directly; a `ROLE` assignee fans out to every active member of
+ * the role (each honoring their own EMAIL opt-out downstream); an unassigned
+ * case still advances status and is marked notified, but notifies no one.
  */
 export function createSweepSlaTrackingUseCase(deps: SweepSlaTrackingDeps) {
   return async function sweepSlaTracking(): Promise<SweepSlaTrackingResult> {
@@ -66,17 +68,23 @@ export function createSweepSlaTrackingUseCase(deps: SweepSlaTrackingDeps) {
 
         if (!advanced.hasNotified(advanced.status)) {
           const kase = await deps.cases.findById(advanced.caseId, tx);
-          if (kase !== null && kase.assignedTo !== null && kase.assignedTo.type === 'USER') {
-            await deps.notificationSender.send(
-              {
-                organizationId: kase.organizationId,
-                recipientUserId: kase.assignedTo.id,
-                alertType: 'SLA_POR_VENCER',
-                context: { caseId: advanced.caseId, dueDate: advanced.dueDate, status: advanced.status },
-              },
-              tx,
-            );
-            notifiedCount += 1;
+          if (kase !== null && kase.assignedTo !== null) {
+            const recipientUserIds =
+              kase.assignedTo.type === 'USER'
+                ? [kase.assignedTo.id]
+                : await deps.assigneeDirectory.listRoleRecipients(kase.organizationId, kase.assignedTo.id);
+            for (const recipientUserId of recipientUserIds) {
+              await deps.notificationSender.send(
+                {
+                  organizationId: kase.organizationId,
+                  recipientUserId,
+                  alertType: 'SLA_POR_VENCER',
+                  context: { caseId: advanced.caseId, dueDate: advanced.dueDate, status: advanced.status },
+                },
+                tx,
+              );
+              notifiedCount += 1;
+            }
           }
           advanced = advanced.markNotified(advanced.status, now);
         }

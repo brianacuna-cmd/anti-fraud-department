@@ -139,7 +139,7 @@ describe('createReassignCaseUseCase (manual reassign)', () => {
     expect(requests[0]?.context).toMatchObject({ caseId: CASE_ID });
   });
 
-  it('does NOT send a notification when reassigning to a ROLE (ADR-D4 default)', async () => {
+  it('sends no notification when reassigning to a ROLE with no active members', async () => {
     const target = createAssignedTo('ROLE', oid('role-1'));
     const { reassignCase, notificationSender, cases } = buildUseCase(buildCase(), [target]);
 
@@ -153,6 +153,25 @@ describe('createReassignCaseUseCase (manual reassign)', () => {
     expect(result.assignedTo).toEqual({ type: 'ROLE', id: oid('role-1') });
     expect(cases.all()[0]?.assignedTo).toEqual({ type: 'ROLE', id: oid('role-1') });
     expect(notificationSender.all()).toHaveLength(0);
+  });
+
+  it('fans out CASO_ASIGNADO to every active member when reassigning to a ROLE (PR3)', async () => {
+    const target = createAssignedTo('ROLE', oid('role-1'));
+    const { reassignCase, notificationSender, assigneeDirectory } = buildUseCase(buildCase(), [target]);
+    assigneeDirectory.allowRoleRecipients(ORG_1, oid('role-1'), [oid('analyst-2'), oid('analyst-3')]);
+
+    await reassignCase({
+      auth: ANALYST,
+      caseId: CASE_ID,
+      assignedToType: 'ROLE',
+      assignedToId: oid('role-1'),
+    });
+
+    const requests = notificationSender.all();
+    expect(requests.map((request) => request.recipientUserId).sort()).toEqual(
+      [oid('analyst-2'), oid('analyst-3')].sort(),
+    );
+    expect(requests.every((request) => request.alertType === 'CASO_ASIGNADO')).toBe(true);
   });
 
   it('returns CASE_NOT_FOUND when the case is soft-deleted', async () => {

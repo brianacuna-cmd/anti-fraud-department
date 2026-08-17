@@ -9,6 +9,7 @@ import { createCaseSlaTrackingId } from '../../../../src/modules/case-management
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryCaseSlaTrackingRepository } from '../../../helpers/case-management/InMemoryCaseSlaTrackingRepository.js';
 import { InMemoryCaseManagementNotificationSender } from '../../../helpers/case-management/InMemoryCaseManagementNotificationSender.js';
+import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
@@ -51,14 +52,16 @@ function buildUseCase() {
   const cases = new InMemoryCaseRepository();
   const slaTracking = new InMemoryCaseSlaTrackingRepository();
   const notificationSender = new InMemoryCaseManagementNotificationSender();
+  const assigneeDirectory = new InMemoryAssigneeDirectory();
   const sweepSlaTracking = createSweepSlaTrackingUseCase({
     cases,
     slaTracking,
     notificationSender,
+    assigneeDirectory,
     unitOfWork: new PassthroughUnitOfWork(),
     clock: new FixedClock(NOW),
   });
-  return { sweepSlaTracking, cases, slaTracking, notificationSender };
+  return { sweepSlaTracking, cases, slaTracking, notificationSender, assigneeDirectory };
 }
 
 describe('createSweepSlaTrackingUseCase', () => {
@@ -154,7 +157,7 @@ describe('createSweepSlaTrackingUseCase', () => {
     expect(row?.hasNotified('BREACHED')).toBe(true);
   });
 
-  it('suppresses notification for a ROLE-assigned case but still advances and marks notified (ADR-D4)', async () => {
+  it('notifies no one for a ROLE-assigned case with no active members but still advances and marks notified', async () => {
     const { sweepSlaTracking, cases, slaTracking, notificationSender } = buildUseCase();
     const role = createAssignedTo('ROLE', oid('role-1'));
     await cases.save(buildCase(oid('case-1'), role));
@@ -167,6 +170,24 @@ describe('createSweepSlaTrackingUseCase', () => {
     expect(notificationSender.all()).toHaveLength(0);
     const row = await slaTracking.findByCaseId(createCaseId(oid('case-1')));
     expect(row?.hasNotified('WARNING')).toBe(true);
+  });
+
+  it('fans out SLA_POR_VENCER to every active member of a ROLE-assigned case (PR3)', async () => {
+    const { sweepSlaTracking, cases, slaTracking, notificationSender, assigneeDirectory } = buildUseCase();
+    const role = createAssignedTo('ROLE', oid('role-1'));
+    await cases.save(buildCase(oid('case-1'), role));
+    await slaTracking.save(buildTracking(oid('tracking-1'), oid('case-1'), PAST_DUE));
+    assigneeDirectory.allowRoleRecipients(ORG_1, oid('role-1'), [oid('analyst-1'), oid('analyst-2')]);
+
+    const result = await sweepSlaTracking();
+
+    expect(result.notified).toBe(2);
+    const recipients = notificationSender
+      .all()
+      .map((request) => request.recipientUserId)
+      .sort();
+    expect(recipients).toEqual([oid('analyst-1'), oid('analyst-2')].sort());
+    expect(notificationSender.all().every((request) => request.alertType === 'SLA_POR_VENCER')).toBe(true);
   });
 
   it('suppresses notification for an unassigned case but still advances and marks notified', async () => {
@@ -207,6 +228,7 @@ describe('createSweepSlaTrackingUseCase', () => {
       cases,
       slaTracking,
       notificationSender,
+      assigneeDirectory: new InMemoryAssigneeDirectory(),
       unitOfWork: flakyUnitOfWork,
       clock: new FixedClock(NOW),
     });
