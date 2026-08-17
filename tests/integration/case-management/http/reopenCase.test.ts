@@ -16,6 +16,10 @@ import { createReassignCaseUseCase } from '../../../../src/modules/case-manageme
 import { createListCasesUseCase } from '../../../../src/modules/case-management/application/ListCases.js';
 import { createGetCaseUseCase } from '../../../../src/modules/case-management/application/GetCase.js';
 import { createGetCaseTimelineUseCase } from '../../../../src/modules/case-management/application/GetCaseTimeline.js';
+import { createAddCaseNoteUseCase } from '../../../../src/modules/case-management/application/AddCaseNote.js';
+import { createListCaseNotesUseCase } from '../../../../src/modules/case-management/application/ListCaseNotes.js';
+import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InMemoryCaseNoteRepository.js';
+import { generateCaseNoteId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { createReopenCaseUseCase } from '../../../../src/modules/case-management/application/ReopenCase.js';
 import { ZenRoutingEngine } from '../../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
@@ -96,6 +100,7 @@ function buildResolvedCase(deleted = false): Case {
 function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
   const cases = new InMemoryCaseRepository();
   const timelineRecorder = new InMemoryTimelineRecorder();
+  const caseNotes = new InMemoryCaseNoteRepository();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
   const routingRules = new InMemoryCaseRoutingRuleRepository();
   const clock = new FixedClock(NOW);
@@ -163,6 +168,8 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
     listCases: createListCasesUseCase({ cases }),
     getCase: createGetCaseUseCase({ cases }),
     getCaseTimeline: createGetCaseTimelineUseCase({ cases, timelineReader: timelineRecorder }),
+    addCaseNote: createAddCaseNoteUseCase({ cases, notes: caseNotes, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateCaseNoteId, generateTimelineEventId }),
+    listCaseNotes: createListCaseNotesUseCase({ cases, notes: caseNotes }),
     reopenCase: createReopenCaseUseCase({
       cases,
       slaTracking,
