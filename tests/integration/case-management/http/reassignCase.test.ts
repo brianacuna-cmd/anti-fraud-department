@@ -19,6 +19,7 @@ import { ZenRoutingEngine } from '../../../../src/modules/case-management/infras
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
+import { InMemoryCaseManagementNotificationSender } from '../../../helpers/case-management/InMemoryCaseManagementNotificationSender.js';
 import { InMemoryCaseRoutingRuleRepository } from '../../../helpers/case-management/InMemoryCaseRoutingRuleRepository.js';
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
 import { InMemoryCaseSlaTrackingRepository } from '../../../helpers/case-management/InMemoryCaseSlaTrackingRepository.js';
@@ -44,6 +45,7 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
   const cases = new InMemoryCaseRepository();
   const timelineRecorder = new InMemoryTimelineRecorder();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
+  const notificationSender = new InMemoryCaseManagementNotificationSender();
   const routingRules = new InMemoryCaseRoutingRuleRepository();
   const clock = new FixedClock(NOW);
   const fraudConfig = new InMemoryOrganizationFraudConfigRepository();
@@ -106,6 +108,7 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
       clock,
       generateTimelineEventId,
       assigneeDirectory,
+      notificationSender,
     }),
     listCases: createListCasesUseCase({ cases }),
     reopenCase: createReopenCaseUseCase({
@@ -135,12 +138,12 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
     errorHandler: createErrorHandler(caseManagementErrorStatus),
   });
 
-  return { app, cases, timelineRecorder, auditRecorder, assigneeDirectory };
+  return { app, cases, timelineRecorder, auditRecorder, assigneeDirectory, notificationSender };
 }
 
 describe('caseRouter POST /cases/:caseId/reassign', () => {
   it('reassigns a same-org case and returns the updated assignee', async () => {
-    const { app, cases, assigneeDirectory, auditRecorder, timelineRecorder } = buildApp();
+    const { app, cases, assigneeDirectory, auditRecorder, timelineRecorder, notificationSender } = buildApp();
     await cases.save(
       Case.create({
         id: CASE_ID,
@@ -164,6 +167,12 @@ describe('caseRouter POST /cases/:caseId/reassign', () => {
     });
     expect(auditRecorder.all()[0]?.detail).toMatchObject({ trigger: 'MANUAL' });
     expect(timelineRecorder.all()[0]?.eventType).toBe('ASSIGNED');
+    expect(notificationSender.all()).toHaveLength(1);
+    expect(notificationSender.all()[0]).toMatchObject({
+      organizationId: ORG_1,
+      recipientUserId: TARGET_USER,
+      alertType: 'CASO_ASIGNADO',
+    });
   });
 
   it('returns 404 CASE_NOT_FOUND for a soft-deleted case', async () => {
