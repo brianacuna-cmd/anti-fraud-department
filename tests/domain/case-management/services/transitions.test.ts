@@ -5,7 +5,7 @@ import {
 
 describe('caseStatusTransitions', () => {
   it('allows the forward path OPEN -> IN_REVIEW -> RESOLVED -> ARCHIVED', () => {
-    expect(caseStatusTransitions.OPEN).toEqual(['IN_REVIEW']);
+    expect(caseStatusTransitions.OPEN).toEqual(['IN_REVIEW', 'RESOLVED']);
     expect(caseStatusTransitions.IN_REVIEW).toEqual(['RESOLVED']);
   });
 

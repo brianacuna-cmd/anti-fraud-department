@@ -69,3 +69,10 @@ export const addCaseNoteSchema = z.object({
 });
 
 export type AddCaseNoteBody = z.infer<typeof addCaseNoteSchema>;
+
+/** POST /cases/:caseId/resolve and /archive body (formal closure). */
+export const closeCaseSchema = z.object({
+  reason: z.string().trim().min(1),
+});
+
+export type CloseCaseBody = z.infer<typeof closeCaseSchema>;

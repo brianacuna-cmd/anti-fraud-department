@@ -8,12 +8,15 @@ import type { createGetCaseUseCase } from '../../../../application/GetCase.js';
 import type { createGetCaseTimelineUseCase } from '../../../../application/GetCaseTimeline.js';
 import type { createAddCaseNoteUseCase } from '../../../../application/AddCaseNote.js';
 import type { createListCaseNotesUseCase } from '../../../../application/ListCaseNotes.js';
+import type { createResolveCaseUseCase } from '../../../../application/ResolveCase.js';
+import type { createArchiveCaseUseCase } from '../../../../application/ArchiveCase.js';
 import {
   createCaseSchema,
   reassignCaseSchema,
   listCasesQuerySchema,
   reopenCaseSchema,
   addCaseNoteSchema,
+  closeCaseSchema,
 } from './dto/caseSchemas.js';
 import { toCaseResponse } from './mappers/CaseHttpMapper.js';
 import { toTimelineEventResponse } from './mappers/CaseTimelineHttpMapper.js';
@@ -30,6 +33,8 @@ export interface CaseRouterDeps {
   readonly getCaseTimeline: ReturnType<typeof createGetCaseTimelineUseCase>;
   readonly addCaseNote: ReturnType<typeof createAddCaseNoteUseCase>;
   readonly listCaseNotes: ReturnType<typeof createListCaseNotesUseCase>;
+  readonly resolveCase: ReturnType<typeof createResolveCaseUseCase>;
+  readonly archiveCase: ReturnType<typeof createArchiveCaseUseCase>;
 }
 
 /**
@@ -93,6 +98,20 @@ export function caseRouter(deps: CaseRouterDeps): Router {
     const auth = requireAuthContext(req);
     const notes = await deps.listCaseNotes({ auth, caseId: req.params.caseId! });
     res.status(200).json({ items: notes.map(toCaseNoteResponse) });
+  });
+
+  router.post('/cases/:caseId/resolve', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(closeCaseSchema, req.body);
+    const kase = await deps.resolveCase({ auth, caseId: req.params.caseId!, reason: body.reason });
+    res.status(200).json(toCaseResponse(kase));
+  });
+
+  router.post('/cases/:caseId/archive', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(closeCaseSchema, req.body);
+    const kase = await deps.archiveCase({ auth, caseId: req.params.caseId!, reason: body.reason });
+    res.status(200).json(toCaseResponse(kase));
   });
 
   router.post('/cases/:caseId/reassign', async (req, res) => {
