@@ -91,6 +91,21 @@ describe('createSweepSlaTrackingUseCase', () => {
     expect(row?.status).toBe('BREACHED');
   });
 
+  it('skips a formally closed (RESOLVED) case: no advance, no notification, no mark (PR4)', async () => {
+    const { sweepSlaTracking, cases, slaTracking, notificationSender } = buildUseCase();
+    const assignee = createAssignedTo('USER', oid('analyst-1'));
+    await cases.save(buildCase(oid('case-1'), assignee).transitionTo('RESOLVED', NOW));
+    await slaTracking.save(buildTracking(oid('tracking-1'), oid('case-1'), PAST_DUE));
+
+    const result = await sweepSlaTracking();
+
+    expect(result.advanced).toBe(0);
+    expect(result.notified).toBe(0);
+    expect(notificationSender.all()).toHaveLength(0);
+    const row = await slaTracking.findByCaseId(createCaseId(oid('case-1')));
+    expect(row?.status).toBe('ON_TRACK');
+  });
+
   it('skips already-BREACHED rows (never claimed by claimDueForSweep, defensive re-check)', async () => {
     const { sweepSlaTracking, cases, slaTracking } = buildUseCase();
     const assignee = createAssignedTo('USER', oid('analyst-1'));
