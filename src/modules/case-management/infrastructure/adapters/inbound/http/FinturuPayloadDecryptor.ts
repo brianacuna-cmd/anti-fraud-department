@@ -40,7 +40,10 @@ export function decryptFinturuPayload(body: unknown, secretKey?: string): Record
     ]);
 
     const parsed = JSON.parse(decrypted.toString('utf-8'));
-    if (typeof parsed !== 'object' || parsed === null) {
+    // `null` es una respuesta legítima: es lo que devuelven las búsquedas que no
+    // encuentran nada (p. ej. un email sin cliente en Stripe). Rechazarlo
+    // convertía un "no existe" en un error de desencriptado.
+    if (parsed !== null && typeof parsed !== 'object') {
       throw new Error('El contenido desencriptado no es un objeto JSON válido');
     }
     return parsed as Record<string, unknown>;

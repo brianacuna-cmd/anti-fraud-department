@@ -91,6 +91,7 @@ import { createSetNotificationPreferenceUseCase } from './modules/notifications/
 import { notificationPreferenceRouter } from './modules/notifications/infrastructure/adapters/inbound/http/notificationPreferenceRouter.js';
 import { notificationsErrorStatus } from './modules/notifications/infrastructure/adapters/inbound/http/errorStatus.js';
 import { MongoCaseRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRepository.js';
+import { MongoFinturuDirectoryRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoFinturuDirectoryRepository.js';
 import { MongoTimelineRecorder } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoTimelineRecorder.js';
 import { MongoOutboxRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoOutboxRepository.js';
 import { MongoUnitOfWork as CaseManagementMongoUnitOfWork } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
@@ -103,6 +104,8 @@ import { createTransitionCaseStatusUseCase } from './modules/case-management/app
 import { createGetCaseTimelineUseCase } from './modules/case-management/application/GetCaseTimeline.js';
 import { createSyncFinturuDataUseCase } from './modules/case-management/application/SyncFinturuData.js';
 import { createGetFinturuDirectoryUseCase } from './modules/case-management/application/GetFinturuDirectory.js';
+import { createSyncFinturuDirectoryUseCase } from './modules/case-management/application/SyncFinturuDirectory.js';
+import { DirectorySyncScheduler } from './modules/case-management/application/DirectorySyncScheduler.js';
 import { createOpenFraudCaseUseCase } from './modules/case-management/application/OpenFraudCaseFromCustomer.js';
 import { createIngestFinturuCaseUseCase } from './modules/case-management/application/IngestFinturuCase.js';
 import { FinturuApiClient } from './modules/case-management/infrastructure/adapters/outbound/finturu/FinturuApiClient.js';
@@ -274,6 +277,7 @@ async function bootstrap(): Promise<void> {
   const finturuApiClient = new FinturuApiClient({
     baseUrl: process.env.FINTURU_API_URL ?? 'http://localhost:3001',
     encryptionKey: process.env.FRAUD_DEPARTMENT_KEY,
+    timeoutMs: Number(process.env.FINTURU_TIMEOUT_MS ?? 10_000),
   });
 
   const syncFinturuData = createSyncFinturuDataUseCase({
@@ -282,10 +286,37 @@ async function bootstrap(): Promise<void> {
     defaultOrganizationId: process.env.DEFAULT_ORGANIZATION_ID ?? '019d7e58aed0777318d11d4d',
   });
 
+  // El directorio se sirve desde una copia local: recorrer Bridge en vivo
+  // cuesta minutos. `syncFinturuDirectory` la refresca, `getFinturuDirectory`
+  // solo lee.
+  const finturuDirectory = new MongoFinturuDirectoryRepository(db);
+
   const getFinturuDirectory = createGetFinturuDirectoryUseCase({
-    finturuClient: finturuApiClient,
+    directory: finturuDirectory,
     cases,
     defaultOrganizationId: process.env.DEFAULT_ORGANIZATION_ID ?? '019d7e58aed0777318d11d4d',
+  });
+
+  // Cliente aparte para el sync. `finturuApiClient` corta a los 10 s porque
+  // sirve peticiones interactivas, donde rendirse rápido es lo correcto; los
+  // listados completos que recorre el sync tardan minutos y necesitan
+  // paciencia, no reintentos.
+  const finturuSyncClient = new FinturuApiClient({
+    baseUrl: process.env.FINTURU_API_URL ?? 'http://localhost:3001',
+    encryptionKey: process.env.FRAUD_DEPARTMENT_KEY,
+    timeoutMs: Number(process.env.FINTURU_SYNC_TIMEOUT_MS ?? 600_000),
+  });
+
+  const syncFinturuDirectory = createSyncFinturuDirectoryUseCase({
+    finturuClient: finturuSyncClient,
+    directory: finturuDirectory,
+    clock,
+  });
+
+  // Mantiene el directorio al día por su cuenta; la interfaz solo lee.
+  const directorySyncScheduler = new DirectorySyncScheduler({
+    syncDirectory: syncFinturuDirectory,
+    intervalMinutes: Number(process.env.FINTURU_DIRECTORY_SYNC_MINUTES ?? 360),
   });
 
   const openFraudCase = createOpenFraudCaseUseCase({
@@ -325,6 +356,7 @@ async function bootstrap(): Promise<void> {
     }),
     syncFinturuData,
     getFinturuDirectory,
+    directorySyncScheduler,
     openFraudCase,
     finturuClient: finturuApiClient,
   });
@@ -639,6 +671,8 @@ async function bootstrap(): Promise<void> {
       ? 'PLATFORM_ADMIN auth: trusted-header (non-prod interim path — forbidden in production)'
       : 'PLATFORM_ADMIN auth: disabled until identity-access-super-admin-auth ships a real admin login',
   );
+
+  directorySyncScheduler.start();
 
   app.listen(PORT, () => {
     console.log(`anti-fraud-department listening on port ${PORT}`);

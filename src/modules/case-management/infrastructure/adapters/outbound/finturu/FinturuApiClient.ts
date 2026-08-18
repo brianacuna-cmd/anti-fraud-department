@@ -52,15 +52,19 @@ export interface FinturuStripeTransferDto {
 export interface FinturuApiClientOptions {
   readonly baseUrl: string;
   readonly encryptionKey?: string;
+  /** Corta la petición si la API de Finturu no responde. Por defecto 10 s. */
+  readonly timeoutMs?: number;
 }
 
 export class FinturuApiClient {
   private readonly baseUrl: string;
   private readonly encryptionKey?: string;
+  private readonly timeoutMs: number;
 
   constructor(options: FinturuApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
     this.encryptionKey = options.encryptionKey;
+    this.timeoutMs = options.timeoutMs ?? 10_000;
   }
 
   private normalizeUrl(path: string): string {
@@ -71,6 +75,12 @@ export class FinturuApiClient {
     return `${this.baseUrl}/api/v1/fraud-department${cleanPath}`;
   }
 
+  /**
+   * Nunca propaga el fallo: una API de Finturu caída degrada la respuesta a
+   * vacío en lugar de tumbar el endpoint. Pero SÍ deja rastro en el log y
+   * corta a los `timeoutMs`: sin ese corte una ruta que no responde deja la
+   * petición colgada indefinidamente y el frontend girando para siempre.
+   */
   private async fetchEndpoint<T>(path: string): Promise<T> {
     const url = this.normalizeUrl(path);
     try {
@@ -79,21 +89,28 @@ export class FinturuApiClient {
         headers: {
           'Accept': 'application/json',
         },
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
 
       if (!res.ok) {
+        console.warn(`[finturu] ${res.status} en GET ${url}`);
         return [] as unknown as T;
       }
 
       const body = await res.json();
       if (isEncryptedPayload(body)) {
         if (!this.encryptionKey) {
+          console.warn(`[finturu] respuesta cifrada en GET ${url} pero falta FRAUD_DEPARTMENT_KEY`);
           return [] as unknown as T;
         }
         return decryptFinturuPayload(body, this.encryptionKey) as T;
       }
       return body as T;
-    } catch {
+    } catch (error) {
+      const reason = error instanceof Error && error.name === 'TimeoutError'
+        ? `sin respuesta en ${this.timeoutMs} ms`
+        : (error as Error).message;
+      console.warn(`[finturu] GET ${url} falló: ${reason}`);
       return [] as unknown as T;
     }
   }
@@ -101,6 +118,26 @@ export class FinturuApiClient {
   async getCustomers(): Promise<readonly FinturuCustomerDto[]> {
     const res = await this.fetchEndpoint<unknown>('/customers');
     return Array.isArray(res) ? (res as FinturuCustomerDto[]) : [];
+  }
+
+  /**
+   * Una página de clientes en lugar del padrón completo. La latencia de Bridge
+   * es proporcional al tamaño de página, así que pedir 10 tarda ~2 s frente a
+   * los más de dos minutos que cuesta recorrerlo entero.
+   */
+  async getCustomersPage(
+    limit: number,
+    startingAfter?: string,
+  ): Promise<{ data: readonly FinturuCustomerDto[]; nextCursor: string | null }> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (startingAfter) query.set('starting_after', startingAfter);
+
+    const res = await this.fetchEndpoint<Record<string, any>>(`/customers/page?${query.toString()}`);
+
+    return {
+      data: Array.isArray(res?.data) ? (res.data as FinturuCustomerDto[]) : [],
+      nextCursor: typeof res?.nextCursor === 'string' ? res.nextCursor : null,
+    };
   }
 
   async getCustomer(idUserBridge: string): Promise<Record<string, any> | null> {
@@ -120,7 +157,7 @@ export class FinturuApiClient {
 
   async getWallet(walletBridge: string): Promise<Record<string, any> | null> {
     const res = await this.fetchEndpoint<Record<string, any>>(`/wallet/${encodeURIComponent(walletBridge)}`);
-    return res && typeof res === 'object' ? res : null;
+    return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
   }
 
   async getWalletHistory(walletBridge: string): Promise<readonly any[]> {
@@ -135,7 +172,7 @@ export class FinturuApiClient {
 
   async getTransfer(idTransfer: string): Promise<Record<string, any> | null> {
     const res = await this.fetchEndpoint<Record<string, any>>(`/transfer/${encodeURIComponent(idTransfer)}`);
-    return res && typeof res === 'object' ? res : null;
+    return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
   }
 
   async getExternalAccounts(idUserBridge: string): Promise<readonly any[]> {
@@ -170,12 +207,12 @@ export class FinturuApiClient {
 
   async getStripeCustomer(idCustomer: string): Promise<Record<string, any> | null> {
     const res = await this.fetchEndpoint<Record<string, any>>(`/stripe/customer/${encodeURIComponent(idCustomer)}`);
-    return res && typeof res === 'object' ? res : null;
+    return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
   }
 
   async getStripeCustomerByEmail(email: string): Promise<Record<string, any> | null> {
     const res = await this.fetchEndpoint<Record<string, any>>(`/stripe/customer-by-email?email=${encodeURIComponent(email)}`);
-    return res && typeof res === 'object' ? res : null;
+    return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
   }
 
   async getStripeTransfers(): Promise<readonly FinturuStripeTransferDto[]> {

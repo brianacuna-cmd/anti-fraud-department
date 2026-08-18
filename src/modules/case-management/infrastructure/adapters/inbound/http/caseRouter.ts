@@ -7,6 +7,7 @@ import type { createTransitionCaseStatusUseCase } from '../../../../application/
 import type { createGetCaseTimelineUseCase } from '../../../../application/GetCaseTimeline.js';
 import type { createSyncFinturuDataUseCase } from '../../../../application/SyncFinturuData.js';
 import type { createGetFinturuDirectoryUseCase } from '../../../../application/GetFinturuDirectory.js';
+import type { DirectorySyncScheduler } from '../../../../application/DirectorySyncScheduler.js';
 import type { createOpenFraudCaseUseCase } from '../../../../application/OpenFraudCaseFromCustomer.js';
 import type { FinturuApiClient } from '../../outbound/finturu/FinturuApiClient.js';
 import { createCaseSchema } from './dto/caseSchemas.js';
@@ -21,6 +22,7 @@ export interface CaseRouterDeps {
   readonly getCaseTimeline: ReturnType<typeof createGetCaseTimelineUseCase>;
   readonly syncFinturuData?: ReturnType<typeof createSyncFinturuDataUseCase>;
   readonly getFinturuDirectory?: ReturnType<typeof createGetFinturuDirectoryUseCase>;
+  readonly directorySyncScheduler?: DirectorySyncScheduler;
   readonly openFraudCase?: ReturnType<typeof createOpenFraudCaseUseCase>;
   readonly finturuClient?: FinturuApiClient;
 }
@@ -114,11 +116,38 @@ export function caseRouter(deps: CaseRouterDeps): Router {
       res.status(501).json({ message: 'Directory service is not enabled' });
       return;
     }
-    const directory = await deps.getFinturuDirectory({ auth });
+    // Se lee de la copia local, así que hay total real, búsqueda y offset.
+    const limit = req.query.limit ? Number(req.query.limit) : undefined;
+    const offset = req.query.offset ? Number(req.query.offset) : undefined;
+    const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+
+    const view = await deps.getFinturuDirectory({ auth, limit, offset, search });
+    const sync = deps.directorySyncScheduler?.status;
+
     res.status(200).json({
-      total: directory.length,
-      customers: directory,
+      customers: view.customers,
+      total: view.total,
+      syncedAt: view.syncedAt,
+      // La pantalla necesita distinguir "todavía no hay datos" de "aún se
+      // están trayendo" para no mostrar un vacío que parece un error.
+      syncing: sync?.running ?? false,
+      syncError: sync?.lastError ?? null,
     });
+  });
+
+  /**
+   * Fuerza un refresco. El directorio ya se mantiene solo; esto existe para
+   * operación y pruebas, no como parte del flujo normal. Responde en cuanto
+   * arranca porque el recorrido tarda minutos.
+   */
+  router.post('/cases/directory/finturu/sync', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.directorySyncScheduler) {
+      res.status(501).json({ message: 'Directory sync is not enabled' });
+      return;
+    }
+    void deps.directorySyncScheduler.run();
+    res.status(202).json({ started: true });
   });
 
   router.post('/cases/open-from-customer', async (req, res) => {
