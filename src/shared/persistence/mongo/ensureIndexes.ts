@@ -91,6 +91,10 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .collection('resolutions')
     .createIndex({ case_id: 1, created_at: 1 }, { name: 'resolutions_case_created_idx' });
 
+  await db
+    .collection('investigations')
+    .createIndex({ case_id: 1, created_at: 1 }, { name: 'investigations_case_created_idx' });
+
   await db.collection('case_sla_tracking').createIndex({ case_id: 1 }, { unique: true, name: 'sla_tracking_case_unique' });
 
   await db.collection('case_sla_tracking').createIndex({ due_date: 1 }, { name: 'sla_tracking_due_date_idx' });

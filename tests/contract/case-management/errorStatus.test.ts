@@ -16,6 +16,7 @@ describe('caseManagementErrorStatus', () => {
       CASE_NOT_FOUND: 404,
       ENFORCEMENT_ACTION_NOT_FOUND: 404,
       ROUTING_RULE_NOT_FOUND: 404,
+      INVESTIGATION_NOT_FOUND: 404,
     });
   });
 

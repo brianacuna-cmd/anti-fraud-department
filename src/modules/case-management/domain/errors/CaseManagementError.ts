@@ -76,3 +76,11 @@ export function routingRuleNotFound(ruleId: string): CaseManagementError {
     { ruleId },
   );
 }
+
+export function investigationNotFound(investigationId: string): CaseManagementError {
+  return new CaseManagementError(
+    'INVESTIGATION_NOT_FOUND',
+    `investigation "${investigationId}" was not found`,
+    { investigationId },
+  );
+}

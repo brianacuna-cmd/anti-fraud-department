@@ -91,6 +91,7 @@ import { MongoTimelineRecorder } from './modules/case-management/infrastructure/
 import { MongoTimelineReader } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoTimelineReader.js';
 import { MongoCaseNoteRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseNoteRepository.js';
 import { MongoResolutionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoResolutionRepository.js';
+import { MongoInvestigationRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoInvestigationRepository.js';
 import { MongoUnitOfWork as CaseManagementMongoUnitOfWork } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { generateCaseId } from './modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from './modules/case-management/domain/model/value-objects/TimelineEventId.js';
@@ -108,6 +109,11 @@ import { generateCaseNoteId } from './modules/case-management/domain/model/value
 import { createResolveCaseUseCase } from './modules/case-management/application/ResolveCase.js';
 import { createArchiveCaseUseCase } from './modules/case-management/application/ArchiveCase.js';
 import { createStartReviewUseCase } from './modules/case-management/application/StartReview.js';
+import { createOpenInvestigationUseCase } from './modules/case-management/application/OpenInvestigation.js';
+import { createListInvestigationsUseCase } from './modules/case-management/application/ListInvestigations.js';
+import { createGetInvestigationUseCase } from './modules/case-management/application/GetInvestigation.js';
+import { generateInvestigationId } from './modules/case-management/domain/model/value-objects/InvestigationId.js';
+import { investigationRouter } from './modules/case-management/infrastructure/adapters/inbound/http/investigationRouter.js';
 import { generateResolutionId } from './modules/case-management/domain/model/value-objects/ResolutionId.js';
 import { createSweepSlaTrackingUseCase } from './modules/case-management/application/SweepSlaTracking.js';
 import { createSlaSweepScheduler } from './modules/case-management/infrastructure/scheduler/SlaSweepScheduler.js';
@@ -356,6 +362,7 @@ async function bootstrap(): Promise<void> {
   const caseTimelineReader = new MongoTimelineReader(db);
   const caseNotes = new MongoCaseNoteRepository(db);
   const resolutions = new MongoResolutionRepository(db);
+  const investigations = new MongoInvestigationRepository(db);
   const caseManagementAuditRecorder = createCaseManagementAuditRecorderAdapter(recordAuditLog);
   // CASE-002 (T1 auto-routing): ACTIVE routing rules are evaluated by the ZEN
   // engine on every case creation. The composed `RouteCase` use case is injected
@@ -463,6 +470,18 @@ async function bootstrap(): Promise<void> {
       clock,
       generateTimelineEventId,
     }),
+  });
+  const investigationHttpRouter = investigationRouter({
+    openInvestigation: createOpenInvestigationUseCase({
+      cases,
+      investigations,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateInvestigationId,
+    }),
+    listInvestigations: createListInvestigationsUseCase({ cases, investigations }),
+    getInvestigation: createGetInvestigationUseCase({ investigations }),
   });
   const organizationFraudConfigHttpRouter = organizationFraudConfigRouter({
     getOrganizationFraudConfig,
@@ -884,6 +903,7 @@ async function bootstrap(): Promise<void> {
   // on the SAME authenticated `/api/v1` router — rely on
   // `authContextMiddleware` above to resolve the caller's AuthContext.
   identityAccessRouter.use(caseManagementCasesRouter);
+  identityAccessRouter.use(investigationHttpRouter);
   identityAccessRouter.use(organizationFraudConfigHttpRouter);
   identityAccessRouter.use(enforcementHttpRouter);
   identityAccessRouter.use(routingRuleHttpRouter);
