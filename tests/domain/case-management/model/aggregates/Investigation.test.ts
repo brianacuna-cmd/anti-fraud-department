@@ -32,4 +32,20 @@ describe('Investigation', () => {
   it('rejects a blank subjectId', () => {
     expect(() => open('   ')).toThrow(CaseManagementError);
   });
+
+  it('closes an OPEN investigation: CLOSED + findings + closedAt', () => {
+    const closed = open('wallet-abc').close('confirmed mule wallet', NOW);
+    expect(closed.status).toBe('CLOSED');
+    expect(closed.findings).toBe('confirmed mule wallet');
+    expect(closed.closedAt).toBe(NOW);
+  });
+
+  it('rejects closing with blank findings', () => {
+    expect(() => open('wallet-abc').close('  ', NOW)).toThrow(CaseManagementError);
+  });
+
+  it('rejects closing an already-CLOSED investigation', () => {
+    const closed = open('wallet-abc').close('done', NOW);
+    expect(() => closed.close('again', NOW)).toThrow(CaseManagementError);
+  });
 });
