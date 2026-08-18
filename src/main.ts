@@ -107,6 +107,7 @@ import { createListCaseNotesUseCase } from './modules/case-management/applicatio
 import { generateCaseNoteId } from './modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { createResolveCaseUseCase } from './modules/case-management/application/ResolveCase.js';
 import { createArchiveCaseUseCase } from './modules/case-management/application/ArchiveCase.js';
+import { createStartReviewUseCase } from './modules/case-management/application/StartReview.js';
 import { generateResolutionId } from './modules/case-management/domain/model/value-objects/ResolutionId.js';
 import { createSweepSlaTrackingUseCase } from './modules/case-management/application/SweepSlaTracking.js';
 import { createSlaSweepScheduler } from './modules/case-management/infrastructure/scheduler/SlaSweepScheduler.js';
@@ -452,6 +453,14 @@ async function bootstrap(): Promise<void> {
       unitOfWork: caseManagementUnitOfWork,
       clock,
       generateResolutionId,
+      generateTimelineEventId,
+    }),
+    startReview: createStartReviewUseCase({
+      cases,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
       generateTimelineEventId,
     }),
   });

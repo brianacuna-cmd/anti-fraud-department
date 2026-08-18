@@ -10,6 +10,7 @@ import type { createAddCaseNoteUseCase } from '../../../../application/AddCaseNo
 import type { createListCaseNotesUseCase } from '../../../../application/ListCaseNotes.js';
 import type { createResolveCaseUseCase } from '../../../../application/ResolveCase.js';
 import type { createArchiveCaseUseCase } from '../../../../application/ArchiveCase.js';
+import type { createStartReviewUseCase } from '../../../../application/StartReview.js';
 import {
   createCaseSchema,
   reassignCaseSchema,
@@ -35,6 +36,7 @@ export interface CaseRouterDeps {
   readonly listCaseNotes: ReturnType<typeof createListCaseNotesUseCase>;
   readonly resolveCase: ReturnType<typeof createResolveCaseUseCase>;
   readonly archiveCase: ReturnType<typeof createArchiveCaseUseCase>;
+  readonly startReview: ReturnType<typeof createStartReviewUseCase>;
 }
 
 /**
@@ -98,6 +100,12 @@ export function caseRouter(deps: CaseRouterDeps): Router {
     const auth = requireAuthContext(req);
     const notes = await deps.listCaseNotes({ auth, caseId: req.params.caseId! });
     res.status(200).json({ items: notes.map(toCaseNoteResponse) });
+  });
+
+  router.post('/cases/:caseId/start-review', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const kase = await deps.startReview({ auth, caseId: req.params.caseId! });
+    res.status(200).json(toCaseResponse(kase));
   });
 
   router.post('/cases/:caseId/resolve', async (req, res) => {
