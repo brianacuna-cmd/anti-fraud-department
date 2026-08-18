@@ -117,6 +117,8 @@ import { createCloseInvestigationUseCase } from './modules/case-management/appli
 import { generateInvestigationId } from './modules/case-management/domain/model/value-objects/InvestigationId.js';
 import { investigationRouter } from './modules/case-management/infrastructure/adapters/inbound/http/investigationRouter.js';
 import { createGenerateCaseReportUseCase } from './modules/case-management/application/GenerateCaseReport.js';
+import { createListCaseReportsUseCase } from './modules/case-management/application/ListCaseReports.js';
+import { createGetCaseReportUseCase } from './modules/case-management/application/GetCaseReport.js';
 import { generateCaseReportId } from './modules/case-management/domain/model/value-objects/CaseReportId.js';
 import { reportRouter } from './modules/case-management/infrastructure/adapters/inbound/http/reportRouter.js';
 import { generateResolutionId } from './modules/case-management/domain/model/value-objects/ResolutionId.js';
@@ -519,6 +521,8 @@ async function bootstrap(): Promise<void> {
       clock,
       generateCaseReportId,
     }),
+    listCaseReports: createListCaseReportsUseCase({ cases, reports: caseReports }),
+    getCaseReport: createGetCaseReportUseCase({ reports: caseReports }),
   });
   const approvalRequests = new MongoApprovalRequestRepository(db);
   const customerOutgoingEvents = new MongoCustomerOutgoingEventRepository(db);
