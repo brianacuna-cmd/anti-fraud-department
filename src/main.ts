@@ -92,6 +92,7 @@ import { MongoTimelineReader } from './modules/case-management/infrastructure/ad
 import { MongoCaseNoteRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseNoteRepository.js';
 import { MongoResolutionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoResolutionRepository.js';
 import { MongoInvestigationRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoInvestigationRepository.js';
+import { MongoCaseReportRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseReportRepository.js';
 import { MongoUnitOfWork as CaseManagementMongoUnitOfWork } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { generateCaseId } from './modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from './modules/case-management/domain/model/value-objects/TimelineEventId.js';
@@ -115,6 +116,9 @@ import { createGetInvestigationUseCase } from './modules/case-management/applica
 import { createCloseInvestigationUseCase } from './modules/case-management/application/CloseInvestigation.js';
 import { generateInvestigationId } from './modules/case-management/domain/model/value-objects/InvestigationId.js';
 import { investigationRouter } from './modules/case-management/infrastructure/adapters/inbound/http/investigationRouter.js';
+import { createGenerateCaseReportUseCase } from './modules/case-management/application/GenerateCaseReport.js';
+import { generateCaseReportId } from './modules/case-management/domain/model/value-objects/CaseReportId.js';
+import { reportRouter } from './modules/case-management/infrastructure/adapters/inbound/http/reportRouter.js';
 import { generateResolutionId } from './modules/case-management/domain/model/value-objects/ResolutionId.js';
 import { createSweepSlaTrackingUseCase } from './modules/case-management/application/SweepSlaTracking.js';
 import { createSlaSweepScheduler } from './modules/case-management/infrastructure/scheduler/SlaSweepScheduler.js';
@@ -499,6 +503,23 @@ async function bootstrap(): Promise<void> {
   });
   const analystDecisions = new MongoAnalystDecisionRepository(db);
   const enforcementActions = new MongoEnforcementActionRepository(db);
+  const caseReports = new MongoCaseReportRepository(db);
+  const reportHttpRouter = reportRouter({
+    generateCaseReport: createGenerateCaseReportUseCase({
+      cases,
+      timelineReader: caseTimelineReader,
+      notes: caseNotes,
+      investigations,
+      resolutions,
+      enforcementActions,
+      analystDecisions,
+      reports: caseReports,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateCaseReportId,
+    }),
+  });
   const approvalRequests = new MongoApprovalRequestRepository(db);
   const customerOutgoingEvents = new MongoCustomerOutgoingEventRepository(db);
   const outgoingWebhookClient = new HttpOutgoingWebhookClient();
@@ -911,6 +932,7 @@ async function bootstrap(): Promise<void> {
   // `authContextMiddleware` above to resolve the caller's AuthContext.
   identityAccessRouter.use(caseManagementCasesRouter);
   identityAccessRouter.use(investigationHttpRouter);
+  identityAccessRouter.use(reportHttpRouter);
   identityAccessRouter.use(organizationFraudConfigHttpRouter);
   identityAccessRouter.use(enforcementHttpRouter);
   identityAccessRouter.use(routingRuleHttpRouter);

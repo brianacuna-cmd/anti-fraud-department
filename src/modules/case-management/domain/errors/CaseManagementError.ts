@@ -84,3 +84,9 @@ export function investigationNotFound(investigationId: string): CaseManagementEr
     { investigationId },
   );
 }
+
+export function caseReportNotFound(reportId: string): CaseManagementError {
+  return new CaseManagementError('CASE_REPORT_NOT_FOUND', `case report "${reportId}" was not found`, {
+    reportId,
+  });
+}
