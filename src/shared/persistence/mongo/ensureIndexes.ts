@@ -1,4 +1,27 @@
-import type { Db } from 'mongodb';
+import type { Db, IndexSpecification } from 'mongodb';
+
+/**
+ * `createIndex` es idempotente mientras la clave no cambie: si el nombre ya
+ * existe apuntando a otra clave, falla el arranque entero. Cuando la forma de
+ * un índice evoluciona hay que retirar el anterior primero.
+ */
+async function dropIndexIfKeyDiffers(
+  db: Db,
+  collection: string,
+  indexName: string,
+  expectedKey: IndexSpecification,
+): Promise<void> {
+  const exists = await db.listCollections({ name: collection }).hasNext();
+  if (!exists) return;
+
+  const indexes = await db.collection(collection).indexes();
+  const current = indexes.find((index) => index.name === indexName);
+  if (!current) return;
+
+  if (JSON.stringify(current.key) !== JSON.stringify(expectedKey)) {
+    await db.collection(collection).dropIndex(indexName);
+  }
+}
 
 /**
  * Provisions the indexes every `identity-access` repository relies on for
@@ -12,6 +35,29 @@ import type { Db } from 'mongodb';
  * `Status`). Index NAMES stay snake_case (design A3) — only key casing
  * moved, the shape and uniqueness semantics are byte-identical to before.
  */
+async function safeCreateIndex(
+  collection: ReturnType<Db['collection']>,
+  spec: any,
+  options?: any,
+): Promise<void> {
+  try {
+    await collection.createIndex(spec, options);
+  } catch (err: any) {
+    if (err?.code === 86 || err?.codeName === 'IndexKeySpecsConflict') {
+      if (options?.name) {
+        try {
+          await collection.dropIndex(options.name);
+          await collection.createIndex(spec, options);
+          return;
+        } catch {
+          // ignore fallback error
+        }
+      }
+    }
+    throw err;
+  }
+}
+
 export async function ensureIndexes(db: Db): Promise<void> {
   await db
     .collection('Organizations')
@@ -193,4 +239,20 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db
     .collection('OutboxEvents')
     .createIndex({ AggregateId: 1 }, { name: 'outbox_aggregate_id_idx' });
+
+  // `FinturuCustomers` (copia local del directorio de clientes). El índice
+  // compuesto cubre el orden por defecto del listado — riesgo descendente —
+  // para que paginar no exija ordenar en memoria.
+  await safeCreateIndex(
+    db.collection('FinturuCustomers'),
+    { RiskScore: -1, Name: 1 },
+    { name: 'finturu_customer_risk_idx' },
+  );
+
+  // Soporta el borrado de los registros que el último sync dejó atrás.
+  await safeCreateIndex(
+    db.collection('FinturuCustomers'),
+    { SyncedAt: 1 },
+    { name: 'finturu_customer_synced_idx' },
+  );
 }
