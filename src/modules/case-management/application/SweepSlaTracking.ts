@@ -47,6 +47,9 @@ const SWEEP_CLAIM_LIMIT = 100;
  * notified directly; a `ROLE` assignee fans out to every active member of
  * the role (each honoring their own EMAIL opt-out downstream); an unassigned
  * case still advances status and is marked notified, but notifies no one.
+ *
+ * A case that is formally closed (RESOLVED or ARCHIVED) is skipped entirely:
+ * it no longer advances the SLA status, notifies, or is marked (PR4).
  */
 export function createSweepSlaTrackingUseCase(deps: SweepSlaTrackingDeps) {
   return async function sweepSlaTracking(): Promise<SweepSlaTrackingResult> {
@@ -63,6 +66,13 @@ export function createSweepSlaTrackingUseCase(deps: SweepSlaTrackingDeps) {
           return;
         }
 
+        const kase = await deps.cases.findById(current.caseId, tx);
+        // A formally closed case no longer escalates: skip the advance, the
+        // notification, and the mark entirely (case-lifecycle-core PR4).
+        if (kase !== null && (kase.status === 'RESOLVED' || kase.status === 'ARCHIVED')) {
+          return;
+        }
+
         const target = nextStatus(current);
         let advanced = current;
         if (target !== null) {
@@ -71,7 +81,6 @@ export function createSweepSlaTrackingUseCase(deps: SweepSlaTrackingDeps) {
         }
 
         if (!advanced.hasNotified(advanced.status)) {
-          const kase = await deps.cases.findById(advanced.caseId, tx);
           if (kase !== null && kase.assignedTo !== null) {
             const recipientUserIds =
               kase.assignedTo.type === 'USER'
