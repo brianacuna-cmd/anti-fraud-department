@@ -10,6 +10,7 @@
 export type CaseManagementAuditAction =
   | 'CREATE_CASE'
   | 'UPDATE_SCORE'
+  | 'START_REVIEW'
   | 'RESOLVE_CASE'
   | 'ARCHIVE_CASE'
   | 'REASSIGN_CASE'

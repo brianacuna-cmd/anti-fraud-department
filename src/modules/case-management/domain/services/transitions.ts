@@ -18,10 +18,9 @@ export type TransitionTable<S extends string> = Readonly<Record<S, readonly S[]>
  * actor-gating needed for Case, unlike identity-access's reactivation edge).
  */
 export const caseStatusTransitions: TransitionTable<CaseStatus> = {
-  // OPEN->RESOLVED is allowed directly (case-lifecycle-core PR3): there is no
-  // "start review" action yet, so requiring IN_REVIEW first would make resolve
-  // unreachable. A supervisor may resolve straight from OPEN.
-  OPEN: ['IN_REVIEW', 'RESOLVED'],
+  // OPEN must pass through IN_REVIEW before it can be RESOLVED (review gate,
+  // PR: casemgmt-review-gate). `StartReview` (OPEN->IN_REVIEW) is the door.
+  OPEN: ['IN_REVIEW'],
   IN_REVIEW: ['RESOLVED'],
   RESOLVED: ['ARCHIVED', 'OPEN', 'IN_REVIEW'],
   ARCHIVED: ['OPEN', 'IN_REVIEW'],

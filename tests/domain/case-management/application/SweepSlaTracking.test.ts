@@ -94,7 +94,9 @@ describe('createSweepSlaTrackingUseCase', () => {
   it('skips a formally closed (RESOLVED) case: no advance, no notification, no mark (PR4)', async () => {
     const { sweepSlaTracking, cases, slaTracking, notificationSender } = buildUseCase();
     const assignee = createAssignedTo('USER', oid('analyst-1'));
-    await cases.save(buildCase(oid('case-1'), assignee).transitionTo('RESOLVED', NOW));
+    await cases.save(
+      buildCase(oid('case-1'), assignee).transitionTo('IN_REVIEW', NOW).transitionTo('RESOLVED', NOW),
+    );
     await slaTracking.save(buildTracking(oid('tracking-1'), oid('case-1'), PAST_DUE));
 
     const result = await sweepSlaTracking();

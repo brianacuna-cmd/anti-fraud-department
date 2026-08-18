@@ -59,9 +59,9 @@ function build() {
 }
 
 describe('createResolveCaseUseCase', () => {
-  it('resolves an OPEN case: status RESOLVED + resolution row + STATE_CHANGED timeline + RESOLVE_CASE audit', async () => {
+  it('resolves an IN_REVIEW case: status RESOLVED + resolution row + STATE_CHANGED timeline + RESOLVE_CASE audit', async () => {
     const { cases, resolutions, timelineRecorder, auditRecorder, resolveCase } = build();
-    await cases.save(buildCase());
+    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
 
     const resolved = await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legitimate' });
 
@@ -73,9 +73,18 @@ describe('createResolveCaseUseCase', () => {
     const timeline = timelineRecorder.all();
     expect(timeline).toHaveLength(1);
     expect(timeline[0]?.eventType).toBe('STATE_CHANGED');
-    expect(timeline[0]?.previousValue).toBe('OPEN');
+    expect(timeline[0]?.previousValue).toBe('IN_REVIEW');
     expect(timeline[0]?.newValue).toBe('RESOLVED');
     expect(auditRecorder.all()[0]?.action).toBe('RESOLVE_CASE');
+  });
+
+  it('rejects resolving straight from OPEN with INVALID_TRANSITION (review gate)', async () => {
+    const { cases, resolveCase } = build();
+    await cases.save(buildCase());
+
+    await expect(
+      resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x' }),
+    ).rejects.toMatchObject({ code: 'INVALID_TRANSITION' });
   });
 
   it('rejects a non-supervisor with FORBIDDEN_ROLE', async () => {
@@ -106,7 +115,7 @@ describe('createResolveCaseUseCase', () => {
 describe('createArchiveCaseUseCase', () => {
   it('archives a RESOLVED case (RESOLVED -> ARCHIVED) and appends a second resolution row', async () => {
     const { cases, resolutions, auditRecorder, resolveCase, archiveCase } = build();
-    await cases.save(buildCase());
+    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
     await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legit' });
 
     const archived = await archiveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'filed' });
