@@ -93,6 +93,9 @@ import { MongoCaseNoteRepository } from './modules/case-management/infrastructur
 import { MongoResolutionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoResolutionRepository.js';
 import { MongoInvestigationRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoInvestigationRepository.js';
 import { MongoCaseReportRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseReportRepository.js';
+import { MongoEvidenceRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoEvidenceRepository.js';
+import { FilesystemEvidenceStore } from './modules/case-management/infrastructure/adapters/outbound/storage/FilesystemEvidenceStore.js';
+import { NullTimestampAuthority } from './modules/case-management/infrastructure/adapters/outbound/timestamp/NullTimestampAuthority.js';
 import { MongoUnitOfWork as CaseManagementMongoUnitOfWork } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { generateCaseId } from './modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from './modules/case-management/domain/model/value-objects/TimelineEventId.js';
@@ -121,6 +124,12 @@ import { createListCaseReportsUseCase } from './modules/case-management/applicat
 import { createGetCaseReportUseCase } from './modules/case-management/application/GetCaseReport.js';
 import { generateCaseReportId } from './modules/case-management/domain/model/value-objects/CaseReportId.js';
 import { reportRouter } from './modules/case-management/infrastructure/adapters/inbound/http/reportRouter.js';
+import { createRegisterEvidenceUseCase } from './modules/case-management/application/RegisterEvidence.js';
+import { createListEvidenceUseCase } from './modules/case-management/application/ListEvidence.js';
+import { createGetEvidenceUseCase } from './modules/case-management/application/GetEvidence.js';
+import { createDownloadEvidenceUseCase } from './modules/case-management/application/DownloadEvidence.js';
+import { generateEvidenceId } from './modules/case-management/domain/model/value-objects/EvidenceId.js';
+import { evidenceRouter } from './modules/case-management/infrastructure/adapters/inbound/http/evidenceRouter.js';
 import { generateResolutionId } from './modules/case-management/domain/model/value-objects/ResolutionId.js';
 import { createSweepSlaTrackingUseCase } from './modules/case-management/application/SweepSlaTracking.js';
 import { createSlaSweepScheduler } from './modules/case-management/infrastructure/scheduler/SlaSweepScheduler.js';
@@ -239,6 +248,7 @@ const AUTH_ADMIN_CHALLENGE_TTL_SECONDS = Number(process.env.AUTH_ADMIN_CHALLENGE
 const AUTH_PASSWORD_RESET_TTL_SECONDS = Number(process.env.AUTH_PASSWORD_RESET_TTL_SECONDS ?? 900);
 const PASSWORD_RESET_EMAIL_FROM = process.env.PASSWORD_RESET_EMAIL_FROM ?? 'fraud@backendstudio.tech';
 const NOTIFICATION_EMAIL_FROM = process.env.NOTIFICATION_EMAIL_FROM ?? PASSWORD_RESET_EMAIL_FROM;
+const EVIDENCE_STORAGE_DIR = process.env.EVIDENCE_STORAGE_DIR ?? './.evidence';
 const PASSWORD_RESET_LINK_BASE_URL = process.env.PASSWORD_RESET_LINK_BASE_URL ?? 'http://localhost:3000/reset-password';
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 /** Poll interval for customer_outgoing_events webhook dispatcher (PR5). */
@@ -523,6 +533,27 @@ async function bootstrap(): Promise<void> {
     }),
     listCaseReports: createListCaseReportsUseCase({ cases, reports: caseReports }),
     getCaseReport: createGetCaseReportUseCase({ reports: caseReports }),
+  });
+  const evidence = new MongoEvidenceRepository(db);
+  const evidenceStore = new FilesystemEvidenceStore(EVIDENCE_STORAGE_DIR);
+  const timestampAuthority = new NullTimestampAuthority();
+  const evidenceHttpRouter = evidenceRouter({
+    registerEvidence: createRegisterEvidenceUseCase({
+      cases,
+      investigations,
+      evidence,
+      evidenceStore,
+      timestampAuthority,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateEvidenceId,
+      generateTimelineEventId,
+    }),
+    listEvidence: createListEvidenceUseCase({ cases, evidence }),
+    getEvidence: createGetEvidenceUseCase({ evidence }),
+    downloadEvidence: createDownloadEvidenceUseCase({ evidence, evidenceStore }),
   });
   const approvalRequests = new MongoApprovalRequestRepository(db);
   const customerOutgoingEvents = new MongoCustomerOutgoingEventRepository(db);
@@ -937,6 +968,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(caseManagementCasesRouter);
   identityAccessRouter.use(investigationHttpRouter);
   identityAccessRouter.use(reportHttpRouter);
+  identityAccessRouter.use(evidenceHttpRouter);
   identityAccessRouter.use(organizationFraudConfigHttpRouter);
   identityAccessRouter.use(enforcementHttpRouter);
   identityAccessRouter.use(routingRuleHttpRouter);
