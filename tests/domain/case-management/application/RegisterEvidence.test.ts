@@ -10,6 +10,8 @@ import { createCaseId } from '../../../../src/modules/case-management/domain/mod
 import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
 import { generateEvidenceId } from '../../../../src/modules/case-management/domain/model/value-objects/EvidenceId.js';
 import { generateInvestigationId } from '../../../../src/modules/case-management/domain/model/value-objects/InvestigationId.js';
+import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
+import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import type { TimestampAuthority } from '../../../../src/modules/case-management/domain/ports/TimestampAuthority.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryInvestigationRepository } from '../../../helpers/case-management/InMemoryInvestigationRepository.js';
@@ -44,6 +46,7 @@ function build(tsa: TimestampAuthority = nullTsa) {
   const investigations = new InMemoryInvestigationRepository();
   const evidence = new InMemoryEvidenceRepository();
   const evidenceStore = new InMemoryEvidenceStore();
+  const timelineRecorder = new InMemoryTimelineRecorder();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
   const deps = {
     cases,
@@ -51,16 +54,19 @@ function build(tsa: TimestampAuthority = nullTsa) {
     evidence,
     evidenceStore,
     timestampAuthority: tsa,
+    timelineRecorder,
     auditRecorder,
     unitOfWork: new PassthroughUnitOfWork(),
     clock: new FixedClock(NOW),
     generateEvidenceId,
+    generateTimelineEventId,
   };
   return {
     cases,
     investigations,
     evidence,
     evidenceStore,
+    timelineRecorder,
     auditRecorder,
     registerEvidence: createRegisterEvidenceUseCase(deps),
     listEvidence: createListEvidenceUseCase({ cases, evidence }),
@@ -97,6 +103,10 @@ describe('createRegisterEvidenceUseCase', () => {
     expect(evidence.timestamp).toBeNull();
     expect(await h.evidenceStore.get(evidence.storageKey)).toEqual(bytes);
     expect(h.auditRecorder.all().some((a) => a.action === 'REGISTER_EVIDENCE')).toBe(true);
+    const timeline = h.timelineRecorder.all();
+    expect(timeline).toHaveLength(1);
+    expect(timeline[0]?.eventType).toBe('EVIDENCE_ADDED');
+    expect(timeline[0]?.newValue).toBe(evidence.id);
   });
 
   it('records an RFC3161 timestamp when the TSA returns one', async () => {

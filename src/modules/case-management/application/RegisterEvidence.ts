@@ -7,10 +7,13 @@ import type { InvestigationRepository } from '../domain/ports/InvestigationRepos
 import type { EvidenceRepository } from '../domain/ports/EvidenceRepository.js';
 import type { EvidenceStore } from '../domain/ports/EvidenceStore.js';
 import type { TimestampAuthority } from '../domain/ports/TimestampAuthority.js';
+import type { TimelineRecorder } from '../domain/ports/TimelineRecorder.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import type { EvidenceId } from '../domain/model/value-objects/EvidenceId.js';
+import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
 import { Evidence as EvidenceAggregate } from '../domain/model/aggregates/Evidence.js';
+import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { createInvestigationId } from '../domain/model/value-objects/InvestigationId.js';
 import {
@@ -35,10 +38,12 @@ export interface RegisterEvidenceDeps {
   readonly evidence: EvidenceRepository;
   readonly evidenceStore: EvidenceStore;
   readonly timestampAuthority: TimestampAuthority;
+  readonly timelineRecorder: TimelineRecorder;
   readonly auditRecorder: AuditRecorder;
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
   readonly generateEvidenceId: () => EvidenceId;
+  readonly generateTimelineEventId: () => TimelineEventId;
 }
 
 /**
@@ -101,6 +106,20 @@ export function createRegisterEvidenceUseCase(deps: RegisterEvidenceDeps) {
 
     return deps.unitOfWork.withTransaction(async (tx) => {
       await deps.evidence.save(evidence, tx);
+
+      await deps.timelineRecorder.record(
+        CaseTimelineEvent.create({
+          id: deps.generateTimelineEventId(),
+          caseId,
+          eventType: 'EVIDENCE_ADDED',
+          previousValue: null,
+          newValue: evidence.id,
+          createdBy: input.auth.userId,
+          createdAt: now,
+        }),
+        tx,
+      );
+
       await deps.auditRecorder.record(
         {
           organizationId,
