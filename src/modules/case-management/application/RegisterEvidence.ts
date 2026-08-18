@@ -1,0 +1,126 @@
+import { createHash } from 'node:crypto';
+import type { AuthContext } from '../../../shared/kernel/AuthContext.js';
+import type { Clock } from '../../../shared/time/Clock.js';
+import type { Evidence } from '../domain/model/aggregates/Evidence.js';
+import type { CaseRepository } from '../domain/ports/CaseRepository.js';
+import type { InvestigationRepository } from '../domain/ports/InvestigationRepository.js';
+import type { EvidenceRepository } from '../domain/ports/EvidenceRepository.js';
+import type { EvidenceStore } from '../domain/ports/EvidenceStore.js';
+import type { TimestampAuthority } from '../domain/ports/TimestampAuthority.js';
+import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
+import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
+import type { EvidenceId } from '../domain/model/value-objects/EvidenceId.js';
+import { Evidence as EvidenceAggregate } from '../domain/model/aggregates/Evidence.js';
+import { createCaseId } from '../domain/model/value-objects/CaseId.js';
+import { createInvestigationId } from '../domain/model/value-objects/InvestigationId.js';
+import {
+  caseNotFound,
+  forbiddenCrossTenant,
+  investigationNotFound,
+} from '../domain/errors/CaseManagementError.js';
+import { requireTenantContext } from './authorization/requireTenantContext.js';
+
+export interface RegisterEvidenceInput {
+  readonly auth: AuthContext;
+  readonly caseId: string;
+  readonly investigationId?: string | null;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly bytes: Buffer;
+}
+
+export interface RegisterEvidenceDeps {
+  readonly cases: CaseRepository;
+  readonly investigations: InvestigationRepository;
+  readonly evidence: EvidenceRepository;
+  readonly evidenceStore: EvidenceStore;
+  readonly timestampAuthority: TimestampAuthority;
+  readonly auditRecorder: AuditRecorder;
+  readonly unitOfWork: UnitOfWork;
+  readonly clock: Clock;
+  readonly generateEvidenceId: () => EvidenceId;
+}
+
+/**
+ * Registers an uploaded evidence blob: computes the SHA256 server-side, stores
+ * the blob in the object store (outside Mongo, BEFORE the tx — a blob is not
+ * transactional), requests an RFC3161 timestamp (null while deferred), then
+ * persists the metadata + a REGISTER_EVIDENCE audit in one transaction. Any
+ * authenticated tenant actor; the case (and optional investigation) must
+ * belong to the actor's org.
+ */
+export function createRegisterEvidenceUseCase(deps: RegisterEvidenceDeps) {
+  return async function registerEvidence(input: RegisterEvidenceInput): Promise<Evidence> {
+    const organizationId = requireTenantContext(input.auth);
+    const caseId = createCaseId(input.caseId);
+
+    const kase = await deps.cases.findById(caseId);
+    if (kase === null || kase.deletedAt !== null) {
+      throw caseNotFound(caseId);
+    }
+    if (kase.organizationId !== organizationId) {
+      throw forbiddenCrossTenant('case does not belong to the actor organization');
+    }
+
+    let investigationId = null;
+    if (input.investigationId !== undefined && input.investigationId !== null) {
+      investigationId = createInvestigationId(input.investigationId);
+      const investigation = await deps.investigations.findById(investigationId);
+      if (
+        investigation === null ||
+        investigation.organizationId !== organizationId ||
+        (investigation.caseId as string) !== (caseId as string)
+      ) {
+        throw investigationNotFound(investigationId);
+      }
+    }
+
+    const evidenceId = deps.generateEvidenceId();
+    const sha256 = createHash('sha256').update(input.bytes).digest('hex');
+    const storageKey = `${organizationId}/${caseId}/${evidenceId}`;
+
+    // Store the blob first — an object-store write is not part of the Mongo tx.
+    await deps.evidenceStore.put(storageKey, input.bytes);
+    const timestamp = await deps.timestampAuthority.requestTimestamp(sha256);
+
+    const now = deps.clock.now();
+    const evidence = EvidenceAggregate.register({
+      id: evidenceId,
+      caseId,
+      investigationId,
+      organizationId,
+      filename: input.filename,
+      contentType: input.contentType,
+      byteSize: input.bytes.length,
+      sha256,
+      storageKey,
+      timestamp,
+      uploadedBy: input.auth.userId,
+      now,
+    });
+
+    return deps.unitOfWork.withTransaction(async (tx) => {
+      await deps.evidence.save(evidence, tx);
+      await deps.auditRecorder.record(
+        {
+          organizationId,
+          actorType: input.auth.actorType,
+          actorId: input.auth.userId,
+          action: 'REGISTER_EVIDENCE',
+          resource: 'evidence',
+          resourceId: evidence.id,
+          detail: {
+            caseId,
+            investigationId,
+            filename: evidence.filename,
+            sha256: evidence.sha256,
+            byteSize: evidence.byteSize,
+          },
+          ipAddress: input.auth.ipAddress,
+        },
+        tx,
+      );
+      return evidence;
+    });
+  };
+}

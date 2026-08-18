@@ -90,3 +90,9 @@ export function caseReportNotFound(reportId: string): CaseManagementError {
     reportId,
   });
 }
+
+export function evidenceNotFound(evidenceId: string): CaseManagementError {
+  return new CaseManagementError('EVIDENCE_NOT_FOUND', `evidence "${evidenceId}" was not found`, {
+    evidenceId,
+  });
+}
