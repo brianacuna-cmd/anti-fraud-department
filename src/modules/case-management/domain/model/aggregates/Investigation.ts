@@ -3,7 +3,7 @@ import type { CaseId } from '../value-objects/CaseId.js';
 import type { InvestigationId } from '../value-objects/InvestigationId.js';
 import type { InvestigationSubjectType } from '../value-objects/InvestigationSubjectType.js';
 import type { InvestigationStatus } from '../value-objects/InvestigationStatus.js';
-import { invariantViolation } from '../../errors/CaseManagementError.js';
+import { invariantViolation, invalidTransition } from '../../errors/CaseManagementError.js';
 
 export interface InvestigationProps {
   readonly id: InvestigationId;
@@ -58,6 +58,27 @@ export class Investigation {
 
   static rehydrate(props: InvestigationProps): Investigation {
     return new Investigation(props);
+  }
+
+  /**
+   * Closes an OPEN investigation, recording non-empty findings and the close
+   * time. Closing an already-CLOSED investigation throws `invalidTransition`.
+   */
+  close(findings: string, now: Instant): Investigation {
+    if (this.props.status !== 'OPEN') {
+      throw invalidTransition(this.props.status, 'CLOSED');
+    }
+    const trimmed = findings.trim();
+    if (trimmed.length === 0) {
+      throw invariantViolation('Investigation findings must be a non-empty string', { field: 'findings' });
+    }
+    return new Investigation({
+      ...this.props,
+      status: 'CLOSED',
+      findings: trimmed,
+      updatedAt: now,
+      closedAt: now,
+    });
   }
 
   get id(): InvestigationId {

@@ -3,7 +3,8 @@ import { requireAuthContext } from '../../../../../../shared/http/requestAuthCon
 import type { createOpenInvestigationUseCase } from '../../../../application/OpenInvestigation.js';
 import type { createListInvestigationsUseCase } from '../../../../application/ListInvestigations.js';
 import type { createGetInvestigationUseCase } from '../../../../application/GetInvestigation.js';
-import { openInvestigationSchema } from './dto/investigationSchemas.js';
+import type { createCloseInvestigationUseCase } from '../../../../application/CloseInvestigation.js';
+import { openInvestigationSchema, closeInvestigationSchema } from './dto/investigationSchemas.js';
 import { toInvestigationResponse } from './mappers/InvestigationHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
 
@@ -11,6 +12,7 @@ export interface InvestigationRouterDeps {
   readonly openInvestigation: ReturnType<typeof createOpenInvestigationUseCase>;
   readonly listInvestigations: ReturnType<typeof createListInvestigationsUseCase>;
   readonly getInvestigation: ReturnType<typeof createGetInvestigationUseCase>;
+  readonly closeInvestigation: ReturnType<typeof createCloseInvestigationUseCase>;
 }
 
 /**
@@ -44,6 +46,17 @@ export function investigationRouter(deps: InvestigationRouterDeps): Router {
     const investigation = await deps.getInvestigation({
       auth,
       investigationId: req.params.investigationId!,
+    });
+    res.status(200).json(toInvestigationResponse(investigation));
+  });
+
+  router.post('/cases/:caseId/investigations/:investigationId/close', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(closeInvestigationSchema, req.body);
+    const investigation = await deps.closeInvestigation({
+      auth,
+      investigationId: req.params.investigationId!,
+      findings: body.findings,
     });
     res.status(200).json(toInvestigationResponse(investigation));
   });
