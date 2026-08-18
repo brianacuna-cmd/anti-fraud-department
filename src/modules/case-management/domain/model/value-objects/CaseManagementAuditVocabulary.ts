@@ -16,6 +16,7 @@ export type CaseManagementAuditAction =
   | 'REASSIGN_CASE'
   | 'REOPEN_CASE'
   | 'ADD_CASE_NOTE'
+  | 'OPEN_INVESTIGATION'
   | 'RECORD_ANALYST_DECISION'
   | 'APPROVE_ENFORCEMENT_ACTION'
   | 'REJECT_ENFORCEMENT_ACTION'
@@ -32,4 +33,4 @@ export type CaseManagementAuditAction =
    */
   | 'ROUTING_RULE_EVALUATION_FAILED';
 
-export type CaseManagementAuditResource = 'case' | 'entity' | 'user' | 'rule';
+export type CaseManagementAuditResource = 'case' | 'entity' | 'user' | 'rule' | 'investigation';
