@@ -14,3 +14,11 @@ export const closeInvestigationSchema = z.object({
 });
 
 export type CloseInvestigationBody = z.infer<typeof closeInvestigationSchema>;
+
+/** PATCH /investigations/:investigationId/findings body. */
+export const updateInvestigationFindingsSchema = z.object({
+  findings: z.record(z.string(), z.unknown()),
+  explorationDepth: z.number().int().min(0),
+});
+
+export type UpdateInvestigationFindingsBody = z.infer<typeof updateInvestigationFindingsSchema>;

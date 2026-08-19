@@ -4,7 +4,12 @@ import type { createOpenInvestigationUseCase } from '../../../../application/Ope
 import type { createListInvestigationsUseCase } from '../../../../application/ListInvestigations.js';
 import type { createGetInvestigationUseCase } from '../../../../application/GetInvestigation.js';
 import type { createCloseInvestigationUseCase } from '../../../../application/CloseInvestigation.js';
-import { openInvestigationSchema, closeInvestigationSchema } from './dto/investigationSchemas.js';
+import type { createUpdateInvestigationFindingsUseCase } from '../../../../application/UpdateInvestigationFindings.js';
+import {
+  openInvestigationSchema,
+  closeInvestigationSchema,
+  updateInvestigationFindingsSchema,
+} from './dto/investigationSchemas.js';
 import { toInvestigationResponse } from './mappers/InvestigationHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
 
@@ -13,6 +18,7 @@ export interface InvestigationRouterDeps {
   readonly listInvestigations: ReturnType<typeof createListInvestigationsUseCase>;
   readonly getInvestigation: ReturnType<typeof createGetInvestigationUseCase>;
   readonly closeInvestigation: ReturnType<typeof createCloseInvestigationUseCase>;
+  readonly updateInvestigationFindings: ReturnType<typeof createUpdateInvestigationFindingsUseCase>;
 }
 
 /**
@@ -57,6 +63,18 @@ export function investigationRouter(deps: InvestigationRouterDeps): Router {
       auth,
       investigationId: req.params.investigationId!,
       findings: body.findings,
+    });
+    res.status(200).json(toInvestigationResponse(investigation));
+  });
+
+  router.patch('/investigations/:investigationId/findings', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(updateInvestigationFindingsSchema, req.body);
+    const investigation = await deps.updateInvestigationFindings({
+      auth,
+      investigationId: req.params.investigationId!,
+      findings: body.findings,
+      explorationDepth: body.explorationDepth,
     });
     res.status(200).json(toInvestigationResponse(investigation));
   });

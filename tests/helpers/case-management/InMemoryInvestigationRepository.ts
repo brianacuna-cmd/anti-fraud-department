@@ -24,4 +24,9 @@ export class InMemoryInvestigationRepository implements InvestigationRepository 
       .map((id) => this.byId.get(id)!)
       .filter((investigation) => (investigation.caseId as string) === (caseId as string));
   }
+
+  /** Test-only: every stored investigation, oldest-first by insertion. */
+  all(): Investigation[] {
+    return this.order.map((id) => this.byId.get(id)!);
+  }
 }

@@ -13,6 +13,10 @@ export interface InvestigationProps {
   readonly subjectId: string;
   readonly status: InvestigationStatus;
   readonly findings: string | null;
+  /** Structured JSON findings of the investigated network (PATCH findings). */
+  readonly findingsData: Record<string, unknown> | null;
+  /** How deep the network exploration went (`profundidad_explorada`), >= 0. */
+  readonly explorationDepth: number | null;
   readonly openedBy: string;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
@@ -49,6 +53,8 @@ export class Investigation {
       subjectId: input.subjectId,
       status: 'OPEN',
       findings: null,
+      findingsData: null,
+      explorationDepth: null,
       openedBy: input.openedBy,
       createdAt: input.now,
       updatedAt: input.now,
@@ -81,6 +87,31 @@ export class Investigation {
     });
   }
 
+  /**
+   * Records the structured JSON findings and the exploration depth
+   * (`profundidad_explorada`) of the investigated network. Independent of the
+   * OPEN/CLOSED lifecycle — an investigation can be amended while active or
+   * after closure. `explorationDepth` must be a non-negative integer.
+   */
+  recordFindings(
+    findingsData: Record<string, unknown>,
+    explorationDepth: number,
+    now: Instant,
+  ): Investigation {
+    if (!Number.isInteger(explorationDepth) || explorationDepth < 0) {
+      throw invariantViolation('Investigation explorationDepth must be a non-negative integer', {
+        field: 'explorationDepth',
+        value: explorationDepth,
+      });
+    }
+    return new Investigation({
+      ...this.props,
+      findingsData,
+      explorationDepth,
+      updatedAt: now,
+    });
+  }
+
   get id(): InvestigationId {
     return this.props.id;
   }
@@ -107,6 +138,14 @@ export class Investigation {
 
   get findings(): string | null {
     return this.props.findings;
+  }
+
+  get findingsData(): Record<string, unknown> | null {
+    return this.props.findingsData;
+  }
+
+  get explorationDepth(): number | null {
+    return this.props.explorationDepth;
   }
 
   get openedBy(): string {
