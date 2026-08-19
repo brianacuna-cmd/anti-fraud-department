@@ -13,6 +13,9 @@ import { createRecordAnalystDecisionUseCase } from '../../../../src/modules/case
 import { createApproveEnforcementActionUseCase } from '../../../../src/modules/case-management/application/ApproveEnforcementAction.js';
 import { createRejectEnforcementActionUseCase } from '../../../../src/modules/case-management/application/RejectEnforcementAction.js';
 import { createExecuteEnforcementActionUseCase } from '../../../../src/modules/case-management/application/ExecuteEnforcementAction.js';
+import { createRevertEnforcementActionUseCase } from '../../../../src/modules/case-management/application/RevertEnforcementAction.js';
+import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
+import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
 import { createListEnforcementActionsUseCase } from '../../../../src/modules/case-management/application/ListEnforcementActions.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
@@ -91,7 +94,17 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
       generateApprovalRequestId,
     }),
     listEnforcementActions: createListEnforcementActionsUseCase({ enforcementActions }),
+    revertEnforcementAction: createRevertEnforcementActionUseCase({
+      enforcementActions,
+      auditRecorder,
+      outbox: new InMemoryOutboxEventRepository(),
+      unitOfWork,
+      clock,
+      generateOutboxEventId,
+    }),
     executeEnforcementAction: createExecuteEnforcementActionUseCase({
+      outbox: new InMemoryOutboxEventRepository(),
+      generateOutboxEventId,
       enforcementActions,
       outgoingEvents,
       cases,

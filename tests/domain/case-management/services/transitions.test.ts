@@ -16,11 +16,12 @@ describe('caseStatusTransitions', () => {
 });
 
 describe('enforcementActionStatusTransitions', () => {
-  it('has no outgoing edges from EXECUTED (REVERTED removed as dead code)', () => {
-    expect(enforcementActionStatusTransitions.EXECUTED).toEqual([]);
+  it('allows EXECUTED -> REVERTED (post-execution reversal)', () => {
+    expect(enforcementActionStatusTransitions.EXECUTED).toEqual(['REVERTED']);
   });
 
-  it('does not define a REVERTED key in the transition table', () => {
-    expect(Object.keys(enforcementActionStatusTransitions)).not.toContain('REVERTED');
+  it('defines REVERTED as a terminal state', () => {
+    expect(Object.keys(enforcementActionStatusTransitions)).toContain('REVERTED');
+    expect(enforcementActionStatusTransitions.REVERTED).toEqual([]);
   });
 });

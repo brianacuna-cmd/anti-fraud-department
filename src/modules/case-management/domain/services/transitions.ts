@@ -46,8 +46,9 @@ export const slaStatusTransitions: TransitionTable<SlaStatus> = {
 export const enforcementActionStatusTransitions: TransitionTable<EnforcementActionStatus> = {
   PENDING: ['APPROVED', 'REJECTED', 'EXECUTED'],
   APPROVED: ['EXECUTED'],
-  EXECUTED: [],
+  EXECUTED: ['REVERTED'],
   REJECTED: [],
+  REVERTED: [],
 };
 
 export const approvalRequestStatusTransitions: TransitionTable<ApprovalRequestStatus> = {

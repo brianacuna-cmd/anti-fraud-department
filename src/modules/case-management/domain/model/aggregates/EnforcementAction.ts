@@ -133,6 +133,14 @@ export class EnforcementAction {
     return this.transitionTo('EXECUTED', now);
   }
 
+  /**
+   * Reverses a previously executed sanction (EXECUTED -> REVERTED). Only valid
+   * from EXECUTED; the transition table rejects any other source status.
+   */
+  revert(now: Instant): EnforcementAction {
+    return this.transitionTo('REVERTED', now);
+  }
+
   private transitionTo(next: EnforcementActionStatus, now: Instant): EnforcementAction {
     assertTransitionAllowed(enforcementActionStatusTransitions, this.props.status, next);
     return new EnforcementAction({ ...this.props, status: next, updatedAt: now });

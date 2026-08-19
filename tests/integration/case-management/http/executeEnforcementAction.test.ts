@@ -14,6 +14,9 @@ import { createApproveEnforcementActionUseCase } from '../../../../src/modules/c
 import { createRejectEnforcementActionUseCase } from '../../../../src/modules/case-management/application/RejectEnforcementAction.js';
 import { createExecuteEnforcementActionUseCase } from '../../../../src/modules/case-management/application/ExecuteEnforcementAction.js';
 import { createListEnforcementActionsUseCase } from '../../../../src/modules/case-management/application/ListEnforcementActions.js';
+import { createRevertEnforcementActionUseCase } from '../../../../src/modules/case-management/application/RevertEnforcementAction.js';
+import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
+import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
@@ -109,6 +112,7 @@ function buildApp(
   const fraudConfig = new InMemoryOrganizationFraudConfigRepository();
   const timelineRecorder = new InMemoryTimelineRecorder();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
+  const outbox = new InMemoryOutboxEventRepository();
   const clock = new FixedClock(NOW);
   const unitOfWork = new PassthroughUnitOfWork();
 
@@ -169,9 +173,19 @@ function buildApp(
       cases,
       fraudConfig,
       auditRecorder,
+      outbox,
       unitOfWork,
       clock,
       generateCustomerOutgoingEventId,
+      generateOutboxEventId,
+    }),
+    revertEnforcementAction: createRevertEnforcementActionUseCase({
+      enforcementActions,
+      auditRecorder,
+      outbox,
+      unitOfWork,
+      clock,
+      generateOutboxEventId,
     }),
   });
 
@@ -189,7 +203,7 @@ function buildApp(
     errorHandler: createErrorHandler(caseManagementErrorStatus),
   });
 
-  return { app, enforcementActions, outgoingEvents, cases, auditRecorder };
+  return { app, enforcementActions, outgoingEvents, cases, auditRecorder, outbox };
 }
 
 describe('enforcementRouter POST /enforcement-actions/:id/execute', () => {
@@ -282,6 +296,47 @@ describe('enforcementRouter POST /enforcement-actions/:id/execute', () => {
       .send({})
       .expect(404);
 
+    expect(res.body.error.code).toBe('ENFORCEMENT_ACTION_NOT_FOUND');
+  });
+});
+
+describe('enforcementRouter POST /enforcement-actions/:id/revert', () => {
+  it('reverts an EXECUTED action and emits ENFORCEMENT_EXECUTED + ENFORCEMENT_REVERTED outbox events', async () => {
+    const { app, enforcementActions, outbox } = buildApp();
+    seedApprovedAction(enforcementActions);
+
+    await request(app).post(`/api/v1/enforcement-actions/${ACTION_ID}/execute`).send({}).expect(200);
+    expect(outbox.all().map((e) => e.eventType)).toEqual(['ENFORCEMENT_EXECUTED']);
+
+    const res = await request(app).post(`/api/v1/enforcement-actions/${ACTION_ID}/revert`).send({}).expect(200);
+
+    expect(res.body.status).toBe('REVERTED');
+    expect(enforcementActions.all()[0]?.status).toBe('REVERTED');
+    expect(outbox.all().map((e) => e.eventType)).toEqual(['ENFORCEMENT_EXECUTED', 'ENFORCEMENT_REVERTED']);
+    const revertEvent = outbox.all()[1];
+    expect(revertEvent?.aggregateType).toBe('enforcement_actions');
+    expect(revertEvent?.payload).toMatchObject({ enforcement_action_id: ACTION_ID, status: 'REVERTED' });
+  });
+
+  it('returns 422 when reverting a non-EXECUTED (APPROVED) action', async () => {
+    const { app, enforcementActions } = buildApp();
+    seedApprovedAction(enforcementActions); // APPROVED, not executed
+
+    const res = await request(app).post(`/api/v1/enforcement-actions/${ACTION_ID}/revert`).send({}).expect(422);
+    expect(res.body.error.code).toBe('INVALID_TRANSITION');
+  });
+
+  it('returns 403 for ANALYST', async () => {
+    const { app, enforcementActions } = buildApp({ actorPerRequest: () => ANALYST });
+    seedApprovedAction(enforcementActions);
+
+    const res = await request(app).post(`/api/v1/enforcement-actions/${ACTION_ID}/revert`).send({}).expect(403);
+    expect(res.body.error.code).toBe('FORBIDDEN_ROLE');
+  });
+
+  it('returns 404 when the action is missing', async () => {
+    const { app } = buildApp();
+    const res = await request(app).post(`/api/v1/enforcement-actions/${ACTION_ID}/revert`).send({}).expect(404);
     expect(res.body.error.code).toBe('ENFORCEMENT_ACTION_NOT_FOUND');
   });
 });
