@@ -163,4 +163,24 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { organization_id: 1, provider: 1, provider_event_id: 1 },
     { unique: true, name: 'provider_ingest_event_org_provider_event_unique' },
   );
+
+  // outbox_events (transactional outbox): relay polling of undelivered rows,
+  // distributed lock leasing, chronological order per aggregate, and TTL
+  // cleanup of published rows.
+  await db.collection('outbox_events').createIndex(
+    { status: 1, next_retry_at: 1, created_at: 1 },
+    { name: 'outbox_status_retry_created_idx', partialFilterExpression: { status: { $in: ['PENDING', 'FAILED'] } } },
+  );
+  await db.collection('outbox_events').createIndex(
+    { status: 1, locked_until: 1 },
+    { name: 'outbox_status_locked_idx' },
+  );
+  await db.collection('outbox_events').createIndex(
+    { aggregate_id: 1, created_at: 1 },
+    { name: 'outbox_aggregate_created_idx' },
+  );
+  await db.collection('outbox_events').createIndex(
+    { published_at: 1 },
+    { name: 'outbox_published_ttl_idx', expireAfterSeconds: 604800, partialFilterExpression: { status: 'PUBLISHED' } },
+  );
 }

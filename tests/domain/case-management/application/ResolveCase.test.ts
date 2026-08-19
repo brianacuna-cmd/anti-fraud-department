@@ -6,7 +6,9 @@ import { createCaseId } from '../../../../src/modules/case-management/domain/mod
 import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
 import { generateResolutionId } from '../../../../src/modules/case-management/domain/model/value-objects/ResolutionId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
+import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
+import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
 import { InMemoryResolutionRepository } from '../../../helpers/case-management/InMemoryResolutionRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
@@ -38,6 +40,7 @@ function build() {
   const resolutions = new InMemoryResolutionRepository();
   const timelineRecorder = new InMemoryTimelineRecorder();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
+  const outbox = new InMemoryOutboxEventRepository();
   const deps = {
     cases,
     resolutions,
@@ -47,12 +50,15 @@ function build() {
     clock: new FixedClock(NOW),
     generateResolutionId,
     generateTimelineEventId,
+    outbox,
+    generateOutboxEventId,
   };
   return {
     cases,
     resolutions,
     timelineRecorder,
     auditRecorder,
+    outbox,
     resolveCase: createResolveCaseUseCase(deps),
     archiveCase: createArchiveCaseUseCase(deps),
   };
@@ -76,6 +82,23 @@ describe('createResolveCaseUseCase', () => {
     expect(timeline[0]?.previousValue).toBe('IN_REVIEW');
     expect(timeline[0]?.newValue).toBe('RESOLVED');
     expect(auditRecorder.all()[0]?.action).toBe('RESOLVE_CASE');
+  });
+
+  it('stops the SLA (clears dueDate) and emits a CASE_RESOLVED outbox event in the same tx', async () => {
+    const { cases, outbox, resolveCase } = build();
+    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW).withDueDate(NOW, NOW));
+
+    const resolved = await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legit' });
+
+    expect(resolved.dueDate).toBeNull();
+    expect(cases.all()[0]?.dueDate).toBeNull();
+    const events = outbox.all();
+    expect(events).toHaveLength(1);
+    expect(events[0]?.eventType).toBe('CASE_RESOLVED');
+    expect(events[0]?.aggregateType).toBe('cases');
+    expect(events[0]?.aggregateId).toBe(oid('case-1'));
+    expect(events[0]?.status).toBe('PENDING');
+    expect(events[0]?.payload).toMatchObject({ case_id: oid('case-1'), closure_type: 'RESOLVED' });
   });
 
   it('rejects resolving straight from OPEN with INVALID_TRANSITION (review gate)', async () => {
@@ -124,6 +147,17 @@ describe('createArchiveCaseUseCase', () => {
     const rows = await resolutions.listByCaseId(createCaseId(oid('case-1')));
     expect(rows.map((r) => r.closureType)).toEqual(['RESOLVED', 'ARCHIVED']);
     expect(auditRecorder.all().map((a) => a.action)).toEqual(['RESOLVE_CASE', 'ARCHIVE_CASE']);
+  });
+
+  it('does NOT emit an outbox event on archive (only resolve does)', async () => {
+    const { cases, outbox, resolveCase, archiveCase } = build();
+    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
+    await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legit' });
+    await archiveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'filed' });
+
+    // exactly one — from resolve, not archive
+    expect(outbox.all()).toHaveLength(1);
+    expect(outbox.all()[0]?.eventType).toBe('CASE_RESOLVED');
   });
 
   it('rejects archiving an OPEN case with INVALID_TRANSITION', async () => {

@@ -21,6 +21,8 @@ import { createListCaseNotesUseCase } from '../../../../src/modules/case-managem
 import { InMemoryResolutionRepository } from '../../../helpers/case-management/InMemoryResolutionRepository.js';
 import { generateResolutionId } from '../../../../src/modules/case-management/domain/model/value-objects/ResolutionId.js';
 import { createResolveCaseUseCase } from '../../../../src/modules/case-management/application/ResolveCase.js';
+import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
+import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
 import { createArchiveCaseUseCase } from '../../../../src/modules/case-management/application/ArchiveCase.js';
 import { createStartReviewUseCase } from '../../../../src/modules/case-management/application/StartReview.js';
 import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InMemoryCaseNoteRepository.js';
@@ -129,7 +131,9 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
     getCaseTimeline: createGetCaseTimelineUseCase({ cases, timelineReader: timelineRecorder }),
     addCaseNote: createAddCaseNoteUseCase({ cases, notes: caseNotes, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateCaseNoteId, generateTimelineEventId }),
     listCaseNotes: createListCaseNotesUseCase({ cases, notes: caseNotes }),
-    resolveCase: createResolveCaseUseCase({ cases, resolutions, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
+    resolveCase: createResolveCaseUseCase({
+      outbox: new InMemoryOutboxEventRepository(),
+      generateOutboxEventId, cases, resolutions, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
     archiveCase: createArchiveCaseUseCase({ cases, resolutions, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
     startReview: createStartReviewUseCase({ cases, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateTimelineEventId }),
     bulkCaseAction: createBulkCaseActionUseCase({
