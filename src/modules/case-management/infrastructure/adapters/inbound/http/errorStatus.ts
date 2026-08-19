@@ -11,4 +11,6 @@ export const caseManagementErrorStatus: StatusByCode = {
   FORBIDDEN_CROSS_TENANT: 403,
   ORGANIZATION_FRAUD_CONFIG_NOT_FOUND: 404,
   CASE_NOT_FOUND: 404,
+  // 422 y no 404: el caso existe, lo que no es válido es el destinatario.
+  ASSIGNEE_NOT_FOUND: 422,
 };

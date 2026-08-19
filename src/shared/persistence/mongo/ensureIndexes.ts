@@ -231,6 +231,44 @@ export async function ensureIndexes(db: Db): Promise<void> {
 
   await db.collection('CaseSlaTracking').createIndex({ Status: 1 }, { name: 'sla_tracking_status_idx' });
 
+  // La bandeja se lee siempre por (organizacion, destinatario) y ordenada por
+  // fecha descendente; el indice cubre la consulta y el contador de no leidos.
+  await db
+    .collection('Notifications')
+    .createIndex(
+      { OrganizationId: 1, RecipientUserId: 1, CreatedAtDate: -1 },
+      { name: 'notification_recipient_created_idx' },
+    );
+
+  await db
+    .collection('Notifications')
+    .createIndex(
+      { OrganizationId: 1, RecipientUserId: 1, ReadAt: 1 },
+      { name: 'notification_recipient_unread_idx' },
+    );
+
+  // El publicador solo mira los PENDING, y por orden de llegada.
+  await db
+    .collection('OutboxEvents')
+    .createIndex({ Status: 1, _id: 1 }, { name: 'outbox_status_order_idx' });
+
+  // CASE-002: el evaluador pide las reglas ACTIVE de un inquilino ordenadas por
+  // `EvaluationOrder`, y lo hace en la ruta critica de cada alta de caso. El
+  // indice cubre esa consulta entera —filtro y orden— para que enrutar no
+  // dependa de recorrer la coleccion.
+  await db
+    .collection('CaseRoutingRules')
+    .createIndex(
+      { OrganizationId: 1, Status: 1, EvaluationOrder: 1 },
+      { name: 'routing_rule_org_status_order_idx' },
+    );
+
+  // El nombre identifica la regla para quien la configura: dos reglas
+  // homonimas en el mismo inquilino hacen imposible saber cual se edito.
+  await db
+    .collection('CaseRoutingRules')
+    .createIndex({ OrganizationId: 1, Name: 1 }, { unique: true, name: 'routing_rule_name_unique' });
+
   // `OutboxEvents` (transactional outbox events for webhook ingestion & messaging).
   await db
     .collection('OutboxEvents')

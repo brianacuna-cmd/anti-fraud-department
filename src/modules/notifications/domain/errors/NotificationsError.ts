@@ -36,3 +36,7 @@ export function unknownAlertType(value: string): NotificationsError {
 export function unknownChannel(value: string): NotificationsError {
   return new NotificationsError('UNKNOWN_CHANNEL', `unknown notification channel "${value}"`, { value });
 }
+
+export function notificationNotFound(id: string): NotificationsError {
+  return new NotificationsError('NOTIFICATION_NOT_FOUND', 'La notificacion no existe', { id });
+}

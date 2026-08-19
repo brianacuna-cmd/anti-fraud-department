@@ -12,6 +12,10 @@ import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemor
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
+import { createInitializeCaseSlaService } from '../../../../src/modules/case-management/application/InitializeCaseSla.js';
+import { InMemoryCaseSlaTrackingRepository } from '../../../helpers/case-management/InMemoryCaseSlaTrackingRepository.js';
+import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
+import { generateCaseSlaTrackingId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
 import { generateCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 
@@ -38,6 +42,11 @@ function buildApp(actorPerRequest: () => AuthContext) {
       generateCaseId,
       generateTimelineEventId,
       auditRecorder,
+      initializeCaseSla: createInitializeCaseSlaService({
+        slaTracking: new InMemoryCaseSlaTrackingRepository(),
+        fraudConfig: new InMemoryOrganizationFraudConfigRepository(),
+        generateCaseSlaTrackingId,
+      }),
     }),
     listCases: createListCasesUseCase({ cases }),
     getCase: createGetCaseUseCase({ cases }),
@@ -85,9 +94,15 @@ describe('caseRouter (e2e, in-memory repository)', () => {
       priority: 'HIGH',
       status: 'OPEN',
       assignedTo: null,
-      dueDate: null,
     });
     expect(typeof response.body.id).toBe('string');
+
+    // CASE-003: sin config de tenant se aplica la ventana por defecto, y HIGH
+    // son 60 minutos. Antes este campo llegaba en `null` y el reloj de SLA no
+    // arrancaba nunca.
+    const dueDate = new Date(response.body.dueDate).getTime();
+    const createdAt = new Date(response.body.createdAt).getTime();
+    expect(dueDate - createdAt).toBe(60 * 60_000);
   });
 
   it('POST /cases defaults priority to LOW when omitted', async () => {
@@ -132,8 +147,11 @@ describe('caseRouter (e2e, in-memory repository)', () => {
 
     await request(app).post('/api/v1/cases').send({ customerId: 'customer-1', riskScore: 10 });
 
-    expect(timelineRecorder.all()).toHaveLength(1);
-    expect(timelineRecorder.all()[0]?.eventType).toBe('CASE_CREATED');
+    // CASE-003: la apertura escribe dos asientos — el caso y el arranque del reloj.
+    expect(timelineRecorder.all().map((event) => event.eventType).sort()).toEqual([
+      'CASE_CREATED',
+      'SLA_INITIALIZED',
+    ]);
     expect(auditRecorder.all()).toHaveLength(1);
     expect(auditRecorder.all()[0]?.action).toBe('CREATE_CASE');
     expect(auditRecorder.all()[0]?.resource).toBe('case');

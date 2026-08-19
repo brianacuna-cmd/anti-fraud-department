@@ -16,7 +16,7 @@ import { requireTenantContext } from './requireTenantContext.js';
  *   `ANALYST` works cases, not people, and only ever sees `/users/me`.
  */
 export const USER_MANAGE_ROLES: readonly string[] = ['ADMIN'];
-export const USER_READ_ROLES: readonly string[] = ['ADMIN', 'SUPERVISOR', 'AUDITOR'];
+export const USER_READ_ROLES: readonly string[] = ['ADMIN', 'SUPERVISOR', 'ANALYST', 'AUDITOR'];
 
 /**
  * Resolves the ACTING user's role from persistence and enforces the given

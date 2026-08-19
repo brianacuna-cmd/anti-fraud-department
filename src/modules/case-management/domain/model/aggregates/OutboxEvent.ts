@@ -83,4 +83,21 @@ export class OutboxEvent {
   toProps(): OutboxEventProps {
     return this.props;
   }
+
+  /**
+   * El evento salio. `publishedAt` guarda cuando, y `error` se limpia: un
+   * reintento con exito no debe dejar el motivo del fallo anterior colgando,
+   * porque quien lo lea despues no sabria si el estado actual es bueno o malo.
+   */
+  markPublished(now: Instant): OutboxEvent {
+    return new OutboxEvent({ ...this.props, status: 'PUBLISHED', publishedAt: now, error: null });
+  }
+
+  /**
+   * El intento fallo. Se conserva el motivo y NO se toca `publishedAt`, que
+   * sigue siendo null: un evento fallido nunca llego a publicarse.
+   */
+  markFailed(reason: string): OutboxEvent {
+    return new OutboxEvent({ ...this.props, status: 'FAILED', error: reason });
+  }
 }

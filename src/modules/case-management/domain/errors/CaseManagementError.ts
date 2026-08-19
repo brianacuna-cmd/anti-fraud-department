@@ -53,3 +53,15 @@ export function caseNotFound(caseId: string): CaseManagementError {
     { caseId },
   );
 }
+
+/**
+ * El destinatario de la asignación no existe o no pertenece a la organización.
+ * Asignar a un id inexistente dejaba el caso sin dueño real.
+ */
+export function assigneeNotFound(type: string, id: string): CaseManagementError {
+  return new CaseManagementError(
+    'ASSIGNEE_NOT_FOUND',
+    `assignee ${type} "${id}" does not exist in this organization`,
+    { type, id },
+  );
+}

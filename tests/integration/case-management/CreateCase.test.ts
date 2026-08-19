@@ -15,6 +15,10 @@ import type { AuditEvent, AuditRecorder } from '../../../src/modules/case-manage
 import type { Transaction } from '../../../src/modules/case-management/domain/ports/UnitOfWork.js';
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
 import { createAuthContext } from '../../../src/shared/kernel/AuthContext.js';
+import { createInitializeCaseSlaService } from '../../../src/modules/case-management/application/InitializeCaseSla.js';
+import { MongoCaseSlaTrackingRepository } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseSlaTrackingRepository.js';
+import { MongoOrganizationFraudConfigRepository } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoOrganizationFraudConfigRepository.js';
+import { generateCaseSlaTrackingId } from '../../../src/modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
 import { generateCaseId } from '../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from '../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 
@@ -77,6 +81,11 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
       generateCaseId,
       generateTimelineEventId,
       auditRecorder,
+      initializeCaseSla: createInitializeCaseSlaService({
+        slaTracking: new MongoCaseSlaTrackingRepository(db),
+        fraudConfig: new MongoOrganizationFraudConfigRepository(db),
+        generateCaseSlaTrackingId,
+      }),
     });
   }
 
@@ -93,8 +102,9 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
     expect(persisted?.organizationId).toBe('org-1');
 
     const timelineRows = await db.collection('CaseTimeline').find({ CaseId: new ObjectId(kase.id) }).toArray();
-    expect(timelineRows).toHaveLength(1);
-    expect(timelineRows[0]?.EventType).toBe('CASE_CREATED');
+    // CASE-003 añadió un segundo asiento: la apertura y el arranque del reloj
+    // de SLA son dos hechos distintos y el analista tiene que ver ambos.
+    expect(timelineRows.map((row) => row.EventType).sort()).toEqual(['CASE_CREATED', 'SLA_INITIALIZED']);
 
     const auditRows = await db.collection('AuditLogs').find({}).toArray();
     expect(auditRows).toHaveLength(1);

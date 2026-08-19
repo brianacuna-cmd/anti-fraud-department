@@ -3,15 +3,54 @@
  * emission (design "Cross-module seams: Audit reuse"). Plain unions, NOT
  * branded — mirrors `IdentityAccessAuditAction`/`IdentityAccessAuditResource`.
  *
- * Only Slice 5's action (`CREATE_CASE`) is wired to a real use case yet;
- * the remaining actions are declared now (design's fixed list) so later
- * slices (6-13) don't need to touch this file again.
+ * Grouped by the subsystem that emits each action. The list stays closed on
+ * purpose: `audit_logs` is the record a regulator reads, and an open string
+ * would let each call site invent its own verb for the same operation, which
+ * makes the log impossible to query after the fact.
  */
 export type CaseManagementAuditAction =
+  // --- Case lifecycle ---
   | 'CREATE_CASE'
+  | 'CASE_INGESTED_WEBHOOK'
   | 'UPDATE_SCORE'
-  | 'RESOLVE_CASE'
+  | 'RECLASSIFY_CASE'
   | 'REASSIGN_CASE'
-  | 'REOPEN_CASE';
+  | 'ROUTE_CASE'
+  | 'RESOLVE_CASE'
+  | 'REOPEN_CASE'
+  | 'BULK_UPDATE_CASES'
+  | 'EXPORT_CASES'
+  // --- Investigation ---
+  | 'ADD_NOTE'
+  | 'DELETE_NOTE'
+  | 'UPLOAD_EVIDENCE'
+  | 'SCAN_EVIDENCE'
+  | 'TIMESTAMP_EVIDENCE'
+  | 'DOWNLOAD_EVIDENCE'
+  | 'DELETE_EVIDENCE'
+  | 'RECORD_DECISION'
+  | 'GENERATE_REPORT'
+  | 'CREATE_INVESTIGATION'
+  | 'UPDATE_INVESTIGATION'
+  | 'LINK_CASES'
+  // --- Enforcement and approvals ---
+  | 'REQUEST_ENFORCEMENT'
+  | 'REVIEW_APPROVAL'
+  | 'EXECUTE_ENFORCEMENT'
+  | 'REVERT_ENFORCEMENT'
+  // --- Customer disputes ---
+  | 'CREATE_DISPUTE'
+  | 'RESOLVE_DISPUTE';
 
-export type CaseManagementAuditResource = 'case' | 'entity' | 'user' | 'rule';
+export type CaseManagementAuditResource =
+  | 'case'
+  | 'entity'
+  | 'user'
+  | 'rule'
+  | 'note'
+  | 'evidence'
+  | 'investigation'
+  | 'enforcement_action'
+  | 'approval_request'
+  | 'dispute'
+  | 'report';

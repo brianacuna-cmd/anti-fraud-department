@@ -15,6 +15,10 @@ import { createCaseManagementAuditRecorderAdapter } from '../../../src/compositi
 import { createIngestFinturuCaseUseCase } from '../../../src/modules/case-management/application/IngestFinturuCase.js';
 import { decryptFinturuPayload } from '../../../src/modules/case-management/infrastructure/adapters/inbound/http/FinturuPayloadDecryptor.js';
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
+import { createInitializeCaseSlaService } from '../../../src/modules/case-management/application/InitializeCaseSla.js';
+import { MongoCaseSlaTrackingRepository } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseSlaTrackingRepository.js';
+import { MongoOrganizationFraudConfigRepository } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoOrganizationFraudConfigRepository.js';
+import { generateCaseSlaTrackingId } from '../../../src/modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
 import { generateCaseId } from '../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from '../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 
@@ -63,6 +67,11 @@ describe('IngestFinturuCase (integration)', () => {
       generateCaseId,
       generateTimelineEventId,
       auditRecorder,
+      initializeCaseSla: createInitializeCaseSlaService({
+        slaTracking: new MongoCaseSlaTrackingRepository(db),
+        fraudConfig: new MongoOrganizationFraudConfigRepository(db),
+        generateCaseSlaTrackingId,
+      }),
     });
 
     const samplePayload = {
@@ -174,6 +183,11 @@ describe('IngestFinturuCase (integration)', () => {
       generateCaseId,
       generateTimelineEventId,
       auditRecorder,
+      initializeCaseSla: createInitializeCaseSlaService({
+        slaTracking: new MongoCaseSlaTrackingRepository(db),
+        fraudConfig: new MongoOrganizationFraudConfigRepository(db),
+        generateCaseSlaTrackingId,
+      }),
     });
 
     const result = await ingest({ rawPayload: decrypted });

@@ -6,6 +6,7 @@ import type { Db } from 'mongodb';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
 import type { createBeginUserLoginUseCase } from '../../../../application/auth/BeginUserLogin.js';
 import type { createIssueSessionUseCase } from '../../../../application/auth/IssueSession.js';
+import type { createAuthenticateActorUseCase } from '../../../../application/auth/AuthenticateActor.js';
 import type { createIssueOrganizationSessionUseCase } from '../../../../application/auth/IssueOrganizationSession.js';
 import type { createLogoutUseCase } from '../../../../application/auth/Logout.js';
 import type { createRequestPasswordResetUseCase } from '../../../../application/auth/RequestPasswordReset.js';
@@ -38,6 +39,8 @@ export interface AuthRouterDeps {
    * no MFA branch, unlike the USER tier's two-step flow.
    */
   readonly issueOrganizationSession: ReturnType<typeof createIssueOrganizationSessionUseCase>;
+  /** Verificación de credenciales de ORGANIZATION para el paso 1 del login. */
+  readonly authenticateOrganization?: ReturnType<typeof createAuthenticateActorUseCase>;
   /** Step 2, challenge path (design "IssueSession flow"). */
   readonly issueSession: ReturnType<typeof createIssueSessionUseCase>;
   readonly logout: ReturnType<typeof createLogoutUseCase>;
@@ -97,10 +100,44 @@ export function authRouter(deps: AuthRouterDeps): Router {
   });
 
   // Organization 3-step 2FA pending state & enrolled TOTP secrets
-  const pendingOrgLogins = new Map<string, { email: string; password: string; otp: string; challengeToken: string; totpSecret?: string }>();
+  /**
+   * El OTP caduca y admite un número acotado de intentos. Sin lo primero un
+   * código seguía siendo válido indefinidamente; sin lo segundo, seis dígitos
+   * son forzables probando. Al agotarse los intentos se descarta el pendiente
+   * entero, así que hay que volver a autenticarse desde el paso 1.
+   */
+  const ORG_OTP_TTL_MS = 10 * 60 * 1000;
+  const ORG_OTP_MAX_ATTEMPTS = 5;
+
+  const pendingOrgLogins = new Map<
+    string,
+    {
+      email: string;
+      password: string;
+      otp: string;
+      challengeToken: string;
+      totpSecret?: string;
+      expiresAt: number;
+      attempts: number;
+    }
+  >();
 
   router.post('/auth/organizations/login', async (req, res) => {
     const body = parseRequest(organizationsLoginSchema, req.body);
+
+    // La contraseña se verifica AQUÍ, antes de nada. Antes solo se guardaba y
+    // no se comprobaba hasta el paso 3, así que una credencial inválida
+    // avanzaba a la pantalla de OTP y disparaba un correo: el rechazo llegaba
+    // dos pasos tarde y cualquiera podía provocar envíos a esa dirección.
+    // Lanza `invalidCredentials` (401), igual que el login de usuario.
+    if (deps.authenticateOrganization) {
+      await deps.authenticateOrganization({
+        email: body.email,
+        password: body.password,
+        ipAddress: req.ip ?? null,
+      });
+    }
+
     // Step 1: Generate OTP for email step
     const otp = String(Math.floor(100000 + Math.random() * 900000));
     const challengeToken = 'org_chal_' + randomUUID();
@@ -110,6 +147,8 @@ export function authRouter(deps: AuthRouterDeps): Router {
       password: body.password,
       otp,
       challengeToken,
+      expiresAt: Date.now() + ORG_OTP_TTL_MS,
+      attempts: 0,
     });
 
     if (deps.emailSender) {
@@ -134,7 +173,17 @@ export function authRouter(deps: AuthRouterDeps): Router {
     const emailKey = body.email.toLowerCase();
     const pending = pendingOrgLogins.get(emailKey);
 
-    if (!pending || pending.otp !== body.otp) {
+    if (!pending || pending.expiresAt < Date.now()) {
+      if (pending) pendingOrgLogins.delete(emailKey);
+      res.status(401).json({ message: 'Código OTP de Email incorrecto o expirado' });
+      return;
+    }
+
+    if (pending.otp !== body.otp) {
+      pending.attempts += 1;
+      // Agotados los intentos se invalida el pendiente: si no, cada 401 dejaba
+      // el mismo código vivo para el siguiente intento, sin coste alguno.
+      if (pending.attempts >= ORG_OTP_MAX_ATTEMPTS) pendingOrgLogins.delete(emailKey);
       res.status(401).json({ message: 'Código OTP de Email incorrecto o expirado' });
       return;
     }
@@ -179,10 +228,9 @@ export function authRouter(deps: AuthRouterDeps): Router {
   });
 
   router.post('/auth/organizations/mfa', async (req, res) => {
-    console.log('[auth/organizations/mfa] POST /auth/organizations/mfa inicio, deps.db:', !!deps.db);
     const body = parseRequest(organizationsMfaSchema, req.body);
     let matchedEmail: string | null = null;
-    let matchedCreds: { email: string; password: string; totpSecret?: string } | null = null;
+    let matchedCreds: { email: string; password: string; totpSecret?: string; expiresAt: number } | null = null;
 
     for (const [emailKey, pending] of pendingOrgLogins.entries()) {
       if (pending.challengeToken === body.challengeToken) {
@@ -191,9 +239,9 @@ export function authRouter(deps: AuthRouterDeps): Router {
         break;
       }
     }
-    console.log('[auth/organizations/mfa] matched:', { matchedEmail, hasTotpSecret: !!matchedCreds?.totpSecret });
 
-    if (!matchedCreds || !matchedEmail || !matchedCreds.totpSecret) {
+    if (!matchedCreds || !matchedEmail || !matchedCreds.totpSecret || matchedCreds.expiresAt < Date.now()) {
+      if (matchedEmail) pendingOrgLogins.delete(matchedEmail);
       res.status(401).json({ message: 'Challenge de Organización inválido o expirado' });
       return;
     }
@@ -208,14 +256,13 @@ export function authRouter(deps: AuthRouterDeps): Router {
     // Save TOTP secret in MongoDB collection Organizations and Users
     if (deps.db) {
       const pattern = `^${matchedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
-      const result = await deps.db.collection('Organizations').updateOne(
+      await deps.db.collection('Organizations').updateOne(
         { Email: { $regex: pattern, $options: 'i' } },
         { $set: { MfaSecret: matchedCreds.totpSecret, UpdatedAt: new Date().toISOString() } }
       );
-      console.log('[auth/organizations/mfa] updateOne Organizations:', { matchedEmail, pattern, matched: result.matchedCount, modified: result.modifiedCount });
 
       // Synchronize in Users collection so admin user document also shows MFA active
-      const userResult = await deps.db.collection('Users').updateMany(
+      await deps.db.collection('Users').updateMany(
         { Email: { $regex: pattern, $options: 'i' } },
         {
           $set: {
@@ -225,7 +272,6 @@ export function authRouter(deps: AuthRouterDeps): Router {
           },
         }
       );
-      console.log('[auth/organizations/mfa] updateMany Users:', { matchedEmail, matched: userResult.matchedCount, modified: userResult.modifiedCount });
     }
 
     pendingOrgLogins.delete(matchedEmail);

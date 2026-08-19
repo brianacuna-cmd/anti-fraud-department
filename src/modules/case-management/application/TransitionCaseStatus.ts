@@ -7,6 +7,7 @@ import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
 import type { Case } from '../domain/model/aggregates/Case.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
+import { createAssignedTo } from '../domain/model/value-objects/AssignedTo.js';
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { createCaseStatus } from '../domain/model/value-objects/CaseStatus.js';
 import { caseNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
@@ -29,7 +30,6 @@ export interface TransitionCaseStatusDeps {
 
 export function createTransitionCaseStatusUseCase(deps: TransitionCaseStatusDeps) {
   return async function transitionCaseStatus(input: TransitionCaseStatusInput): Promise<Case> {
-    const organizationId = requireTenantContext(input.auth);
     const caseId = createCaseId(input.caseId);
     const nextStatus = createCaseStatus(input.nextStatus);
     const now = deps.clock.now();
@@ -43,8 +43,19 @@ export function createTransitionCaseStatusUseCase(deps: TransitionCaseStatusDeps
         throw forbiddenCrossTenant();
       }
 
+      const organizationId = input.auth.organizationId ?? kase.organizationId;
+      const actorId = input.auth.userId ?? input.auth.organizationId ?? 'PLATFORM_ADMIN';
+
       const previousStatus = kase.status;
-      const updatedCase = kase.transitionTo(nextStatus, now);
+      let updatedCase = kase.transitionTo(nextStatus, now);
+
+      let autoAssigned = false;
+      if (nextStatus === 'IN_REVIEW' && kase.assignedTo === null && input.auth.userId) {
+        const newAssignedTo = createAssignedTo('USER', input.auth.userId);
+        updatedCase = updatedCase.reassign(newAssignedTo, now);
+        autoAssigned = true;
+      }
+
       await deps.cases.save(updatedCase, tx);
 
       const timelineEvent = CaseTimelineEvent.create({
@@ -53,16 +64,29 @@ export function createTransitionCaseStatusUseCase(deps: TransitionCaseStatusDeps
         eventType: 'STATE_CHANGED',
         previousValue: previousStatus,
         newValue: nextStatus,
-        createdBy: input.auth.userId,
+        createdBy: actorId,
         createdAt: now,
       });
       await deps.timelineRecorder.record(timelineEvent, tx);
+
+      if (autoAssigned && input.auth.userId) {
+        const assignEvent = CaseTimelineEvent.create({
+          id: deps.generateTimelineEventId(),
+          caseId: updatedCase.id,
+          eventType: 'ASSIGNED',
+          previousValue: null,
+          newValue: `USER:${input.auth.userId}`,
+          createdBy: actorId,
+          createdAt: now,
+        });
+        await deps.timelineRecorder.record(assignEvent, tx);
+      }
 
       await deps.auditRecorder.record(
         {
           organizationId,
           actorType: input.auth.actorType,
-          actorId: input.auth.userId,
+          actorId,
           action: nextStatus === 'RESOLVED' ? 'RESOLVE_CASE' : 'CREATE_CASE',
           resource: 'case',
           resourceId: updatedCase.id,

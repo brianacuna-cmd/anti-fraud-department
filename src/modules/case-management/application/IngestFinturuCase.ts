@@ -1,8 +1,11 @@
 import type { Clock } from '../../../shared/time/Clock.js';
+import { ACTIVE_CASE_STATUSES } from '../domain/ports/CaseRepository.js';
 import type { CaseRepository } from '../domain/ports/CaseRepository.js';
 import type { TimelineRecorder } from '../domain/ports/TimelineRecorder.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
+import type { InitializeCaseSlaService } from './InitializeCaseSla.js';
+import type { RouteCaseService } from './RouteCase.js';
 import type { OutboxRepository } from '../domain/ports/OutboxRepository.js';
 import type { CaseId } from '../domain/model/value-objects/CaseId.js';
 import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
@@ -29,6 +32,9 @@ export interface IngestFinturuCaseDeps {
   readonly generateCaseId: () => CaseId;
   readonly generateTimelineEventId: () => TimelineEventId;
   readonly auditRecorder: AuditRecorder;
+  readonly initializeCaseSla: InitializeCaseSlaService;
+  /** Opcional: sin el, el caso nace sin asignar (bandeja general). */
+  readonly routeCase?: RouteCaseService;
 }
 
 export interface IngestFinturuCaseResult {
@@ -137,7 +143,19 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
 
     return deps.unitOfWork.withTransaction(async (tx) => {
       // 0. Check if a case already exists for this customer or bridge user
-      const existingCase = await deps.cases.findByCustomerOrBridgeId(organizationId, customerId, bridgeUserId, tx);
+      // CASE-011: solo un expediente ACTIVO deduplica. Antes la búsqueda no
+      // miraba el estado, así que un caso ya RESOLVED o ARCHIVED absorbía la
+      // reincidencia: el cliente volvía a ser reportado y, en vez de abrirse un
+      // expediente nuevo, se sobrescribía el snapshot del que ya estaba cerrado.
+      const existingCase = await deps.cases.findByCustomerOrBridgeId(
+        {
+          organizationId,
+          customerId,
+          bridgeUserId,
+          statuses: ACTIVE_CASE_STATUSES,
+        },
+        tx,
+      );
 
       if (existingCase) {
         const updatedCase = existingCase.updateFinturuSnapshot({
@@ -151,17 +169,102 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
           now,
         });
 
-        await deps.cases.save(updatedCase, tx);
+        // CASE-007: la fecha límite depende de la prioridad, así que una
+        // reincidencia que sube el riesgo tiene que acortar el reloj. Si la
+        // prioridad no se movió, se deja el `dueDate` original: reiniciarlo en
+        // cada refresco de snapshot regalaría tiempo indefinidamente y el SLA
+        // dejaría de significar nada.
+        let recomputed = updatedCase;
+        if (updatedCase.priority !== existingCase.priority) {
+          const dueDate = await deps.initializeCaseSla({
+            organizationId,
+            caseId: updatedCase.id,
+            priority: updatedCase.priority,
+            now,
+            tx,
+          });
+          recomputed = updatedCase.withDueDate(dueDate, now);
+        }
+
+        await deps.cases.save(recomputed, tx);
+
+        // El hito en la línea de tiempo es parte del contrato de CASE-011: sin
+        // él, una reincidencia sobre un expediente abierto se absorbía en
+        // silencio y el analista no tenía forma de saber que Finturu había
+        // vuelto a reportar al mismo cliente.
+        if (input.recordTimeline !== false) {
+          const resnapshotEvent = CaseTimelineEvent.create({
+            id: deps.generateTimelineEventId(),
+            caseId: recomputed.id,
+            eventType: 'SNAPSHOT_REFRESHED',
+            previousValue: existingCase.riskScore.toString(),
+            newValue: recomputed.riskScore.toString(),
+            createdBy: 'SYSTEM_WEBHOOK',
+            createdAt: now,
+          });
+          await deps.timelineRecorder.record(resnapshotEvent, tx);
+        }
+
+        const updateOutboxEventId = deps.generateTimelineEventId();
+        await deps.outbox.record(
+          OutboxEvent.create({
+            id: updateOutboxEventId,
+            aggregateType: 'case',
+            aggregateId: recomputed.id,
+            eventType: 'case.snapshot_refreshed',
+            payload: {
+              caseId: recomputed.id,
+              organizationId,
+              customerId: recomputed.customerId,
+              riskScore: recomputed.riskScore,
+              priority: recomputed.priority,
+            },
+            now,
+          }),
+          tx,
+        );
 
         return {
-          case: updatedCase,
-          outboxEventId: `outbox_update_${Date.now()}`,
+          case: recomputed,
+          outboxEventId: updateOutboxEventId,
         };
       }
 
       // 1. Create Case Aggregate with snapshot
+      const caseId = deps.generateCaseId();
+
+      const dueDate = await deps.initializeCaseSla({
+        organizationId,
+        caseId,
+        priority,
+        now,
+        tx,
+      });
+
+      // CASE-002: el enrutamiento importa mas por esta via que por la manual.
+      // Un caso que entra por webhook no tiene a nadie delante para asignarlo,
+      // asi que sin regla se queda en la bandeja general hasta que alguien mire.
+      const tags = Array.isArray(raw.tags)
+        ? (raw.tags.filter((t) => typeof t === 'string') as string[])
+        : ['WEBHOOK_INTAKE', 'FINTURU'];
+
+      const routed = deps.routeCase
+        ? await deps.routeCase({
+            organizationId,
+            kase: {
+              riskScore,
+              priority,
+              tags,
+              customerEmail,
+              stripeCustomerId,
+              bridgeWallet,
+            },
+            tx,
+          })
+        : null;
+
       const kase = Case.create({
-        id: deps.generateCaseId(),
+        id: caseId,
         organizationId,
         customerId,
         customerEmail,
@@ -172,9 +275,10 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
         finturuCacheSnapshot: raw,
         riskScore,
         priority,
-        tags: Array.isArray(raw.tags) ? (raw.tags.filter((t) => typeof t === 'string') as string[]) : ['WEBHOOK_INTAKE', 'FINTURU'],
+        assignedTo: routed?.assignedTo ?? null,
+        tags,
         now,
-      });
+      }).withDueDate(dueDate, now);
 
       await deps.cases.save(kase, tx);
 
@@ -190,6 +294,21 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
           createdAt: now,
         });
         await deps.timelineRecorder.record(timelineEvent, tx);
+
+        if (routed?.assignedTo) {
+          await deps.timelineRecorder.record(
+            CaseTimelineEvent.create({
+              id: deps.generateTimelineEventId(),
+              caseId: kase.id,
+              eventType: 'ROUTED',
+              previousValue: routed.ruleName,
+              newValue: `${routed.assignedTo.type}:${routed.assignedTo.id}`,
+              createdBy: 'SYSTEM_WEBHOOK',
+              createdAt: now,
+            }),
+            tx,
+          );
+        }
       }
 
       // 3. Record Audit Log

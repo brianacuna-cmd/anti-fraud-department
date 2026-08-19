@@ -4,6 +4,8 @@ import type { CaseRepository } from '../domain/ports/CaseRepository.js';
 import type { TimelineRecorder } from '../domain/ports/TimelineRecorder.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
+import type { InitializeCaseSlaService } from './InitializeCaseSla.js';
+import type { RouteCaseService } from './RouteCase.js';
 import type { CaseId } from '../domain/model/value-objects/CaseId.js';
 import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
 import { Case } from '../domain/model/aggregates/Case.js';
@@ -32,6 +34,9 @@ export interface CreateCaseDeps {
   readonly generateCaseId: () => CaseId;
   readonly generateTimelineEventId: () => TimelineEventId;
   readonly auditRecorder: AuditRecorder;
+  readonly initializeCaseSla: InitializeCaseSlaService;
+  /** Opcional: sin el, el caso nace sin asignar (bandeja general). */
+  readonly routeCase?: RouteCaseService;
 }
 
 /**
@@ -42,13 +47,16 @@ export interface CreateCaseDeps {
  * appends a `CASE_CREATED` `CaseTimeline` entry, and records a
  * `CREATE_CASE` audit row.
  *
- * TODO(slice 9 — T1 auto-routing): once `RouteCase` exists, invoke it here
- * (still inside this same transaction) to resolve `AssignedTo` from the
- * org's ACTIVE ZEN routing rule.
- * TODO(slice 6 — T2 SLA calculation): once `CalculateSla` exists, invoke it
- * here (still inside this same transaction) to create `CaseSlaTracking`
- * and denormalize `Case.DueDate`. Until then, every case created by this
- * use case has `dueDate: null`.
+ * CASE-003 runs in the same transaction: `initializeCaseSla` writes the
+ * `CaseSlaTracking` row and returns the deadline, which is denormalized onto
+ * `Case.DueDate` before the single `save`. Doing it before the save keeps
+ * this to one write per aggregate rather than an insert followed by an
+ * update.
+ *
+ * CASE-002 tambien corre aqui dentro: `routeCase` resuelve el responsable
+ * contra las reglas activas del inquilino ANTES de construir el agregado, de
+ * modo que el expediente nace ya asignado en vez de aparecer un instante en la
+ * bandeja general y moverse despues.
  */
 export function createCreateCaseUseCase(deps: CreateCaseDeps) {
   return async function createCase(input: CreateCaseInput): Promise<Case> {
@@ -56,8 +64,34 @@ export function createCreateCaseUseCase(deps: CreateCaseDeps) {
     const now = deps.clock.now();
 
     return deps.unitOfWork.withTransaction(async (tx) => {
+      const caseId = deps.generateCaseId();
+      const priority = createCasePriority(input.priority ?? 'LOW');
+
+      const dueDate = await deps.initializeCaseSla({
+        organizationId,
+        caseId,
+        priority,
+        now,
+        tx,
+      });
+
+      const routed = deps.routeCase
+        ? await deps.routeCase({
+            organizationId,
+            kase: {
+              riskScore: createRiskScore(input.riskScore),
+              priority,
+              tags: input.tags ?? [],
+              customerEmail: input.customerEmail,
+              stripeCustomerId: input.stripeCustomerId,
+              bridgeWallet: input.bridgeWallet,
+            },
+            tx,
+          })
+        : null;
+
       const kase = Case.create({
-        id: deps.generateCaseId(),
+        id: caseId,
         organizationId,
         customerId: input.customerId,
         customerEmail: input.customerEmail,
@@ -65,10 +99,11 @@ export function createCreateCaseUseCase(deps: CreateCaseDeps) {
         bridgeWallet: input.bridgeWallet,
         stripeCustomerId: input.stripeCustomerId,
         riskScore: createRiskScore(input.riskScore),
-        priority: createCasePriority(input.priority ?? 'LOW'),
+        priority,
+        assignedTo: routed?.assignedTo ?? null,
         tags: input.tags,
         now,
-      });
+      }).withDueDate(dueDate, now);
 
       await deps.cases.save(kase, tx);
 
@@ -97,8 +132,31 @@ export function createCreateCaseUseCase(deps: CreateCaseDeps) {
         tx,
       );
 
-      // TODO(slice 9): RouteCase(kase, tx) here.
-      // TODO(slice 6): CalculateSla(kase, tx) here.
+      const slaEvent = CaseTimelineEvent.create({
+        id: deps.generateTimelineEventId(),
+        caseId: kase.id,
+        eventType: 'SLA_INITIALIZED',
+        previousValue: null,
+        newValue: dueDate,
+        createdBy: input.auth.userId,
+        createdAt: now,
+      });
+      await deps.timelineRecorder.record(slaEvent, tx);
+
+      if (routed?.assignedTo) {
+        await deps.timelineRecorder.record(
+          CaseTimelineEvent.create({
+            id: deps.generateTimelineEventId(),
+            caseId: kase.id,
+            eventType: 'ROUTED',
+            previousValue: routed.ruleName,
+            newValue: `${routed.assignedTo.type}:${routed.assignedTo.id}`,
+            createdBy: input.auth.userId,
+            createdAt: now,
+          }),
+          tx,
+        );
+      }
 
       return kase;
     });

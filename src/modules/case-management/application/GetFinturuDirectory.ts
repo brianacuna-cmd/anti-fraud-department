@@ -64,7 +64,7 @@ export function createGetFinturuDirectoryUseCase(deps: GetFinturuDirectoryDeps) 
 
     const [page, existingCasesPage] = await Promise.all([
       deps.directory.page({ limit, offset, search: input.search }),
-      deps.cases.list(orgId, 5000),
+      deps.cases.list({ organizationId: orgId, limit: 5000 }),
     ]);
 
     const caseByCustomerKey = new Map<string, { id: string; status: string }>();

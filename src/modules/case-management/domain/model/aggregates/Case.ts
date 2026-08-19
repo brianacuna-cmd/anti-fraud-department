@@ -41,6 +41,7 @@ export interface CreateCaseInput {
   readonly finturuCacheSnapshot?: Record<string, unknown> | null;
   readonly riskScore: RiskScore;
   readonly priority: CasePriority;
+  readonly assignedTo?: AssignedTo | null;
   readonly tags?: readonly string[];
   readonly now: Instant;
 }
@@ -69,7 +70,7 @@ export class Case {
       riskScore: input.riskScore,
       status: 'OPEN',
       priority: input.priority,
-      assignedTo: null,
+      assignedTo: input.assignedTo ?? null,
       dueDate: null,
       tags: input.tags ?? [],
       createdAt: input.now,
@@ -196,6 +197,33 @@ export class Case {
     return new Case({ ...this.props, dueDate, updatedAt: now });
   }
 
+  /**
+   * CASE-007 — reetiquetado y cambio de severidad.
+   *
+   * Las etiquetas se normalizan aquí y no en el borde HTTP: se recortan, se
+   * descartan las vacías y se deduplican preservando el orden de llegada. Sin
+   * esto un mismo criterio entraba tres veces escrito distinto (`"AML"`,
+   * `" AML"`, `"AML "`) y el filtro por etiquetas de CASE-004, que exige
+   * coincidencia exacta, dejaba de encontrar el caso.
+   *
+   * No toca `dueDate`: recalcular el vencimiento es competencia de las vías
+   * de SLA, que son las únicas que pueden escribir ese campo.
+   */
+  reclassify(input: {
+    readonly priority?: CasePriority;
+    readonly tags?: readonly string[];
+    readonly now: Instant;
+  }): Case {
+    const tags = input.tags === undefined ? this.props.tags : normalizeTags(input.tags);
+
+    return new Case({
+      ...this.props,
+      priority: input.priority ?? this.props.priority,
+      tags,
+      updatedAt: input.now,
+    });
+  }
+
   updateFinturuSnapshot(input: {
     readonly finturuCacheSnapshot: Record<string, unknown>;
     readonly riskScore?: RiskScore;
@@ -218,6 +246,19 @@ export class Case {
       updatedAt: input.now,
     });
   }
+}
+
+/** Recorta, descarta vacías y deduplica conservando el orden de llegada. */
+function normalizeTags(tags: readonly string[]): readonly string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const tag of tags) {
+    const trimmed = tag.trim();
+    if (trimmed.length === 0 || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
 }
 
 function assertNonEmpty(field: 'organizationId' | 'customerId', value: string): void {
