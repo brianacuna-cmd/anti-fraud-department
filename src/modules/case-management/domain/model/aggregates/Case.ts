@@ -187,6 +187,21 @@ export class Case {
   }
 
   /**
+   * Triage retag + reprioritize. Replaces the whole `tags` array (trimmed,
+   * de-duplicated, order-preserving) and sets `priority`. SLA recalculation
+   * is a caller concern (application layer) — the aggregate only carries the
+   * new state. Returns a brand-new instance.
+   */
+  updatePriorityAndTags(priority: CasePriority, tags: readonly string[], now: Instant): Case {
+    return new Case({
+      ...this.props,
+      priority,
+      tags: normalizeTags(tags),
+      updatedAt: now,
+    });
+  }
+
+  /**
    * Read-model denormalization write ONLY from SLA paths (design:
    * "Denormalization (LOCKED default)") — `CaseSlaTracking.DueDate` is the
    * source of truth; this mirrors it onto `Cases.DueDate` for inbox
@@ -201,4 +216,24 @@ function assertNonEmpty(field: 'organizationId' | 'customerId', value: string): 
   if (value.trim().length === 0) {
     throw invariantViolation(`Case ${field} must be a non-empty string`, { field, value });
   }
+}
+
+/** Trims, drops empties, and de-duplicates while preserving first-seen order. */
+export function normalizeTags(tags: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of tags) {
+    collectTag(raw, seen, result);
+  }
+  return result;
+}
+
+/** Appends a trimmed, non-empty, not-yet-seen tag to `result`. */
+function collectTag(raw: string, seen: Set<string>, result: string[]): void {
+  const tag = raw.trim();
+  if (tag.length === 0 || seen.has(tag)) {
+    return;
+  }
+  seen.add(tag);
+  result.push(tag);
 }

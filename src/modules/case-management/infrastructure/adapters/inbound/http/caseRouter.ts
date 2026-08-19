@@ -4,6 +4,7 @@ import type { createCreateCaseUseCase } from '../../../../application/CreateCase
 import type { createReassignCaseUseCase } from '../../../../application/ReassignCase.js';
 import type { createListCasesUseCase } from '../../../../application/ListCases.js';
 import type { createReopenCaseUseCase } from '../../../../application/ReopenCase.js';
+import type { createUpdateCasePriorityTagsUseCase } from '../../../../application/UpdateCasePriorityTags.js';
 import type { createGetCaseUseCase } from '../../../../application/GetCase.js';
 import type { createGetCaseTimelineUseCase } from '../../../../application/GetCaseTimeline.js';
 import type { createAddCaseNoteUseCase } from '../../../../application/AddCaseNote.js';
@@ -16,6 +17,7 @@ import {
   reassignCaseSchema,
   listCasesQuerySchema,
   reopenCaseSchema,
+  updateCasePriorityTagsSchema,
   addCaseNoteSchema,
   closeCaseSchema,
 } from './dto/caseSchemas.js';
@@ -30,6 +32,7 @@ export interface CaseRouterDeps {
   readonly reassignCase: ReturnType<typeof createReassignCaseUseCase>;
   readonly listCases: ReturnType<typeof createListCasesUseCase>;
   readonly reopenCase: ReturnType<typeof createReopenCaseUseCase>;
+  readonly updateCasePriorityTags: ReturnType<typeof createUpdateCasePriorityTagsUseCase>;
   readonly getCase: ReturnType<typeof createGetCaseUseCase>;
   readonly getCaseTimeline: ReturnType<typeof createGetCaseTimelineUseCase>;
   readonly addCaseNote: ReturnType<typeof createAddCaseNoteUseCase>;
@@ -142,6 +145,18 @@ export function caseRouter(deps: CaseRouterDeps): Router {
       caseId: req.params.caseId!,
       targetStatus: body.targetStatus,
       justification: body.justification,
+    });
+    res.status(200).json(toCaseResponse(kase));
+  });
+
+  router.patch('/cases/:caseId/priority-tags', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(updateCasePriorityTagsSchema, req.body);
+    const kase = await deps.updateCasePriorityTags({
+      auth,
+      caseId: req.params.caseId!,
+      priority: body.priority,
+      tags: body.tags,
     });
     res.status(200).json(toCaseResponse(kase));
   });

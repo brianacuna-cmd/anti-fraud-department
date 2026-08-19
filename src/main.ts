@@ -105,6 +105,7 @@ import { createRouteCaseUseCase } from './modules/case-management/application/Ro
 import { createReassignCaseUseCase } from './modules/case-management/application/ReassignCase.js';
 import { createListCasesUseCase } from './modules/case-management/application/ListCases.js';
 import { createReopenCaseUseCase } from './modules/case-management/application/ReopenCase.js';
+import { createUpdateCasePriorityTagsUseCase } from './modules/case-management/application/UpdateCasePriorityTags.js';
 import { createGetCaseUseCase } from './modules/case-management/application/GetCase.js';
 import { createGetCaseTimelineUseCase } from './modules/case-management/application/GetCaseTimeline.js';
 import { createAddCaseNoteUseCase } from './modules/case-management/application/AddCaseNote.js';
@@ -436,6 +437,17 @@ async function bootstrap(): Promise<void> {
     }),
     listCases: createListCasesUseCase({ cases }),
     reopenCase: createReopenCaseUseCase({
+      cases,
+      slaTracking: caseSlaTracking,
+      fraudConfig: organizationFraudConfig,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateTimelineEventId,
+      generateCaseSlaTrackingId,
+    }),
+    updateCasePriorityTags: createUpdateCasePriorityTagsUseCase({
       cases,
       slaTracking: caseSlaTracking,
       fraudConfig: organizationFraudConfig,

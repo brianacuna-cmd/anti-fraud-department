@@ -26,6 +26,7 @@ import { createStartReviewUseCase } from '../../../../src/modules/case-managemen
 import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InMemoryCaseNoteRepository.js';
 import { generateCaseNoteId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { createReopenCaseUseCase } from '../../../../src/modules/case-management/application/ReopenCase.js';
+import { createUpdateCasePriorityTagsUseCase } from '../../../../src/modules/case-management/application/UpdateCasePriorityTags.js';
 import { ZenRoutingEngine } from '../../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
@@ -190,6 +191,17 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
       generateTimelineEventId,
       generateCaseSlaTrackingId,
     }),
+    updateCasePriorityTags: createUpdateCasePriorityTagsUseCase({
+      cases,
+      slaTracking,
+      fraudConfig,
+      timelineRecorder,
+      auditRecorder,
+      unitOfWork,
+      clock,
+      generateTimelineEventId,
+      generateCaseSlaTrackingId,
+    }),
   });
 
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {
@@ -279,6 +291,79 @@ describe('caseRouter POST /cases/:caseId/reopen', () => {
     const response = await request(app)
       .post(`/api/v1/cases/${CASE_ID}/reopen`)
       .send({ targetStatus: 'RESOLVED', justification: 'Bad target' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
+  });
+});
+
+describe('caseRouter PATCH /cases/:caseId/priority-tags', () => {
+  const EXPECTED_HIGH_DUE_ISO = new Date(toDate(NOW).getTime() + 60 * 60_000).toISOString();
+
+  function buildOpenCase(): Case {
+    return Case.create({
+      id: CASE_ID,
+      organizationId: ORG_1,
+      customerId: 'customer-1',
+      riskScore: createRiskScore(40),
+      priority: 'MEDIUM',
+      tags: ['fraud'],
+      now: NOW,
+    }).withDueDate(OLD_DUE, NOW);
+  }
+
+  it('updates priority + tags for ANALYST and recalculates dueDate', async () => {
+    const { app, cases, slaTracking, auditRecorder, timelineRecorder } = buildApp(() => ANALYST);
+    await cases.save(buildOpenCase());
+    await slaTracking.save(
+      CaseSlaTracking.create({ id: generateCaseSlaTrackingId(), caseId: CASE_ID, dueDate: OLD_DUE, now: NOW }),
+    );
+
+    const response = await request(app)
+      .patch(`/api/v1/cases/${CASE_ID}/priority-tags`)
+      .send({ priority: 'HIGH', tags: ['chargeback', 'aml'] });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      id: CASE_ID,
+      priority: 'HIGH',
+      tags: ['chargeback', 'aml'],
+      dueDate: EXPECTED_HIGH_DUE_ISO,
+    });
+    expect(auditRecorder.all()[0]?.action).toBe('UPDATE_PRIORITY_TAGS');
+    expect(timelineRecorder.all().map((e) => e.eventType)).toEqual(
+      expect.arrayContaining(['PRIORITY_CHANGED', 'TAGS_UPDATED']),
+    );
+    expect(slaTracking.all()[0]?.dueDate).toEqual(
+      fromDate(new Date(EXPECTED_HIGH_DUE_ISO)),
+    );
+  });
+
+  it('returns 403 FORBIDDEN_ROLE for AUDITOR', async () => {
+    const auditor = createAuthContext({
+      userId: oid('auditor-1'),
+      organizationId: ORG_1,
+      actorType: 'USER',
+      roleId: 'AUDITOR',
+    });
+    const { app, cases } = buildApp(() => auditor);
+    await cases.save(buildOpenCase());
+
+    const response = await request(app)
+      .patch(`/api/v1/cases/${CASE_ID}/priority-tags`)
+      .send({ priority: 'HIGH', tags: ['fraud'] });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN_ROLE');
+  });
+
+  it('returns 400 when priority is invalid', async () => {
+    const { app, cases } = buildApp(() => ANALYST);
+    await cases.save(buildOpenCase());
+
+    const response = await request(app)
+      .patch(`/api/v1/cases/${CASE_ID}/priority-tags`)
+      .send({ priority: 'URGENT', tags: ['fraud'] });
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('INVARIANT_VIOLATION');

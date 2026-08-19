@@ -63,6 +63,14 @@ export const reopenCaseSchema = z.object({
 
 export type ReopenCaseBody = z.infer<typeof reopenCaseSchema>;
 
+/** PATCH /cases/:caseId/priority-tags body (retag + reprioritize, SLA recalc). */
+export const updateCasePriorityTagsSchema = z.object({
+  priority: casePriorityEnum,
+  tags: z.array(z.string().trim().min(1)),
+});
+
+export type UpdateCasePriorityTagsBody = z.infer<typeof updateCasePriorityTagsSchema>;
+
 /** POST /cases/:caseId/notes body. */
 export const addCaseNoteSchema = z.object({
   body: z.string().trim().min(1),

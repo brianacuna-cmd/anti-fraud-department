@@ -37,6 +37,7 @@ import { createStartReviewUseCase } from '../../../../src/modules/case-managemen
 import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InMemoryCaseNoteRepository.js';
 import { generateCaseNoteId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { createReopenCaseUseCase } from '../../../../src/modules/case-management/application/ReopenCase.js';
+import { createUpdateCasePriorityTagsUseCase } from '../../../../src/modules/case-management/application/UpdateCasePriorityTags.js';
 import { ZenRoutingEngine } from '../../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
@@ -203,6 +204,17 @@ function buildApp(actorPerRequest: () => AuthContext, engine: RiskScoringEngine,
     resolveCase: createResolveCaseUseCase({ cases, resolutions, timelineRecorder, auditRecorder: caseAuditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
     archiveCase: createArchiveCaseUseCase({ cases, resolutions, timelineRecorder, auditRecorder: caseAuditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
     startReview: createStartReviewUseCase({ cases, timelineRecorder, auditRecorder: caseAuditRecorder, unitOfWork, clock, generateTimelineEventId }),
+    updateCasePriorityTags: createUpdateCasePriorityTagsUseCase({
+      cases,
+      slaTracking,
+      fraudConfig,
+      timelineRecorder,
+      auditRecorder: caseAuditRecorder,
+      unitOfWork,
+      clock,
+      generateTimelineEventId,
+      generateCaseSlaTrackingId,
+    }),
     reopenCase: createReopenCaseUseCase({
       cases,
       slaTracking,
