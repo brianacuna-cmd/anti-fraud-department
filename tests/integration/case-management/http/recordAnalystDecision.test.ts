@@ -13,6 +13,7 @@ import { createRecordAnalystDecisionUseCase } from '../../../../src/modules/case
 import { createApproveEnforcementActionUseCase } from '../../../../src/modules/case-management/application/ApproveEnforcementAction.js';
 import { createRejectEnforcementActionUseCase } from '../../../../src/modules/case-management/application/RejectEnforcementAction.js';
 import { createExecuteEnforcementActionUseCase } from '../../../../src/modules/case-management/application/ExecuteEnforcementAction.js';
+import { createListEnforcementActionsUseCase } from '../../../../src/modules/case-management/application/ListEnforcementActions.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
@@ -89,6 +90,7 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
       clock,
       generateApprovalRequestId,
     }),
+    listEnforcementActions: createListEnforcementActionsUseCase({ enforcementActions }),
     executeEnforcementAction: createExecuteEnforcementActionUseCase({
       enforcementActions,
       outgoingEvents,

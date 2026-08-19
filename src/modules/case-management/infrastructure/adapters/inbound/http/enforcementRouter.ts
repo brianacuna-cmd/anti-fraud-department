@@ -4,14 +4,17 @@ import type { createRecordAnalystDecisionUseCase } from '../../../../application
 import type { createApproveEnforcementActionUseCase } from '../../../../application/ApproveEnforcementAction.js';
 import type { createRejectEnforcementActionUseCase } from '../../../../application/RejectEnforcementAction.js';
 import type { createExecuteEnforcementActionUseCase } from '../../../../application/ExecuteEnforcementAction.js';
+import type { createListEnforcementActionsUseCase } from '../../../../application/ListEnforcementActions.js';
 import {
   recordAnalystDecisionSchema,
   reviewEnforcementActionSchema,
+  listEnforcementActionsQuerySchema,
 } from './dto/enforcementSchemas.js';
 import {
   toExecuteEnforcementActionResponse,
   toRecordAnalystDecisionResponse,
   toReviewEnforcementActionResponse,
+  toEnforcementActionResponse,
 } from './mappers/EnforcementHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
 
@@ -20,6 +23,7 @@ export interface EnforcementRouterDeps {
   readonly approveEnforcementAction: ReturnType<typeof createApproveEnforcementActionUseCase>;
   readonly rejectEnforcementAction: ReturnType<typeof createRejectEnforcementActionUseCase>;
   readonly executeEnforcementAction: ReturnType<typeof createExecuteEnforcementActionUseCase>;
+  readonly listEnforcementActions: ReturnType<typeof createListEnforcementActionsUseCase>;
 }
 
 /**
@@ -45,6 +49,25 @@ export function enforcementRouter(deps: EnforcementRouterDeps): Router {
       targetId: body.targetId,
     });
     res.status(201).json(toRecordAnalystDecisionResponse(result));
+  });
+
+  router.get('/enforcement-actions', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const query = parseRequest(listEnforcementActionsQuerySchema, req.query);
+    const result = await deps.listEnforcementActions({
+      auth,
+      status: query.status,
+      actionType: query.actionType,
+      targetType: query.targetType,
+      targetId: query.targetId,
+      caseId: query.caseId,
+      limit: query.limit,
+      offset: query.offset,
+    });
+    res.status(200).json({
+      items: result.items.map(toEnforcementActionResponse),
+      total: result.total,
+    });
   });
 
   router.post('/enforcement-actions/:id/approve', async (req, res) => {
