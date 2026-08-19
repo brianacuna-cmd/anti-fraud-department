@@ -223,12 +223,17 @@ export function normalizeTags(tags: readonly string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
   for (const raw of tags) {
-    const tag = raw.trim();
-    if (tag.length === 0 || seen.has(tag)) {
-      continue;
-    }
-    seen.add(tag);
-    result.push(tag);
+    collectTag(raw, seen, result);
   }
   return result;
+}
+
+/** Appends a trimmed, non-empty, not-yet-seen tag to `result`. */
+function collectTag(raw: string, seen: Set<string>, result: string[]): void {
+  const tag = raw.trim();
+  if (tag.length === 0 || seen.has(tag)) {
+    return;
+  }
+  seen.add(tag);
+  result.push(tag);
 }
