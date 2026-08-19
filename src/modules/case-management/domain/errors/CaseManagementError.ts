@@ -102,3 +102,11 @@ export function caseNoteNotFound(noteId: string): CaseManagementError {
     noteId,
   });
 }
+
+export function approvalRequestNotFound(approvalRequestId: string): CaseManagementError {
+  return new CaseManagementError(
+    'APPROVAL_REQUEST_NOT_FOUND',
+    `approval request "${approvalRequestId}" was not found`,
+    { approvalRequestId },
+  );
+}

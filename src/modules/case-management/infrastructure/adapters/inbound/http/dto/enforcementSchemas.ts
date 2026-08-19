@@ -44,3 +44,11 @@ export const listEnforcementActionsQuerySchema = z.object({
 });
 
 export type ListEnforcementActionsQuery = z.infer<typeof listEnforcementActionsQuerySchema>;
+
+/** PATCH /approval-requests/:id/review body. `comment` is mandatory. */
+export const reviewApprovalRequestSchema = z.object({
+  decision: z.enum(['APPROVED', 'REJECTED']),
+  comment: z.string().trim().min(1),
+});
+
+export type ReviewApprovalRequestBody = z.infer<typeof reviewApprovalRequestSchema>;

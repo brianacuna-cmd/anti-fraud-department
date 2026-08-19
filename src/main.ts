@@ -168,6 +168,8 @@ import { createActivateRoutingRuleUseCase } from './modules/case-management/appl
 import { createDeactivateRoutingRuleUseCase } from './modules/case-management/application/DeactivateRoutingRule.js';
 import { organizationFraudConfigRouter } from './modules/case-management/infrastructure/adapters/inbound/http/organizationFraudConfigRouter.js';
 import { enforcementRouter } from './modules/case-management/infrastructure/adapters/inbound/http/enforcementRouter.js';
+import { approvalRequestRouter } from './modules/case-management/infrastructure/adapters/inbound/http/approvalRequestRouter.js';
+import { createReviewApprovalRequestUseCase } from './modules/case-management/application/ReviewApprovalRequest.js';
 import { routingRuleRouter } from './modules/case-management/infrastructure/adapters/inbound/http/routingRuleRouter.js';
 import { MongoAnalystDecisionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoAnalystDecisionRepository.js';
 import { MongoEnforcementActionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoEnforcementActionRepository.js';
@@ -697,6 +699,15 @@ async function bootstrap(): Promise<void> {
     }),
     listEnforcementActions: createListEnforcementActionsUseCase({ enforcementActions }),
   });
+  const approvalRequestHttpRouter = approvalRequestRouter({
+    reviewApprovalRequest: createReviewApprovalRequestUseCase({
+      approvalRequests,
+      enforcementActions,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+    }),
+  });
   const routingRuleHttpRouter = routingRuleRouter({
     createRoutingRule: createCreateRoutingRuleUseCase({
       routingRules: caseRoutingRules,
@@ -1055,6 +1066,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(noteHttpRouter);
   identityAccessRouter.use(organizationFraudConfigHttpRouter);
   identityAccessRouter.use(enforcementHttpRouter);
+  identityAccessRouter.use(approvalRequestHttpRouter);
   identityAccessRouter.use(routingRuleHttpRouter);
   identityAccessRouter.use(riskScoresRouter);
   identityAccessRouter.use(riskScoreProcessRouter);
