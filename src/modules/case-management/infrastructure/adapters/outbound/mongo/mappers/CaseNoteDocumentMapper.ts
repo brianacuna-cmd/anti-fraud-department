@@ -14,6 +14,7 @@ export function toDocument(note: CaseNote): CaseNoteDocument {
     author_id: note.authorId,
     body: note.body,
     created_at: toDate(note.createdAt),
+    deleted_at: note.deletedAt === null ? null : toDate(note.deletedAt),
   };
 }
 
@@ -26,5 +27,6 @@ export function toDomain(document: CaseNoteDocument): CaseNote {
     authorId: document.author_id,
     body: document.body,
     createdAt: fromDate(document.created_at),
+    deletedAt: document.deleted_at == null ? null : fromDate(document.deleted_at),
   });
 }

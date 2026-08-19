@@ -24,4 +24,5 @@ export interface EvidenceDocument {
   readonly timestamp: EvidenceTimestampDocument | null;
   readonly uploaded_by: string;
   readonly created_at: Date;
+  readonly deleted_at: Date | null;
 }

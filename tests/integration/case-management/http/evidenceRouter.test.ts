@@ -11,6 +11,7 @@ import { createRegisterEvidenceUseCase } from '../../../../src/modules/case-mana
 import { createListEvidenceUseCase } from '../../../../src/modules/case-management/application/ListEvidence.js';
 import { createGetEvidenceUseCase } from '../../../../src/modules/case-management/application/GetEvidence.js';
 import { createDownloadEvidenceUseCase } from '../../../../src/modules/case-management/application/DownloadEvidence.js';
+import { createDeleteEvidenceUseCase } from '../../../../src/modules/case-management/application/DeleteEvidence.js';
 import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
 import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
@@ -62,6 +63,14 @@ async function buildApp() {
     listEvidence: createListEvidenceUseCase({ cases, evidence }),
     getEvidence: createGetEvidenceUseCase({ evidence }),
     downloadEvidence: createDownloadEvidenceUseCase({ evidence, evidenceStore }),
+    deleteEvidence: createDeleteEvidenceUseCase({
+      evidence,
+      timelineRecorder: new InMemoryTimelineRecorder(),
+      auditRecorder: new InMemoryCaseManagementAuditRecorder(),
+      unitOfWork: new PassthroughUnitOfWork(),
+      clock: new FixedClock(NOW),
+      generateTimelineEventId,
+    }),
   });
 
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {

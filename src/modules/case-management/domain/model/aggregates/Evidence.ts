@@ -24,6 +24,7 @@ export interface EvidenceProps {
   readonly timestamp: EvidenceTimestamp | null;
   readonly uploadedBy: string;
   readonly createdAt: Instant;
+  readonly deletedAt: Instant | null;
 }
 
 export interface RegisterEvidenceInput {
@@ -73,11 +74,24 @@ export class Evidence {
       timestamp: input.timestamp,
       uploadedBy: input.uploadedBy,
       createdAt: input.now,
+      deletedAt: null,
     });
   }
 
   static rehydrate(props: EvidenceProps): Evidence {
     return new Evidence(props);
+  }
+
+  /**
+   * Logical (soft) delete — marks the evidence hidden without dropping the row,
+   * preserving referential integrity (case_id, sha256 chain-of-custody).
+   * Idempotent: re-deleting keeps the original `deletedAt`.
+   */
+  softDelete(now: Instant): Evidence {
+    if (this.props.deletedAt !== null) {
+      return this;
+    }
+    return new Evidence({ ...this.props, deletedAt: now });
   }
 
   get id(): EvidenceId {
@@ -126,6 +140,10 @@ export class Evidence {
 
   get createdAt(): Instant {
     return this.props.createdAt;
+  }
+
+  get deletedAt(): Instant | null {
+    return this.props.deletedAt;
   }
 }
 

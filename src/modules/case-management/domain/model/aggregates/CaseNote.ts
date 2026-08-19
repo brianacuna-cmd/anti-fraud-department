@@ -10,6 +10,7 @@ export interface CaseNoteProps {
   readonly authorId: string;
   readonly body: string;
   readonly createdAt: Instant;
+  readonly deletedAt: Instant | null;
 }
 
 export interface CreateCaseNoteInput {
@@ -43,11 +44,24 @@ export class CaseNote {
       authorId: input.authorId,
       body,
       createdAt: input.now,
+      deletedAt: null,
     });
   }
 
   static rehydrate(props: CaseNoteProps): CaseNote {
     return new CaseNote(props);
+  }
+
+  /**
+   * Logical (soft) delete — hides an erroneous note without dropping the row,
+   * keeping the append-only history and referential integrity intact.
+   * Idempotent: re-deleting keeps the original `deletedAt`.
+   */
+  softDelete(now: Instant): CaseNote {
+    if (this.props.deletedAt !== null) {
+      return this;
+    }
+    return new CaseNote({ ...this.props, deletedAt: now });
   }
 
   get id(): CaseNoteId {
@@ -72,6 +86,10 @@ export class CaseNote {
 
   get createdAt(): Instant {
     return this.props.createdAt;
+  }
+
+  get deletedAt(): Instant | null {
+    return this.props.deletedAt;
   }
 }
 

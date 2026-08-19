@@ -17,4 +17,5 @@ export const caseManagementErrorStatus: StatusByCode = {
   INVESTIGATION_NOT_FOUND: 404,
   CASE_REPORT_NOT_FOUND: 404,
   EVIDENCE_NOT_FOUND: 404,
+  CASE_NOTE_NOT_FOUND: 404,
 };
