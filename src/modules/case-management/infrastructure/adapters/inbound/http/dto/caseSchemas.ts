@@ -71,6 +71,31 @@ export const updateCasePriorityTagsSchema = z.object({
 
 export type UpdateCasePriorityTagsBody = z.infer<typeof updateCasePriorityTagsSchema>;
 
+/**
+ * POST /cases/bulk-action body. Exactly one action applied to a selection of
+ * cases. `caseIds` is bounded to keep a single transaction reasonable.
+ */
+export const bulkCaseActionSchema = z.object({
+  caseIds: z.array(z.string().min(1)).min(1).max(100),
+  action: z.discriminatedUnion('type', [
+    z.object({
+      type: z.literal('ASSIGN'),
+      assignedToType: z.enum(['USER', 'ROLE']),
+      assignedToId: z.string().min(1),
+    }),
+    z.object({
+      type: z.literal('CHANGE_PRIORITY'),
+      priority: casePriorityEnum,
+    }),
+    z.object({
+      type: z.literal('ADD_TAGS'),
+      tags: z.array(z.string().trim().min(1)).min(1),
+    }),
+  ]),
+});
+
+export type BulkCaseActionBody = z.infer<typeof bulkCaseActionSchema>;
+
 /** POST /cases/:caseId/notes body. */
 export const addCaseNoteSchema = z.object({
   body: z.string().trim().min(1),

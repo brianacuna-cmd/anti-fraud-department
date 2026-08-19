@@ -16,6 +16,7 @@ export type CaseManagementAuditAction =
   | 'REASSIGN_CASE'
   | 'REOPEN_CASE'
   | 'UPDATE_PRIORITY_TAGS'
+  | 'BULK_CASE_ACTION'
   | 'ADD_CASE_NOTE'
   | 'OPEN_INVESTIGATION'
   | 'CLOSE_INVESTIGATION'

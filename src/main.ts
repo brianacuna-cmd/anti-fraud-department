@@ -106,6 +106,7 @@ import { createReassignCaseUseCase } from './modules/case-management/application
 import { createListCasesUseCase } from './modules/case-management/application/ListCases.js';
 import { createReopenCaseUseCase } from './modules/case-management/application/ReopenCase.js';
 import { createUpdateCasePriorityTagsUseCase } from './modules/case-management/application/UpdateCasePriorityTags.js';
+import { createBulkCaseActionUseCase } from './modules/case-management/application/BulkCaseAction.js';
 import { createGetCaseUseCase } from './modules/case-management/application/GetCase.js';
 import { createGetCaseTimelineUseCase } from './modules/case-management/application/GetCaseTimeline.js';
 import { createAddCaseNoteUseCase } from './modules/case-management/application/AddCaseNote.js';
@@ -457,6 +458,15 @@ async function bootstrap(): Promise<void> {
       clock,
       generateTimelineEventId,
       generateCaseSlaTrackingId,
+    }),
+    bulkCaseAction: createBulkCaseActionUseCase({
+      cases,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      assigneeDirectory,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateTimelineEventId,
     }),
     getCase: createGetCaseUseCase({ cases }),
     getCaseTimeline: createGetCaseTimelineUseCase({ cases, timelineReader: caseTimelineReader }),
