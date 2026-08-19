@@ -13,6 +13,7 @@ import { createRecordAnalystDecisionUseCase } from '../../../../src/modules/case
 import { createApproveEnforcementActionUseCase } from '../../../../src/modules/case-management/application/ApproveEnforcementAction.js';
 import { createRejectEnforcementActionUseCase } from '../../../../src/modules/case-management/application/RejectEnforcementAction.js';
 import { createExecuteEnforcementActionUseCase } from '../../../../src/modules/case-management/application/ExecuteEnforcementAction.js';
+import { createListEnforcementActionsUseCase } from '../../../../src/modules/case-management/application/ListEnforcementActions.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
@@ -161,6 +162,7 @@ function buildApp(
       clock,
       generateApprovalRequestId,
     }),
+    listEnforcementActions: createListEnforcementActionsUseCase({ enforcementActions }),
     executeEnforcementAction: createExecuteEnforcementActionUseCase({
       enforcementActions,
       outgoingEvents,
@@ -281,5 +283,38 @@ describe('enforcementRouter POST /enforcement-actions/:id/execute', () => {
       .expect(404);
 
     expect(res.body.error.code).toBe('ENFORCEMENT_ACTION_NOT_FOUND');
+  });
+});
+
+describe('enforcementRouter GET /enforcement-actions', () => {
+  it('lists tenant enforcement actions with a total for SUPERVISOR', async () => {
+    const { app, enforcementActions } = buildApp();
+    seedApprovedAction(enforcementActions);
+
+    const res = await request(app).get('/api/v1/enforcement-actions').expect(200);
+
+    expect(res.body.total).toBe(1);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0]).toMatchObject({ actionType: 'BLOCK', targetType: 'CUSTOMER', status: 'APPROVED' });
+  });
+
+  it('filters by entity via targetType/targetId', async () => {
+    const { app, enforcementActions } = buildApp();
+    seedApprovedAction(enforcementActions);
+
+    const match = await request(app)
+      .get(`/api/v1/enforcement-actions?targetType=CUSTOMER&targetId=${CUSTOMER_ID}`)
+      .expect(200);
+    expect(match.body.total).toBe(1);
+
+    const miss = await request(app).get('/api/v1/enforcement-actions?targetType=WALLET').expect(200);
+    expect(miss.body.total).toBe(0);
+  });
+
+  it('returns 403 for ANALYST', async () => {
+    const { app } = buildApp({ actorPerRequest: () => ANALYST });
+
+    const res = await request(app).get('/api/v1/enforcement-actions').expect(403);
+    expect(res.body.error.code).toBe('FORBIDDEN_ROLE');
   });
 });
