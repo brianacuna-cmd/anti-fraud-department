@@ -5,6 +5,7 @@ import type { createReassignCaseUseCase } from '../../../../application/Reassign
 import type { createListCasesUseCase } from '../../../../application/ListCases.js';
 import type { createReopenCaseUseCase } from '../../../../application/ReopenCase.js';
 import type { createUpdateCasePriorityTagsUseCase } from '../../../../application/UpdateCasePriorityTags.js';
+import type { createBulkCaseActionUseCase } from '../../../../application/BulkCaseAction.js';
 import type { createGetCaseUseCase } from '../../../../application/GetCase.js';
 import type { createGetCaseTimelineUseCase } from '../../../../application/GetCaseTimeline.js';
 import type { createAddCaseNoteUseCase } from '../../../../application/AddCaseNote.js';
@@ -18,6 +19,7 @@ import {
   listCasesQuerySchema,
   reopenCaseSchema,
   updateCasePriorityTagsSchema,
+  bulkCaseActionSchema,
   addCaseNoteSchema,
   closeCaseSchema,
 } from './dto/caseSchemas.js';
@@ -33,6 +35,7 @@ export interface CaseRouterDeps {
   readonly listCases: ReturnType<typeof createListCasesUseCase>;
   readonly reopenCase: ReturnType<typeof createReopenCaseUseCase>;
   readonly updateCasePriorityTags: ReturnType<typeof createUpdateCasePriorityTagsUseCase>;
+  readonly bulkCaseAction: ReturnType<typeof createBulkCaseActionUseCase>;
   readonly getCase: ReturnType<typeof createGetCaseUseCase>;
   readonly getCaseTimeline: ReturnType<typeof createGetCaseTimelineUseCase>;
   readonly addCaseNote: ReturnType<typeof createAddCaseNoteUseCase>;
@@ -78,6 +81,20 @@ export function caseRouter(deps: CaseRouterDeps): Router {
     const body = parseRequest(createCaseSchema, req.body);
     const kase = await deps.createCase({ auth, ...body });
     res.status(201).json(toCaseResponse(kase));
+  });
+
+  router.post('/cases/bulk-action', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(bulkCaseActionSchema, req.body);
+    const result = await deps.bulkCaseAction({
+      auth,
+      caseIds: body.caseIds,
+      action: body.action,
+    });
+    res.status(200).json({
+      items: result.cases.map(toCaseResponse),
+      changedCaseIds: result.changedCaseIds,
+    });
   });
 
   router.get('/cases/:caseId', async (req, res) => {

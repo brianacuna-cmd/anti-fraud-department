@@ -39,6 +39,7 @@ import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InM
 import { generateCaseNoteId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { createReopenCaseUseCase } from '../../../../src/modules/case-management/application/ReopenCase.js';
 import { createUpdateCasePriorityTagsUseCase } from '../../../../src/modules/case-management/application/UpdateCasePriorityTags.js';
+import { createBulkCaseActionUseCase } from '../../../../src/modules/case-management/application/BulkCaseAction.js';
 import { createGetOrganizationFraudConfigUseCase } from '../../../../src/modules/case-management/application/GetOrganizationFraudConfig.js';
 import { ZenRoutingEngine } from '../../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
@@ -215,6 +216,15 @@ function buildApp(
     resolveCase: createResolveCaseUseCase({ cases, resolutions, timelineRecorder, auditRecorder: caseAuditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
     archiveCase: createArchiveCaseUseCase({ cases, resolutions, timelineRecorder, auditRecorder: caseAuditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
     startReview: createStartReviewUseCase({ cases, timelineRecorder, auditRecorder: caseAuditRecorder, unitOfWork, clock, generateTimelineEventId }),
+    bulkCaseAction: createBulkCaseActionUseCase({
+      cases,
+      timelineRecorder,
+      auditRecorder: caseAuditRecorder,
+      assigneeDirectory: new InMemoryAssigneeDirectory(),
+      unitOfWork,
+      clock,
+      generateTimelineEventId,
+    }),
     updateCasePriorityTags: createUpdateCasePriorityTagsUseCase({
       cases,
       slaTracking,

@@ -27,6 +27,7 @@ import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InM
 import { generateCaseNoteId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { createReopenCaseUseCase } from '../../../../src/modules/case-management/application/ReopenCase.js';
 import { createUpdateCasePriorityTagsUseCase } from '../../../../src/modules/case-management/application/UpdateCasePriorityTags.js';
+import { createBulkCaseActionUseCase } from '../../../../src/modules/case-management/application/BulkCaseAction.js';
 import { ZenRoutingEngine } from '../../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
@@ -190,6 +191,15 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
       clock,
       generateTimelineEventId,
       generateCaseSlaTrackingId,
+    }),
+    bulkCaseAction: createBulkCaseActionUseCase({
+      cases,
+      timelineRecorder,
+      auditRecorder,
+      assigneeDirectory: new InMemoryAssigneeDirectory(),
+      unitOfWork,
+      clock,
+      generateTimelineEventId,
     }),
     updateCasePriorityTags: createUpdateCasePriorityTagsUseCase({
       cases,
@@ -367,5 +377,61 @@ describe('caseRouter PATCH /cases/:caseId/priority-tags', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
+  });
+});
+
+describe('caseRouter POST /cases/bulk-action', () => {
+  const CASE_A = oid('case-bulk-a');
+  const CASE_B = oid('case-bulk-b');
+
+  function buildOpenCaseWith(id: string, priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'): Case {
+    return Case.create({
+      id: createCaseId(id),
+      organizationId: ORG_1,
+      customerId: 'customer-1',
+      riskScore: createRiskScore(40),
+      priority,
+      tags: ['fraud'],
+      now: NOW,
+    });
+  }
+
+  it('applies CHANGE_PRIORITY to multiple cases for ANALYST', async () => {
+    const { app, cases, timelineRecorder, auditRecorder } = buildApp(() => ANALYST);
+    await cases.save(buildOpenCaseWith(CASE_A, 'LOW'));
+    await cases.save(buildOpenCaseWith(CASE_B, 'MEDIUM'));
+
+    const response = await request(app)
+      .post('/api/v1/cases/bulk-action')
+      .send({ caseIds: [CASE_A, CASE_B], action: { type: 'CHANGE_PRIORITY', priority: 'HIGH' } });
+
+    expect(response.status).toBe(200);
+    expect(response.body.items.map((c: { priority: string }) => c.priority)).toEqual(['HIGH', 'HIGH']);
+    expect(response.body.changedCaseIds).toEqual([CASE_A, CASE_B]);
+    expect(timelineRecorder.all()).toHaveLength(2);
+    expect(auditRecorder.all().every((a) => a.action === 'BULK_CASE_ACTION')).toBe(true);
+  });
+
+  it('returns 400 for an unknown action type', async () => {
+    const { app } = buildApp(() => ANALYST);
+
+    const response = await request(app)
+      .post('/api/v1/cases/bulk-action')
+      .send({ caseIds: [CASE_A], action: { type: 'NUKE' } });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
+  });
+
+  it('returns 404 when any selected case is missing (all-or-nothing)', async () => {
+    const { app, cases } = buildApp(() => ANALYST);
+    await cases.save(buildOpenCaseWith(CASE_A, 'LOW'));
+
+    const response = await request(app)
+      .post('/api/v1/cases/bulk-action')
+      .send({ caseIds: [CASE_A, oid('missing')], action: { type: 'CHANGE_PRIORITY', priority: 'HIGH' } });
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe('CASE_NOT_FOUND');
   });
 });
