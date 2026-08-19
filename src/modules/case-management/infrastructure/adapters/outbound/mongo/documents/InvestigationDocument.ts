@@ -12,6 +12,8 @@ export interface InvestigationDocument {
   readonly subject_id: string;
   readonly status: string;
   readonly findings: string | null;
+  readonly findings_data: Record<string, unknown> | null;
+  readonly exploration_depth: number | null;
   readonly opened_by: string;
   readonly created_at: Date;
   readonly updated_at: Date;
