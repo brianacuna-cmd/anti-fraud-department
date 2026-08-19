@@ -14,11 +14,14 @@ import { createListInvestigationsUseCase } from '../../../../src/modules/case-ma
 import { createGetInvestigationUseCase } from '../../../../src/modules/case-management/application/GetInvestigation.js';
 import { createCloseInvestigationUseCase } from '../../../../src/modules/case-management/application/CloseInvestigation.js';
 import { createUpdateInvestigationFindingsUseCase } from '../../../../src/modules/case-management/application/UpdateInvestigationFindings.js';
+import { createLinkInvestigationCasesUseCase } from '../../../../src/modules/case-management/application/LinkInvestigationCases.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryInvestigationRepository } from '../../../helpers/case-management/InMemoryInvestigationRepository.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
+import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 import { generateInvestigationId } from '../../../../src/modules/case-management/domain/model/value-objects/InvestigationId.js';
+import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
 import { Investigation } from '../../../../src/modules/case-management/domain/model/aggregates/Investigation.js';
 import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
@@ -63,6 +66,7 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
     }),
   );
 
+  const timelineRecorder = new InMemoryTimelineRecorder();
   const deps = { investigations, auditRecorder, unitOfWork, clock };
   const router = investigationRouter({
     openInvestigation: createOpenInvestigationUseCase({ cases, ...deps, generateInvestigationId }),
@@ -70,6 +74,14 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
     getInvestigation: createGetInvestigationUseCase({ investigations }),
     closeInvestigation: createCloseInvestigationUseCase(deps),
     updateInvestigationFindings: createUpdateInvestigationFindingsUseCase(deps),
+    linkInvestigationCases: createLinkInvestigationCasesUseCase({
+      investigations,
+      cases,
+      timelineRecorder,
+      unitOfWork,
+      clock,
+      generateTimelineEventId,
+    }),
   });
 
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {
@@ -86,7 +98,7 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
     errorHandler: createErrorHandler(caseManagementErrorStatus),
   });
 
-  return { app, investigations };
+  return { app, investigations, cases, timelineRecorder };
 }
 
 describe('investigationRouter PATCH /investigations/:id/findings', () => {
@@ -141,5 +153,57 @@ describe('investigationRouter PATCH /investigations/:id/findings', () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe('FORBIDDEN_CROSS_TENANT');
+  });
+});
+
+describe('investigationRouter POST /investigations/:id/link-cases', () => {
+  function seedCase(cases: InMemoryCaseRepository, id: string): void {
+    void cases.save(
+      Case.create({
+        id: createCaseId(id),
+        organizationId: ORG_1,
+        customerId: `customer-${id}`,
+        riskScore: createRiskScore(50),
+        priority: 'MEDIUM',
+        now: NOW,
+      }),
+    );
+  }
+
+  it('links cases to an investigation and records timeline events', async () => {
+    const { app, investigations, cases, timelineRecorder } = buildApp();
+    await investigations.save(seedInvestigation());
+    seedCase(cases, oid('case-x'));
+    seedCase(cases, oid('case-y'));
+
+    const response = await request(app)
+      .post(`/api/v1/investigations/${INV_ID}/link-cases`)
+      .send({ caseIds: [oid('case-x'), oid('case-y')] });
+
+    expect(response.status).toBe(200);
+    expect(response.body.linkedCaseIds).toEqual([oid('case-x'), oid('case-y')]);
+    expect(timelineRecorder.all()).toHaveLength(2);
+  });
+
+  it('returns 404 when a linked case does not exist', async () => {
+    const { app, investigations } = buildApp();
+    await investigations.save(seedInvestigation());
+
+    const response = await request(app)
+      .post(`/api/v1/investigations/${INV_ID}/link-cases`)
+      .send({ caseIds: [oid('nope')] });
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe('CASE_NOT_FOUND');
+  });
+
+  it('returns 400 for an empty caseIds array', async () => {
+    const { app } = buildApp();
+    const response = await request(app)
+      .post(`/api/v1/investigations/${INV_ID}/link-cases`)
+      .send({ caseIds: [] });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
   });
 });

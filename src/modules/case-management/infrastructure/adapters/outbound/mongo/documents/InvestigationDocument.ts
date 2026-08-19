@@ -15,6 +15,7 @@ export interface InvestigationDocument {
   readonly findings_data: Record<string, unknown> | null;
   readonly exploration_depth: number | null;
   readonly opened_by: string;
+  readonly linked_case_ids: ObjectId[];
   readonly created_at: Date;
   readonly updated_at: Date;
   readonly closed_at: Date | null;

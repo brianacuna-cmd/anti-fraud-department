@@ -18,6 +18,8 @@ export interface InvestigationProps {
   /** How deep the network exploration went (`profundidad_explorada`), >= 0. */
   readonly explorationDepth: number | null;
   readonly openedBy: string;
+  /** Other existing cases associated to this deep-investigation record. */
+  readonly linkedCaseIds: readonly CaseId[];
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
   readonly closedAt: Instant | null;
@@ -56,6 +58,7 @@ export class Investigation {
       findingsData: null,
       explorationDepth: null,
       openedBy: input.openedBy,
+      linkedCaseIds: [],
       createdAt: input.now,
       updatedAt: input.now,
       closedAt: null,
@@ -112,6 +115,22 @@ export class Investigation {
     });
   }
 
+  /**
+   * Associates existing cases to this deep-investigation record. Merges into
+   * the current set (de-duplicated, the primary `caseId` excluded — it is
+   * already this investigation's own case). Caller (application) validates the
+   * cases exist and belong to the tenant first. Returns a brand-new instance.
+   */
+  linkCases(caseIds: readonly CaseId[], now: Instant): Investigation {
+    const seen = new Set<string>(this.props.linkedCaseIds.map((id) => id as string));
+    const primary = this.props.caseId as string;
+    const merged = [...this.props.linkedCaseIds];
+    for (const caseId of caseIds) {
+      collectLinkedCase(caseId, primary, seen, merged);
+    }
+    return new Investigation({ ...this.props, linkedCaseIds: merged, updatedAt: now });
+  }
+
   get id(): InvestigationId {
     return this.props.id;
   }
@@ -152,6 +171,10 @@ export class Investigation {
     return this.props.openedBy;
   }
 
+  get linkedCaseIds(): readonly CaseId[] {
+    return this.props.linkedCaseIds;
+  }
+
   get createdAt(): Instant {
     return this.props.createdAt;
   }
@@ -169,4 +192,19 @@ function assertNonEmpty(field: string, value: string): void {
   if (value.trim().length === 0) {
     throw invariantViolation(`Investigation ${field} must be a non-empty string`, { field, value });
   }
+}
+
+/** Appends a case to `merged` unless it is the primary case or already linked. */
+function collectLinkedCase(
+  caseId: CaseId,
+  primary: string,
+  seen: Set<string>,
+  merged: CaseId[],
+): void {
+  const key = caseId as string;
+  if (key === primary || seen.has(key)) {
+    return;
+  }
+  seen.add(key);
+  merged.push(caseId);
 }

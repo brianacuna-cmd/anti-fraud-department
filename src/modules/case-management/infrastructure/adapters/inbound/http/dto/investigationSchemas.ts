@@ -22,3 +22,10 @@ export const updateInvestigationFindingsSchema = z.object({
 });
 
 export type UpdateInvestigationFindingsBody = z.infer<typeof updateInvestigationFindingsSchema>;
+
+/** POST /investigations/:investigationId/link-cases body. */
+export const linkInvestigationCasesSchema = z.object({
+  caseIds: z.array(z.string().min(1)).min(1).max(100),
+});
+
+export type LinkInvestigationCasesBody = z.infer<typeof linkInvestigationCasesSchema>;

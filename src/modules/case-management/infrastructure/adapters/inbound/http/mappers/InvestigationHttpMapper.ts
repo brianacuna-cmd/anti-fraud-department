@@ -10,6 +10,7 @@ export interface InvestigationDto {
   readonly findingsData: Record<string, unknown> | null;
   readonly explorationDepth: number | null;
   readonly openedBy: string;
+  readonly linkedCaseIds: string[];
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly closedAt: string | null;
@@ -26,6 +27,7 @@ export function toInvestigationResponse(investigation: Investigation): Investiga
     findingsData: investigation.findingsData,
     explorationDepth: investigation.explorationDepth,
     openedBy: investigation.openedBy,
+    linkedCaseIds: [...investigation.linkedCaseIds],
     createdAt: investigation.createdAt,
     updatedAt: investigation.updatedAt,
     closedAt: investigation.closedAt,
