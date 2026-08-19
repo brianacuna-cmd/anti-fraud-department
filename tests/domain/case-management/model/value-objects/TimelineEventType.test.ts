@@ -12,6 +12,9 @@ describe('createTimelineEventType', () => {
     'EVIDENCE_ADDED',
     'PRIORITY_CHANGED',
     'TAGS_UPDATED',
+    'EVIDENCE_DELETED',
+    'NOTE_DELETED',
+    'CASE_LINKED_TO_INVESTIGATION',
   ])('accepts %s', (value) => {
     expect(createTimelineEventType(value)).toBe(value);
   });
