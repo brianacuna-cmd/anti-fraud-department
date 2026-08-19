@@ -1,9 +1,8 @@
 import type { ObjectId } from 'mongodb';
 
 /**
- * Mongo document shape for `outbox_events` (transactional outbox). Follows the
- * module's conventions: `_id` is the branded OutboxEventId, `organization_id`
- * is an ObjectId, Instant fields are BSON `Date`.
+ * Mongo document shape for `outbox_events` (transactional outbox). `_id` is the
+ * branded OutboxEventId, `organization_id` an ObjectId, Instant fields BSON `Date`.
  */
 export interface OutboxEventDocument {
   readonly _id: ObjectId;

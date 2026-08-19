@@ -1,9 +1,9 @@
 import { ObjectId } from 'mongodb';
-import { fromDate, toDate, type Instant } from '../../../../../../../shared/time/Instant.js';
-import { OutboxEvent } from '../../../../../domain/model/aggregates/OutboxEvent.js';
-import { createOutboxEventId } from '../../../../../domain/model/value-objects/OutboxEventId.js';
-import { createOutboxEventStatus } from '../../../../../domain/model/value-objects/OutboxEventStatus.js';
-import type { OutboxEventDocument } from '../documents/OutboxEventDocument.js';
+import { fromDate, toDate, type Instant } from '../../time/Instant.js';
+import { OutboxEvent } from '../OutboxEvent.js';
+import { createOutboxEventId } from '../OutboxEventId.js';
+import { createOutboxEventStatus } from '../OutboxEventStatus.js';
+import type { OutboxEventDocument } from './OutboxEventDocument.js';
 
 const instantToDate = (value: Instant | null): Date | null => (value === null ? null : toDate(value));
 const dateToInstant = (value: Date | null): Instant | null => (value === null ? null : fromDate(value));

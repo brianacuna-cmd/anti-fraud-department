@@ -1,7 +1,7 @@
-import type { Instant } from '../../../../../shared/time/Instant.js';
-import type { OutboxEventId } from '../value-objects/OutboxEventId.js';
-import type { OutboxEventStatus } from '../value-objects/OutboxEventStatus.js';
-import { invariantViolation } from '../../errors/CaseManagementError.js';
+import type { Instant } from '../time/Instant.js';
+import type { OutboxEventId } from './OutboxEventId.js';
+import type { OutboxEventStatus } from './OutboxEventStatus.js';
+import { outboxInvariant } from './OutboxError.js';
 
 export interface OutboxEventProps {
   readonly id: OutboxEventId;
@@ -30,10 +30,10 @@ export interface CreateOutboxEventInput {
 }
 
 /**
- * Transactional-outbox row (company schema: `outbox_events`). Inserted in the
- * SAME transaction as the business mutation that produced it, so the event and
- * the state change commit atomically. Opens PENDING with attempts 0; a relay
- * worker (out of scope here) claims and publishes it.
+ * Shared transactional-outbox row (`outbox_events`). Any module inserts one in
+ * the SAME transaction as the business mutation that produced it, so the event
+ * and the state change commit atomically. Opens PENDING with 0 attempts; a
+ * relay worker (out of scope here) claims and publishes it.
  */
 export class OutboxEvent {
   private constructor(private readonly props: OutboxEventProps) {}
@@ -123,6 +123,6 @@ export class OutboxEvent {
 
 function assertNonEmpty(field: string, value: string): void {
   if (value.trim().length === 0) {
-    throw invariantViolation(`OutboxEvent ${field} must be a non-empty string`, { field, value });
+    throw outboxInvariant(`OutboxEvent ${field} must be a non-empty string`, { field, value });
   }
 }

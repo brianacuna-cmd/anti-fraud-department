@@ -1,5 +1,5 @@
-import type { OutboxEventRepository } from '../domain/ports/OutboxEventRepository.js';
-import type { OutboxEventId } from '../domain/model/value-objects/OutboxEventId.js';
+import type { OutboxEventRepository } from '../../../shared/outbox/OutboxEventRepository.js';
+import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
 import { closeCase, type CloseCaseDeps, type CloseCaseInput } from './closeCase.js';
 
 export type ResolveCaseInput = CloseCaseInput;

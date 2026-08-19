@@ -1,5 +1,5 @@
-import type { OutboxEvent } from '../../../src/modules/case-management/domain/model/aggregates/OutboxEvent.js';
-import type { OutboxEventRepository } from '../../../src/modules/case-management/domain/ports/OutboxEventRepository.js';
+import type { OutboxEvent } from '../../../src/shared/outbox/OutboxEvent.js';
+import type { OutboxEventRepository } from '../../../src/shared/outbox/OutboxEventRepository.js';
 
 /** In-memory `OutboxEventRepository` fake — records inserted events in order. */
 export class InMemoryOutboxEventRepository implements OutboxEventRepository {
