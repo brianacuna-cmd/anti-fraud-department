@@ -13,7 +13,9 @@ export type TimelineEventType =
   | 'DECISION_MADE'
   | 'CASE_CREATED'
   | 'CASE_REOPENED'
-  | 'EVIDENCE_ADDED';
+  | 'EVIDENCE_ADDED'
+  | 'PRIORITY_CHANGED'
+  | 'TAGS_UPDATED';
 
 const VALID_EVENT_TYPES: ReadonlySet<string> = new Set<TimelineEventType>([
   'STATE_CHANGED',
@@ -23,12 +25,14 @@ const VALID_EVENT_TYPES: ReadonlySet<string> = new Set<TimelineEventType>([
   'CASE_CREATED',
   'CASE_REOPENED',
   'EVIDENCE_ADDED',
+  'PRIORITY_CHANGED',
+  'TAGS_UPDATED',
 ]);
 
 export function createTimelineEventType(value: string): TimelineEventType {
   if (!VALID_EVENT_TYPES.has(value)) {
     throw invariantViolation(
-      'TimelineEventType must be one of STATE_CHANGED, ASSIGNED, NOTE_ADDED, DECISION_MADE, CASE_CREATED, CASE_REOPENED, EVIDENCE_ADDED',
+      'TimelineEventType must be one of STATE_CHANGED, ASSIGNED, NOTE_ADDED, DECISION_MADE, CASE_CREATED, CASE_REOPENED, EVIDENCE_ADDED, PRIORITY_CHANGED, TAGS_UPDATED',
       { value },
     );
   }
