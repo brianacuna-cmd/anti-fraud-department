@@ -14,6 +14,8 @@ import { createRiskScore } from '../../../../src/modules/case-management/domain/
 import { createCasePriority } from '../../../../src/modules/case-management/domain/model/value-objects/CasePriority.js';
 import { createOrganizationFraudConfigId } from '../../../../src/modules/case-management/domain/model/value-objects/OrganizationFraudConfigId.js';
 import { generateCustomerOutgoingEventId } from '../../../../src/modules/case-management/domain/model/value-objects/CustomerOutgoingEventId.js';
+import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
+import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
 import { InMemoryEnforcementActionRepository } from '../../../helpers/case-management/InMemoryEnforcementActionRepository.js';
 import { InMemoryCustomerOutgoingEventRepository } from '../../../helpers/case-management/InMemoryCustomerOutgoingEventRepository.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
@@ -128,6 +130,7 @@ function buildUseCase(options?: {
   const cases = new InMemoryCaseRepository();
   const fraudConfig = new InMemoryOrganizationFraudConfigRepository();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
+  const outbox = new InMemoryOutboxEventRepository();
 
   if (options?.seedAction !== undefined) {
     void enforcementActions.save(options.seedAction);
@@ -144,9 +147,11 @@ function buildUseCase(options?: {
     cases,
     fraudConfig,
     auditRecorder,
+    outbox,
     unitOfWork: new PassthroughUnitOfWork(),
     clock: new FixedClock(NOW),
     generateCustomerOutgoingEventId,
+    generateOutboxEventId,
   });
 
   return {
@@ -155,6 +160,7 @@ function buildUseCase(options?: {
     outgoingEvents,
     cases,
     auditRecorder,
+    outbox,
     caseStatusBefore: kase.status,
   };
 }

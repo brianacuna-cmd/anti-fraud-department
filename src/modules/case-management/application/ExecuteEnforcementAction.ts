@@ -6,11 +6,14 @@ import type { CaseRepository } from '../domain/ports/CaseRepository.js';
 import type { OrganizationFraudConfigRepository } from '../domain/ports/OrganizationFraudConfigRepository.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
+import type { OutboxEventRepository } from '../../../shared/outbox/OutboxEventRepository.js';
+import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
 import type { CustomerOutgoingEventId } from '../domain/model/value-objects/CustomerOutgoingEventId.js';
 import type { EnforcementAction } from '../domain/model/aggregates/EnforcementAction.js';
 import type { CustomerOutgoingEvent } from '../domain/model/aggregates/CustomerOutgoingEvent.js';
 import type { EnforcementActionType } from '../domain/model/value-objects/EnforcementActionType.js';
 import { CustomerOutgoingEvent as CustomerOutgoingEventAggregate } from '../domain/model/aggregates/CustomerOutgoingEvent.js';
+import { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
 import { createEnforcementActionId } from '../domain/model/value-objects/EnforcementActionId.js';
 import {
   caseNotFound,
@@ -50,9 +53,11 @@ export interface ExecuteEnforcementActionDeps {
   readonly cases: CaseRepository;
   readonly fraudConfig: OrganizationFraudConfigRepository;
   readonly auditRecorder: AuditRecorder;
+  readonly outbox: OutboxEventRepository;
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
   readonly generateCustomerOutgoingEventId: () => CustomerOutgoingEventId;
+  readonly generateOutboxEventId: () => OutboxEventId;
 }
 
 /**
@@ -120,6 +125,27 @@ export function createExecuteEnforcementActionUseCase(deps: ExecuteEnforcementAc
       }
 
       await deps.enforcementActions.save(enforcementAction, tx);
+
+      await deps.outbox.save(
+        OutboxEvent.create({
+          id: deps.generateOutboxEventId(),
+          organizationId,
+          eventType: OUTBOX_EVENT_TYPE,
+          aggregateType: 'enforcement_actions',
+          aggregateId: enforcementAction.id,
+          payload: {
+            enforcement_action_id: enforcementAction.id,
+            case_id: enforcementAction.caseId,
+            action_type: enforcementAction.actionType,
+            target_type: enforcementAction.targetType,
+            target_id: enforcementAction.targetId,
+            organization_id: enforcementAction.organizationId,
+            status: enforcementAction.status,
+          },
+          now,
+        }),
+        tx,
+      );
 
       await deps.auditRecorder.record(
         {

@@ -4,6 +4,7 @@ import type { createRecordAnalystDecisionUseCase } from '../../../../application
 import type { createApproveEnforcementActionUseCase } from '../../../../application/ApproveEnforcementAction.js';
 import type { createRejectEnforcementActionUseCase } from '../../../../application/RejectEnforcementAction.js';
 import type { createExecuteEnforcementActionUseCase } from '../../../../application/ExecuteEnforcementAction.js';
+import type { createRevertEnforcementActionUseCase } from '../../../../application/RevertEnforcementAction.js';
 import type { createListEnforcementActionsUseCase } from '../../../../application/ListEnforcementActions.js';
 import {
   recordAnalystDecisionSchema,
@@ -23,6 +24,7 @@ export interface EnforcementRouterDeps {
   readonly approveEnforcementAction: ReturnType<typeof createApproveEnforcementActionUseCase>;
   readonly rejectEnforcementAction: ReturnType<typeof createRejectEnforcementActionUseCase>;
   readonly executeEnforcementAction: ReturnType<typeof createExecuteEnforcementActionUseCase>;
+  readonly revertEnforcementAction: ReturnType<typeof createRevertEnforcementActionUseCase>;
   readonly listEnforcementActions: ReturnType<typeof createListEnforcementActionsUseCase>;
 }
 
@@ -99,6 +101,15 @@ export function enforcementRouter(deps: EnforcementRouterDeps): Router {
       enforcementActionId: req.params.id!,
     });
     res.status(200).json(toExecuteEnforcementActionResponse(result));
+  });
+
+  router.post('/enforcement-actions/:id/revert', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const enforcementAction = await deps.revertEnforcementAction({
+      auth,
+      enforcementActionId: req.params.id!,
+    });
+    res.status(200).json(toEnforcementActionResponse(enforcementAction));
   });
 
   return router;

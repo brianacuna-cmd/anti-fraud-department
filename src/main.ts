@@ -159,6 +159,7 @@ import { createRecordAnalystDecisionUseCase } from './modules/case-management/ap
 import { createApproveEnforcementActionUseCase } from './modules/case-management/application/ApproveEnforcementAction.js';
 import { createRejectEnforcementActionUseCase } from './modules/case-management/application/RejectEnforcementAction.js';
 import { createExecuteEnforcementActionUseCase } from './modules/case-management/application/ExecuteEnforcementAction.js';
+import { createRevertEnforcementActionUseCase } from './modules/case-management/application/RevertEnforcementAction.js';
 import { createListEnforcementActionsUseCase } from './modules/case-management/application/ListEnforcementActions.js';
 import { createCreateRoutingRuleUseCase } from './modules/case-management/application/CreateRoutingRule.js';
 import { createListRoutingRulesUseCase } from './modules/case-management/application/ListRoutingRules.js';
@@ -680,9 +681,19 @@ async function bootstrap(): Promise<void> {
       cases,
       fraudConfig: organizationFraudConfig,
       auditRecorder: caseManagementAuditRecorder,
+      outbox: outboxEvents,
       unitOfWork: caseManagementUnitOfWork,
       clock,
       generateCustomerOutgoingEventId,
+      generateOutboxEventId,
+    }),
+    revertEnforcementAction: createRevertEnforcementActionUseCase({
+      enforcementActions,
+      auditRecorder: caseManagementAuditRecorder,
+      outbox: outboxEvents,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateOutboxEventId,
     }),
     listEnforcementActions: createListEnforcementActionsUseCase({ enforcementActions }),
   });
