@@ -6,6 +6,7 @@ import type { createRegisterEvidenceUseCase } from '../../../../application/Regi
 import type { createListEvidenceUseCase } from '../../../../application/ListEvidence.js';
 import type { createGetEvidenceUseCase } from '../../../../application/GetEvidence.js';
 import type { createDownloadEvidenceUseCase } from '../../../../application/DownloadEvidence.js';
+import type { createDeleteEvidenceUseCase } from '../../../../application/DeleteEvidence.js';
 import { toEvidenceResponse } from './mappers/EvidenceHttpMapper.js';
 
 export interface EvidenceRouterDeps {
@@ -13,6 +14,7 @@ export interface EvidenceRouterDeps {
   readonly listEvidence: ReturnType<typeof createListEvidenceUseCase>;
   readonly getEvidence: ReturnType<typeof createGetEvidenceUseCase>;
   readonly downloadEvidence: ReturnType<typeof createDownloadEvidenceUseCase>;
+  readonly deleteEvidence: ReturnType<typeof createDeleteEvidenceUseCase>;
   /** Max upload size in bytes (default 25 MB). */
   readonly maxUploadBytes?: number;
 }
@@ -66,6 +68,12 @@ export function evidenceRouter(deps: EvidenceRouterDeps): Router {
     res.setHeader('Content-Type', evidence.contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${sanitizeFilename(evidence.filename)}"`);
     res.status(200).send(bytes);
+  });
+
+  router.delete('/evidence/:evidenceId', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const evidence = await deps.deleteEvidence({ auth, evidenceId: req.params.evidenceId! });
+    res.status(200).json(toEvidenceResponse(evidence));
   });
 
   return router;

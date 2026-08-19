@@ -96,3 +96,9 @@ export function evidenceNotFound(evidenceId: string): CaseManagementError {
     evidenceId,
   });
 }
+
+export function caseNoteNotFound(noteId: string): CaseManagementError {
+  return new CaseManagementError('CASE_NOTE_NOT_FOUND', `case note "${noteId}" was not found`, {
+    noteId,
+  });
+}

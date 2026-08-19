@@ -131,8 +131,11 @@ import { createRegisterEvidenceUseCase } from './modules/case-management/applica
 import { createListEvidenceUseCase } from './modules/case-management/application/ListEvidence.js';
 import { createGetEvidenceUseCase } from './modules/case-management/application/GetEvidence.js';
 import { createDownloadEvidenceUseCase } from './modules/case-management/application/DownloadEvidence.js';
+import { createDeleteEvidenceUseCase } from './modules/case-management/application/DeleteEvidence.js';
+import { createDeleteCaseNoteUseCase } from './modules/case-management/application/DeleteCaseNote.js';
 import { generateEvidenceId } from './modules/case-management/domain/model/value-objects/EvidenceId.js';
 import { evidenceRouter } from './modules/case-management/infrastructure/adapters/inbound/http/evidenceRouter.js';
+import { noteRouter } from './modules/case-management/infrastructure/adapters/inbound/http/noteRouter.js';
 import { generateResolutionId } from './modules/case-management/domain/model/value-objects/ResolutionId.js';
 import { createSweepSlaTrackingUseCase } from './modules/case-management/application/SweepSlaTracking.js';
 import { createSlaSweepScheduler } from './modules/case-management/infrastructure/scheduler/SlaSweepScheduler.js';
@@ -583,6 +586,24 @@ async function bootstrap(): Promise<void> {
     listEvidence: createListEvidenceUseCase({ cases, evidence }),
     getEvidence: createGetEvidenceUseCase({ evidence }),
     downloadEvidence: createDownloadEvidenceUseCase({ evidence, evidenceStore }),
+    deleteEvidence: createDeleteEvidenceUseCase({
+      evidence,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateTimelineEventId,
+    }),
+  });
+  const noteHttpRouter = noteRouter({
+    deleteCaseNote: createDeleteCaseNoteUseCase({
+      notes: caseNotes,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateTimelineEventId,
+    }),
   });
   const approvalRequests = new MongoApprovalRequestRepository(db);
   const customerOutgoingEvents = new MongoCustomerOutgoingEventRepository(db);
@@ -998,6 +1019,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(investigationHttpRouter);
   identityAccessRouter.use(reportHttpRouter);
   identityAccessRouter.use(evidenceHttpRouter);
+  identityAccessRouter.use(noteHttpRouter);
   identityAccessRouter.use(organizationFraudConfigHttpRouter);
   identityAccessRouter.use(enforcementHttpRouter);
   identityAccessRouter.use(routingRuleHttpRouter);

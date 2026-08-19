@@ -25,6 +25,7 @@ export function toDocument(evidence: Evidence): EvidenceDocument {
         : { token: timestamp.token, authority: timestamp.authority, timestamped_at: toDate(timestamp.timestampedAt) },
     uploaded_by: evidence.uploadedBy,
     created_at: toDate(evidence.createdAt),
+    deleted_at: evidence.deletedAt === null ? null : toDate(evidence.deletedAt),
   };
 }
 
@@ -51,5 +52,6 @@ export function toDomain(document: EvidenceDocument): Evidence {
     timestamp,
     uploadedBy: document.uploaded_by,
     createdAt: fromDate(document.created_at),
+    deletedAt: document.deleted_at == null ? null : fromDate(document.deleted_at),
   });
 }

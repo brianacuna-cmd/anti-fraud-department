@@ -21,7 +21,7 @@ export function createGetEvidenceUseCase(deps: GetEvidenceDeps) {
     const evidenceId = createEvidenceId(input.evidenceId);
 
     const evidence = await deps.evidence.findById(evidenceId);
-    if (evidence === null) {
+    if (evidence === null || evidence.deletedAt !== null) {
       throw evidenceNotFound(evidenceId);
     }
     if (evidence.organizationId !== organizationId) {

@@ -6,6 +6,7 @@ export interface CaseNoteDto {
   readonly authorId: string;
   readonly body: string;
   readonly createdAt: string;
+  readonly deletedAt: string | null;
 }
 
 export function toCaseNoteResponse(note: CaseNote): CaseNoteDto {
@@ -15,5 +16,6 @@ export function toCaseNoteResponse(note: CaseNote): CaseNoteDto {
     authorId: note.authorId,
     body: note.body,
     createdAt: note.createdAt,
+    deletedAt: note.deletedAt,
   };
 }

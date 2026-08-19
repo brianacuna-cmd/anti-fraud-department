@@ -22,9 +22,14 @@ export class MongoEvidenceRepository implements EvidenceRepository {
   }
 
   async save(evidence: Evidence, tx?: Transaction): Promise<void> {
-    await this.collection.insertOne(toDocument(evidence), { session: toSession(tx) });
+    const document = toDocument(evidence);
+    await this.collection.replaceOne({ _id: document._id }, document, {
+      upsert: true,
+      session: toSession(tx),
+    });
   }
 
+  /** Returns the row regardless of `deleted_at` so the soft-delete path is idempotent. */
   async findById(id: EvidenceId, tx?: Transaction): Promise<Evidence | null> {
     const document = await this.collection.findOne({ _id: new ObjectId(id) }, { session: toSession(tx) });
     return document ? toDomain(document) : null;
@@ -32,7 +37,7 @@ export class MongoEvidenceRepository implements EvidenceRepository {
 
   async listByCaseId(caseId: CaseId, tx?: Transaction): Promise<Evidence[]> {
     const documents = await this.collection
-      .find({ case_id: new ObjectId(caseId) }, { session: toSession(tx) })
+      .find({ case_id: new ObjectId(caseId), deleted_at: null }, { session: toSession(tx) })
       .sort({ created_at: -1 })
       .toArray();
     return documents.map(toDomain);

@@ -32,7 +32,7 @@ export function createDownloadEvidenceUseCase(deps: DownloadEvidenceDeps) {
     const evidenceId = createEvidenceId(input.evidenceId);
 
     const evidence = await deps.evidence.findById(evidenceId);
-    if (evidence === null) {
+    if (evidence === null || evidence.deletedAt !== null) {
       throw evidenceNotFound(evidenceId);
     }
     if (evidence.organizationId !== organizationId) {
