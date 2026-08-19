@@ -104,6 +104,7 @@ import { createCalculateSlaUseCase } from './modules/case-management/application
 import { createRouteCaseUseCase } from './modules/case-management/application/RouteCase.js';
 import { createReassignCaseUseCase } from './modules/case-management/application/ReassignCase.js';
 import { createListCasesUseCase } from './modules/case-management/application/ListCases.js';
+import { createExportCasesUseCase } from './modules/case-management/application/ExportCases.js';
 import { createReopenCaseUseCase } from './modules/case-management/application/ReopenCase.js';
 import { createUpdateCasePriorityTagsUseCase } from './modules/case-management/application/UpdateCasePriorityTags.js';
 import { createBulkCaseActionUseCase } from './modules/case-management/application/BulkCaseAction.js';
@@ -144,6 +145,7 @@ import { MongoOrganizationFraudConfigRepository } from './modules/case-managemen
 import { MongoCaseSlaTrackingRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseSlaTrackingRepository.js';
 import { ZenRoutingEngine } from './modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { caseRouter } from './modules/case-management/infrastructure/adapters/inbound/http/caseRouter.js';
+import { caseExportRouter } from './modules/case-management/infrastructure/adapters/inbound/http/caseExportRouter.js';
 import { caseManagementErrorStatus } from './modules/case-management/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createCaseManagementAuditRecorderAdapter } from './composition/caseManagementAuditRecorderAdapter.js';
 import { createIdentityAssigneeDirectory } from './composition/identityAssigneeDirectory.js';
@@ -425,6 +427,9 @@ async function bootstrap(): Promise<void> {
     auditRecorder: caseManagementAuditRecorder,
     routeCase,
     calculateSla,
+  });
+  const caseExportHttpRouter = caseExportRouter({
+    exportCases: createExportCasesUseCase({ cases }),
   });
   const getOrganizationFraudConfig = createGetOrganizationFraudConfigUseCase({
     repository: organizationFraudConfig,
@@ -1017,6 +1022,7 @@ async function bootstrap(): Promise<void> {
   // case-management Slice 5 + T2: cases + organization fraud config mounted
   // on the SAME authenticated `/api/v1` router — rely on
   // `authContextMiddleware` above to resolve the caller's AuthContext.
+  identityAccessRouter.use(caseExportHttpRouter);
   identityAccessRouter.use(caseManagementCasesRouter);
   identityAccessRouter.use(investigationHttpRouter);
   identityAccessRouter.use(reportHttpRouter);

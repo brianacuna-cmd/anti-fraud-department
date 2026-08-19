@@ -55,6 +55,25 @@ export const listCasesQuerySchema = z.object({
 
 export type ListCasesQuery = z.infer<typeof listCasesQuerySchema>;
 
+/**
+ * GET /cases/export query. Same filters as the inbox list (no pagination —
+ * export returns all matching cases up to the use-case cap) plus a `format`
+ * selector. `organization_id` comes from the tenant auth context.
+ */
+export const exportCasesQuerySchema = z.object({
+  format: z.enum(['json', 'xlsx', 'pdf']).default('json'),
+  status: z.preprocess(asStringArray, z.array(caseStatusEnum).optional()),
+  priority: z.preprocess(asStringArray, z.array(casePriorityEnum).optional()),
+  assignedTo: z.string().min(1).optional(),
+  riskScoreMin: z.coerce.number().int().min(0).max(100).optional(),
+  riskScoreMax: z.coerce.number().int().min(0).max(100).optional(),
+  tags: z.preprocess(asStringArray, z.array(z.string().min(1)).optional()),
+  dueAfter: z.iso.datetime().optional(),
+  dueBefore: z.iso.datetime().optional(),
+});
+
+export type ExportCasesQuery = z.infer<typeof exportCasesQuerySchema>;
+
 /** POST /cases/:caseId/reopen body (role-gated reopen + SLA reset). */
 export const reopenCaseSchema = z.object({
   targetStatus: z.enum(['OPEN', 'IN_REVIEW']),
