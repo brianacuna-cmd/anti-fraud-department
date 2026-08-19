@@ -5,13 +5,17 @@ import type { CaseRepository } from '../domain/ports/CaseRepository.js';
 import type { ResolutionRepository } from '../domain/ports/ResolutionRepository.js';
 import type { TimelineRecorder } from '../domain/ports/TimelineRecorder.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
-import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
+import type { Instant } from '../../../shared/time/Instant.js';
+import type { UnitOfWork, Transaction } from '../domain/ports/UnitOfWork.js';
+import type { OutboxEventRepository } from '../domain/ports/OutboxEventRepository.js';
 import type { ResolutionId } from '../domain/model/value-objects/ResolutionId.js';
 import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
+import type { OutboxEventId } from '../domain/model/value-objects/OutboxEventId.js';
 import type { CaseManagementAuditAction } from '../domain/model/value-objects/CaseManagementAuditVocabulary.js';
 import type { ResolutionClosureType } from '../domain/model/aggregates/Resolution.js';
 import { Resolution } from '../domain/model/aggregates/Resolution.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
+import { OutboxEvent } from '../domain/model/aggregates/OutboxEvent.js';
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { caseNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
@@ -34,6 +38,18 @@ export interface CloseCaseDeps {
   readonly clock: Clock;
   readonly generateResolutionId: () => ResolutionId;
   readonly generateTimelineEventId: () => TimelineEventId;
+  /** Required only when `config.outboxEventType` is set (resolve path). */
+  readonly outbox?: OutboxEventRepository;
+  readonly generateOutboxEventId?: () => OutboxEventId;
+}
+
+export interface CloseCaseConfig {
+  readonly closureType: ResolutionClosureType;
+  readonly auditAction: CaseManagementAuditAction;
+  /** When set, stop the SLA (clear the case dueDate read-model) on closure. */
+  readonly stopSla?: boolean;
+  /** When set, emit an `outbox_events` row of this type in the same transaction. */
+  readonly outboxEventType?: string;
 }
 
 /**
@@ -44,11 +60,8 @@ export interface CloseCaseDeps {
  * `STATE_CHANGED` timeline event, and audit. Case status finally gets a
  * `transitionTo` caller.
  */
-export function closeCase(
-  deps: CloseCaseDeps,
-  closureType: ResolutionClosureType,
-  auditAction: CaseManagementAuditAction,
-) {
+export function closeCase(deps: CloseCaseDeps, config: CloseCaseConfig) {
+  const { closureType, auditAction } = config;
   return async function close(input: CloseCaseInput): Promise<Case> {
     requireRole(input.auth, CLOSE_ROLES);
     const organizationId = requireTenantContext(input.auth);
@@ -65,7 +78,10 @@ export function closeCase(
 
       const now = deps.clock.now();
       const previousStatus = existing.status;
-      const closed = existing.transitionTo(closureType, now);
+      const transitioned = existing.transitionTo(closureType, now);
+      // Stop the SLA: clear the case dueDate read-model so a closed case no
+      // longer surfaces an active SLA (task scope: cases, not case_sla_tracking).
+      const closed = config.stopSla === true ? transitioned.withDueDate(null, now) : transitioned;
       await deps.cases.save(closed, tx);
 
       const resolution = Resolution.create({
@@ -106,7 +122,56 @@ export function closeCase(
         tx,
       );
 
+      if (config.outboxEventType !== undefined) {
+        await emitOutbox(deps, config.outboxEventType, tx, {
+          organizationId,
+          caseId,
+          closureType,
+          resolutionId: resolution.id,
+          resolvedBy: input.auth.userId,
+          now,
+        });
+      }
+
       return closed;
     });
   };
+}
+
+interface OutboxContext {
+  readonly organizationId: string;
+  readonly caseId: string;
+  readonly closureType: ResolutionClosureType;
+  readonly resolutionId: string;
+  readonly resolvedBy: string;
+  readonly now: Instant;
+}
+
+async function emitOutbox(
+  deps: CloseCaseDeps,
+  eventType: string,
+  tx: Transaction,
+  ctx: OutboxContext,
+): Promise<void> {
+  if (deps.outbox === undefined || deps.generateOutboxEventId === undefined) {
+    throw new Error('closeCase: outbox event requested but outbox deps are not wired');
+  }
+  await deps.outbox.save(
+    OutboxEvent.create({
+      id: deps.generateOutboxEventId(),
+      organizationId: ctx.organizationId,
+      eventType,
+      aggregateType: 'cases',
+      aggregateId: ctx.caseId,
+      payload: {
+        case_id: ctx.caseId,
+        organization_id: ctx.organizationId,
+        closure_type: ctx.closureType,
+        resolution_id: ctx.resolutionId,
+        resolved_by: ctx.resolvedBy,
+      },
+      now: ctx.now,
+    }),
+    tx,
+  );
 }

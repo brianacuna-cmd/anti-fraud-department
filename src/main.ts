@@ -91,6 +91,7 @@ import { MongoTimelineRecorder } from './modules/case-management/infrastructure/
 import { MongoTimelineReader } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoTimelineReader.js';
 import { MongoCaseNoteRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseNoteRepository.js';
 import { MongoResolutionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoResolutionRepository.js';
+import { MongoOutboxEventRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoOutboxEventRepository.js';
 import { MongoInvestigationRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoInvestigationRepository.js';
 import { MongoCaseReportRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseReportRepository.js';
 import { MongoEvidenceRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoEvidenceRepository.js';
@@ -139,6 +140,7 @@ import { generateEvidenceId } from './modules/case-management/domain/model/value
 import { evidenceRouter } from './modules/case-management/infrastructure/adapters/inbound/http/evidenceRouter.js';
 import { noteRouter } from './modules/case-management/infrastructure/adapters/inbound/http/noteRouter.js';
 import { generateResolutionId } from './modules/case-management/domain/model/value-objects/ResolutionId.js';
+import { generateOutboxEventId } from './modules/case-management/domain/model/value-objects/OutboxEventId.js';
 import { createSweepSlaTrackingUseCase } from './modules/case-management/application/SweepSlaTracking.js';
 import { createSlaSweepScheduler } from './modules/case-management/infrastructure/scheduler/SlaSweepScheduler.js';
 import { MongoCaseRoutingRuleRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRoutingRuleRepository.js';
@@ -389,6 +391,7 @@ async function bootstrap(): Promise<void> {
   const caseTimelineReader = new MongoTimelineReader(db);
   const caseNotes = new MongoCaseNoteRepository(db);
   const resolutions = new MongoResolutionRepository(db);
+  const outboxEvents = new MongoOutboxEventRepository(db);
   const investigations = new MongoInvestigationRepository(db);
   const caseManagementAuditRecorder = createCaseManagementAuditRecorderAdapter(recordAuditLog);
   // CASE-002 (T1 auto-routing): ACTIVE routing rules are evaluated by the ZEN
@@ -501,6 +504,8 @@ async function bootstrap(): Promise<void> {
       clock,
       generateResolutionId,
       generateTimelineEventId,
+      outbox: outboxEvents,
+      generateOutboxEventId,
     }),
     archiveCase: createArchiveCaseUseCase({
       cases,
