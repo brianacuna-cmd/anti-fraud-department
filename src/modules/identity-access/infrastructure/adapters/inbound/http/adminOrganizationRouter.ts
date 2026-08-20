@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
-import type { Db } from 'mongodb';
+import { ObjectId, type Db } from 'mongodb';
 import type { EmailSender } from '../../../../domain/ports/EmailSender.js';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
 import type { createProvisionAdminOrganizationUseCase } from '../../../../application/admin/ProvisionAdminOrganization.js';
@@ -22,7 +22,13 @@ import { toAdminOrganizationResponse } from './mappers/AdminOrganizationHttpMapp
 import { parseRequest } from './parseRequest.js';
 
 export interface AdminOrganizationRouterDeps {
-  readonly db?: Db;
+  /**
+   * OBLIGATORIA. Mientras fue opcional, `main.ts` dejo de inyectarla sin que
+   * nada lo advirtiera y el login de super admin se degrado en silencio: el
+   * OTP salia hacia el correo por defecto en vez del admin real, y el secreto
+   * TOTP no se persistia, de modo que cada intento volvia a pedir el QR.
+   */
+  readonly db: Db;
   readonly provisionAdminOrganization: ReturnType<typeof createProvisionAdminOrganizationUseCase>;
   /** super-admin-auth PR1, step 1 — public, no `AuthContext` yet. */
   readonly requestAdminChallenge: ReturnType<typeof createRequestAdminChallengeUseCase>;
@@ -40,7 +46,7 @@ export interface AdminOrganizationRouterDeps {
 
 /** Proyeccion minima de `admin_organizations` que necesita el flujo de MFA. */
 interface AdminOrganizationMfaDocument {
-  readonly _id: string;
+  readonly _id: ObjectId;
   readonly email?: string;
   readonly mfa_secret?: string;
 }
@@ -69,10 +75,6 @@ export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Rout
     }
     if (req.authContext.actorType !== 'PLATFORM_ADMIN') {
       res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Platform Admin required' } });
-      return;
-    }
-    if (!deps.db) {
-      res.status(200).json([]);
       return;
     }
     const docs = await deps.db.collection('admin_organizations').find().toArray();
@@ -126,17 +128,12 @@ export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Rout
       ipAddress: req.ip ?? null,
     });
 
-    let email = 'superadmin@antifraud.io';
-    let adminOrgId = '';
-    if (deps.db) {
-      const adminDoc = await deps.db
-        .collection<AdminOrganizationMfaDocument>('admin_organizations')
-        .findOne({ keys: { $elemMatch: { status: 'ACTIVE' } } });
-      if (adminDoc) {
-        email = adminDoc.email ?? email;
-        adminOrgId = String(adminDoc._id);
-      }
-    }
+    // El admin viene del propio caso de uso, que ya cargo el agregado al
+    // verificar la firma. La version anterior lo buscaba en Mongo tomando "el
+    // primero con una llave ACTIVA", asi que con mas de un super admin el OTP
+    // de uno podia acabar en el correo de otro.
+    const email = result.email;
+    const adminOrgId = result.adminOrganizationId;
 
     const otp = String(Math.floor(100000 + Math.random() * 900000));
     const challengeToken = 'admin_chal_' + randomUUID();
@@ -179,10 +176,10 @@ export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Rout
     }
 
     let existingSecret: string | null = null;
-    if (deps.db && pending.adminOrganizationId) {
+    if (pending.adminOrganizationId) {
       const adminDoc = await deps.db
         .collection<AdminOrganizationMfaDocument>('admin_organizations')
-        .findOne({ _id: pending.adminOrganizationId });
+        .findOne({ _id: new ObjectId(pending.adminOrganizationId) });
       if (adminDoc?.mfa_secret) {
         existingSecret = adminDoc.mfa_secret;
       }
@@ -225,10 +222,10 @@ export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Rout
       return;
     }
 
-    if (deps.db && pending.adminOrganizationId) {
+    if (pending.adminOrganizationId) {
       await deps.db
         .collection<AdminOrganizationMfaDocument>('admin_organizations')
-        .updateOne({ _id: pending.adminOrganizationId }, { $set: { mfa_secret: pending.totpSecret } });
+        .updateOne({ _id: new ObjectId(pending.adminOrganizationId) }, { $set: { mfa_secret: pending.totpSecret } });
     }
 
     pendingAdminLogins.delete(body.challengeToken);

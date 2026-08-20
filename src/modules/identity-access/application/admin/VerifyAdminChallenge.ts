@@ -19,7 +19,19 @@ export interface VerifyAdminChallengeInput {
   readonly ipAddress?: string | null;
 }
 
-export type VerifyAdminChallengeResult = MintedSession;
+/**
+ * La sesion emitida, mas la identidad del super admin que firmo el reto.
+ *
+ * `adminOrganizationId`/`email` son aditivos y salen del agregado que este
+ * caso de uso ya carga. Sin ellos, el transporte tenia que adivinar a quien
+ * pertenecia el reto consultando Mongo por su cuenta —tomando "el primero con
+ * una llave ACTIVA"—, de modo que con mas de un super admin el OTP de uno
+ * podia acabar en el correo de otro.
+ */
+export interface VerifyAdminChallengeResult extends MintedSession {
+  readonly adminOrganizationId: string;
+  readonly email: string;
+}
 
 export interface VerifyAdminChallengeDeps {
   readonly admins: AdminOrganizationRepository;
@@ -113,7 +125,7 @@ export function createVerifyAdminChallengeUseCase(deps: VerifyAdminChallengeDeps
         tx,
       );
 
-      return minted;
+      return { ...minted, adminOrganizationId: admin.id, email: admin.email };
     });
   };
 }

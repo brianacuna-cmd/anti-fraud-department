@@ -1043,6 +1043,10 @@ async function bootstrap(): Promise<void> {
   // lifecycle") adds the three `requirePlatformAdmin`-gated key-lifecycle
   // routes on this same router — one-time download, rotation, revocation.
   const identityAccessAdminOrganizationsRouter = adminOrganizationRouter({
+    // Sin `db` el paso 1 no puede resolver a que super admin pertenece el
+    // reto: cae al correo por defecto, manda el OTP a una direccion que nadie
+    // controla y nunca persiste el secreto TOTP.
+    db,
     // Paso 2 del login de super admin: el OTP viaja por este remitente.
     emailSender,
     provisionAdminOrganization: createProvisionAdminOrganizationUseCase({

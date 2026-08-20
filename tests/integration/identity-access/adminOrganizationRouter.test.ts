@@ -2,6 +2,11 @@ import { generateKeyPairSync, sign } from 'node:crypto';
 import { Router, type Express, type Request, type Response, type NextFunction } from 'express';
 import request from 'supertest';
 import { authenticator } from 'otplib';
+import type { Db, MongoClient } from 'mongodb';
+import type { MongoMemoryReplSet } from 'mongodb-memory-server';
+import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
+import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
+import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
 import { FakeEmailSender } from '../../helpers/identity-access/FakeEmailSender.js';
 import { createApp } from '../../../src/shared/http/createApp.js';
 import { createErrorHandler } from '../../../src/shared/http/errorHandler.js';
@@ -55,6 +60,29 @@ function signChallenge(challenge: string, privateKeyPkcs8Pem: string): string {
   return sign(null, message, privateKeyPkcs8Pem).toString('base64');
 }
 
+let replicaSet: MongoMemoryReplSet;
+let mongoClient: MongoClient;
+let db: Db;
+
+beforeAll(async () => {
+  replicaSet = await startReplicaSetMongo();
+  const connection = await connectMongo(replicaSet.getUri(), 'admin_router_test');
+  mongoClient = connection.client;
+  db = connection.db;
+  await ensureIndexes(db);
+});
+
+afterAll(async () => {
+  await mongoClient.close();
+  await replicaSet.stop();
+});
+
+// El secreto TOTP se persiste entre pasos; sin limpiar, un test heredaria el
+// enrolamiento del anterior y tomaria la rama de reto en vez de la de alta.
+beforeEach(async () => {
+  await db.collection('admin_organizations').deleteMany({});
+});
+
 function buildApp(actorPerRequest: () => AuthContext): {
   app: Express;
   admins: InMemoryAdminOrganizationRepository;
@@ -70,6 +98,7 @@ function buildApp(actorPerRequest: () => AuthContext): {
   const auditRecorder = new InMemoryAuditRecorder();
 
   const router = adminOrganizationRouter({
+    db,
     provisionAdminOrganization: createProvisionAdminOrganizationUseCase({
       admins,
       keyPairs,
@@ -171,6 +200,7 @@ function buildChallengeLoginApp(): {
   const clock = new SystemClock();
 
   const router = adminOrganizationRouter({
+    db,
     // 3-step admin login: el router genera el OTP del paso 2 y lo envía por
     // aquí — el FakeEmailSender lo captura para completar el flujo en tests.
     emailSender,
