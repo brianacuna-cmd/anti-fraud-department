@@ -39,8 +39,17 @@ export interface AuthRouterDeps {
    * no MFA branch, unlike the USER tier's two-step flow.
    */
   readonly issueOrganizationSession: ReturnType<typeof createIssueOrganizationSessionUseCase>;
-  /** Verificación de credenciales de ORGANIZATION para el paso 1 del login. */
-  readonly authenticateOrganization?: ReturnType<typeof createAuthenticateActorUseCase>;
+  /**
+   * Verificación de credenciales de ORGANIZATION para el paso 1 del login.
+   *
+   * OBLIGATORIA a propósito. Mientras fue opcional, `main.ts` dejó de
+   * inyectarla sin que nada lo advirtiera: el paso 1 respondía
+   * `OTP_REQUIRED` a cualquier email —enviándole un correo— y las
+   * credenciales no se comprobaban hasta el paso 3. Una guarda de seguridad
+   * que se desactiva sola cuando falta su dependencia es peor que no
+   * tenerla, así que ahora olvidarla es un error de compilación.
+   */
+  readonly authenticateOrganization: ReturnType<typeof createAuthenticateActorUseCase>;
   /** Step 2, challenge path (design "IssueSession flow"). */
   readonly issueSession: ReturnType<typeof createIssueSessionUseCase>;
   readonly logout: ReturnType<typeof createLogoutUseCase>;
@@ -130,13 +139,11 @@ export function authRouter(deps: AuthRouterDeps): Router {
     // avanzaba a la pantalla de OTP y disparaba un correo: el rechazo llegaba
     // dos pasos tarde y cualquiera podía provocar envíos a esa dirección.
     // Lanza `invalidCredentials` (401), igual que el login de usuario.
-    if (deps.authenticateOrganization) {
-      await deps.authenticateOrganization({
-        email: body.email,
-        password: body.password,
-        ipAddress: req.ip ?? null,
-      });
-    }
+    await deps.authenticateOrganization({
+      email: body.email,
+      password: body.password,
+      ipAddress: req.ip ?? null,
+    });
 
     // Step 1: Generate OTP for email step
     const otp = String(Math.floor(100000 + Math.random() * 900000));

@@ -1103,6 +1103,19 @@ async function bootstrap(): Promise<void> {
   // Constructed here, not imported into `application/`, because `application`
   // may only depend on its own module's `domain` (eslint `boundaries`).
   const dummyCredential = createPasswordCredential(DUMMY_PASSWORD_HASH);
+
+  // Se comparte entre el paso 1 y el paso 3 del login de organizacion: el paso
+  // 1 lo usa para rechazar credenciales invalidas ANTES de enviar el OTP, y el
+  // paso 3 vuelve a verificarlas antes de emitir la sesion.
+  const organizationAuthenticator = createAuthenticateActorUseCase({
+    gateway: new OrganizationActorGateway(organizations),
+    passwordHasher,
+    clock,
+    dummyCredential,
+    actorType: 'ORGANIZATION',
+    auditRecorder,
+  });
+
   const identityAccessAuthRouter = authRouter({
     beginUserLogin: createBeginUserLoginUseCase({
       authenticateActor: createAuthenticateActorUseCase({
@@ -1120,15 +1133,12 @@ async function bootstrap(): Promise<void> {
       challengeTtlSeconds: AUTH_MFA_CHALLENGE_TTL_SECONDS,
       enrollmentTtlSeconds: AUTH_MFA_ENROLLMENT_TTL_SECONDS,
     }),
+    // Sin esto el paso 1 acepta cualquier email: responde OTP_REQUIRED y
+    // dispara un correo a esa direccion, dejando la verificacion de
+    // credenciales para el paso 3.
+    authenticateOrganization: organizationAuthenticator,
     issueOrganizationSession: createIssueOrganizationSessionUseCase({
-      authenticateActor: createAuthenticateActorUseCase({
-        gateway: new OrganizationActorGateway(organizations),
-        passwordHasher,
-        clock,
-        dummyCredential,
-        actorType: 'ORGANIZATION',
-        auditRecorder,
-      }),
+      authenticateActor: organizationAuthenticator,
       issueSessionFor: sessionIssuer,
       unitOfWork,
       clock,

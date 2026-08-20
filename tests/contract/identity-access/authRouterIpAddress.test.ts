@@ -11,6 +11,7 @@ import type { createLogoutUseCase } from '../../../src/modules/identity-access/a
 import type { createRequestPasswordResetUseCase } from '../../../src/modules/identity-access/application/auth/RequestPasswordReset.js';
 import type { createConfirmPasswordResetUseCase } from '../../../src/modules/identity-access/application/auth/ConfirmPasswordReset.js';
 import type { createRefreshSessionUseCase } from '../../../src/modules/identity-access/application/auth/RefreshSession.js';
+import type { createAuthenticateActorUseCase } from '../../../src/modules/identity-access/application/auth/AuthenticateActor.js';
 
 /**
  * Focused e2e for design D-A7's "Login captures IP from input" scenario:
@@ -35,6 +36,9 @@ describe('authRouter IP capture (design D-A7)', () => {
     const router = authRouter({
       beginUserLogin,
       issueOrganizationSession,
+      authenticateOrganization: (async () => undefined) as unknown as ReturnType<
+        typeof createAuthenticateActorUseCase
+      >,
       issueSession: (async () => ({
         accessToken: 'a',
         refreshToken: 'r',
@@ -86,6 +90,9 @@ describe('authRouter IP capture (design D-A7)', () => {
 
     const router = authRouter({
       beginUserLogin,
+      authenticateOrganization: (async () => undefined) as unknown as ReturnType<
+        typeof createAuthenticateActorUseCase
+      >,
       issueOrganizationSession: (async () => ({
         accessToken: 'a',
         refreshToken: 'r',
