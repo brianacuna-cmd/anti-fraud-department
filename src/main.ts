@@ -1200,6 +1200,7 @@ async function bootstrap(): Promise<void> {
     resolveAuthContextResolver(AUTH_MODE, {
       sessionTokenService,
       sessionRepository: sessions,
+      userRepositoryFactory,
       platformAdminAuth: PLATFORM_ADMIN_AUTH,
     }),
   );

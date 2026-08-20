@@ -4,6 +4,7 @@ import { SessionTokenAuthContextResolver } from './SessionTokenAuthContextResolv
 import { TieredAuthContextResolver } from './TieredAuthContextResolver.js';
 import type { SessionTokenService } from '../../../../../domain/ports/SessionTokenService.js';
 import type { SessionRepository } from '../../../../../domain/ports/SessionRepository.js';
+import type { UserRepositoryFactory } from '../../../../../domain/ports/UserRepositoryFactory.js';
 
 const TRUSTED_HEADER_MODE = 'trusted-header';
 const SESSION_MODE = 'session';
@@ -13,6 +14,8 @@ const PLATFORM_ADMIN_AUTH_TRUSTED_HEADER = 'trusted-header';
 export interface AuthContextResolverDeps {
   readonly sessionTokenService?: SessionTokenService;
   readonly sessionRepository?: SessionRepository;
+  /** Resuelve el rol del usuario en cada peticion, para poblar `AuthContext.roleId`. */
+  readonly userRepositoryFactory?: UserRepositoryFactory;
   /**
    * Design D6: `'disabled'` (default, prod-safe) or `'trusted-header'`
    * (non-prod-only, interim PLATFORM_ADMIN path — `assertAuthConfigSafeForProduction`
@@ -52,7 +55,16 @@ export function resolveAuthContextResolver(
         `AUTH_MODE=${SESSION_MODE} requires both a sessionTokenService and a sessionRepository dependency.`,
       );
     }
-    const primary = new SessionTokenAuthContextResolver(deps.sessionTokenService, deps.sessionRepository);
+    if (!deps.userRepositoryFactory) {
+      // Sin el, `roleId` seria siempre null y todas las guardas de rol
+      // rechazarian: mejor no arrancar que servir un 403 permanente.
+      throw new Error('AUTH_MODE=session requires userRepositoryFactory to resolve the caller role');
+    }
+    const primary = new SessionTokenAuthContextResolver(
+      deps.sessionTokenService,
+      deps.sessionRepository,
+      deps.userRepositoryFactory,
+    );
     const adminInterim =
       deps.platformAdminAuth === PLATFORM_ADMIN_AUTH_TRUSTED_HEADER ? new TrustedHeaderAuthContextResolver() : null;
     return new TieredAuthContextResolver(primary, adminInterim);

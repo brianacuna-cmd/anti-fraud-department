@@ -217,7 +217,7 @@ function buildAppWithRealResolver(
     }),
   });
 
-  const resolver = new SessionTokenAuthContextResolver(TOKEN_SERVICE_FIXTURE, sessions);
+  const resolver = new SessionTokenAuthContextResolver(TOKEN_SERVICE_FIXTURE, sessions, userRepositoryFactory);
   const authContextMiddleware = createAuthContextMiddleware(resolver);
 
   const mounted = Router();

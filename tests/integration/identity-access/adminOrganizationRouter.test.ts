@@ -41,6 +41,7 @@ import { fromDate } from '../../../src/shared/time/Instant.js';
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
 import { oid } from '../../support/oid.js';
 import { buildSession } from '../../helpers/identity-access/buildSession.js';
+import { InMemoryUserRepositoryFactory } from '../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
 
 const PLATFORM_ADMIN = createAuthContext({ userId: oid('admin-1'), organizationId: null, isPlatformAdmin: true });
 const REGULAR_USER = createAuthContext({ userId: oid('user-1'), organizationId: oid('o1'), isPlatformAdmin: false });
@@ -261,7 +262,7 @@ function buildChallengeLoginApp(): {
   });
 
   const authContextMiddleware = createAuthContextMiddleware(
-    new SessionTokenAuthContextResolver(sessionTokenService, sessions),
+    new SessionTokenAuthContextResolver(sessionTokenService, sessions, new InMemoryUserRepositoryFactory()),
   );
 
   const mounted = Router();
