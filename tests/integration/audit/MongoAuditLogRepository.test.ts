@@ -23,12 +23,12 @@ function buildAuditLog(overrides: {
 }): AuditLog {
   return AuditLog.create({
     id: createAuditLogId(oid(overrides.id)),
-    organizationId: overrides.organizationId === undefined ? 'org-1' : overrides.organizationId,
+    organizationId: overrides.organizationId === undefined ? oid('org-1') : overrides.organizationId,
     actorType: 'USER',
-    actorId: 'user-1',
+    actorId: oid('user-1'),
     action: overrides.action ?? 'USER_CREATED',
     resource: 'users',
-    resourceId: 'user-2',
+    resourceId: oid('user-2'),
     detail: { field: 'value' },
     ipAddress: '127.0.0.1',
     createdAt: NOW,
@@ -59,26 +59,26 @@ describe('MongoAuditLogRepository (integration, real replica-set Mongo)', () => 
   });
 
   afterEach(async () => {
-    await db.collection('AuditLogs').deleteMany({});
+    await db.collection('audit_logs').deleteMany({});
   });
 
   it('persists an audit log', async () => {
     await repository.save(buildAuditLog({ id: 'audit-1' }));
 
-    const rawDocument = await db.collection<AuditLogDocument>('AuditLogs').findOne({ _id: new ObjectId(oid('audit-1')) });
+    const rawDocument = await db.collection<AuditLogDocument>('audit_logs').findOne({ _id: new ObjectId(oid('audit-1')) });
 
     expect(rawDocument).not.toBeNull();
-    expect(rawDocument?.Action).toBe('USER_CREATED');
-    expect(rawDocument?.OrganizationId).toBe('org-1');
-    expect(rawDocument?.Detail).toEqual({ field: 'value' });
+    expect(rawDocument?.action).toBe('USER_CREATED');
+    expect(rawDocument?.organization_id).toEqual(new ObjectId(oid('org-1')));
+    expect(rawDocument?.detail).toEqual({ field: 'value' });
   });
 
   it('persists an audit log with a null OrganizationId (PLATFORM_ADMIN outside a tenant)', async () => {
     await repository.save(buildAuditLog({ id: 'audit-2', organizationId: null }));
 
-    const rawDocument = await db.collection<AuditLogDocument>('AuditLogs').findOne({ _id: new ObjectId(oid('audit-2')) });
+    const rawDocument = await db.collection<AuditLogDocument>('audit_logs').findOne({ _id: new ObjectId(oid('audit-2')) });
 
-    expect(rawDocument?.OrganizationId).toBeNull();
+    expect(rawDocument?.organization_id).toBeNull();
   });
 
   it('joins the caller-supplied transaction — rolls back together with the enclosing write', async () => {
@@ -91,7 +91,7 @@ describe('MongoAuditLogRepository (integration, real replica-set Mongo)', () => 
       }),
     ).rejects.toThrow('force rollback');
 
-    const rawDocument = await db.collection<AuditLogDocument>('AuditLogs').findOne({ _id: new ObjectId(oid('audit-3')) });
+    const rawDocument = await db.collection<AuditLogDocument>('audit_logs').findOne({ _id: new ObjectId(oid('audit-3')) });
     expect(rawDocument).toBeNull();
   });
 
@@ -102,7 +102,7 @@ describe('MongoAuditLogRepository (integration, real replica-set Mongo)', () => 
       await repository.save(buildAuditLog({ id: 'audit-4' }), tx as unknown as Transaction);
     });
 
-    const rawDocument = await db.collection<AuditLogDocument>('AuditLogs').findOne({ _id: new ObjectId(oid('audit-4')) });
+    const rawDocument = await db.collection<AuditLogDocument>('audit_logs').findOne({ _id: new ObjectId(oid('audit-4')) });
     expect(rawDocument).not.toBeNull();
   });
 
@@ -114,7 +114,7 @@ describe('MongoAuditLogRepository (integration, real replica-set Mongo)', () => 
     await repository.save(buildAuditLog({ id: 'audit-id-guard' }));
 
     const rawDocument = await db
-      .collection<AuditLogDocument>('AuditLogs')
+      .collection<AuditLogDocument>('audit_logs')
       .findOne({ _id: new ObjectId(oid('audit-id-guard')) });
 
     expect(rawDocument).not.toBeNull();

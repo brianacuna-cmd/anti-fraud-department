@@ -1,10 +1,10 @@
-import type { ClientSession, Collection, Db } from 'mongodb';
+import { ObjectId, type ClientSession, type Collection, type Db } from 'mongodb';
 import type { AdminOrganization } from '../../../../domain/model/aggregates/AdminOrganization.js';
 import type { AdminOrganizationRepository } from '../../../../domain/ports/AdminOrganizationRepository.js';
 import type { AdminOrganizationId } from '../../../../domain/model/value-objects/AdminOrganizationId.js';
 import type { AdminKeyId } from '../../../../domain/model/value-objects/AdminKeyId.js';
 import type { Email } from '../../../../domain/model/value-objects/Email.js';
-import type { Instant } from '../../../../../../shared/time/Instant.js';
+import { toDate, type Instant } from '../../../../../../shared/time/Instant.js';
 import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
 import type { AdminOrganizationDocument } from './documents/AdminOrganizationDocument.js';
 import { toDocument, toDomain } from './mappers/AdminOrganizationDocumentMapper.js';
@@ -14,7 +14,7 @@ function toSession(tx: Transaction | undefined): ClientSession | undefined {
   return tx as unknown as ClientSession | undefined;
 }
 
-const COLLECTION_NAME = 'adminOrganizations';
+const COLLECTION_NAME = 'admin_organizations';
 
 /**
  * Mongo adapter for `AdminOrganizationRepository` (design D31/D39/D32a).
@@ -35,7 +35,7 @@ export class MongoAdminOrganizationRepository implements AdminOrganizationReposi
   }
 
   async findById(id: AdminOrganizationId): Promise<AdminOrganization | null> {
-    const document = await this.collection.findOne({ _id: id });
+    const document = await this.collection.findOne({ _id: new ObjectId(id) });
     return document ? toDomain(document) : null;
   }
 
@@ -66,14 +66,14 @@ export class MongoAdminOrganizationRepository implements AdminOrganizationReposi
     tx?: Transaction,
   ): Promise<string | null> {
     const before = await this.collection.findOneAndUpdate(
-      { _id: id, keys: { $elemMatch: { keyId, encryptedPrivateKey: { $ne: null } } } },
-      { $set: { 'keys.$.privateKeyDownloadedAt': now, 'keys.$.encryptedPrivateKey': null, updatedAt: now } },
+      { _id: new ObjectId(id), keys: { $elemMatch: { key_id: new ObjectId(keyId), encrypted_private_key: { $ne: null } } } },
+      { $set: { 'keys.$.private_key_downloaded_at': toDate(now), 'keys.$.encrypted_private_key': null, updated_at: toDate(now) } },
       { returnDocument: 'before', session: toSession(tx) },
     );
     if (!before) {
       return null;
     }
-    const claimedKey = before.keys.find((key) => key.keyId === keyId);
-    return claimedKey?.encryptedPrivateKey ?? null;
+    const claimedKey = before.keys.find((key) => key.key_id.toString() === keyId);
+    return claimedKey?.encrypted_private_key ?? null;
   }
 }

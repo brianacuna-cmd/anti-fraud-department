@@ -1,3 +1,4 @@
+import { oid } from '../../support/oid.js';
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
 import type { Db, MongoClient } from 'mongodb';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
@@ -19,7 +20,7 @@ import { generateOrganizationId } from '../../../src/modules/identity-access/dom
 
 jest.setTimeout(120_000);
 
-const PLATFORM_ADMIN = createAuthContext({ userId: 'admin-1', organizationId: 'o0', isPlatformAdmin: true });
+const PLATFORM_ADMIN = createAuthContext({ userId: oid('admin-1'), organizationId: oid('o0'), isPlatformAdmin: true });
 
 function alwaysFailingRecorder(): AuditRecorder {
   return {
@@ -60,8 +61,8 @@ describe('CreateOrganization audit atomicity (integration, real replica-set Mong
   });
 
   afterEach(async () => {
-    await db.collection('Organizations').deleteMany({});
-    await db.collection('AuditLogs').deleteMany({});
+    await db.collection('organizations').deleteMany({});
+    await db.collection('audit_logs').deleteMany({});
   });
 
   function buildUseCase(auditRecorder: AuditRecorder) {
@@ -83,9 +84,9 @@ describe('CreateOrganization audit atomicity (integration, real replica-set Mong
 
     const persisted = await organizations.findBySlug(createSlug('acme-corp'));
     expect(persisted?.id).toBe(organization.id);
-    const auditRows = await db.collection('AuditLogs').find({}).toArray();
+    const auditRows = await db.collection('audit_logs').find({}).toArray();
     expect(auditRows).toHaveLength(1);
-    expect(auditRows[0]?.Action).toBe('ORGANIZATION_CREATED');
+    expect(auditRows[0]?.action).toBe('ORGANIZATION_CREATED');
   });
 
   it('rolls back the organization write when the audit write fails mid-transaction (proves the write is truly inside the tx)', async () => {
@@ -97,7 +98,7 @@ describe('CreateOrganization audit atomicity (integration, real replica-set Mong
 
     const persisted = await organizations.findBySlug(createSlug('acme-corp'));
     expect(persisted).toBeNull();
-    const auditRows = await db.collection('AuditLogs').find({}).toArray();
+    const auditRows = await db.collection('audit_logs').find({}).toArray();
     expect(auditRows).toHaveLength(0);
   });
 });

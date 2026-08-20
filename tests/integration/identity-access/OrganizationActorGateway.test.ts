@@ -44,7 +44,7 @@ describe('OrganizationActorGateway (integration, real replica-set Mongo)', () =>
   });
 
   afterEach(async () => {
-    await db.collection('Organizations').deleteMany({});
+    await db.collection('organizations').deleteMany({});
   });
 
   it('resolves an organization with credentials by email, ignoring organizationSlug', async () => {

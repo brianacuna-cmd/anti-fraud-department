@@ -3,54 +3,51 @@
  * emission (design "Cross-module seams: Audit reuse"). Plain unions, NOT
  * branded — mirrors `IdentityAccessAuditAction`/`IdentityAccessAuditResource`.
  *
- * Grouped by the subsystem that emits each action. The list stays closed on
- * purpose: `audit_logs` is the record a regulator reads, and an open string
- * would let each call site invent its own verb for the same operation, which
- * makes the log impossible to query after the fact.
+ * Only Slice 5's action (`CREATE_CASE`) is wired to a real use case yet;
+ * the remaining actions are declared now (design's fixed list) so later
+ * slices (6-13) don't need to touch this file again.
  */
 export type CaseManagementAuditAction =
-  // --- Case lifecycle ---
   | 'CREATE_CASE'
-  | 'CASE_INGESTED_WEBHOOK'
   | 'UPDATE_SCORE'
-  | 'RECLASSIFY_CASE'
-  | 'REASSIGN_CASE'
-  | 'ROUTE_CASE'
+  | 'START_REVIEW'
   | 'RESOLVE_CASE'
+  | 'ARCHIVE_CASE'
+  | 'REASSIGN_CASE'
   | 'REOPEN_CASE'
-  | 'BULK_UPDATE_CASES'
-  | 'EXPORT_CASES'
-  // --- Investigation ---
-  | 'ADD_NOTE'
-  | 'DELETE_NOTE'
-  | 'UPLOAD_EVIDENCE'
-  | 'SCAN_EVIDENCE'
-  | 'TIMESTAMP_EVIDENCE'
-  | 'DOWNLOAD_EVIDENCE'
+  | 'UPDATE_PRIORITY_TAGS'
+  | 'BULK_CASE_ACTION'
+  | 'ADD_CASE_NOTE'
+  | 'OPEN_INVESTIGATION'
+  | 'CLOSE_INVESTIGATION'
+  | 'UPDATE_INVESTIGATION_FINDINGS'
+  | 'GENERATE_CASE_REPORT'
+  | 'REGISTER_EVIDENCE'
   | 'DELETE_EVIDENCE'
-  | 'RECORD_DECISION'
-  | 'GENERATE_REPORT'
-  | 'CREATE_INVESTIGATION'
-  | 'UPDATE_INVESTIGATION'
-  | 'LINK_CASES'
-  // --- Enforcement and approvals ---
-  | 'REQUEST_ENFORCEMENT'
-  | 'REVIEW_APPROVAL'
-  | 'EXECUTE_ENFORCEMENT'
-  | 'REVERT_ENFORCEMENT'
-  // --- Customer disputes ---
-  | 'CREATE_DISPUTE'
-  | 'RESOLVE_DISPUTE';
+  | 'DELETE_CASE_NOTE'
+  | 'RECORD_ANALYST_DECISION'
+  | 'APPROVE_ENFORCEMENT_ACTION'
+  | 'REJECT_ENFORCEMENT_ACTION'
+  | 'REVIEW_APPROVAL_REQUEST'
+  | 'EXECUTE_ENFORCEMENT_ACTION'
+  | 'REVERT_ENFORCEMENT_ACTION'
+  | 'CREATE_ROUTING_RULE'
+  | 'ACTIVATE_ROUTING_RULE'
+  | 'DEACTIVATE_ROUTING_RULE'
+  /**
+   * CASE-002 (T1): a rule whose JDM could not be evaluated was SKIPPED rather
+   * than aborting case creation. Not a user action — it is the only durable
+   * trail for an unusable rule while this module has no logger port. Pending
+   * confirmation with the team (design open point: "Enums de EventType/Action
+   * ... confirmar los nombres exactos").
+   */
+  | 'ROUTING_RULE_EVALUATION_FAILED';
 
 export type CaseManagementAuditResource =
   | 'case'
   | 'entity'
   | 'user'
   | 'rule'
-  | 'note'
-  | 'evidence'
   | 'investigation'
-  | 'enforcement_action'
-  | 'approval_request'
-  | 'dispute'
-  | 'report';
+  | 'report'
+  | 'evidence';

@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createTransitionUserStatusUseCase } from '../../../../src/modules/identity-access/application/TransitionUserStatus.js';
 import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
 import { InMemorySessionRepository } from '../../../helpers/identity-access/InMemorySessionRepository.js';
@@ -6,31 +7,29 @@ import { InMemoryAuditRecorder } from '../../../helpers/identity-access/InMemory
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { User } from '../../../../src/modules/identity-access/domain/model/aggregates/User.js';
-import { Session } from '../../../../src/modules/identity-access/domain/model/aggregates/Session.js';
 import { createUserId } from '../../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
 import { createRoleId } from '../../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
 import { createOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createEmail } from '../../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 import { createPasswordCredential } from '../../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
-import { createSessionId } from '../../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
-import { createFamilyId } from '../../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
+import { buildSession } from '../../../helpers/identity-access/buildSession.js';
 import { IdentityAccessError } from '../../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
 
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const TRANSITIONED_AT = fromDate(new Date('2026-01-02T00:00:00.000Z'));
-const ORG_ADMIN = createAuthContext({ userId: 'u1', organizationId: 'org-1', actorType: 'ORGANIZATION' });
-const OTHER_ORG_ADMIN = createAuthContext({ userId: 'u2', organizationId: 'org-2', actorType: 'ORGANIZATION' });
-const PLATFORM_ADMIN = createAuthContext({ userId: 'u3', organizationId: 'org-1', isPlatformAdmin: true });
+const ORG_ADMIN = createAuthContext({ userId: oid('u1'), organizationId: oid('org-1'), actorType: 'ORGANIZATION' });
+const OTHER_ORG_ADMIN = createAuthContext({ userId: oid('u2'), organizationId: oid('org-2'), actorType: 'ORGANIZATION' });
+const PLATFORM_ADMIN = createAuthContext({ userId: oid('u3'), organizationId: oid('org-1'), isPlatformAdmin: true });
 
 async function seedUser(
   userRepositoryFactory: InMemoryUserRepositoryFactory,
   status: 'ACTIVE' | 'DISABLED' = 'ACTIVE',
-  organizationId = 'org-1',
+  organizationId = oid('org-1'),
 ): Promise<void> {
   const org = createOrganizationId(organizationId);
   let user = User.create({
-    id: createUserId('user-1'),
+    id: createUserId(oid('user-1')),
     organizationId: org,
     email: createEmail('alice@example.com'),
     credential: createPasswordCredential('hash'),
@@ -60,22 +59,6 @@ function buildUseCase(
   });
 }
 
-function buildSession(id: string): Session {
-  return Session.create({
-    id: createSessionId(id),
-    userId: 'user-1',
-    organizationId: createOrganizationId('org-1'),
-    actorType: 'USER',
-    tokenHash: `token-hash-${id}`,
-    refreshTokenHash: `refresh-hash-${id}`,
-    expiresAt: TRANSITIONED_AT,
-    refreshExpiresAt: TRANSITIONED_AT,
-    familyId: createFamilyId('family-1'),
-    familyExpiresAt: TRANSITIONED_AT,
-    now: CREATED_AT,
-  });
-}
-
 describe('createTransitionUserStatusUseCase', () => {
   it('runs the transition inside a unit-of-work transaction and persists the result', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
@@ -83,7 +66,7 @@ describe('createTransitionUserStatusUseCase', () => {
     const unitOfWork = new InMemoryUnitOfWork();
     const transitionUserStatus = buildUseCase(userRepositoryFactory, unitOfWork);
 
-    const user = await transitionUserStatus({ auth: ORG_ADMIN, userId: 'user-1', next: 'SUSPENDED' });
+    const user = await transitionUserStatus({ auth: ORG_ADMIN, userId: oid('user-1'), next: 'SUSPENDED' });
 
     expect(user.status).toBe('SUSPENDED');
     expect(unitOfWork.transactionCount).toBe(1);
@@ -96,7 +79,7 @@ describe('createTransitionUserStatusUseCase', () => {
 
     expect.assertions(2);
     try {
-      await transitionUserStatus({ auth: ORG_ADMIN, userId: 'missing', next: 'SUSPENDED' });
+      await transitionUserStatus({ auth: ORG_ADMIN, userId: oid('missing'), next: 'SUSPENDED' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('USER_NOT_FOUND');
@@ -105,13 +88,13 @@ describe('createTransitionUserStatusUseCase', () => {
 
   it('rejects a cross-tenant transition with USER_NOT_FOUND', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
-    await seedUser(userRepositoryFactory, 'ACTIVE', 'org-1');
+    await seedUser(userRepositoryFactory, 'ACTIVE', oid('org-1'));
     const unitOfWork = new InMemoryUnitOfWork();
     const transitionUserStatus = buildUseCase(userRepositoryFactory, unitOfWork);
 
     expect.assertions(2);
     try {
-      await transitionUserStatus({ auth: OTHER_ORG_ADMIN, userId: 'user-1', next: 'SUSPENDED' });
+      await transitionUserStatus({ auth: OTHER_ORG_ADMIN, userId: oid('user-1'), next: 'SUSPENDED' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('USER_NOT_FOUND');
@@ -126,7 +109,7 @@ describe('createTransitionUserStatusUseCase', () => {
 
     expect.assertions(2);
     try {
-      await transitionUserStatus({ auth: ORG_ADMIN, userId: 'user-1', next: 'ACTIVE' });
+      await transitionUserStatus({ auth: ORG_ADMIN, userId: oid('user-1'), next: 'ACTIVE' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('FORBIDDEN_REACTIVATION');
@@ -139,7 +122,7 @@ describe('createTransitionUserStatusUseCase', () => {
     const unitOfWork = new InMemoryUnitOfWork();
     const transitionUserStatus = buildUseCase(userRepositoryFactory, unitOfWork);
 
-    const user = await transitionUserStatus({ auth: PLATFORM_ADMIN, userId: 'user-1', next: 'ACTIVE' });
+    const user = await transitionUserStatus({ auth: PLATFORM_ADMIN, userId: oid('user-1'), next: 'ACTIVE' });
 
     expect(user.status).toBe('ACTIVE');
   });
@@ -151,14 +134,14 @@ describe('createTransitionUserStatusUseCase', () => {
     const auditRecorder = new InMemoryAuditRecorder();
     const transitionUserStatus = buildUseCase(userRepositoryFactory, unitOfWork, auditRecorder);
 
-    await transitionUserStatus({ auth: ORG_ADMIN, userId: 'user-1', next: 'SUSPENDED' });
+    await transitionUserStatus({ auth: ORG_ADMIN, userId: oid('user-1'), next: 'SUSPENDED' });
 
     const calls = auditRecorder.calls();
     expect(calls).toHaveLength(1);
     expect(calls[0].tx).toBeDefined();
     expect(calls[0].event.action).toBe('USER_STATUS_CHANGED');
     expect(calls[0].event.resource).toBe('users');
-    expect(calls[0].event.resourceId).toBe('user-1');
+    expect(calls[0].event.resourceId).toBe(oid('user-1'));
     expect(calls[0].event.detail).toEqual({ from: 'ACTIVE', to: 'SUSPENDED' });
   });
 
@@ -169,7 +152,7 @@ describe('createTransitionUserStatusUseCase', () => {
     const transitionUserStatus = buildUseCase(userRepositoryFactory, unitOfWork, auditRecorder);
 
     await expect(
-      transitionUserStatus({ auth: ORG_ADMIN, userId: 'missing', next: 'SUSPENDED' }),
+      transitionUserStatus({ auth: ORG_ADMIN, userId: oid('missing'), next: 'SUSPENDED' }),
     ).rejects.toBeInstanceOf(IdentityAccessError);
 
     expect(auditRecorder.all()).toHaveLength(0);
@@ -181,14 +164,14 @@ describe('createTransitionUserStatusUseCase', () => {
     const unitOfWork = new InMemoryUnitOfWork();
     const auditRecorder = new InMemoryAuditRecorder();
     const sessions = new InMemorySessionRepository();
-    await sessions.save(buildSession('session-1'));
-    await sessions.save(buildSession('session-2'));
+    await sessions.save(buildSession({ id: oid('session-1'), now: CREATED_AT, expiresAt: TRANSITIONED_AT }));
+    await sessions.save(buildSession({ id: oid('session-2'), now: CREATED_AT, expiresAt: TRANSITIONED_AT }));
     const transitionUserStatus = buildUseCase(userRepositoryFactory, unitOfWork, auditRecorder, sessions);
 
-    await transitionUserStatus({ auth: ORG_ADMIN, userId: 'user-1', next: 'DISABLED' });
+    await transitionUserStatus({ auth: ORG_ADMIN, userId: oid('user-1'), next: 'DISABLED' });
 
-    const revokedSession1 = await sessions.findByTokenHash('token-hash-session-1');
-    const revokedSession2 = await sessions.findByTokenHash('token-hash-session-2');
+    const revokedSession1 = await sessions.findByTokenHash(`token-hash-${oid('session-1')}`);
+    const revokedSession2 = await sessions.findByTokenHash(`token-hash-${oid('session-2')}`);
     expect(revokedSession1?.deletedAt).toBe(TRANSITIONED_AT);
     expect(revokedSession2?.deletedAt).toBe(TRANSITIONED_AT);
 
@@ -213,12 +196,12 @@ describe('createTransitionUserStatusUseCase', () => {
     const unitOfWork = new InMemoryUnitOfWork();
     const auditRecorder = new InMemoryAuditRecorder();
     const sessions = new InMemorySessionRepository();
-    await sessions.save(buildSession('session-1'));
+    await sessions.save(buildSession({ id: oid('session-1'), now: CREATED_AT, expiresAt: TRANSITIONED_AT }));
     const transitionUserStatus = buildUseCase(userRepositoryFactory, unitOfWork, auditRecorder, sessions);
 
-    await transitionUserStatus({ auth: ORG_ADMIN, userId: 'user-1', next: 'SUSPENDED' });
+    await transitionUserStatus({ auth: ORG_ADMIN, userId: oid('user-1'), next: 'SUSPENDED' });
 
-    const untouched = await sessions.findByTokenHash('token-hash-session-1');
+    const untouched = await sessions.findByTokenHash(`token-hash-${oid('session-1')}`);
     expect(untouched?.deletedAt).toBeNull();
     expect(auditRecorder.all().some((event) => event.action === 'USER_SESSIONS_REVOKED')).toBe(false);
   });

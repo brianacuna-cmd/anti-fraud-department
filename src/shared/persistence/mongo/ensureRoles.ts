@@ -1,5 +1,5 @@
 import type { Db } from 'mongodb';
-import type { Instant } from '../../time/Instant.js';
+import { toDate, type Instant } from '../../time/Instant.js';
 import type { RolDocument } from '../../../modules/identity-access/infrastructure/adapters/outbound/mongo/documents/RolDocument.js';
 
 interface RoleSeed {
@@ -24,14 +24,14 @@ const ROLE_SEED: readonly RoleSeed[] = [
  * (`ensureIndexes.ts` precedent).
  */
 export async function ensureRoles(db: Db, now: Instant): Promise<void> {
-  const collection = db.collection<RolDocument>('Rol');
+  const collection = db.collection<RolDocument>('rol');
   await Promise.all(
     ROLE_SEED.map((role) =>
       collection.updateOne(
         { _id: role.id },
         {
-          $setOnInsert: { CreatedAt: now, DeletedAt: null },
-          $set: { RoleName: role.name, Status: 'ACTIVE' },
+          $setOnInsert: { created_at: toDate(now), deleted_at: null },
+          $set: { role_name: role.name, status: 'ACTIVE' },
         },
         { upsert: true },
       ),

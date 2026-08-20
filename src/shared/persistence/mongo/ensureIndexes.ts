@@ -1,296 +1,186 @@
-import type { Db, IndexSpecification } from 'mongodb';
+import type { Db } from 'mongodb';
 
 /**
- * `createIndex` es idempotente mientras la clave no cambie: si el nombre ya
- * existe apuntando a otra clave, falla el arranque entero. Cuando la forma de
- * un índice evoluciona hay que retirar el anterior primero.
+ * Provisions uniqueness and lookup indexes. Collection and field keys are
+ * snake_case; index NAMES stay snake_case so `duplicateKey.ts` can translate
+ * E11000 by index name. `createIndex` is idempotent — safe on every bootstrap.
  */
-async function dropIndexIfKeyDiffers(
-  db: Db,
-  collection: string,
-  indexName: string,
-  expectedKey: IndexSpecification,
-): Promise<void> {
-  const exists = await db.listCollections({ name: collection }).hasNext();
-  if (!exists) return;
-
-  const indexes = await db.collection(collection).indexes();
-  const current = indexes.find((index) => index.name === indexName);
-  if (!current) return;
-
-  if (JSON.stringify(current.key) !== JSON.stringify(expectedKey)) {
-    await db.collection(collection).dropIndex(indexName);
-  }
-}
-
-/**
- * Provisions the indexes every `identity-access` repository relies on for
- * uniqueness and tenant-scoped lookups (HTTP API Foundation spec: "Required
- * Index Provisioning"). Named indexes so `duplicateKey.ts` (Phase 2) can
- * translate E11000 by index name, never by parsing the driver's message.
- * `createIndex` is idempotent — safe to call on every bootstrap.
- *
- * Design A2 (identity-access-schema-v2, PR3): collections and field KEYS are
- * PascalCase (`Organizations`/`Users`, `Slug`/`OrganizationId`/`Email`/
- * `Status`). Index NAMES stay snake_case (design A3) — only key casing
- * moved, the shape and uniqueness semantics are byte-identical to before.
- */
-async function safeCreateIndex(
-  collection: ReturnType<Db['collection']>,
-  spec: any,
-  options?: any,
-): Promise<void> {
-  try {
-    await collection.createIndex(spec, options);
-  } catch (err: any) {
-    if (err?.code === 86 || err?.codeName === 'IndexKeySpecsConflict') {
-      if (options?.name) {
-        try {
-          await collection.dropIndex(options.name);
-          await collection.createIndex(spec, options);
-          return;
-        } catch {
-          // ignore fallback error
-        }
-      }
-    }
-    throw err;
-  }
-}
-
 export async function ensureIndexes(db: Db): Promise<void> {
-  await db
-    .collection('Organizations')
-    .createIndex({ Slug: 1 }, { unique: true, name: 'slug_unique' });
+  await db.collection('organizations').createIndex({ slug: 1 }, { unique: true, name: 'slug_unique' });
 
-  // PARTIAL unique index (Phase 4, design D36 pulled forward, D38's general
-  // rule: "any unique index over a nullable field must be partial with a
-  // $type predicate"). Most `Organization` rows have `Email: null` until
-  // Phase 7 wires self-credential bootstrap — a plain OR sparse unique index
-  // would collide on the second such row (see D38's reasoning, identical
-  // shape here).
-  await db.collection('Organizations').createIndex(
-    { Email: 1 },
+  await db.collection('organizations').createIndex(
+    { email: 1 },
     {
       unique: true,
       name: 'organization_email_unique',
-      partialFilterExpression: { Email: { $exists: true, $type: 'string' } },
+      partialFilterExpression: { email: { $exists: true, $type: 'string' } },
     },
   );
 
   await db
-    .collection('Users')
-    .createIndex({ OrganizationId: 1, Email: 1 }, { unique: true, name: 'user_email_unique' });
+    .collection('users')
+    .createIndex({ organization_id: 1, email: 1 }, { unique: true, name: 'user_email_unique' });
+
+  await db.collection('users').createIndex({ organization_id: 1, status: 1 }, { name: 'user_status_idx' });
 
   await db
-    .collection('Users')
-    .createIndex({ OrganizationId: 1, Status: 1 }, { name: 'user_status_idx' });
-
-  // `AdminOrganization` (identity-access-super-admin-auth) is a separate
-  // aggregate not in scope for schema-v2's PascalCase migration (design D39:
-  // follow this repo's existing camelCase document convention) — deliberately
-  // NOT PascalCase, unlike Organizations/Users above.
-  await db
-    .collection('adminOrganizations')
+    .collection('admin_organizations')
     .createIndex({ email: 1 }, { unique: true, name: 'admin_organization_email_unique' });
 
-  await db
-    .collection('adminOrganizations')
-    .createIndex({ 'keys.keyId': 1 }, { name: 'admin_organization_keys_key_id_idx' });
+  await db.collection('admin_organizations').createIndex({ 'keys.key_id': 1 }, { name: 'admin_organization_keys_key_id_idx' });
 
-  // `Sessions` (identity-access-authentication, design D14/D15/D38).
-  await db
-    .collection('Sessions')
-    .createIndex({ TokenHash: 1 }, { unique: true, name: 'session_token_hash_unique' });
-
-  // PARTIAL unique index, not plain and not sparse (design D38): a plain
-  // unique index tolerates only ONE null/missing value across the whole
-  // collection, so a second refresh-less PLATFORM_ADMIN session would be
-  // rejected at insert with E11000. Sparse is also wrong here — this repo's
-  // mappers always write an explicit `null`, never omit the key, so a
-  // sparse index would still index every null and collide identically.
-  // `$type: 'string'` filters on TYPE, not presence, so explicit nulls are
-  // excluded either way — the only one of the three that is correct.
-  await db.collection('Sessions').createIndex(
-    { RefreshTokenHash: 1 },
-    {
-      unique: true,
-      name: 'session_refresh_token_hash_unique',
-      partialFilterExpression: { RefreshTokenHash: { $exists: true, $type: 'string' } },
-    },
-  );
-
-  await db.collection('Sessions').createIndex({ FamilyId: 1 }, { name: 'session_family_id_idx' });
-
-  // TTL sits on `FamilyExpiresAtDate` — a BSON Date MIRROR — never on the
-  // `FamilyExpiresAt` ISO-string `Instant` field (design D15). Mongo's TTL
-  // monitor acts only on a real BSON `Date`; a TTL index on the string field
-  // is created successfully and silently deletes nothing.
-  await db
-    .collection('Sessions')
-    .createIndex({ FamilyExpiresAtDate: 1 }, { name: 'session_family_expires_at_ttl_idx', expireAfterSeconds: 0 });
+  await db.collection('sessions').createIndex({ token_hash: 1 }, { unique: true, name: 'session_token_hash_unique' });
 
   await db
-    .collection('Sessions')
-    .createIndex({ OrganizationId: 1 }, { name: 'session_organization_id_idx' });
+    .collection('sessions')
+    .createIndex({ expira_en: 1, deleted_at: 1 }, { name: 'idx_expired_active' });
 
   await db
-    .collection('Sessions')
-    .createIndex({ ActorType: 1, UserId: 1 }, { name: 'session_actor_type_user_id_idx' });
-
-  // `MfaChallenges` (two-step-login PR1a, design D1). `_id` = jti — the
-  // atomic CAS `consume` matches on {_id, ConsumedAt:null, ExpiresAt:{$gt:
-  // now}}, so no additional unique index is needed beyond the implicit _id
-  // index. TTL sits on `ExpiresAtDate` — a BSON Date MIRROR of the ISO-8601
-  // `ExpiresAt` Instant, identical pattern to `Sessions.FamilyExpiresAtDate`
-  // (design D15): Mongo's TTL monitor only acts on a real BSON Date field.
-  await db
-    .collection('MfaChallenges')
-    .createIndex({ ExpiresAtDate: 1 }, { name: 'mfa_challenge_expires_at_ttl_idx', expireAfterSeconds: 0 });
-
-  // `AdminChallenges` (super-admin-auth PR-1). `_id` = challengeId — the
-  // atomic CAS `consume` matches on {_id, ConsumedAt:null, ExpiresAt:{$gt:
-  // now}}, so no additional unique index is needed beyond the implicit _id
-  // index. TTL sits on `ExpiresAtDate` — a BSON Date MIRROR of the ISO-8601
-  // `ExpiresAt` Instant, identical pattern to `MfaChallenges.ExpiresAtDate`.
-  await db
-    .collection('AdminChallenges')
-    .createIndex({ ExpiresAtDate: 1 }, { name: 'admin_challenge_expires_at_ttl_idx', expireAfterSeconds: 0 });
-
-  // `AuditLogs` (audit-logs-foundation, design D-A8). Append-only — no
-  // uniqueness constraints, only lookup indexes for the timelines the
-  // module is built to serve (tenant, actor, and action-type timelines).
-  await db
-    .collection('AuditLogs')
-    .createIndex({ OrganizationId: 1, CreatedAt: -1 }, { name: 'audit_log_organization_created_idx' });
+    .collection('mfa_challenges')
+    .createIndex({ expires_at: 1 }, { name: 'mfa_challenge_expires_at_ttl_idx', expireAfterSeconds: 0 });
 
   await db
-    .collection('AuditLogs')
-    .createIndex({ ActorType: 1, ActorId: 1, CreatedAt: -1 }, { name: 'audit_log_actor_created_idx' });
+    .collection('admin_challenges')
+    .createIndex({ expires_at: 1 }, { name: 'admin_challenge_expires_at_ttl_idx', expireAfterSeconds: 0 });
 
   await db
-    .collection('AuditLogs')
-    .createIndex({ Action: 1, CreatedAt: -1 }, { name: 'audit_log_action_created_idx' });
+    .collection('audit_logs')
+    .createIndex({ organization_id: 1, created_at: -1 }, { name: 'audit_log_organization_created_idx' });
 
-  // `NotificationPreferences` (notification-preferences, design D9). One row
-  // per (organizationId, userId, alertType, channel) — the compound unique
-  // index IS the natural-key identity guard (design D1/D10), never a
-  // composite `_id`. No nullable key fields, so a plain unique index is
-  // correct (no partial predicate needed).
-  await db.collection('NotificationPreferences').createIndex(
-    { OrganizationId: 1, UserId: 1, AlertType: 1, Channel: 1 },
+  await db
+    .collection('audit_logs')
+    .createIndex({ actor_type: 1, actor_id: 1, created_at: -1 }, { name: 'audit_log_actor_created_idx' });
+
+  await db.collection('audit_logs').createIndex({ action: 1, created_at: -1 }, { name: 'audit_log_action_created_idx' });
+
+  await db.collection('notification_preferences').createIndex(
+    { organization_id: 1, user_id: 1, alert_type: 1, channel: 1 },
     { unique: true, name: 'notification_preference_user_alert_channel_unique' },
   );
 
-  // `Cases` (case-management Slice 1 — Foundation). Tenant-scoped lookup
-  // indexes for the T3 inbox query (later slice) and routing/SLA joins.
-  await db
-    .collection('Cases')
-    .createIndex({ OrganizationId: 1, Status: 1 }, { name: 'case_org_status_idx' });
-
-  await db
-    .collection('Cases')
-    .createIndex({ OrganizationId: 1, Priority: 1 }, { name: 'case_org_priority_idx' });
-
-  await db.collection('Cases').createIndex({ AssignedTo: 1 }, { name: 'case_assigned_to_idx' });
-
-  await db.collection('Cases').createIndex({ RiskScore: 1 }, { name: 'case_risk_score_idx' });
-
-  await db.collection('Cases').createIndex({ DueDate: 1 }, { name: 'case_due_date_idx' });
-
-  await db.collection('Cases').createIndex({ Tags: 1 }, { name: 'case_tags_idx' });
-
-  // `OrganizationFraudConfig` (case-management Slice 2). Per-tenant singleton
-  // — this unique index IS the invariant guard (mirrors
-  // `NotificationPreferences`' compound unique index above), never
-  // re-checked in application code.
-  await db
-    .collection('OrganizationFraudConfig')
-    .createIndex({ OrganizationId: 1 }, { unique: true, name: 'org_fraud_config_unique' });
-
-  // `CaseTimeline` (case-management Slice 3 — append-only). Single lookup
-  // index for "events for this case, newest first" — no uniqueness
-  // constraint, every insert is a brand-new row (design: "CaseTimeline ...
-  // insertOne only").
-  await db
-    .collection('CaseTimeline')
-    .createIndex({ CaseId: 1, CreatedAt: -1 }, { name: 'case_timeline_case_created_idx' });
-
-  // `CaseSlaTracking` (case-management Slice 4). One row per Case — this
-  // unique index IS the invariant guard (mirrors `org_fraud_config_unique`
-  // above), never re-checked in application code. `DueDateAt` is the BSON
-  // Date mirror the sweep's range query (Slice 13) relies on; `Status` backs
-  // the sweep's `{ $ne: 'BREACHED' }` filter.
-  await db
-    .collection('CaseSlaTracking')
-    .createIndex({ CaseId: 1 }, { unique: true, name: 'sla_tracking_case_unique' });
-
-  await db
-    .collection('CaseSlaTracking')
-    .createIndex({ DueDateAt: 1 }, { name: 'sla_tracking_due_date_idx' });
-
-  await db.collection('CaseSlaTracking').createIndex({ Status: 1 }, { name: 'sla_tracking_status_idx' });
-
-  // La bandeja se lee siempre por (organizacion, destinatario) y ordenada por
-  // fecha descendente; el indice cubre la consulta y el contador de no leidos.
-  await db
-    .collection('Notifications')
-    .createIndex(
-      { OrganizationId: 1, RecipientUserId: 1, CreatedAtDate: -1 },
-      { name: 'notification_recipient_created_idx' },
-    );
-
-  await db
-    .collection('Notifications')
-    .createIndex(
-      { OrganizationId: 1, RecipientUserId: 1, ReadAt: 1 },
-      { name: 'notification_recipient_unread_idx' },
-    );
-
-  // El publicador solo mira los PENDING, y por orden de llegada.
-  await db
-    .collection('OutboxEvents')
-    .createIndex({ Status: 1, _id: 1 }, { name: 'outbox_status_order_idx' });
-
-  // CASE-002: el evaluador pide las reglas ACTIVE de un inquilino ordenadas por
-  // `EvaluationOrder`, y lo hace en la ruta critica de cada alta de caso. El
-  // indice cubre esa consulta entera —filtro y orden— para que enrutar no
-  // dependa de recorrer la coleccion.
-  await db
-    .collection('CaseRoutingRules')
-    .createIndex(
-      { OrganizationId: 1, Status: 1, EvaluationOrder: 1 },
-      { name: 'routing_rule_org_status_order_idx' },
-    );
-
-  // El nombre identifica la regla para quien la configura: dos reglas
-  // homonimas en el mismo inquilino hacen imposible saber cual se edito.
-  await db
-    .collection('CaseRoutingRules')
-    .createIndex({ OrganizationId: 1, Name: 1 }, { unique: true, name: 'routing_rule_name_unique' });
-
-  // `OutboxEvents` (transactional outbox events for webhook ingestion & messaging).
-  await db
-    .collection('OutboxEvents')
-    .createIndex({ Status: 1, CreatedAt: 1 }, { name: 'outbox_status_created_idx' });
-
-  await db
-    .collection('OutboxEvents')
-    .createIndex({ AggregateId: 1 }, { name: 'outbox_aggregate_id_idx' });
-
-  // `FinturuCustomers` (copia local del directorio de clientes). El índice
-  // compuesto cubre el orden por defecto del listado — riesgo descendente —
-  // para que paginar no exija ordenar en memoria.
-  await safeCreateIndex(
-    db.collection('FinturuCustomers'),
-    { RiskScore: -1, Name: 1 },
-    { name: 'finturu_customer_risk_idx' },
+  await db.collection('notifications').createIndex(
+    { organization_id: 1, recipient_user_id: 1, created_at: -1 },
+    { name: 'notification_recipient_created_idx' },
   );
 
-  // Soporta el borrado de los registros que el último sync dejó atrás.
-  await safeCreateIndex(
-    db.collection('FinturuCustomers'),
-    { SyncedAt: 1 },
-    { name: 'finturu_customer_synced_idx' },
+  await db.collection('cases').createIndex({ organization_id: 1, status: 1 }, { name: 'case_org_status_idx' });
+
+  await db.collection('cases').createIndex({ organization_id: 1, priority: 1 }, { name: 'case_org_priority_idx' });
+
+  await db.collection('cases').createIndex({ assigned_to: 1 }, { name: 'case_assigned_to_idx' });
+
+  await db.collection('cases').createIndex({ risk_score: 1 }, { name: 'case_risk_score_idx' });
+
+  await db.collection('cases').createIndex({ due_date: 1 }, { name: 'case_due_date_idx' });
+
+  await db.collection('cases').createIndex({ tags: 1 }, { name: 'case_tags_idx' });
+
+  await db
+    .collection('organization_fraud_config')
+    .createIndex({ organization_id: 1 }, { unique: true, name: 'org_fraud_config_unique' });
+
+  await db
+    .collection('case_timeline')
+    .createIndex({ case_id: 1, created_at: -1 }, { name: 'case_timeline_case_created_idx' });
+
+  await db
+    .collection('case_notes')
+    .createIndex({ case_id: 1, created_at: 1 }, { name: 'case_notes_case_created_idx' });
+
+  await db
+    .collection('resolutions')
+    .createIndex({ case_id: 1, created_at: 1 }, { name: 'resolutions_case_created_idx' });
+
+  await db
+    .collection('investigations')
+    .createIndex({ case_id: 1, created_at: 1 }, { name: 'investigations_case_created_idx' });
+
+  await db
+    .collection('case_reports')
+    .createIndex({ case_id: 1, created_at: -1 }, { name: 'case_reports_case_created_idx' });
+
+  await db
+    .collection('evidence')
+    .createIndex({ case_id: 1, created_at: -1 }, { name: 'evidence_case_created_idx' });
+
+  await db.collection('case_sla_tracking').createIndex({ case_id: 1 }, { unique: true, name: 'sla_tracking_case_unique' });
+
+  await db.collection('case_sla_tracking').createIndex({ due_date: 1 }, { name: 'sla_tracking_due_date_idx' });
+
+  await db.collection('case_sla_tracking').createIndex({ status: 1 }, { name: 'sla_tracking_status_idx' });
+
+  await db
+    .collection('case_routing_rules')
+    .createIndex({ organization_id: 1, status: 1 }, { name: 'case_routing_rules_org_status_idx' });
+
+  await db
+    .collection('analyst_decisions')
+    .createIndex({ case_id: 1, created_at: -1 }, { name: 'analyst_decisions_case_created_idx' });
+
+  await db
+    .collection('enforcement_actions')
+    .createIndex({ case_id: 1, status: 1 }, { name: 'enforcement_actions_case_status_idx' });
+
+  await db
+    .collection('enforcement_actions')
+    .createIndex({ organization_id: 1, status: 1 }, { name: 'enforcement_actions_org_status_idx' });
+
+  await db
+    .collection('approval_requests')
+    .createIndex({ enforcement_action_id: 1 }, { name: 'approval_requests_action_idx' });
+
+  await db
+    .collection('customer_outgoing_events')
+    .createIndex({ status: 1, last_attempt_at: 1 }, { name: 'customer_outgoing_events_poll_idx' });
+
+  await db
+    .collection('customer_outgoing_events')
+    .createIndex({ enforcement_action_id: 1 }, { name: 'customer_outgoing_events_action_idx' });
+
+  // Unique ACTIVE per organization. Create before dropping the legacy
+  // non-unique org+status index so duplicates fail closed (E11000) rather
+  // than leaving the collection without a usable constraint.
+  await db.collection('risk_scoring_rules').createIndex(
+    { organization_id: 1 },
+    {
+      unique: true,
+      name: 'risk_scoring_rules_org_active_unique',
+      partialFilterExpression: { status: 'ACTIVE' },
+    },
+  );
+
+  const scoringIndexes = await db.collection('risk_scoring_rules').indexes();
+  if (scoringIndexes.some((index) => index.name === 'risk_scoring_rules_org_status_idx')) {
+    await db.collection('risk_scoring_rules').dropIndex('risk_scoring_rules_org_status_idx');
+  }
+
+  await db.collection('organization_inbound_webhook_secrets').createIndex(
+    { organization_id: 1, provider: 1 },
+    { unique: true, name: 'inbound_webhook_secret_org_provider_unique' },
+  );
+
+  await db.collection('provider_ingest_events').createIndex(
+    { organization_id: 1, provider: 1, provider_event_id: 1 },
+    { unique: true, name: 'provider_ingest_event_org_provider_event_unique' },
+  );
+
+  // outbox_events (transactional outbox): relay polling of undelivered rows,
+  // distributed lock leasing, chronological order per aggregate, and TTL
+  // cleanup of published rows.
+  await db.collection('outbox_events').createIndex(
+    { status: 1, next_retry_at: 1, created_at: 1 },
+    { name: 'outbox_status_retry_created_idx', partialFilterExpression: { status: { $in: ['PENDING', 'FAILED'] } } },
+  );
+  await db.collection('outbox_events').createIndex(
+    { status: 1, locked_until: 1 },
+    { name: 'outbox_status_locked_idx' },
+  );
+  await db.collection('outbox_events').createIndex(
+    { aggregate_id: 1, created_at: 1 },
+    { name: 'outbox_aggregate_created_idx' },
+  );
+  await db.collection('outbox_events').createIndex(
+    { published_at: 1 },
+    { name: 'outbox_published_ttl_idx', expireAfterSeconds: 604800, partialFilterExpression: { status: 'PUBLISHED' } },
   );
 }

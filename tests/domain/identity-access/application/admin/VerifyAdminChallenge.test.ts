@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { createVerifyAdminChallengeUseCase } from '../../../../../src/modules/identity-access/application/admin/VerifyAdminChallenge.js';
 import { createSessionIssuer } from '../../../../../src/modules/identity-access/application/auth/SessionIssuer.js';
@@ -46,7 +47,7 @@ function buildHarness() {
     sessionTokenService: TOKEN_SERVICE,
     sessions,
     tokenKeyVersion: 1,
-    ttls: { sessionSeconds: 900, refreshSeconds: 1_209_600, familySeconds: 2_592_000 },
+    ttls: { sessionSeconds: 900 },
   });
   const verifyAdminChallenge = createVerifyAdminChallengeUseCase({
     admins,
@@ -63,14 +64,14 @@ function buildHarness() {
 async function seedAdminWithActiveKey(
   admins: InMemoryAdminOrganizationRepository,
   keyPair: { publicKeySpkiPem: string },
-  id = 'admin-1',
+  id = oid('admin-1'),
 ) {
   const admin = AdminOrganization.create({
     id: createAdminOrganizationId(id),
     email: createEmail('root@platform.internal'),
     keys: [
       createAdminKey({
-        keyId: createAdminKeyId('key-1'),
+        keyId: createAdminKeyId(oid('key-1')),
         publicKey: keyPair.publicKeySpkiPem,
         status: 'ACTIVE',
         encryptedPrivateKey: 'ciphertext',
@@ -120,8 +121,8 @@ describe('createVerifyAdminChallengeUseCase', () => {
     const saved = await sessions.findByTokenHash(TOKEN_SERVICE.fingerprint(result.accessToken));
     expect(saved?.actorType).toBe('PLATFORM_ADMIN');
     expect(saved?.organizationId).toBeNull();
-    expect(saved?.userId).toBe(admin.id);
-    expect(saved?.refreshTokenHash).toBeNull();
+    expect(saved?.userId).toBeNull();
+    expect(saved?.adminOrganizationId).toBe(admin.id);
 
     const calls = auditRecorder.calls();
     expect(calls).toHaveLength(1);
@@ -228,11 +229,11 @@ describe('createVerifyAdminChallengeUseCase', () => {
     const deprecatedKeyPair = generateEd25519KeyPair();
     const activeKeyPair = generateEd25519KeyPair();
     const admin = AdminOrganization.create({
-      id: createAdminOrganizationId('admin-rotated'),
+      id: createAdminOrganizationId(oid('admin-rotated')),
       email: createEmail('rotated@platform.internal'),
       keys: [
         createAdminKey({
-          keyId: createAdminKeyId('key-old'),
+          keyId: createAdminKeyId(oid('key-old')),
           publicKey: deprecatedKeyPair.publicKeySpkiPem,
           status: 'DEPRECATED',
           encryptedPrivateKey: null,
@@ -240,7 +241,7 @@ describe('createVerifyAdminChallengeUseCase', () => {
           rotatedAt: CREATED_AT,
         }),
         createAdminKey({
-          keyId: createAdminKeyId('key-new'),
+          keyId: createAdminKeyId(oid('key-new')),
           publicKey: activeKeyPair.publicKeySpkiPem,
           status: 'ACTIVE',
           encryptedPrivateKey: 'ciphertext',
@@ -274,11 +275,11 @@ describe('createVerifyAdminChallengeUseCase', () => {
     const { admins, adminChallenges, verifyAdminChallenge } = buildHarness();
     const revokedKeyPair = generateEd25519KeyPair();
     const admin = AdminOrganization.create({
-      id: createAdminOrganizationId('admin-revoked'),
+      id: createAdminOrganizationId(oid('admin-revoked')),
       email: createEmail('revoked@platform.internal'),
       keys: [
         createAdminKey({
-          keyId: createAdminKeyId('key-revoked'),
+          keyId: createAdminKeyId(oid('key-revoked')),
           publicKey: revokedKeyPair.publicKeySpkiPem,
           status: 'REVOKED',
           encryptedPrivateKey: null,

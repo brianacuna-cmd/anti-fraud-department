@@ -1,147 +1,282 @@
 import type { AuthContext } from '../../../shared/kernel/AuthContext.js';
+import type { Clock } from '../../../shared/time/Clock.js';
+import type { Instant } from '../../../shared/time/Instant.js';
 import type { CaseRepository } from '../domain/ports/CaseRepository.js';
-import type { createAssignCaseUseCase } from './AssignCase.js';
-import type { createReclassifyCaseUseCase } from './ReclassifyCase.js';
+import type { TimelineRecorder } from '../domain/ports/TimelineRecorder.js';
+import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
+import type { AssigneeDirectory } from '../domain/ports/AssigneeDirectory.js';
+import type { UnitOfWork, Transaction } from '../domain/ports/UnitOfWork.js';
+import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
+import type { AssignedTo } from '../domain/model/value-objects/AssignedTo.js';
+import type { CasePriority } from '../domain/model/value-objects/CasePriority.js';
+import type { TimelineEventType } from '../domain/model/value-objects/TimelineEventType.js';
+import { Case, normalizeTags } from '../domain/model/aggregates/Case.js';
+import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
+import { createAssignedTo } from '../domain/model/value-objects/AssignedTo.js';
+import { createCasePriority } from '../domain/model/value-objects/CasePriority.js';
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
-import { CaseManagementError, invariantViolation } from '../domain/errors/CaseManagementError.js';
+import {
+  caseNotFound,
+  forbiddenCrossTenant,
+  invariantViolation,
+} from '../domain/errors/CaseManagementError.js';
+import { requireTenantContext } from './authorization/requireTenantContext.js';
+import { requireRole } from './authorization/requireRole.js';
 
-export const BULK_ACTIONS = ['REASSIGN', 'SET_PRIORITY', 'ADD_TAGS', 'REMOVE_TAGS'] as const;
-export type BulkAction = (typeof BULK_ACTIONS)[number];
+const BULK_ACTION_ROLES = ['ANALYST', 'SUPERVISOR', 'ADMIN'] as const;
+const MAX_BULK_CASES = 100;
 
-/**
- * Tope por peticion. Un lote sin limite mantiene abierta una peticion HTTP
- * durante minutos y deja al analista sin saber si sigue viva; ademas convierte
- * un clic accidental en "seleccionar todo" en una escritura masiva.
- */
-export const MAX_BULK_CASES = 500;
+export type BulkCaseAction =
+  | { readonly type: 'ASSIGN'; readonly assignedToType: string; readonly assignedToId: string }
+  | { readonly type: 'CHANGE_PRIORITY'; readonly priority: string }
+  | { readonly type: 'ADD_TAGS'; readonly tags: readonly string[] };
 
 export interface BulkCaseActionInput {
   readonly auth: AuthContext;
   readonly caseIds: readonly string[];
-  readonly action: BulkAction;
-  readonly assignedTo?: { readonly type: string; readonly id: string } | null;
-  readonly priority?: string;
-  readonly tags?: readonly string[];
-}
-
-export interface BulkCaseActionOutcome {
-  readonly caseId: string;
-  readonly ok: boolean;
-  /** Codigo de error del dominio cuando `ok` es falso. */
-  readonly errorCode?: string;
-  readonly message?: string;
+  readonly action: BulkCaseAction;
 }
 
 export interface BulkCaseActionResult {
-  readonly succeeded: number;
-  readonly failed: number;
-  readonly outcomes: readonly BulkCaseActionOutcome[];
+  readonly cases: readonly Case[];
+  /** Ids of the cases whose state actually changed (a no-op is skipped). */
+  readonly changedCaseIds: readonly string[];
 }
 
 export interface BulkCaseActionDeps {
   readonly cases: CaseRepository;
-  readonly assignCase: ReturnType<typeof createAssignCaseUseCase>;
-  readonly reclassifyCase: ReturnType<typeof createReclassifyCaseUseCase>;
+  readonly timelineRecorder: TimelineRecorder;
+  readonly auditRecorder: AuditRecorder;
+  readonly assigneeDirectory: AssigneeDirectory;
+  readonly unitOfWork: UnitOfWork;
+  readonly clock: Clock;
+  readonly generateTimelineEventId: () => TimelineEventId;
+}
+
+interface AppliedChange {
+  readonly updated: Case;
+  readonly eventType: TimelineEventType;
+  readonly previousValue: string | null;
+  readonly newValue: string | null;
+  readonly detail: Record<string, unknown>;
 }
 
 /**
- * CASE-012 — acciones por lote sobre varios expedientes.
- *
- * Delega en `AssignCase` y `ReclassifyCase` en lugar de reimplementar sus
- * reglas. Es la decision que sostiene todo lo demas: si el lote escribiera por
- * su cuenta, tendria que duplicar la comprobacion de inquilino, la validacion
- * del destinatario, el recalculo de SLA y los asientos de auditoria — y en
- * cuanto una de esas reglas cambiase, la via masiva se quedaria atras
- * silenciosamente. Asi, un lote hace exactamente lo mismo que N acciones
- * sueltas, por construccion.
- *
- * Cada caso se procesa de forma independiente y con su propia transaccion.
- * NO es todo-o-nada: un analista que selecciona cincuenta expedientes no debe
- * perder cuarenta y nueve aciertos porque uno estuviera archivado o ya no
- * exista. El resultado detalla que paso con cada uno, para que la interfaz
- * pueda decirlo en lugar de mostrar un exito o un fallo global que miente.
+ * POST /cases/bulk-action. Applies ONE action (ASSIGN | CHANGE_PRIORITY |
+ * ADD_TAGS) to a selection of cases atomically. Role-gated to
+ * ANALYST|SUPERVISOR|ADMIN. Scope (design "bulk-action tables"): cases,
+ * case_timeline, audit_logs — SLA is intentionally NOT recomputed on a bulk
+ * priority change (that is a triage relabel; the per-case
+ * PATCH /cases/:id/priority-tags path owns SLA recalculation). All-or-nothing:
+ * a missing/soft-deleted or cross-tenant case aborts the whole batch. Per-case
+ * no-ops are skipped (no timeline/audit noise) but still returned.
  */
 export function createBulkCaseActionUseCase(deps: BulkCaseActionDeps) {
-  return async function bulkCaseAction(input: BulkCaseActionInput): Promise<BulkCaseActionResult> {
-    const ids = [...new Set(input.caseIds.map((id) => id?.trim()).filter(Boolean))] as string[];
-
-    if (ids.length === 0) {
-      throw invariantViolation('Debe indicarse al menos un caso', { caseIds: input.caseIds });
+  return async function bulkCaseAction(
+    input: BulkCaseActionInput,
+  ): Promise<BulkCaseActionResult> {
+    requireRole(input.auth, BULK_ACTION_ROLES);
+    const organizationId = requireTenantContext(input.auth);
+    const caseIds = dedupe(input.caseIds);
+    if (caseIds.length === 0) {
+      throw invariantViolation('bulk action requires at least one case id');
     }
-    if (ids.length > MAX_BULK_CASES) {
-      throw invariantViolation(`Un lote no puede superar ${MAX_BULK_CASES} casos`, {
-        requested: ids.length,
-        max: MAX_BULK_CASES,
+    if (caseIds.length > MAX_BULK_CASES) {
+      throw invariantViolation(`bulk action is limited to ${MAX_BULK_CASES} cases per request`, {
+        received: caseIds.length,
       });
     }
+    const resolvedAction = await resolveAction(input.action, organizationId, deps);
 
-    const outcomes: BulkCaseActionOutcome[] = [];
+    return deps.unitOfWork.withTransaction(async (tx) => {
+      const now = deps.clock.now();
+      const loaded = await loadAll(caseIds, organizationId, deps, tx);
 
-    for (const caseId of ids) {
-      try {
-        await applyOne(deps, input, caseId);
-        outcomes.push({ caseId, ok: true });
-      } catch (error) {
-        // Un fallo individual no aborta el lote, pero tampoco se traga: se
-        // devuelve identificado para que la interfaz pueda listarlo.
-        const code = error instanceof CaseManagementError ? error.code : 'UNKNOWN';
-        outcomes.push({
-          caseId,
-          ok: false,
-          errorCode: String(code),
-          message: (error as Error).message,
-        });
+      const results: Case[] = [];
+      const changedCaseIds: string[] = [];
+      for (const existing of loaded) {
+        const change = applyAction(existing, resolvedAction, now);
+        if (change === null) {
+          results.push(existing);
+          continue;
+        }
+        await persistChange(change, input.auth, organizationId, now, deps, tx);
+        results.push(change.updated);
+        changedCaseIds.push(change.updated.id);
       }
-    }
 
-    return {
-      succeeded: outcomes.filter((o) => o.ok).length,
-      failed: outcomes.filter((o) => !o.ok).length,
-      outcomes,
-    };
+      return { cases: results, changedCaseIds };
+    });
   };
 }
 
-async function applyOne(
+type ResolvedAction =
+  | { readonly type: 'ASSIGN'; readonly assignedTo: AssignedTo }
+  | { readonly type: 'CHANGE_PRIORITY'; readonly priority: CasePriority }
+  | { readonly type: 'ADD_TAGS'; readonly tags: readonly string[] };
+
+async function resolveAction(
+  action: BulkCaseAction,
+  organizationId: string,
   deps: BulkCaseActionDeps,
-  input: BulkCaseActionInput,
-  caseId: string,
+): Promise<ResolvedAction> {
+  if (action.type === 'CHANGE_PRIORITY') {
+    return { type: 'CHANGE_PRIORITY', priority: createCasePriority(action.priority) };
+  }
+  if (action.type === 'ADD_TAGS') {
+    const tags = normalizeTags(action.tags);
+    if (tags.length === 0) {
+      throw invariantViolation('ADD_TAGS requires at least one non-empty tag');
+    }
+    return { type: 'ADD_TAGS', tags };
+  }
+  const assignedTo = createAssignedTo(action.assignedToType, action.assignedToId);
+  const inOrg = await deps.assigneeDirectory.belongsToOrganization(organizationId, assignedTo);
+  if (!inOrg) {
+    throw forbiddenCrossTenant('assignee does not belong to the case organization');
+  }
+  return { type: 'ASSIGN', assignedTo };
+}
+
+async function loadAll(
+  caseIds: readonly string[],
+  organizationId: string,
+  deps: BulkCaseActionDeps,
+  tx: Transaction,
+): Promise<Case[]> {
+  const loaded: Case[] = [];
+  for (const rawId of caseIds) {
+    const caseId = createCaseId(rawId);
+    const existing = await deps.cases.findById(caseId, tx);
+    if (existing === null || existing.deletedAt !== null) {
+      throw caseNotFound(caseId);
+    }
+    if (existing.organizationId !== organizationId) {
+      throw forbiddenCrossTenant('case does not belong to the actor organization');
+    }
+    loaded.push(existing);
+  }
+  return loaded;
+}
+
+function applyAction(existing: Case, action: ResolvedAction, now: Instant): AppliedChange | null {
+  if (action.type === 'ASSIGN') {
+    return applyAssign(existing, action.assignedTo, now);
+  }
+  if (action.type === 'CHANGE_PRIORITY') {
+    return applyChangePriority(existing, action.priority, now);
+  }
+  return applyAddTags(existing, action.tags, now);
+}
+
+function applyAssign(existing: Case, assignedTo: AssignedTo, now: Instant): AppliedChange | null {
+  const current = existing.assignedTo;
+  if (current !== null && current.type === assignedTo.type && current.id === assignedTo.id) {
+    return null;
+  }
+  return {
+    updated: existing.reassign(assignedTo, now),
+    eventType: 'ASSIGNED',
+    previousValue: current?.id ?? null,
+    newValue: assignedTo.id,
+    detail: {
+      bulkActionType: 'ASSIGN',
+      assignedToType: assignedTo.type,
+      assignedToId: assignedTo.id,
+      previousAssignedToId: current?.id ?? null,
+    },
+  };
+}
+
+function applyChangePriority(
+  existing: Case,
+  priority: CasePriority,
+  now: Instant,
+): AppliedChange | null {
+  if (existing.priority === priority) {
+    return null;
+  }
+  return {
+    updated: existing.updatePriorityAndTags(priority, existing.tags, now),
+    eventType: 'PRIORITY_CHANGED',
+    previousValue: existing.priority,
+    newValue: priority,
+    detail: {
+      bulkActionType: 'CHANGE_PRIORITY',
+      previousPriority: existing.priority,
+      newPriority: priority,
+    },
+  };
+}
+
+function applyAddTags(
+  existing: Case,
+  tags: readonly string[],
+  now: Instant,
+): AppliedChange | null {
+  const previousTags = [...existing.tags];
+  const merged = normalizeTags([...previousTags, ...tags]);
+  if (merged.length === previousTags.length) {
+    return null;
+  }
+  return {
+    updated: existing.updatePriorityAndTags(existing.priority, merged, now),
+    eventType: 'TAGS_UPDATED',
+    previousValue: previousTags.join(',') || null,
+    newValue: merged.join(',') || null,
+    detail: {
+      bulkActionType: 'ADD_TAGS',
+      addedTags: tags,
+      previousTags,
+      newTags: merged,
+    },
+  };
+}
+
+async function persistChange(
+  change: AppliedChange,
+  auth: AuthContext,
+  organizationId: string,
+  now: Instant,
+  deps: BulkCaseActionDeps,
+  tx: Transaction,
 ): Promise<void> {
-  switch (input.action) {
-    case 'REASSIGN':
-      await deps.assignCase({ auth: input.auth, caseId, assignedTo: input.assignedTo ?? null });
-      return;
+  await deps.cases.save(change.updated, tx);
+  await deps.timelineRecorder.record(
+    CaseTimelineEvent.create({
+      id: deps.generateTimelineEventId(),
+      caseId: change.updated.id,
+      eventType: change.eventType,
+      previousValue: change.previousValue,
+      newValue: change.newValue,
+      createdBy: auth.userId,
+      createdAt: now,
+    }),
+    tx,
+  );
+  await deps.auditRecorder.record(
+    {
+      organizationId,
+      actorType: auth.actorType,
+      actorId: auth.userId,
+      action: 'BULK_CASE_ACTION',
+      resource: 'case',
+      resourceId: change.updated.id,
+      detail: change.detail,
+      ipAddress: auth.ipAddress,
+    },
+    tx,
+  );
+}
 
-    case 'SET_PRIORITY':
-      if (!input.priority) {
-        throw invariantViolation('SET_PRIORITY requiere priority', {});
-      }
-      await deps.reclassifyCase({ auth: input.auth, caseId, priority: input.priority });
-      return;
-
-    case 'ADD_TAGS':
-    case 'REMOVE_TAGS': {
-      if (!input.tags || input.tags.length === 0) {
-        throw invariantViolation(`${input.action} requiere tags`, {});
-      }
-
-      // `ReclassifyCase` recibe el conjunto completo de etiquetas, no un delta,
-      // asi que anadir o quitar exige leer las actuales y componer el resultado.
-      const kase = await deps.cases.findById(createCaseId(caseId));
-      if (!kase) {
-        throw invariantViolation('El caso no existe', { caseId });
-      }
-
-      const requested = input.tags.map((tag) => tag.trim()).filter(Boolean);
-      const nextTags =
-        input.action === 'ADD_TAGS'
-          ? [...kase.tags, ...requested]
-          : kase.tags.filter((tag) => !requested.includes(tag));
-
-      // La deduplicacion la hace el agregado en `reclassify`; aqui basta con
-      // pasarle la union.
-      await deps.reclassifyCase({ auth: input.auth, caseId, tags: nextTags });
-      return;
+function dedupe(ids: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const id of ids) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      result.push(id);
     }
   }
+  return result;
 }

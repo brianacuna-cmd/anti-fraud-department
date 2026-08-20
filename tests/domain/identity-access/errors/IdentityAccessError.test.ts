@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { DomainError } from '../../../../src/shared/kernel/DomainError.js';
 import {
   IdentityAccessError,
@@ -13,14 +14,14 @@ import {
 
 describe('IdentityAccessError', () => {
   it('is a DomainError carrying one of the closed identity-access codes', () => {
-    const error = new IdentityAccessError('ORGANIZATION_NOT_FOUND', 'organization "org-1" not found', {
-      id: 'org-1',
+    const error = new IdentityAccessError('ORGANIZATION_NOT_FOUND', 'organization oid("org-1") not found', {
+      id: oid('org-1'),
     });
 
     expect(error).toBeInstanceOf(DomainError);
     expect(error.code).toBe('ORGANIZATION_NOT_FOUND');
-    expect(error.message).toBe('organization "org-1" not found');
-    expect(error.metadata).toEqual({ id: 'org-1' });
+    expect(error.message).toBe('organization oid("org-1") not found');
+    expect(error.metadata).toEqual({ id: oid('org-1') });
   });
 });
 
@@ -72,10 +73,10 @@ describe('organizationSlugTaken', () => {
 
 describe('organizationNotFound', () => {
   it('carries the missing id in metadata', () => {
-    const error = organizationNotFound('org-404');
+    const error = organizationNotFound(oid('org-404'));
 
     expect(error.code).toBe('ORGANIZATION_NOT_FOUND');
-    expect(error.metadata).toEqual({ id: 'org-404' });
+    expect(error.metadata).toEqual({ id: oid('org-404') });
   });
 });
 
@@ -90,9 +91,9 @@ describe('userEmailTaken', () => {
 
 describe('userNotFound', () => {
   it('carries the missing id in metadata', () => {
-    const error = userNotFound('user-404');
+    const error = userNotFound(oid('user-404'));
 
     expect(error.code).toBe('USER_NOT_FOUND');
-    expect(error.metadata).toEqual({ id: 'user-404' });
+    expect(error.metadata).toEqual({ id: oid('user-404') });
   });
 });

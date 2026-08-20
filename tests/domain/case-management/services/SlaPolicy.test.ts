@@ -6,12 +6,13 @@ import {
 import { OrganizationFraudConfig } from '../../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
 import { createOrganizationFraudConfigId } from '../../../../src/modules/case-management/domain/model/value-objects/OrganizationFraudConfigId.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
+import { oid } from '../../../support/oid.js';
 
 const NOW = fromDate(new Date('2026-03-01T12:00:00.000Z'));
 
 const config = OrganizationFraudConfig.create({
-  id: createOrganizationFraudConfigId('config-1'),
-  organizationId: 'org-1',
+  id: createOrganizationFraudConfigId(oid('config-1')),
+  organizationId: oid('org-1'),
   slaLowMinutes: 600,
   slaMediumMinutes: 300,
   slaHighMinutes: 90,

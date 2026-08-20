@@ -16,18 +16,16 @@ import type { Transaction } from '../../../src/modules/identity-access/domain/po
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
 import { createAuthContext } from '../../../src/shared/kernel/AuthContext.js';
 import { Organization } from '../../../src/modules/identity-access/domain/model/aggregates/Organization.js';
-import { Session } from '../../../src/modules/identity-access/domain/model/aggregates/Session.js';
-import { createOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createSlug } from '../../../src/modules/identity-access/domain/model/value-objects/Slug.js';
-import { createSessionId } from '../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
-import { createFamilyId } from '../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
+import { createOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import { oid } from '../../support/oid.js';
+import { buildSession } from '../../helpers/identity-access/buildSession.js';
 
 jest.setTimeout(120_000);
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const PLATFORM_ADMIN = createAuthContext({ userId: 'admin-1', organizationId: 'o0', isPlatformAdmin: true });
+const PLATFORM_ADMIN = createAuthContext({ userId: oid('admin-1'), organizationId: oid('o0'), isPlatformAdmin: true });
 
 /** Throws on the Nth call to `record`, letting earlier calls hit real Mongo — proves partial-write rollback. */
 function failOnNthCall(recorder: AuditRecorder, failAt: number): AuditRecorder {
@@ -73,9 +71,9 @@ describe('TransitionOrganizationStatus audit atomicity (integration, real replic
   });
 
   afterEach(async () => {
-    await db.collection('Organizations').deleteMany({});
-    await db.collection('Sessions').deleteMany({});
-    await db.collection('AuditLogs').deleteMany({});
+    await db.collection('organizations').deleteMany({});
+    await db.collection('sessions').deleteMany({});
+    await db.collection('audit_logs').deleteMany({});
   });
 
   async function seedOrganization(id = oid('org-1')): Promise<void> {
@@ -86,18 +84,12 @@ describe('TransitionOrganizationStatus audit atomicity (integration, real replic
 
   async function seedSession(id: string, organizationId: string): Promise<void> {
     await sessions.save(
-      Session.create({
-        id: createSessionId(oid(id)),
+      buildSession({
+        id,
         userId: oid('org-user-1'),
-        organizationId: createOrganizationId(organizationId),
-        actorType: 'USER',
-        tokenHash: `token-hash-${id}`,
-        refreshTokenHash: `refresh-hash-${id}`,
-        expiresAt: NOW,
-        refreshExpiresAt: NOW,
-        familyId: createFamilyId(oid('family-1')),
-        familyExpiresAt: NOW,
+        organizationId,
         now: NOW,
+        expiresAt: NOW,
       }),
     );
   }
@@ -120,9 +112,9 @@ describe('TransitionOrganizationStatus audit atomicity (integration, real replic
 
     const persisted = await organizations.findById(createOrganizationId(oid('org-1')));
     expect(persisted?.status).toBe('SUSPENDED');
-    const auditRows = await db.collection('AuditLogs').find({}).toArray();
+    const auditRows = await db.collection('audit_logs').find({}).toArray();
     expect(auditRows).toHaveLength(1);
-    expect(auditRows[0]?.Action).toBe('ORGANIZATION_STATUS_CHANGED');
+    expect(auditRows[0]?.action).toBe('ORGANIZATION_STATUS_CHANGED');
   });
 
   it('rolls back the status change AND persists NO audit row when the audit write fails mid-transaction', async () => {
@@ -136,34 +128,34 @@ describe('TransitionOrganizationStatus audit atomicity (integration, real replic
 
     const persisted = await organizations.findById(createOrganizationId(oid('org-1')));
     expect(persisted?.status).toBe('ACTIVE');
-    const auditRows = await db.collection('AuditLogs').find({}).toArray();
+    const auditRows = await db.collection('audit_logs').find({}).toArray();
     expect(auditRows).toHaveLength(0);
   });
 
   it('on CANCELLED: commits the status change, the session revocation, AND both audit rows atomically', async () => {
     await seedOrganization(oid('org-1'));
-    await seedSession('session-1', oid('org-1'));
-    await seedSession('session-2', oid('org-1'));
+    await seedSession(oid('session-1'), oid('org-1'));
+    await seedSession(oid('session-2'), oid('org-1'));
     const transitionOrganizationStatus = buildUseCase(baseAuditRecorder);
 
     await transitionOrganizationStatus({ auth: PLATFORM_ADMIN, organizationId: oid('org-1'), next: 'CANCELLED' });
 
     const persisted = await organizations.findById(createOrganizationId(oid('org-1')));
     expect(persisted?.status).toBe('CANCELLED');
-    const revoked1 = await sessions.findByTokenHash('token-hash-session-1');
-    const revoked2 = await sessions.findByTokenHash('token-hash-session-2');
+    const revoked1 = await sessions.findByTokenHash(`token-hash-${oid('session-1')}`);
+    const revoked2 = await sessions.findByTokenHash(`token-hash-${oid('session-2')}`);
     expect(revoked1?.deletedAt).not.toBeNull();
     expect(revoked2?.deletedAt).not.toBeNull();
-    const auditRows = await db.collection('AuditLogs').find({}).sort({ Action: 1 }).toArray();
+    const auditRows = await db.collection('audit_logs').find({}).sort({ action: 1 }).toArray();
     expect(auditRows).toHaveLength(2);
-    expect(auditRows.map((row) => row.Action)).toEqual(
+    expect(auditRows.map((row) => row.action)).toEqual(
       expect.arrayContaining(['ORGANIZATION_STATUS_CHANGED', 'ORGANIZATION_SESSIONS_REVOKED']),
     );
   });
 
   it('on CANCELLED: when the SECOND audit write fails, rolls back the status change, the session revocation, AND the already-inserted first audit row', async () => {
     await seedOrganization(oid('org-1'));
-    await seedSession('session-1', oid('org-1'));
+    await seedSession(oid('session-1'), oid('org-1'));
     const failingRecorder = failOnNthCall(baseAuditRecorder, 2);
     const transitionOrganizationStatus = buildUseCase(failingRecorder);
 
@@ -173,9 +165,9 @@ describe('TransitionOrganizationStatus audit atomicity (integration, real replic
 
     const persisted = await organizations.findById(createOrganizationId(oid('org-1')));
     expect(persisted?.status).toBe('ACTIVE');
-    const revoked1 = await sessions.findByTokenHash('token-hash-session-1');
+    const revoked1 = await sessions.findByTokenHash(`token-hash-${oid('session-1')}`);
     expect(revoked1?.deletedAt).toBeNull();
-    const auditRows = await db.collection('AuditLogs').find({}).toArray();
+    const auditRows = await db.collection('audit_logs').find({}).toArray();
     expect(auditRows).toHaveLength(0);
   });
 });

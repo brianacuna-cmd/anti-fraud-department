@@ -5,13 +5,14 @@ import type { TimelineRecorder } from '../domain/ports/TimelineRecorder.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { InitializeCaseSlaService } from './InitializeCaseSla.js';
-import type { RouteCaseService } from './RouteCase.js';
-import type { OutboxRepository } from '../domain/ports/OutboxRepository.js';
+import type { RouteCaseInput } from './RouteCase.js';
+import type { OutboxEventRepository } from '../../../shared/outbox/OutboxEventRepository.js';
+import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
 import type { CaseId } from '../domain/model/value-objects/CaseId.js';
 import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
 import { Case } from '../domain/model/aggregates/Case.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
-import { OutboxEvent } from '../domain/model/aggregates/OutboxEvent.js';
+import { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
 import { createRiskScore } from '../domain/model/value-objects/RiskScore.js';
 import { createCasePriority } from '../domain/model/value-objects/CasePriority.js';
 
@@ -26,15 +27,21 @@ export interface IngestFinturuCaseInput {
 export interface IngestFinturuCaseDeps {
   readonly cases: CaseRepository;
   readonly timelineRecorder: TimelineRecorder;
-  readonly outbox: OutboxRepository;
+  readonly outbox: OutboxEventRepository;
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
   readonly generateCaseId: () => CaseId;
   readonly generateTimelineEventId: () => TimelineEventId;
   readonly auditRecorder: AuditRecorder;
+  readonly generateOutboxEventId: () => OutboxEventId;
   readonly initializeCaseSla: InitializeCaseSlaService;
-  /** Opcional: sin el, el caso nace sin asignar (bandeja general). */
-  readonly routeCase?: RouteCaseService;
+  /**
+   * CASE-002. Es el caso de uso `RouteCase` compuesto (el mismo que recibe
+   * `CreateCase`), asi que la asignacion, su hito `ASSIGNED` y su fila de
+   * auditoria confirman dentro de ESTA transaccion. Opcional: sin el, el
+   * expediente nace sin asignar y espera en la bandeja general.
+   */
+  readonly routeCase?: (input: RouteCaseInput) => Promise<Case>;
 }
 
 export interface IngestFinturuCaseResult {
@@ -205,10 +212,11 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
           await deps.timelineRecorder.record(resnapshotEvent, tx);
         }
 
-        const updateOutboxEventId = deps.generateTimelineEventId();
-        await deps.outbox.record(
+        const updateOutboxEventId = deps.generateOutboxEventId();
+        await deps.outbox.save(
           OutboxEvent.create({
             id: updateOutboxEventId,
+            organizationId,
             aggregateType: 'case',
             aggregateId: recomputed.id,
             eventType: 'case.snapshot_refreshed',
@@ -241,27 +249,11 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
         tx,
       });
 
-      // CASE-002: el enrutamiento importa mas por esta via que por la manual.
-      // Un caso que entra por webhook no tiene a nadie delante para asignarlo,
-      // asi que sin regla se queda en la bandeja general hasta que alguien mire.
+      // El payload de Finturu puede traer etiquetas propias; si no, se marcan
+      // el origen y el canal para que la bandeja sepa de donde vino.
       const tags = Array.isArray(raw.tags)
         ? (raw.tags.filter((t) => typeof t === 'string') as string[])
         : ['WEBHOOK_INTAKE', 'FINTURU'];
-
-      const routed = deps.routeCase
-        ? await deps.routeCase({
-            organizationId,
-            kase: {
-              riskScore,
-              priority,
-              tags,
-              customerEmail,
-              stripeCustomerId,
-              bridgeWallet,
-            },
-            tx,
-          })
-        : null;
 
       const kase = Case.create({
         id: caseId,
@@ -275,7 +267,6 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
         finturuCacheSnapshot: raw,
         riskScore,
         priority,
-        assignedTo: routed?.assignedTo ?? null,
         tags,
         now,
       }).withDueDate(dueDate, now);
@@ -294,22 +285,23 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
           createdAt: now,
         });
         await deps.timelineRecorder.record(timelineEvent, tx);
-
-        if (routed?.assignedTo) {
-          await deps.timelineRecorder.record(
-            CaseTimelineEvent.create({
-              id: deps.generateTimelineEventId(),
-              caseId: kase.id,
-              eventType: 'ROUTED',
-              previousValue: routed.ruleName,
-              newValue: `${routed.assignedTo.type}:${routed.assignedTo.id}`,
-              createdBy: 'SYSTEM_WEBHOOK',
-              createdAt: now,
-            }),
-            tx,
-          );
-        }
       }
+
+      // CASE-002: el enrutamiento importa mas por esta via que por la manual —
+      // un caso que entra por webhook no tiene a nadie delante para asignarlo.
+      // `RouteCase` persiste la asignacion, emite su propio hito `ASSIGNED` y
+      // audita la regla ganadora, todo dentro de esta misma transaccion.
+      // `createdBy: null` porque la regla, y no un humano, eligio al
+      // responsable.
+      const routedCase = deps.routeCase
+        ? await deps.routeCase({
+            kase,
+            tx,
+            createdBy: null,
+            actorType: 'ORGANIZATION',
+            ipAddress: input.ipAddress ?? null,
+          })
+        : kase;
 
       // 3. Record Audit Log
       await deps.auditRecorder.record(
@@ -334,32 +326,36 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
         tx,
       );
 
-      // 4. Record Outbox Event
-      const outboxEventId = deps.generateTimelineEventId();
+      // 4. Record Outbox Event — se emite sobre `routedCase`, no sobre `kase`,
+      // para que el consumidor vea el expediente tal y como quedo confirmado
+      // (con responsable si alguna regla lo asigno).
+      const outboxEventId = deps.generateOutboxEventId();
       const outboxEvent = OutboxEvent.create({
         id: outboxEventId,
+        organizationId: routedCase.organizationId,
         aggregateType: 'Case',
-        aggregateId: kase.id,
+        aggregateId: routedCase.id,
         eventType: 'case.created',
         payload: {
-          caseId: kase.id,
-          organizationId: kase.organizationId,
-          customerId: kase.customerId,
-          customerEmail: kase.customerEmail,
-          bridgeUserId: kase.bridgeUserId,
-          bridgeWallet: kase.bridgeWallet,
-          stripeCustomerId: kase.stripeCustomerId,
-          riskScore: kase.riskScore,
-          status: kase.status,
-          priority: kase.priority,
-          createdAt: kase.createdAt,
+          caseId: routedCase.id,
+          organizationId: routedCase.organizationId,
+          customerId: routedCase.customerId,
+          customerEmail: routedCase.customerEmail,
+          bridgeUserId: routedCase.bridgeUserId,
+          bridgeWallet: routedCase.bridgeWallet,
+          stripeCustomerId: routedCase.stripeCustomerId,
+          riskScore: routedCase.riskScore,
+          status: routedCase.status,
+          priority: routedCase.priority,
+          assignedTo: routedCase.assignedTo?.id ?? null,
+          createdAt: routedCase.createdAt,
         },
         now,
       });
-      await deps.outbox.record(outboxEvent, tx);
+      await deps.outbox.save(outboxEvent, tx);
 
       return {
-        case: kase,
+        case: routedCase,
         outboxEventId,
       };
     });

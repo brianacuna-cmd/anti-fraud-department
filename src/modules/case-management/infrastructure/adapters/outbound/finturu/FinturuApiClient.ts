@@ -2,6 +2,8 @@ import { decryptFinturuPayload, isEncryptedPayload } from '../../inbound/http/Fi
 
 export interface FinturuCustomerDto {
   readonly idUserBridge?: string;
+  /** Presente cuando Bridge ya trae enlazado el cliente de Stripe. */
+  readonly idCustomer?: string;
   readonly idUser?: string;
   readonly name?: string;
   readonly lastname?: string;
@@ -35,10 +37,14 @@ export interface FinturuTransferDto {
 
 export interface FinturuStripeCustomerDto {
   readonly idCustomer?: string;
+  /** Stripe devuelve el identificador como `id` en algunos endpoints. */
+  readonly id?: string;
   readonly name?: string;
   readonly email?: string;
   readonly balance?: number;
   readonly currency?: string;
+  /** Correlacion cruzada: Finturu guarda aqui `idUser`/`idUserBridge`. */
+  readonly metadata?: Record<string, unknown> | null;
 }
 
 export interface FinturuStripeTransferDto {
@@ -132,7 +138,7 @@ export class FinturuApiClient {
     const query = new URLSearchParams({ limit: String(limit) });
     if (startingAfter) query.set('starting_after', startingAfter);
 
-    const res = await this.fetchEndpoint<Record<string, any>>(`/customers/page?${query.toString()}`);
+    const res = await this.fetchEndpoint<Record<string, unknown>>(`/customers/page?${query.toString()}`);
 
     return {
       data: Array.isArray(res?.data) ? (res.data as FinturuCustomerDto[]) : [],
@@ -140,8 +146,8 @@ export class FinturuApiClient {
     };
   }
 
-  async getCustomer(idUserBridge: string): Promise<Record<string, any> | null> {
-    const res = await this.fetchEndpoint<Record<string, any>>(`/customer/${encodeURIComponent(idUserBridge)}`);
+  async getCustomer(idUserBridge: string): Promise<Record<string, unknown> | null> {
+    const res = await this.fetchEndpoint<Record<string, unknown>>(`/customer/${encodeURIComponent(idUserBridge)}`);
     return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
   }
 
@@ -155,12 +161,12 @@ export class FinturuApiClient {
     return Array.isArray(res) ? (res as FinturuWalletDto[]) : [];
   }
 
-  async getWallet(walletBridge: string): Promise<Record<string, any> | null> {
-    const res = await this.fetchEndpoint<Record<string, any>>(`/wallet/${encodeURIComponent(walletBridge)}`);
+  async getWallet(walletBridge: string): Promise<Record<string, unknown> | null> {
+    const res = await this.fetchEndpoint<Record<string, unknown>>(`/wallet/${encodeURIComponent(walletBridge)}`);
     return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
   }
 
-  async getWalletHistory(walletBridge: string): Promise<readonly any[]> {
+  async getWalletHistory(walletBridge: string): Promise<readonly unknown[]> {
     const res = await this.fetchEndpoint<unknown>(`/wallet-history/${encodeURIComponent(walletBridge)}`);
     return Array.isArray(res) ? res : [];
   }
@@ -170,32 +176,32 @@ export class FinturuApiClient {
     return Array.isArray(res) ? (res as FinturuTransferDto[]) : [];
   }
 
-  async getTransfer(idTransfer: string): Promise<Record<string, any> | null> {
-    const res = await this.fetchEndpoint<Record<string, any>>(`/transfer/${encodeURIComponent(idTransfer)}`);
+  async getTransfer(idTransfer: string): Promise<Record<string, unknown> | null> {
+    const res = await this.fetchEndpoint<Record<string, unknown>>(`/transfer/${encodeURIComponent(idTransfer)}`);
     return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
   }
 
-  async getExternalAccounts(idUserBridge: string): Promise<readonly any[]> {
+  async getExternalAccounts(idUserBridge: string): Promise<readonly unknown[]> {
     const res = await this.fetchEndpoint<unknown>(`/external-accounts/${encodeURIComponent(idUserBridge)}`);
     return Array.isArray(res) ? res : [];
   }
 
-  async getVirtualAccounts(idUserBridge: string): Promise<readonly any[]> {
+  async getVirtualAccounts(idUserBridge: string): Promise<readonly unknown[]> {
     const res = await this.fetchEndpoint<unknown>(`/customer/${encodeURIComponent(idUserBridge)}/virtual-accounts`);
     return Array.isArray(res) ? res : [];
   }
 
-  async getAchHistory(idUserBridge: string): Promise<readonly any[]> {
+  async getAchHistory(idUserBridge: string): Promise<readonly unknown[]> {
     const res = await this.fetchEndpoint<unknown>(`/customer/${encodeURIComponent(idUserBridge)}/ach-history`);
     return Array.isArray(res) ? res : [];
   }
 
-  async getCustomerBridgeTransfers(idUserBridge: string): Promise<readonly any[]> {
+  async getCustomerBridgeTransfers(idUserBridge: string): Promise<readonly unknown[]> {
     const res = await this.fetchEndpoint<unknown>(`/customer/${encodeURIComponent(idUserBridge)}/transfers`);
     return Array.isArray(res) ? res : [];
   }
 
-  async getCustomerFinturuTransfers(idUserBridge: string): Promise<readonly any[]> {
+  async getCustomerFinturuTransfers(idUserBridge: string): Promise<readonly unknown[]> {
     const res = await this.fetchEndpoint<unknown>(`/customer/${encodeURIComponent(idUserBridge)}/finturu-transfers`);
     return Array.isArray(res) ? res : [];
   }
@@ -205,13 +211,13 @@ export class FinturuApiClient {
     return Array.isArray(res) ? (res as FinturuStripeCustomerDto[]) : [];
   }
 
-  async getStripeCustomer(idCustomer: string): Promise<Record<string, any> | null> {
-    const res = await this.fetchEndpoint<Record<string, any>>(`/stripe/customer/${encodeURIComponent(idCustomer)}`);
+  async getStripeCustomer(idCustomer: string): Promise<Record<string, unknown> | null> {
+    const res = await this.fetchEndpoint<Record<string, unknown>>(`/stripe/customer/${encodeURIComponent(idCustomer)}`);
     return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
   }
 
-  async getStripeCustomerByEmail(email: string): Promise<Record<string, any> | null> {
-    const res = await this.fetchEndpoint<Record<string, any>>(`/stripe/customer-by-email?email=${encodeURIComponent(email)}`);
+  async getStripeCustomerByEmail(email: string): Promise<Record<string, unknown> | null> {
+    const res = await this.fetchEndpoint<Record<string, unknown>>(`/stripe/customer-by-email?email=${encodeURIComponent(email)}`);
     return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
   }
 

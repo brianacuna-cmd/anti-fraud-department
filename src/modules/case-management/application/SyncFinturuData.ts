@@ -1,5 +1,11 @@
 import type { AuthContext } from '../../../shared/kernel/AuthContext.js';
-import type { FinturuApiClient } from '../infrastructure/adapters/outbound/finturu/FinturuApiClient.js';
+import type {
+  FinturuApiClient,
+  FinturuStripeCustomerDto,
+  FinturuStripeTransferDto,
+  FinturuTransferDto,
+  FinturuWalletDto,
+} from '../infrastructure/adapters/outbound/finturu/FinturuApiClient.js';
 import type { createIngestFinturuCaseUseCase } from './IngestFinturuCase.js';
 import type { Case } from '../domain/model/aggregates/Case.js';
 
@@ -19,6 +25,27 @@ export interface SyncFinturuDataDeps {
   readonly defaultOrganizationId?: string;
 }
 
+/**
+ * Lee una clave de correlacion de un objeto sin contrato (`metadata` de Stripe,
+ * `source`/`destination` de un transfer). Devuelve `null` si falta, para que el
+ * llamante nunca compare `undefined` contra un Set.
+ *
+ * Acepta numero ademas de texto: el padron de Finturu tipa el MISMO campo como
+ * numero en unos payloads y como cadena en otros, y descartar la variante
+ * numerica dejaria sin correlacionar a la mitad de los clientes.
+ */
+function readKey(bag: Record<string, unknown> | undefined, key: string): string | null {
+  const value = bag?.[key];
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  return null;
+}
+
 export function createSyncFinturuDataUseCase(deps: SyncFinturuDataDeps) {
   return async function syncFinturuData(input: SyncFinturuDataInput = {}): Promise<SyncFinturuDataResult> {
     const orgId = input.organizationId ?? input.auth?.organizationId ?? deps.defaultOrganizationId ?? '019d7e58aed0777318d11d4d';
@@ -35,7 +62,7 @@ export function createSyncFinturuDataUseCase(deps: SyncFinturuDataDeps) {
     const casesCreatedOrUpdated: Case[] = [];
 
     // Map wallets by customerId / idUserBridge
-    const walletsByUser = new Map<string, any[]>();
+    const walletsByUser = new Map<string, FinturuWalletDto[]>();
     for (const w of wallets) {
       const key = w.customerId ?? '';
       if (key) {
@@ -46,27 +73,32 @@ export function createSyncFinturuDataUseCase(deps: SyncFinturuDataDeps) {
     }
 
     // Map Stripe customers by email, idCustomer, and metadata
-    const stripeByEmail = new Map<string, any>();
-    const stripeByIdCustomer = new Map<string, any>();
-    const stripeByIdUser = new Map<string, any>();
-    const stripeByIdUserBridge = new Map<string, any>();
+    const stripeByEmail = new Map<string, FinturuStripeCustomerDto>();
+    const stripeByIdCustomer = new Map<string, FinturuStripeCustomerDto>();
+    const stripeByIdUser = new Map<string, FinturuStripeCustomerDto>();
+    const stripeByIdUserBridge = new Map<string, FinturuStripeCustomerDto>();
 
-    for (const sc of stripeCustomers as any[]) {
+    for (const sc of stripeCustomers) {
       if (sc.email) stripeByEmail.set(String(sc.email).trim().toLowerCase(), sc);
       if (sc.idCustomer) stripeByIdCustomer.set(String(sc.idCustomer).trim(), sc);
       if (sc.id) stripeByIdCustomer.set(String(sc.id).trim(), sc);
       const meta = sc.metadata;
       if (meta && typeof meta === 'object') {
-        if (meta.idUser) stripeByIdUser.set(String(meta.idUser).trim(), sc);
-        if (meta.userId) stripeByIdUser.set(String(meta.userId).trim(), sc);
-        if (meta.idUserBridge) stripeByIdUserBridge.set(String(meta.idUserBridge).trim(), sc);
-        if (meta.bridgeUserId) stripeByIdUserBridge.set(String(meta.bridgeUserId).trim(), sc);
-        if (meta.email) stripeByEmail.set(String(meta.email).trim().toLowerCase(), sc);
+        for (const key of ['idUser', 'userId'] as const) {
+          const value = readKey(meta, key);
+          if (value) stripeByIdUser.set(value, sc);
+        }
+        for (const key of ['idUserBridge', 'bridgeUserId'] as const) {
+          const value = readKey(meta, key);
+          if (value) stripeByIdUserBridge.set(value, sc);
+        }
+        const metaEmail = readKey(meta, 'email');
+        if (metaEmail) stripeByEmail.set(metaEmail.toLowerCase(), sc);
       }
     }
 
     // Map Stripe transfers by customerId
-    const stripeTransfersByUser = new Map<string, any[]>();
+    const stripeTransfersByUser = new Map<string, FinturuStripeTransferDto[]>();
     for (const st of stripeTransfers) {
       const key = st.customerId ?? '';
       if (key) {
@@ -86,16 +118,23 @@ export function createSyncFinturuDataUseCase(deps: SyncFinturuDataDeps) {
       const userWalletAddresses = new Set(userWallets.map((w) => String(w.address ?? '').toLowerCase()).filter(Boolean));
 
       // Filter transfers strictly matching this user
-      const userTransfers = transfers.filter((t: any) => {
+      const userTransfers = transfers.filter((t: FinturuTransferDto) => {
         if (bridgeUserId && t.onBehalfOf && t.onBehalfOf === bridgeUserId) return true;
-        if (t.source?.bridgeWalletId && userWalletIds.has(t.source.bridgeWalletId)) return true;
-        if (t.destination?.bridgeWalletId && userWalletIds.has(t.destination.bridgeWalletId)) return true;
-        if (t.source?.fromAddress && userWalletAddresses.has(String(t.source.fromAddress).toLowerCase())) return true;
-        if (t.destination?.toAddress && userWalletAddresses.has(String(t.destination.toAddress).toLowerCase())) return true;
+
+        const sourceWallet = readKey(t.source, 'bridgeWalletId');
+        const destinationWallet = readKey(t.destination, 'bridgeWalletId');
+        if (sourceWallet && userWalletIds.has(sourceWallet)) return true;
+        if (destinationWallet && userWalletIds.has(destinationWallet)) return true;
+
+        const fromAddress = readKey(t.source, 'fromAddress');
+        const toAddress = readKey(t.destination, 'toAddress');
+        if (fromAddress && userWalletAddresses.has(fromAddress.toLowerCase())) return true;
+        if (toAddress && userWalletAddresses.has(toAddress.toLowerCase())) return true;
+
         return false;
       });
 
-      let stripeData: any =
+      let stripeData: FinturuStripeCustomerDto | null =
         (email ? stripeByEmail.get(email) : null) ??
         (idUser ? stripeByIdUser.get(idUser) : null) ??
         (bridgeUserId ? stripeByIdUserBridge.get(bridgeUserId) : null) ??
@@ -113,7 +152,7 @@ export function createSyncFinturuDataUseCase(deps: SyncFinturuDataDeps) {
         }
       }
 
-      const stripeCustomerId = stripeData?.idCustomer ?? stripeData?.id ?? (customer as any).idCustomer ?? null;
+      const stripeCustomerId = stripeData?.idCustomer ?? stripeData?.id ?? customer.idCustomer ?? null;
       const stripeTransfersList = stripeCustomerId ? stripeTransfersByUser.get(stripeCustomerId) ?? [] : [];
 
       const primaryWallet = userWallets[0]?.address ?? '';
@@ -121,7 +160,7 @@ export function createSyncFinturuDataUseCase(deps: SyncFinturuDataDeps) {
       // Calculate initial risk score based on transactions & status
       let calculatedRisk = 40;
       if (customer.status === 'suspended' || customer.status === 'blocked') calculatedRisk += 50;
-      if (userTransfers.some((t: any) => t.state === 'failed' || t.state === 'returned')) calculatedRisk += 25;
+      if (userTransfers.some((t) => t.state === 'failed' || t.state === 'returned')) calculatedRisk += 25;
       if (userTransfers.length > 5) calculatedRisk += 15;
       const riskScore = Math.min(Math.max(calculatedRisk, 10), 99);
 

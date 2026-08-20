@@ -1,11 +1,13 @@
 import type { Case } from '../../../src/modules/case-management/domain/model/aggregates/Case.js';
 import type {
-  CaseListFilter,
+  CaseListQuery,
+  CaseListResult,
   CaseRepository,
   FindCaseByIdentityOptions,
 } from '../../../src/modules/case-management/domain/ports/CaseRepository.js';
 import type { CaseId } from '../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import type { Transaction } from '../../../src/modules/case-management/domain/ports/UnitOfWork.js';
+import { toDate } from '../../../src/shared/time/Instant.js';
 
 /** In-memory fake for unit/e2e-testing use cases and routes (mirrors `InMemoryOrganizationFraudConfigRepository`). */
 export class InMemoryCaseRepository implements CaseRepository {
@@ -19,87 +21,94 @@ export class InMemoryCaseRepository implements CaseRepository {
     return this.byId.get(id) ?? null;
   }
 
+  async list(query: CaseListQuery, _tx?: Transaction): Promise<CaseListResult> {
+    const filtered = [...this.byId.values()].filter((kase) => matchesListQuery(kase, query));
+    filtered.sort(compareDueDateAscNullsLast);
+    const total = filtered.length;
+    const items = filtered.slice(query.offset, query.offset + query.limit);
+    return { items, total };
+  }
+
+  /** Espeja el adaptador Mongo: mismo inquilino, no borrados, customerId OR bridgeUserId. */
   async findByCustomerOrBridgeId(
     options: FindCaseByIdentityOptions,
     _tx?: Transaction,
   ): Promise<Case | null> {
     const { organizationId, customerId, bridgeUserId, statuses } = options;
+    if (!customerId && !bridgeUserId) return null;
 
-    for (const c of this.byId.values()) {
-      if (c.organizationId !== organizationId) continue;
-      if (statuses && statuses.length > 0 && !statuses.includes(c.status)) continue;
-
-      if (customerId && c.customerId === customerId) return c;
-      if (bridgeUserId && c.bridgeUserId === bridgeUserId) return c;
-
-      const snap = c.finturuCacheSnapshot as Record<string, any> | undefined;
-      if (snap) {
-        if (customerId && String(snap.idUser) === customerId) return c;
-        if (bridgeUserId && snap.idUserBridge === bridgeUserId) return c;
+    const matches = [...this.byId.values()].filter((kase) => {
+      if (kase.deletedAt !== null) return false;
+      if (kase.organizationId !== organizationId) return false;
+      if (statuses !== undefined && statuses.length > 0 && !statuses.includes(kase.status)) {
+        return false;
       }
-    }
-    return null;
+      const snapshot = kase.finturuCacheSnapshot ?? {};
+      const byCustomer =
+        customerId !== undefined &&
+        customerId !== null &&
+        (kase.customerId === customerId || String(snapshot.idUser ?? '') === customerId);
+      const byBridge =
+        bridgeUserId !== undefined &&
+        bridgeUserId !== null &&
+        (kase.bridgeUserId === bridgeUserId || String(snapshot.idUserBridge ?? '') === bridgeUserId);
+      return byCustomer || byBridge;
+    });
+
+    if (matches.length === 0) return null;
+    // El adaptador Mongo ordena por `created_at` descendente: gana el mas reciente.
+    matches.sort((a, b) => toDate(b.createdAt).getTime() - toDate(a.createdAt).getTime());
+    return matches[0]!;
   }
 
-  /** Mirrors `MongoCaseRepository.buildFilter` so tests exercise the same predicate. */
-  private matches(c: Case, filter: CaseListFilter): boolean {
-    if (c.deletedAt !== null) return false;
-    if (filter.organizationId && c.organizationId !== filter.organizationId) return false;
-
-    const inOrEq = (value: string | readonly string[] | undefined, actual: string): boolean => {
-      if (value === undefined) return true;
-      const values = (Array.isArray(value) ? value : [value]).filter((v) => v && v !== 'ALL');
-      return values.length === 0 || values.includes(actual);
-    };
-
-    if (!inOrEq(filter.status, c.status)) return false;
-    if (!inOrEq(filter.priority, c.priority)) return false;
-
-    if (filter.assignedToType === 'UNASSIGNED') {
-      if (c.assignedTo !== null) return false;
-    } else {
-      if (filter.assignedToId && c.assignedTo?.id !== filter.assignedToId) return false;
-      if (filter.assignedToType && c.assignedTo?.type !== filter.assignedToType) return false;
-    }
-
-    if (filter.tags && filter.tags.length > 0) {
-      if (!filter.tags.every((tag) => c.tags.includes(tag))) return false;
-    }
-
-    if (filter.riskScoreMin !== undefined && c.riskScore < filter.riskScoreMin) return false;
-    if (filter.riskScoreMax !== undefined && c.riskScore > filter.riskScoreMax) return false;
-
-    if (filter.createdFrom !== undefined && c.createdAt < filter.createdFrom) return false;
-    if (filter.createdTo !== undefined && c.createdAt > filter.createdTo) return false;
-
-    if (filter.overdueOnly) {
-      if (c.dueDate === null || c.dueDate >= new Date().toISOString()) return false;
-    } else if (filter.dueBefore !== undefined) {
-      if (c.dueDate === null || c.dueDate > filter.dueBefore) return false;
-    }
-
-    if (filter.search && filter.search.trim().length > 0) {
-      const term = filter.search.trim().toLowerCase();
-      const haystack = [
-        c.customerId,
-        c.customerEmail,
-        c.bridgeUserId,
-        c.bridgeWallet,
-        c.stripeCustomerId,
-      ];
-      if (!haystack.some((v) => typeof v === 'string' && v.toLowerCase().includes(term))) return false;
-    }
-
-    return true;
+  all(): readonly Case[] {
+    return [...this.byId.values()];
   }
+}
 
-  async list(filter: CaseListFilter = {}): Promise<{ items: readonly Case[]; nextCursor: string | null }> {
-    const limit = filter.limit ?? 50;
-    const matching = [...this.byId.values()].filter((c) => this.matches(c, filter));
-    return { items: matching.slice(0, limit), nextCursor: null };
+function matchesListQuery(kase: Case, query: CaseListQuery): boolean {
+  if (kase.deletedAt !== null) return false;
+  if (kase.organizationId !== query.organizationId) return false;
+  if (query.status !== undefined && query.status.length > 0 && !query.status.includes(kase.status)) {
+    return false;
   }
+  if (
+    query.priority !== undefined &&
+    query.priority.length > 0 &&
+    !query.priority.includes(kase.priority)
+  ) {
+    return false;
+  }
+  if (query.assignedToId !== undefined && kase.assignedTo?.id !== query.assignedToId) {
+    return false;
+  }
+  if (query.riskScoreMin !== undefined && kase.riskScore < query.riskScoreMin) {
+    return false;
+  }
+  if (query.riskScoreMax !== undefined && kase.riskScore > query.riskScoreMax) {
+    return false;
+  }
+  if (query.tags !== undefined && query.tags.length > 0) {
+    for (const tag of query.tags) {
+      if (!kase.tags.includes(tag)) return false;
+    }
+  }
+  if (query.dueAfter !== undefined) {
+    if (kase.dueDate === null || toDate(kase.dueDate).getTime() < toDate(query.dueAfter).getTime()) {
+      return false;
+    }
+  }
+  if (query.dueBefore !== undefined) {
+    if (kase.dueDate === null || toDate(kase.dueDate).getTime() >= toDate(query.dueBefore).getTime()) {
+      return false;
+    }
+  }
+  return true;
+}
 
-  async countAll(filter: CaseListFilter = {}): Promise<number> {
-    return [...this.byId.values()].filter((c) => this.matches(c, filter)).length;
-  }
+function compareDueDateAscNullsLast(a: Case, b: Case): number {
+  if (a.dueDate === null && b.dueDate === null) return 0;
+  if (a.dueDate === null) return 1;
+  if (b.dueDate === null) return -1;
+  return toDate(a.dueDate).getTime() - toDate(b.dueDate).getTime();
 }

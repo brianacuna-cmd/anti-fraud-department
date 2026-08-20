@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { CaseTimelineEvent } from '../../../../src/modules/case-management/domain/model/aggregates/CaseTimelineEvent.js';
 import { createTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
@@ -9,11 +10,11 @@ const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 function buildEvent(id: string): CaseTimelineEvent {
   return CaseTimelineEvent.create({
     id: createTimelineEventId(id),
-    caseId: createCaseId('case-1'),
+    caseId: createCaseId(oid('case-1')),
     eventType: 'CASE_CREATED',
     previousValue: null,
     newValue: null,
-    createdBy: 'user-1',
+    createdBy: oid('user-1'),
     createdAt: NOW,
   });
 }
@@ -21,16 +22,16 @@ function buildEvent(id: string): CaseTimelineEvent {
 describe('TimelineRecorder (port contract, via InMemoryTimelineRecorder fake)', () => {
   it('records a timeline event', async () => {
     const recorder = new InMemoryTimelineRecorder();
-    await recorder.record(buildEvent('event-1'));
+    await recorder.record(buildEvent(oid('event-1')));
 
     expect(recorder.all()).toHaveLength(1);
-    expect(recorder.all()[0]?.id).toBe('event-1');
+    expect(recorder.all()[0]?.id).toBe(oid('event-1'));
   });
 
   it('records multiple independent events for the same case', async () => {
     const recorder = new InMemoryTimelineRecorder();
-    await recorder.record(buildEvent('event-1'));
-    await recorder.record(buildEvent('event-2'));
+    await recorder.record(buildEvent(oid('event-1')));
+    await recorder.record(buildEvent(oid('event-2')));
 
     expect(recorder.all()).toHaveLength(2);
   });
@@ -49,9 +50,9 @@ describe('TimelineRecorder (port contract, via InMemoryTimelineRecorder fake)', 
 
   it('re-recording the same id is rejected, not silently overwritten (immutability guard)', async () => {
     const recorder = new InMemoryTimelineRecorder();
-    await recorder.record(buildEvent('event-1'));
+    await recorder.record(buildEvent(oid('event-1')));
 
-    await expect(recorder.record(buildEvent('event-1'))).rejects.toThrow();
+    await expect(recorder.record(buildEvent(oid('event-1')))).rejects.toThrow();
     expect(recorder.all()).toHaveLength(1);
   });
 });

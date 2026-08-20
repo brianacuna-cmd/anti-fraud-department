@@ -1,25 +1,25 @@
 /**
- * Mongo document shape for `CaseSlaTracking` (design: "Persistence —
- * collections, documents, mappers"). `_id` is the aggregate's branded
- * `CaseSlaTrackingId` (a native MongoDB `ObjectId`, mirrors `CaseDocument`).
- *
- * `DueDate` is the ISO-8601 `Instant` string (source of truth, per the
- * domain's own `Instant` type). `DueDateAt` is a BSON `Date` MIRROR of the
- * same value, written on every save — same pattern as `Sessions
- * .FamilyExpiresAtDate` (design ADR-6) — needed because Mongo range queries
- * (`findDueForSweep`) and any future TTL/index work require a real BSON
- * `Date`, not a string comparison.
+ * Mongo document shape for `case_sla_tracking`. Instant fields are BSON `Date`;
+ * range queries and indexes use `due_date` directly (no ISO-string mirror).
  */
 
-import type { ObjectId } from "mongodb";
+import type { ObjectId } from 'mongodb';
 
 export interface CaseSlaTrackingDocument {
   readonly _id: ObjectId;
-  readonly CaseId: ObjectId;
-  readonly DueDate: string;
-  readonly DueDateAt: Date;
-  readonly Status: string;
-  readonly NotificationSent: boolean;
-  readonly CreatedAt: string;
-  readonly UpdatedAt: string;
+  readonly case_id: ObjectId;
+  readonly due_date: Date;
+  readonly status: string;
+  /** New shape (PR1: per-status re-notify). Optional/tolerant for legacy docs. */
+  readonly notified_statuses?: readonly string[];
+  /** Legacy field — read-only tolerance for pre-PR1 docs, never written going forward. */
+  readonly notification_sent?: boolean;
+  /**
+   * Sweep lease marker (PR6: multi-instance safety). Infra-only — set by
+   * `claimDueForSweep`, never mapped into the domain aggregate, and dropped by
+   * `toDocument` on the next `save` so processing a row releases its lease.
+   */
+  readonly claimed_at?: Date | null;
+  readonly created_at: Date;
+  readonly updated_at: Date;
 }

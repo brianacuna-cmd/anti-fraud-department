@@ -8,7 +8,7 @@ import { MongoUnitOfWork } from '../../../src/modules/notifications/infrastructu
 import { NotificationPreference } from '../../../src/modules/notifications/domain/model/aggregates/NotificationPreference.js';
 import { createOrganizationId } from '../../../src/modules/notifications/domain/model/value-objects/OrganizationId.js';
 import { createUserId } from '../../../src/modules/notifications/domain/model/value-objects/UserId.js';
-import { fromDate } from '../../../src/shared/time/Instant.js';
+import { fromDate, toDate } from '../../../src/shared/time/Instant.js';
 import type { NotificationPreferenceDocument } from '../../../src/modules/notifications/infrastructure/adapters/outbound/mongo/documents/NotificationPreferenceDocument.js';
 import { oid } from '../../support/oid.js';
 
@@ -41,7 +41,7 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
   });
 
   afterEach(async () => {
-    await db.collection('NotificationPreferences').deleteMany({});
+    await db.collection('notification_preferences').deleteMany({});
   });
 
   it('upsert() inserts a new row when none exists, generating an ObjectId _id (design D1/D4)', async () => {
@@ -61,11 +61,11 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
     expect(saved.createdAt).toBe(NOW);
     expect(saved.updatedAt).toBe(NOW);
 
-    const raw = await db.collection<NotificationPreferenceDocument>('NotificationPreferences').findOne({
-      OrganizationId: oid('org-1'),
-      UserId: oid('user-1'),
-      AlertType: 'CASO_ASIGNADO',
-      Channel: 'EMAIL',
+    const raw = await db.collection<NotificationPreferenceDocument>('notification_preferences').findOne({
+      organization_id: new ObjectId(oid('org-1')),
+      user_id: new ObjectId(oid('user-1')),
+      alert_type: 'CASO_ASIGNADO',
+      channel: 'EMAIL',
     });
     expect(raw).not.toBeNull();
     expect(raw?._id).toBeDefined();
@@ -97,7 +97,7 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
     expect(saved.updatedAt).toBe(LATER);
     expect(saved.createdAt).toBe(NOW);
 
-    const rows = await db.collection('NotificationPreferences').find({ UserId: oid('user-1') }).toArray();
+    const rows = await db.collection('notification_preferences').find({ user_id: new ObjectId(oid('user-1')) }).toArray();
     expect(rows).toHaveLength(1);
   });
 
@@ -137,32 +137,32 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
   });
 
   it('rejects a duplicate (organizationId, userId, alertType, channel) key with a real E11000 (notification_preference_user_alert_channel_unique)', async () => {
-    await db.collection<NotificationPreferenceDocument>('NotificationPreferences').insertOne({
+    await db.collection<NotificationPreferenceDocument>('notification_preferences').insertOne({
       _id: new ObjectId(),
-      OrganizationId: oid('org-1'),
-      UserId: 'user-dup',
-      AlertType: 'RIESGO_CRITICO',
-      Channel: 'EMAIL',
-      Enabled: true,
-      CreatedAt: NOW,
-      UpdatedAt: NOW,
+      organization_id: new ObjectId(oid('org-1')),
+      user_id: new ObjectId(oid('user-dup')),
+      alert_type: 'RIESGO_CRITICO',
+      channel: 'EMAIL',
+      enabled: true,
+      created_at: toDate(NOW),
+      updated_at: toDate(NOW),
     });
 
     await expect(
-      db.collection<NotificationPreferenceDocument>('NotificationPreferences').insertOne({
+      db.collection<NotificationPreferenceDocument>('notification_preferences').insertOne({
         _id: new ObjectId(),
-        OrganizationId: oid('org-1'),
-        UserId: 'user-dup',
-        AlertType: 'RIESGO_CRITICO',
-        Channel: 'EMAIL',
-        Enabled: false,
-        CreatedAt: NOW,
-        UpdatedAt: NOW,
+        organization_id: new ObjectId(oid('org-1')),
+        user_id: new ObjectId(oid('user-dup')),
+        alert_type: 'RIESGO_CRITICO',
+        channel: 'EMAIL',
+        enabled: false,
+        created_at: toDate(NOW),
+        updated_at: toDate(NOW),
       }),
     ).rejects.toMatchObject({ code: 11000 });
   });
 
-  it('two concurrent upserts of the same key: exactly one row survives, Enabled reflects a winner (design D10)', async () => {
+  it('two concurrent upserts of the same key: exactly one row survives, enabled reflects a winner (design D10)', async () => {
     const unitOfWork = new MongoUnitOfWork(client);
     const buildDesired = (enabled: boolean, now = NOW) =>
       NotificationPreference.create({
@@ -180,8 +180,8 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
     ]);
 
     const rows = await db
-      .collection('NotificationPreferences')
-      .find({ OrganizationId: oid('org-concurrency'), UserId: oid('user-concurrency') })
+      .collection('notification_preferences')
+      .find({ organization_id: new ObjectId(oid('org-concurrency')), user_id: new ObjectId(oid('user-concurrency')) })
       .toArray();
     expect(rows).toHaveLength(1);
   });

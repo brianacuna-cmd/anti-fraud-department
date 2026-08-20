@@ -1,6 +1,5 @@
 import { Router, type Express, type Request, type Response, type NextFunction } from 'express';
 import request from 'supertest';
-import { authenticator } from 'otplib';
 import { createApp } from '../../../src/shared/http/createApp.js';
 import { createErrorHandler } from '../../../src/shared/http/errorHandler.js';
 import { attachAuthContext } from '../../../src/shared/http/requestAuthContext.js';
@@ -35,14 +34,13 @@ import { OtplibTotpService } from '../../../src/modules/identity-access/infrastr
 import { User } from '../../../src/modules/identity-access/domain/model/aggregates/User.js';
 import { createUserId } from '../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
 import { createEmail } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
-import { Session } from '../../../src/modules/identity-access/domain/model/aggregates/Session.js';
-import { createSessionId } from '../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
-import { createFamilyId } from '../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
 import { createOrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createPasswordCredential } from '../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import type { ActorCredentialRecord } from '../../../src/modules/identity-access/domain/ports/ActorCredentialGateway.js';
 import { oid } from '../../support/oid.js';
+import { buildSession } from '../../helpers/identity-access/buildSession.js';
+import { authenticator } from 'otplib';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ORG_ID = createOrganizationId(oid('org-1'));
@@ -104,17 +102,22 @@ function buildApp(
     actorType: 'USER',
     auditRecorder,
   });
+  const authenticateOrganization = createAuthenticateActorUseCase({
+    gateway: organizationGateway,
+    passwordHasher,
+    clock,
+    dummyCredential,
+    actorType: 'ORGANIZATION',
+    auditRecorder,
+  });
   const sessionIssuer = createSessionIssuer({
     sessionTokenService: TOKEN_SERVICE,
     sessions,
     tokenKeyVersion: 1,
-    ttls: { sessionSeconds: 900, refreshSeconds: 1_209_600, familySeconds: 2_592_000 },
+    ttls: { sessionSeconds: 900 },
   });
 
   const router = authRouter({
-    // 3-step org login: el router genera el OTP y lo envía por aquí — el
-    // FakeEmailSender lo captura para que los tests completen el flujo.
-    emailSender,
     beginUserLogin: createBeginUserLoginUseCase({
       authenticateActor: authenticateUser,
       sessionTokenService: TOKEN_SERVICE,
@@ -124,6 +127,10 @@ function buildApp(
       challengeTtlSeconds: 300,
       enrollmentTtlSeconds: 900,
     }),
+    authenticateOrganization,
+    // El paso 1 del login de organizacion manda el OTP por aqui; el fake lo
+    // captura para que la prueba pueda completar los pasos 2 y 3.
+    emailSender,
     issueOrganizationSession: createIssueOrganizationSessionUseCase({
       authenticateActor: createAuthenticateActorUseCase({
         gateway: organizationGateway,
@@ -208,26 +215,33 @@ function buildApp(
 }
 
 /**
- * Completa los pasos 2 y 3 del login de organización de 3 pasos: extrae el
- * OTP del último email capturado por el FakeEmailSender, lo verifica (lo que
- * devuelve el secret TOTP de enrolamiento) y responde el challenge TOTP con
- * un código generado por otplib.
+ * Completa el login de organizacion de 3 pasos (este fork): paso 1 dispara el
+ * OTP por correo, paso 2 lo verifica y devuelve el secreto TOTP de
+ * enrolamiento, paso 3 responde el reto TOTP y recibe la sesion.
+ *
+ * Sin `deps.db` el paso 2 toma siempre la rama de enrolamiento, asi que el
+ * secreto viene en la respuesta y no hace falta Mongo para recorrerlo.
  */
-async function completeOrgMfaSteps(app: Express, emailSender: FakeEmailSender, email: string) {
+async function orgLogin3Steps(
+  app: Express,
+  emailSender: FakeEmailSender,
+  email: string,
+  password: string,
+) {
+  const step1 = await request(app).post('/api/v1/auth/organizations/login').send({ email, password });
+  expect(step1.status).toBe(200);
+
   const otpMail = emailSender.sent[emailSender.sent.length - 1]!;
   const otp = /(\d{6})/.exec(otpMail.text)![1]!;
-  const verify = await request(app).post('/api/v1/auth/organizations/otp/verify').send({ email, otp });
-  expect(verify.status).toBe(200);
-  const totp = authenticator.generate(verify.body.secret as string);
+
+  const step2 = await request(app)
+    .post('/api/v1/auth/organizations/otp/verify')
+    .send({ email, otp });
+  expect(step2.status).toBe(200);
+
   return request(app)
     .post('/api/v1/auth/organizations/mfa')
-    .send({ challengeToken: verify.body.challengeToken, totp });
-}
-
-/** Login completo de organización (3 pasos) — devuelve la respuesta final con la sesión. */
-async function orgLogin3Steps(app: Express, emailSender: FakeEmailSender, email: string, password: string) {
-  await request(app).post('/api/v1/auth/organizations/login').send({ email, password });
-  return completeOrgMfaSteps(app, emailSender, email);
+    .send({ challengeToken: step2.body.challengeToken, totp: authenticator.generate(step2.body.secret as string) });
 }
 
 describe('authRouter (e2e, in-memory gateways)', () => {
@@ -443,18 +457,14 @@ describe('authRouter (e2e, in-memory gateways)', () => {
     });
   });
 
-  describe('POST /auth/organizations/login (3 pasos: credenciales -> OTP email -> TOTP)', () => {
-    it('completes the 3-step flow and mints an ACCESS+REFRESH session at the final MFA step', async () => {
+  describe('POST /auth/organizations/login', () => {
+    it('does not require organizationSlug and returns a minted ACCESS+REFRESH session after the 3 steps (session-lifecycle PR-1)', async () => {
       const { app, organizationGateway, sessions, emailSender } = buildApp();
       organizationGateway.seed('org@acme.example.com', ORG_RECORD);
 
-      const login = await request(app)
-        .post('/api/v1/auth/organizations/login')
-        .send({ email: 'org@acme.example.com', password: 'org-password' });
-      expect(login.status).toBe(200);
-      expect(login.body.status).toBe('OTP_REQUIRED');
-
-      const response = await completeOrgMfaSteps(app, emailSender, 'org@acme.example.com');
+      // Este fork mete OTP por correo + TOTP entre la credencial y la sesion,
+      // asi que la sesion se emite en el paso 3, no en el 1.
+      const response = await orgLogin3Steps(app, emailSender, 'org@acme.example.com', 'org-password');
 
       expect(response.status).toBe(200);
       expect(response.body.accessToken).toEqual(expect.any(String));
@@ -465,33 +475,18 @@ describe('authRouter (e2e, in-memory gateways)', () => {
       expect(saved?.actorType).toBe('ORGANIZATION');
     });
 
-    it('rejects an unknown email with 401 INVALID_CREDENTIALS at the final MFA step (step 1 stays opaque OTP_REQUIRED)', async () => {
+    it('rejects an unknown email with 401 INVALID_CREDENTIALS in step 1, before any OTP is sent', async () => {
       const { app, emailSender } = buildApp();
 
-      const login = await request(app)
+      const response = await request(app)
         .post('/api/v1/auth/organizations/login')
         .send({ email: 'nobody@example.com', password: 'whatever' });
-      expect(login.status).toBe(200);
-      expect(login.body.status).toBe('OTP_REQUIRED');
-
-      const response = await completeOrgMfaSteps(app, emailSender, 'nobody@example.com');
 
       expect(response.status).toBe(401);
       expect(response.body.error.code).toBe('INVALID_CREDENTIALS');
-    });
-
-    it('rejects a wrong email OTP with 401', async () => {
-      const { app, organizationGateway } = buildApp();
-      organizationGateway.seed('org@acme.example.com', ORG_RECORD);
-      await request(app)
-        .post('/api/v1/auth/organizations/login')
-        .send({ email: 'org@acme.example.com', password: 'org-password' });
-
-      const verify = await request(app)
-        .post('/api/v1/auth/organizations/otp/verify')
-        .send({ email: 'org@acme.example.com', otp: '000000' });
-
-      expect(verify.status).toBe(401);
+      // El rechazo llega antes del correo: si no, cualquiera podria provocar
+      // envios de OTP a una direccion ajena.
+      expect(emailSender.sent).toHaveLength(0);
     });
   });
 
@@ -548,7 +543,7 @@ describe('authRouter (e2e, in-memory gateways)', () => {
       expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
     });
 
-    it('a reused (already-rotated) refresh token revokes the whole family, including the successor session', async () => {
+    it('reusing an already-revoked refresh token is SESSION_INVALID; successor remains usable', async () => {
       const { app, organizationGateway, emailSender } = buildApp();
       organizationGateway.seed('org@acme.example.com', ORG_RECORD);
       const loginResponse = await orgLogin3Steps(app, emailSender, 'org@acme.example.com', 'org-password');
@@ -558,86 +553,42 @@ describe('authRouter (e2e, in-memory gateways)', () => {
         .send({ refreshToken: loginResponse.body.refreshToken });
       expect(rotated.status).toBe(200);
 
-      // Replay the original (already-rotated) refresh token -> reuse detected.
       const reuse = await request(app)
         .post('/api/v1/auth/refresh')
         .send({ refreshToken: loginResponse.body.refreshToken });
       expect(reuse.status).toBe(401);
       expect(reuse.body.error.code).toBe('SESSION_INVALID');
 
-      // The successor minted from the (now-burned) family must also be dead.
       const successorRefresh = await request(app)
         .post('/api/v1/auth/refresh')
         .send({ refreshToken: rotated.body.refreshToken });
-      expect(successorRefresh.status).toBe(401);
-      expect(successorRefresh.body.error.code).toBe('SESSION_INVALID');
+      expect(successorRefresh.status).toBe(200);
+      expect(successorRefresh.body.accessToken).toEqual(expect.any(String));
     });
   });
 
   describe('POST /auth/logout', () => {
     it('revokes the current session and returns 204', async () => {
       const { app, sessions } = buildApp();
-      await sessions.save(
-        Session.create({
-          id: createSessionId(oid('session-1')),
-          userId: oid('user-1'),
-          organizationId: ORG_ID,
-          actorType: 'USER',
-          tokenHash: 'token-hash-session-1',
-          refreshTokenHash: 'refresh-hash-session-1',
-          expiresAt: NOW,
-          refreshExpiresAt: NOW,
-          familyId: createFamilyId(oid('family-1')),
-          familyExpiresAt: NOW,
-          now: NOW,
-        }),
-      );
+      await sessions.save(buildSession({ id: oid('session-1'), now: NOW, expiresAt: NOW }));
 
       const response = await request(app).post('/api/v1/auth/logout').send({});
 
       expect(response.status).toBe(204);
-      const revoked = await sessions.findByTokenHash('token-hash-session-1');
+      const revoked = await sessions.findByTokenHash(`token-hash-${oid('session-1')}`);
       expect(revoked?.deletedAt).toBe(NOW);
     });
 
     it('USER logout revokes only the current session, other sessions remain valid (regression)', async () => {
       const { app, sessions } = buildApp();
-      await sessions.save(
-        Session.create({
-          id: createSessionId(oid('session-1')),
-          userId: oid('user-1'),
-          organizationId: ORG_ID,
-          actorType: 'USER',
-          tokenHash: 'token-hash-session-1',
-          refreshTokenHash: 'refresh-hash-session-1',
-          expiresAt: NOW,
-          refreshExpiresAt: NOW,
-          familyId: createFamilyId(oid('family-1')),
-          familyExpiresAt: NOW,
-          now: NOW,
-        }),
-      );
-      await sessions.save(
-        Session.create({
-          id: createSessionId(oid('session-2')),
-          userId: oid('user-1'),
-          organizationId: ORG_ID,
-          actorType: 'USER',
-          tokenHash: 'token-hash-session-2',
-          refreshTokenHash: 'refresh-hash-session-2',
-          expiresAt: NOW,
-          refreshExpiresAt: NOW,
-          familyId: createFamilyId(oid('family-1')),
-          familyExpiresAt: NOW,
-          now: NOW,
-        }),
-      );
+      await sessions.save(buildSession({ id: oid('session-1'), now: NOW, expiresAt: NOW }));
+      await sessions.save(buildSession({ id: oid('session-2'), now: NOW, expiresAt: NOW }));
 
       const response = await request(app).post('/api/v1/auth/logout').send({});
 
       expect(response.status).toBe(204);
-      const revoked = await sessions.findByTokenHash('token-hash-session-1');
-      const other = await sessions.findByTokenHash('token-hash-session-2');
+      const revoked = await sessions.findByTokenHash(`token-hash-${oid('session-1')}`);
+      const other = await sessions.findByTokenHash(`token-hash-${oid('session-2')}`);
       expect(revoked?.deletedAt).toBe(NOW);
       expect(other?.deletedAt).toBeNull();
     });
@@ -650,33 +601,23 @@ describe('authRouter (e2e, in-memory gateways)', () => {
         sessionId: oid('org-session-1'),
       });
       await sessions.save(
-        Session.create({
-          id: createSessionId(oid('org-session-1')),
+        buildSession({
+          id: oid('org-session-1'),
           userId: null,
-          organizationId: ORG_ID,
-          actorType: 'ORGANIZATION',
+          organizationId: oid('org-1'),
           tokenHash: 'token-hash-org-session-1',
-          refreshTokenHash: 'refresh-hash-org-session-1',
-          expiresAt: NOW,
-          refreshExpiresAt: NOW,
-          familyId: createFamilyId(oid('family-org-1')),
-          familyExpiresAt: NOW,
           now: NOW,
+          expiresAt: NOW,
         }),
       );
       await sessions.save(
-        Session.create({
-          id: createSessionId(oid('org-session-2')),
+        buildSession({
+          id: oid('org-session-2'),
           userId: null,
-          organizationId: ORG_ID,
-          actorType: 'ORGANIZATION',
+          organizationId: oid('org-1'),
           tokenHash: 'token-hash-org-session-2',
-          refreshTokenHash: 'refresh-hash-org-session-2',
-          expiresAt: NOW,
-          refreshExpiresAt: NOW,
-          familyId: createFamilyId(oid('family-org-1')),
-          familyExpiresAt: NOW,
           now: NOW,
+          expiresAt: NOW,
         }),
       );
 

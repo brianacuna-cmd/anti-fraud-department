@@ -15,7 +15,10 @@ function escapeRegex(value: string): string {
 }
 
 function buildSearchText(entry: FinturuDirectoryEntry): string {
-  const walletTerms = (entry.wallets as any[]).flatMap((w) => [w?.address, w?.idWallet]);
+  const walletTerms = entry.wallets.flatMap((wallet) => {
+    const w = wallet as { address?: unknown; idWallet?: unknown } | null;
+    return [w?.address, w?.idWallet];
+  });
   return [
     entry.idUser,
     entry.idUserBridge,

@@ -1,38 +1,33 @@
 import { ObjectId } from 'mongodb';
-import { brand } from '../../../../../../../shared/kernel/Brand.js';
+import { fromDate, toDate } from '../../../../../../../shared/time/Instant.js';
 import { CaseTimelineEvent } from '../../../../../domain/model/aggregates/CaseTimelineEvent.js';
 import { createTimelineEventId } from '../../../../../domain/model/value-objects/TimelineEventId.js';
 import { createCaseId } from '../../../../../domain/model/value-objects/CaseId.js';
 import { createTimelineEventType } from '../../../../../domain/model/value-objects/TimelineEventType.js';
 import type { CaseTimelineDocument } from '../documents/CaseTimelineDocument.js';
 
-/**
- * camelCase (domain) -> PascalCase (Mongo) translation seam (mirrors
- * `AuditLogDocumentMapper`). `_id` is the sole documented exception and
- * stays lowercase. Every nullable field is written explicitly, never
- * omitted.
- */
+/** camelCase (domain) -> snake_case (Mongo). Instant fields become BSON `Date`. */
 export function toDocument(event: CaseTimelineEvent): CaseTimelineDocument {
   return {
     _id: new ObjectId(event.id),
-    CaseId: new ObjectId(event.caseId),
-    EventType: event.eventType,
-    PreviousValue: event.previousValue,
-    NewValue: event.newValue,
-    CreatedBy: event.createdBy,
-    CreatedAt: event.createdAt,
+    case_id: new ObjectId(event.caseId),
+    event_type: event.eventType,
+    previous_value: event.previousValue,
+    new_value: event.newValue,
+    created_by: event.createdBy,
+    created_at: toDate(event.createdAt),
   };
 }
 
-/** PascalCase (Mongo) -> camelCase (domain) translation seam (mirrors `AuditLogDocumentMapper`). */
+/** snake_case (Mongo) -> camelCase (domain). */
 export function toDomain(document: CaseTimelineDocument): CaseTimelineEvent {
   return CaseTimelineEvent.rehydrate({
     id: createTimelineEventId(document._id.toString()),
-    caseId: createCaseId(document.CaseId.toString()),
-    eventType: createTimelineEventType(document.EventType),
-    previousValue: document.PreviousValue,
-    newValue: document.NewValue,
-    createdBy: document.CreatedBy,
-    createdAt: brand<string, 'Instant'>(document.CreatedAt),
+    caseId: createCaseId(document.case_id.toString()),
+    eventType: createTimelineEventType(document.event_type),
+    previousValue: document.previous_value,
+    newValue: document.new_value,
+    createdBy: document.created_by,
+    createdAt: fromDate(document.created_at),
   });
 }

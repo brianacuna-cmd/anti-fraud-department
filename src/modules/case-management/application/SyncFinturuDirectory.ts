@@ -1,14 +1,15 @@
-import type { AuthContext } from '../../../shared/kernel/AuthContext.js';
 import type { Clock } from '../../../shared/time/Clock.js';
-import type { FinturuApiClient } from '../infrastructure/adapters/outbound/finturu/FinturuApiClient.js';
+import type {
+  FinturuApiClient,
+  FinturuStripeCustomerDto,
+  FinturuStripeTransferDto,
+  FinturuTransferDto,
+  FinturuWalletDto,
+} from '../infrastructure/adapters/outbound/finturu/FinturuApiClient.js';
 import type {
   FinturuDirectoryEntry,
   FinturuDirectoryRepository,
 } from '../domain/ports/FinturuDirectoryRepository.js';
-
-export interface SyncFinturuDirectoryInput {
-  readonly auth?: AuthContext;
-}
 
 export interface SyncFinturuDirectoryResult {
   readonly total: number;
@@ -22,7 +23,28 @@ export interface SyncFinturuDirectoryDeps {
   readonly clock: Clock;
 }
 
-function riskFor(status: string | undefined, transfers: readonly any[]): number {
+/**
+ * Lee una clave de correlacion de un objeto sin contrato (`metadata` de Stripe,
+ * `source`/`destination` de un transfer). Devuelve `null` si falta, para que el
+ * llamante nunca compare `undefined` contra un Set.
+ *
+ * Acepta numero ademas de texto: el padron de Finturu tipa el MISMO campo como
+ * numero en unos payloads y como cadena en otros, y descartar la variante
+ * numerica dejaria sin correlacionar a la mitad de los clientes.
+ */
+function readKey(bag: Record<string, unknown> | undefined, key: string): string | null {
+  const value = bag?.[key];
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  return null;
+}
+
+function riskFor(status: string | undefined, transfers: readonly FinturuTransferDto[]): number {
   let score = 40;
   if (status === 'suspended' || status === 'blocked') score += 50;
   if (transfers.some((t) => t.state === 'failed' || t.state === 'returned')) score += 25;
@@ -43,9 +65,7 @@ function riskFor(status: string | undefined, transfers: readonly any[]): number 
  * directorio. Abrir un caso sigue siendo una decisión explícita de un analista.
  */
 export function createSyncFinturuDirectoryUseCase(deps: SyncFinturuDirectoryDeps) {
-  return async function syncFinturuDirectory(
-    _input: SyncFinturuDirectoryInput = {},
-  ): Promise<SyncFinturuDirectoryResult> {
+  return async function syncFinturuDirectory(): Promise<SyncFinturuDirectoryResult> {
     const startedAt = Date.now();
 
     const [customers, wallets, transfers, stripeCustomers, stripeTransfers] = await Promise.all([
@@ -56,8 +76,8 @@ export function createSyncFinturuDirectoryUseCase(deps: SyncFinturuDirectoryDeps
       deps.finturuClient.getStripeTransfers(),
     ]);
 
-    const walletsByUser = new Map<string, any[]>();
-    for (const wallet of wallets as any[]) {
+    const walletsByUser = new Map<string, FinturuWalletDto[]>();
+    for (const wallet of wallets) {
       const key = wallet.customerId ?? '';
       if (!key) continue;
       const list = walletsByUser.get(key) ?? [];
@@ -65,23 +85,28 @@ export function createSyncFinturuDirectoryUseCase(deps: SyncFinturuDirectoryDeps
       walletsByUser.set(key, list);
     }
 
-    const stripeByEmail = new Map<string, any>();
-    const stripeByIdUser = new Map<string, any>();
-    const stripeByIdUserBridge = new Map<string, any>();
-    for (const sc of stripeCustomers as any[]) {
+    const stripeByEmail = new Map<string, FinturuStripeCustomerDto>();
+    const stripeByIdUser = new Map<string, FinturuStripeCustomerDto>();
+    const stripeByIdUserBridge = new Map<string, FinturuStripeCustomerDto>();
+    for (const sc of stripeCustomers) {
       if (sc.email) stripeByEmail.set(String(sc.email).trim().toLowerCase(), sc);
       const meta = sc.metadata;
       if (meta && typeof meta === 'object') {
-        if (meta.idUser) stripeByIdUser.set(String(meta.idUser).trim(), sc);
-        if (meta.userId) stripeByIdUser.set(String(meta.userId).trim(), sc);
-        if (meta.idUserBridge) stripeByIdUserBridge.set(String(meta.idUserBridge).trim(), sc);
-        if (meta.bridgeUserId) stripeByIdUserBridge.set(String(meta.bridgeUserId).trim(), sc);
-        if (meta.email) stripeByEmail.set(String(meta.email).trim().toLowerCase(), sc);
+        for (const key of ['idUser', 'userId'] as const) {
+          const value = readKey(meta, key);
+          if (value) stripeByIdUser.set(value, sc);
+        }
+        for (const key of ['idUserBridge', 'bridgeUserId'] as const) {
+          const value = readKey(meta, key);
+          if (value) stripeByIdUserBridge.set(value, sc);
+        }
+        const metaEmail = readKey(meta, 'email');
+        if (metaEmail) stripeByEmail.set(metaEmail.toLowerCase(), sc);
       }
     }
 
-    const stripeTransfersByCustomer = new Map<string, any[]>();
-    for (const st of stripeTransfers as any[]) {
+    const stripeTransfersByCustomer = new Map<string, FinturuStripeTransferDto[]>();
+    for (const st of stripeTransfers) {
       const key = st.customerId ?? '';
       if (!key) continue;
       const list = stripeTransfersByCustomer.get(key) ?? [];
@@ -105,12 +130,19 @@ export function createSyncFinturuDirectoryUseCase(deps: SyncFinturuDirectoryDeps
         userWallets.map((w) => String(w.address ?? '').toLowerCase()).filter(Boolean),
       );
 
-      const userTransfers = (transfers as any[]).filter((t) => {
+      const userTransfers = transfers.filter((t) => {
         if (bridgeUserId && t.onBehalfOf === bridgeUserId) return true;
-        if (t.source?.bridgeWalletId && walletIds.has(t.source.bridgeWalletId)) return true;
-        if (t.destination?.bridgeWalletId && walletIds.has(t.destination.bridgeWalletId)) return true;
-        if (t.source?.fromAddress && walletAddresses.has(String(t.source.fromAddress).toLowerCase())) return true;
-        if (t.destination?.toAddress && walletAddresses.has(String(t.destination.toAddress).toLowerCase())) return true;
+
+        const sourceWallet = readKey(t.source, 'bridgeWalletId');
+        const destinationWallet = readKey(t.destination, 'bridgeWalletId');
+        if (sourceWallet && walletIds.has(sourceWallet)) return true;
+        if (destinationWallet && walletIds.has(destinationWallet)) return true;
+
+        const fromAddress = readKey(t.source, 'fromAddress');
+        const toAddress = readKey(t.destination, 'toAddress');
+        if (fromAddress && walletAddresses.has(fromAddress.toLowerCase())) return true;
+        if (toAddress && walletAddresses.has(toAddress.toLowerCase())) return true;
+
         return false;
       });
 
@@ -120,7 +152,7 @@ export function createSyncFinturuDirectoryUseCase(deps: SyncFinturuDirectoryDeps
         (bridgeUserId ? stripeByIdUserBridge.get(bridgeUserId) : null) ??
         null;
 
-      const stripeCustomerId = stripeData?.idCustomer ?? stripeData?.id ?? (customer as any).idCustomer ?? null;
+      const stripeCustomerId = stripeData?.idCustomer ?? stripeData?.id ?? customer.idCustomer ?? null;
 
       entries.push({
         idUser,

@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { createBeginUserLoginUseCase } from '../../../../../src/modules/identity-access/application/auth/BeginUserLogin.js';
 import { createAuthenticateActorUseCase } from '../../../../../src/modules/identity-access/application/auth/AuthenticateActor.js';
 import { InMemoryActorCredentialGateway } from '../../../../helpers/identity-access/InMemoryActorCredentialGateway.js';
@@ -15,11 +16,11 @@ import type { ActorCredentialRecord } from '../../../../../src/modules/identity-
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const DUMMY_CREDENTIAL = createPasswordCredential('hashed:dummy-password');
-const ORG_ID = createOrganizationId('org-1');
+const ORG_ID = createOrganizationId(oid('org-1'));
 const TOKEN_SERVICE = new AesGcmSessionTokenService(new AesGcmSecretCipher('test-secret', 1));
 
 const MFA_ENABLED_RECORD: ActorCredentialRecord = {
-  actorId: 'user-1',
+  actorId: oid('user-1'),
   actorType: 'USER',
   organizationId: ORG_ID,
   credential: createPasswordCredential('hashed:correct-password'),
@@ -67,8 +68,8 @@ describe('createBeginUserLoginUseCase', () => {
     const payload = TOKEN_SERVICE.read(result.token);
     expect(payload).toMatchObject({
       tokenType: 'mfa_challenge',
-      userId: 'user-1',
-      organizationId: 'org-1',
+      userId: oid('user-1'),
+      organizationId: oid('org-1'),
       actorType: 'USER',
     });
     expect(payload && 'jti' in payload ? mfaChallenges.get(payload.jti) : undefined).toBeDefined();
@@ -82,7 +83,7 @@ describe('createBeginUserLoginUseCase', () => {
 
     expect(result.kind).toBe('enrollment');
     const payload = TOKEN_SERVICE.read(result.token);
-    expect(payload).toMatchObject({ tokenType: 'mfa_enrollment', userId: 'user-1' });
+    expect(payload).toMatchObject({ tokenType: 'mfa_enrollment', userId: oid('user-1') });
     expect(payload && 'jti' in payload ? mfaChallenges.get(payload.jti) : undefined).toBeDefined();
   });
 

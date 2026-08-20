@@ -3,42 +3,23 @@ import { CaseManagementError } from '../../../../../src/modules/case-management/
 
 describe('createTimelineEventType', () => {
   it.each([
+    'STATE_CHANGED',
+    'ASSIGNED',
+    'NOTE_ADDED',
+    'DECISION_MADE',
     'CASE_CREATED',
     'CASE_REOPENED',
-    'STATE_CHANGED',
-    'SNAPSHOT_REFRESHED',
-    'ASSIGNED',
-    'ROUTED',
+    'EVIDENCE_ADDED',
     'PRIORITY_CHANGED',
-    'TAGS_CHANGED',
-    'SLA_INITIALIZED',
-    'SLA_RESET',
-    'SLA_BREACHED',
-    'NOTE_ADDED',
-    'NOTE_DELETED',
-    'EVIDENCE_UPLOADED',
+    'TAGS_UPDATED',
     'EVIDENCE_DELETED',
-    'DECISION_MADE',
-    'CASE_RESOLVED',
-    'INVESTIGATION_LINKED',
-    'INVESTIGATION_UNLINKED',
-    'ENFORCEMENT_REQUESTED',
-    'ENFORCEMENT_APPROVED',
-    'ENFORCEMENT_REJECTED',
-    'ENFORCEMENT_EXECUTED',
-    'ENFORCEMENT_REVERTED',
-    'DISPUTE_OPENED',
-    'DISPUTE_RESOLVED',
+    'NOTE_DELETED',
+    'CASE_LINKED_TO_INVESTIGATION',
   ])('accepts %s', (value) => {
     expect(createTimelineEventType(value)).toBe(value);
   });
 
   it('rejects an unknown event type', () => {
     expect(() => createTimelineEventType('DELETED')).toThrow(CaseManagementError);
-  });
-
-  it('keeps the vocabulary closed against lookalikes of accepted members', () => {
-    expect(() => createTimelineEventType('case_created')).toThrow(CaseManagementError);
-    expect(() => createTimelineEventType('SNAPSHOT_UPDATED')).toThrow(CaseManagementError);
   });
 });

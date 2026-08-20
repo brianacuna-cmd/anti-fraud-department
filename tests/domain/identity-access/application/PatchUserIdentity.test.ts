@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createPatchUserIdentityUseCase } from '../../../../src/modules/identity-access/application/PatchUserIdentity.js';
 import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
 import { InMemoryUnitOfWork } from '../../../helpers/identity-access/InMemoryUnitOfWork.js';
@@ -15,14 +16,14 @@ import { IdentityAccessError } from '../../../../src/modules/identity-access/dom
 
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const PATCHED_AT = fromDate(new Date('2026-01-02T00:00:00.000Z'));
-const ORG_1_USER = createAuthContext({ userId: 'u1', organizationId: 'org-1', actorType: 'ORGANIZATION' });
-const ORG_2_USER = createAuthContext({ userId: 'u2', organizationId: 'org-2', actorType: 'ORGANIZATION' });
+const ORG_1_USER = createAuthContext({ userId: oid('u1'), organizationId: oid('org-1'), actorType: 'ORGANIZATION' });
+const ORG_2_USER = createAuthContext({ userId: oid('u2'), organizationId: oid('org-2'), actorType: 'ORGANIZATION' });
 
 async function seedUser(
   userRepositoryFactory: InMemoryUserRepositoryFactory,
   id: string,
   email: string,
-  organizationId = 'org-1',
+  organizationId = oid('org-1'),
 ): Promise<void> {
   const org = createOrganizationId(organizationId);
   const user = User.create({
@@ -53,10 +54,10 @@ function buildUseCase(userRepositoryFactory: InMemoryUserRepositoryFactory) {
 describe('createPatchUserIdentityUseCase', () => {
   it('updates only the given identity fields', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
-    await seedUser(userRepositoryFactory, 'user-1', 'alice@example.com');
+    await seedUser(userRepositoryFactory, oid('user-1'), 'alice@example.com');
     const { patchUserIdentity } = buildUseCase(userRepositoryFactory);
 
-    const patched = await patchUserIdentity({ auth: ORG_1_USER, userId: 'user-1', firstName: 'Alicia' });
+    const patched = await patchUserIdentity({ auth: ORG_1_USER, userId: oid('user-1'), firstName: 'Alicia' });
 
     expect(patched.firstName).toBe('Alicia');
     expect(patched.lastName).toBe('Last');
@@ -65,13 +66,13 @@ describe('createPatchUserIdentityUseCase', () => {
 
   it('rejects an email conflicting with another same-org user with USER_EMAIL_TAKEN', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
-    await seedUser(userRepositoryFactory, 'user-1', 'alice@example.com');
-    await seedUser(userRepositoryFactory, 'user-2', 'bob@example.com');
+    await seedUser(userRepositoryFactory, oid('user-1'), 'alice@example.com');
+    await seedUser(userRepositoryFactory, oid('user-2'), 'bob@example.com');
     const { patchUserIdentity } = buildUseCase(userRepositoryFactory);
 
     expect.assertions(2);
     try {
-      await patchUserIdentity({ auth: ORG_1_USER, userId: 'user-2', email: 'alice@example.com' });
+      await patchUserIdentity({ auth: ORG_1_USER, userId: oid('user-2'), email: 'alice@example.com' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('USER_EMAIL_TAKEN');
@@ -80,53 +81,53 @@ describe('createPatchUserIdentityUseCase', () => {
 
   it('allows patching a user\'s own email to the same value without USER_EMAIL_TAKEN', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
-    await seedUser(userRepositoryFactory, 'user-1', 'alice@example.com');
+    await seedUser(userRepositoryFactory, oid('user-1'), 'alice@example.com');
     const { patchUserIdentity } = buildUseCase(userRepositoryFactory);
 
-    const patched = await patchUserIdentity({ auth: ORG_1_USER, userId: 'user-1', email: 'alice@example.com' });
+    const patched = await patchUserIdentity({ auth: ORG_1_USER, userId: oid('user-1'), email: 'alice@example.com' });
 
     expect(patched.email).toBe('alice@example.com');
   });
 
   it('rejects a cross-tenant patch with USER_NOT_FOUND, leaving the target unchanged', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
-    await seedUser(userRepositoryFactory, 'user-1', 'alice@example.com', 'org-1');
+    await seedUser(userRepositoryFactory, oid('user-1'), 'alice@example.com', oid('org-1'));
     const { patchUserIdentity } = buildUseCase(userRepositoryFactory);
 
     expect.assertions(3);
     try {
-      await patchUserIdentity({ auth: ORG_2_USER, userId: 'user-1', firstName: 'Hacked' });
+      await patchUserIdentity({ auth: ORG_2_USER, userId: oid('user-1'), firstName: 'Hacked' });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('USER_NOT_FOUND');
     }
-    const unchanged = await userRepositoryFactory.forTenant(createOrganizationId('org-1')).findById(createUserId('user-1'));
+    const unchanged = await userRepositoryFactory.forTenant(createOrganizationId(oid('org-1'))).findById(createUserId(oid('user-1')));
     expect(unchanged?.firstName).toBe('First');
   });
 
   it('emits exactly one USER_IDENTITY_UPDATED audit event inside the transaction', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
-    await seedUser(userRepositoryFactory, 'user-1', 'alice@example.com');
+    await seedUser(userRepositoryFactory, oid('user-1'), 'alice@example.com');
     const { patchUserIdentity, auditRecorder } = buildUseCase(userRepositoryFactory);
 
-    await patchUserIdentity({ auth: ORG_1_USER, userId: 'user-1', firstName: 'Alicia' });
+    await patchUserIdentity({ auth: ORG_1_USER, userId: oid('user-1'), firstName: 'Alicia' });
 
     const calls = auditRecorder.calls();
     expect(calls).toHaveLength(1);
     expect(calls[0].tx).toBeDefined();
     expect(calls[0].event.action).toBe('USER_IDENTITY_UPDATED');
     expect(calls[0].event.resource).toBe('users');
-    expect(calls[0].event.resourceId).toBe('user-1');
+    expect(calls[0].event.resourceId).toBe(oid('user-1'));
   });
 
   it('records no audit event when the patch fails (email conflict)', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
-    await seedUser(userRepositoryFactory, 'user-1', 'alice@example.com');
-    await seedUser(userRepositoryFactory, 'user-2', 'bob@example.com');
+    await seedUser(userRepositoryFactory, oid('user-1'), 'alice@example.com');
+    await seedUser(userRepositoryFactory, oid('user-2'), 'bob@example.com');
     const { patchUserIdentity, auditRecorder } = buildUseCase(userRepositoryFactory);
 
     await expect(
-      patchUserIdentity({ auth: ORG_1_USER, userId: 'user-2', email: 'alice@example.com' }),
+      patchUserIdentity({ auth: ORG_1_USER, userId: oid('user-2'), email: 'alice@example.com' }),
     ).rejects.toBeInstanceOf(IdentityAccessError);
 
     expect(auditRecorder.all()).toHaveLength(0);

@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 /**
  * POST /cases body (T5 manual case creation). `finturuCacheSnapshot` is
- * deliberately NOT exposed here — Slice 5 is manual creation only, that
- * field is only ever populated by an automated intake path (out of scope).
+ * deliberately NOT exposed here — only the composition score→case
+ * orchestrator may pass it into CreateCase application input.
  */
 export const createCaseSchema = z.object({
   customerId: z.string().min(1),
@@ -18,101 +18,113 @@ export const createCaseSchema = z.object({
 
 export type CreateCaseBody = z.infer<typeof createCaseSchema>;
 
-/**
- * PATCH /cases/:id/priority-tags body (CASE-007).
- *
- * Ambos campos son opcionales, pero al menos uno debe venir: un PATCH vacio
- * no es una peticion valida sino un error del llamante, y aceptarlo en
- * silencio devolveria 200 sin haber hecho nada.
- *
- * `tags` admite el array vacio a proposito — es como se limpian todas las
- * etiquetas de un caso; `.nullish()` no serviria para expresar eso.
- */
-export const reclassifyCaseSchema = z
-  .object({
-    priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
-    tags: z.array(z.string().min(1)).max(50).optional(),
-  })
-  .refine((body) => body.priority !== undefined || body.tags !== undefined, {
-    message: 'Debe indicarse priority, tags, o ambos',
-  });
+/** POST /cases/:caseId/reassign body (manual reassignment). */
+export const reassignCaseSchema = z.object({
+  assignedToType: z.enum(['USER', 'ROLE']),
+  assignedToId: z.string().min(1),
+});
 
-export type ReclassifyCaseBody = z.infer<typeof reclassifyCaseSchema>;
+export type ReassignCaseBody = z.infer<typeof reassignCaseSchema>;
+
+const caseStatusEnum = z.enum(['OPEN', 'IN_REVIEW', 'RESOLVED', 'ARCHIVED']);
+const casePriorityEnum = z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
+
+/** Coerces Express query `string | string[]` into a string array. */
+function asStringArray(value: unknown): string[] | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (Array.isArray(value)) return value.map(String);
+  return [String(value)];
+}
 
 /**
- * POST /cases/:id/reopen body (CASE-009). Todo es opcional: reabrir sin
- * cuerpo es la peticion normal desde la interfaz.
- *
- * `nextStatus` se limita a OPEN e IN_REVIEW porque son los unicos destinos
- * que la tabla de transiciones admite desde RESOLVED o ARCHIVED; aceptar el
- * resto aqui solo trasladaria el rechazo al dominio con un error peor.
+ * GET /cases query (inbox). `organization_id` comes from the tenant auth
+ * context — not from the query string.
  */
+export const listCasesQuerySchema = z.object({
+  status: z.preprocess(asStringArray, z.array(caseStatusEnum).optional()),
+  priority: z.preprocess(asStringArray, z.array(casePriorityEnum).optional()),
+  assignedTo: z.string().min(1).optional(),
+  riskScoreMin: z.coerce.number().int().min(0).max(100).optional(),
+  riskScoreMax: z.coerce.number().int().min(0).max(100).optional(),
+  tags: z.preprocess(asStringArray, z.array(z.string().min(1)).optional()),
+  dueAfter: z.iso.datetime().optional(),
+  dueBefore: z.iso.datetime().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+export type ListCasesQuery = z.infer<typeof listCasesQuerySchema>;
+
+/**
+ * GET /cases/export query. Same filters as the inbox list (no pagination —
+ * export returns all matching cases up to the use-case cap) plus a `format`
+ * selector. `organization_id` comes from the tenant auth context.
+ */
+export const exportCasesQuerySchema = z.object({
+  format: z.enum(['json', 'xlsx', 'pdf']).default('json'),
+  status: z.preprocess(asStringArray, z.array(caseStatusEnum).optional()),
+  priority: z.preprocess(asStringArray, z.array(casePriorityEnum).optional()),
+  assignedTo: z.string().min(1).optional(),
+  riskScoreMin: z.coerce.number().int().min(0).max(100).optional(),
+  riskScoreMax: z.coerce.number().int().min(0).max(100).optional(),
+  tags: z.preprocess(asStringArray, z.array(z.string().min(1)).optional()),
+  dueAfter: z.iso.datetime().optional(),
+  dueBefore: z.iso.datetime().optional(),
+});
+
+export type ExportCasesQuery = z.infer<typeof exportCasesQuerySchema>;
+
+/** POST /cases/:caseId/reopen body (role-gated reopen + SLA reset). */
 export const reopenCaseSchema = z.object({
-  nextStatus: z.enum(['OPEN', 'IN_REVIEW']).optional(),
-  reason: z.string().min(1).max(2000).optional(),
+  targetStatus: z.enum(['OPEN', 'IN_REVIEW']),
+  justification: z.string().trim().min(1),
 });
 
 export type ReopenCaseBody = z.infer<typeof reopenCaseSchema>;
 
+/** PATCH /cases/:caseId/priority-tags body (retag + reprioritize, SLA recalc). */
+export const updateCasePriorityTagsSchema = z.object({
+  priority: casePriorityEnum,
+  tags: z.array(z.string().trim().min(1)),
+});
+
+export type UpdateCasePriorityTagsBody = z.infer<typeof updateCasePriorityTagsSchema>;
+
 /**
- * POST /cases/bulk-action body (CASE-012).
- *
- * `superRefine` en lugar de un `refine` por campo: cada accion exige un
- * parametro distinto, y validarlo aqui deja que el error senale exactamente
- * que falta en vez de dejar que el caso de uso falle una vez por cada caso
- * del lote.
+ * POST /cases/bulk-action body. Exactly one action applied to a selection of
+ * cases. `caseIds` is bounded to keep a single transaction reasonable.
  */
-export const bulkCaseActionSchema = z
-  .object({
-    caseIds: z.array(z.string().min(1)).min(1).max(500),
-    action: z.enum(['REASSIGN', 'SET_PRIORITY', 'ADD_TAGS', 'REMOVE_TAGS']),
-    assignedTo: z
-      .object({ type: z.enum(['USER', 'ROLE']), id: z.string().min(1) })
-      .nullish(),
-    priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
-    tags: z.array(z.string().min(1)).max(50).optional(),
-  })
-  .superRefine((body, ctx) => {
-    if (body.action === 'SET_PRIORITY' && body.priority === undefined) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['priority'], message: 'SET_PRIORITY requiere priority' });
-    }
-    if ((body.action === 'ADD_TAGS' || body.action === 'REMOVE_TAGS') && !body.tags?.length) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['tags'], message: `${body.action} requiere tags` });
-    }
-    // REASSIGN admite `assignedTo: null` a proposito: asi se libera un lote
-    // entero a la bandeja general. Solo se rechaza omitir el campo del todo.
-    if (body.action === 'REASSIGN' && body.assignedTo === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['assignedTo'],
-        message: 'REASSIGN requiere assignedTo (usa null para liberar a la bandeja general)',
-      });
-    }
-  });
+export const bulkCaseActionSchema = z.object({
+  caseIds: z.array(z.string().min(1)).min(1).max(100),
+  action: z.discriminatedUnion('type', [
+    z.object({
+      type: z.literal('ASSIGN'),
+      assignedToType: z.enum(['USER', 'ROLE']),
+      assignedToId: z.string().min(1),
+    }),
+    z.object({
+      type: z.literal('CHANGE_PRIORITY'),
+      priority: casePriorityEnum,
+    }),
+    z.object({
+      type: z.literal('ADD_TAGS'),
+      tags: z.array(z.string().trim().min(1)).min(1),
+    }),
+  ]),
+});
 
 export type BulkCaseActionBody = z.infer<typeof bulkCaseActionSchema>;
 
-/** Condiciones de una regla de enrutamiento (CASE-002). Conjunto cerrado. */
-const routingConditionsSchema = z.object({
-  riskScoreMin: z.number().int().min(0).max(100).optional(),
-  riskScoreMax: z.number().int().min(0).max(100).optional(),
-  priorities: z.array(z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'])).optional(),
-  tags: z.array(z.string().min(1)).max(50).optional(),
-  customerEmailDomain: z.string().min(1).optional(),
-  hasStripeCustomer: z.boolean().optional(),
-  hasBridgeWallet: z.boolean().optional(),
+/** POST /cases/:caseId/notes body. */
+export const addCaseNoteSchema = z.object({
+  body: z.string().trim().min(1),
 });
 
-export const upsertRoutingRuleSchema = z.object({
-  name: z.string().min(1).max(120),
-  evaluationOrder: z.number().int().min(0),
-  conditions: routingConditionsSchema.default({}),
-  assignTo: z.object({ type: z.enum(['USER', 'ROLE']), id: z.string().min(1) }),
-  status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
+export type AddCaseNoteBody = z.infer<typeof addCaseNoteSchema>;
+
+/** POST /cases/:caseId/resolve and /archive body (formal closure). */
+export const closeCaseSchema = z.object({
+  reason: z.string().trim().min(1),
 });
 
-export const setRoutingRuleStatusSchema = z.object({
-  status: z.enum(['ACTIVE', 'INACTIVE']),
-});
-
-export type UpsertRoutingRuleBody = z.infer<typeof upsertRoutingRuleSchema>;
+export type CloseCaseBody = z.infer<typeof closeCaseSchema>;

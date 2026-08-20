@@ -1,26 +1,24 @@
 /**
- * Mongo document shape for `OrganizationFraudConfig` (design: "Persistence —
- * collections, documents, mappers"). `_id` is the aggregate's branded
- * `OrganizationFraudConfigId` (a native MongoDB `ObjectId`, mirrors `CaseDocument`).
- *
- * One document per `OrganizationId` — enforced by the `org_fraud_config_unique`
- * index, never by application-level checks.
+ * Mongo document shape for `organization_fraud_config`. One document per
+ * organization, enforced by `org_fraud_config_unique`.
  */
 
-import type { ObjectId } from "mongodb";
+import type { ObjectId } from 'mongodb';
 
 export interface OrganizationFraudConfigDocument {
   readonly _id: ObjectId;
-  readonly OrganizationId: string;
-  readonly SlaLowMinutes: number;
-  readonly SlaMediumMinutes: number;
-  readonly SlaHighMinutes: number;
-  readonly SlaCriticalMinutes: number;
-  readonly RiskThresholdLow: number;
-  readonly RiskThresholdMedium: number;
-  readonly RiskThresholdHigh: number;
-  readonly RiskThresholdCritical: number;
-  readonly FeatureFlags: Readonly<Record<string, boolean>>;
-  readonly CreatedAt: string;
-  readonly UpdatedAt: string;
+  readonly organization_id: ObjectId;
+  readonly sla_low_minutes: number;
+  readonly sla_medium_minutes: number;
+  readonly sla_high_minutes: number;
+  readonly sla_critical_minutes: number;
+  readonly risk_threshold_low: number;
+  readonly risk_threshold_medium: number;
+  readonly risk_threshold_high: number;
+  readonly risk_threshold_critical: number;
+  readonly feature_flags: Readonly<Record<string, boolean>>;
+  /** Present on new writes; legacy docs may omit — mapper defaults to null. */
+  readonly outbound_webhook_url?: string | null;
+  readonly created_at: Date;
+  readonly updated_at: Date;
 }

@@ -1,23 +1,37 @@
 import type { Case } from '../model/aggregates/Case.js';
 import type { CaseId } from '../model/value-objects/CaseId.js';
 import type { CaseStatus } from '../model/value-objects/CaseStatus.js';
+import type { CasePriority } from '../model/value-objects/CasePriority.js';
+import type { Instant } from '../../../../shared/time/Instant.js';
 import type { Transaction } from './UnitOfWork.js';
 
-export interface CaseListPage {
-  readonly items: readonly Case[];
-  readonly nextCursor: string | null;
+/**
+ * Inbox list query (PR3). Always scoped to one organization; soft-deleted
+ * cases are excluded by every adapter. Default sort is dueDate ASC with
+ * nulls last.
+ */
+export interface CaseListQuery {
+  readonly organizationId: string;
+  readonly status?: readonly CaseStatus[];
+  readonly priority?: readonly CasePriority[];
+  readonly assignedToId?: string;
+  readonly riskScoreMin?: number;
+  readonly riskScoreMax?: number;
+  readonly tags?: readonly string[];
+  readonly dueAfter?: Instant;
+  readonly dueBefore?: Instant;
+  readonly limit: number;
+  readonly offset: number;
 }
 
 /**
- * Identity lookup for the intake paths' deduplication guard. `organizationId`
- * is mandatory and always applied: a case belonging to another tenant must
- * never satisfy a lookup, even when the customer identifiers match.
+ * Identidad con la que la ingesta de Finturu busca un expediente ya existente
+ * antes de abrir uno nuevo (CASE-011). `customerId` y `bridgeUserId` componen
+ * como OR; `statuses`, cuando se pasa, acota la ventana de ciclo de vida.
  *
- * `statuses` narrows the match to a lifecycle window. The two intake paths
- * want opposite things, so neither may rely on a default:
- * `IngestFinturuCase` passes the ACTIVE window (spec CASE-011: "si la entidad
- * ya tiene un caso OPEN o IN_REVIEW"), while `OpenFraudCaseFromCustomer`
- * omits it because reopening a RESOLVED/ARCHIVED case is its intended path.
+ * `IngestFinturuCase` pasa la ventana ACTIVA (spec CASE-011: "si la entidad ya
+ * tiene un caso OPEN o IN_REVIEW"), mientras que `OpenFraudCaseFromCustomer` la
+ * omite porque reabrir un caso RESOLVED/ARCHIVED es su camino previsto.
  */
 export interface FindCaseByIdentityOptions {
   readonly organizationId: string;
@@ -26,47 +40,23 @@ export interface FindCaseByIdentityOptions {
   readonly statuses?: readonly CaseStatus[];
 }
 
-/** The lifecycle window CASE-011 treats as "already has an open file". */
+/** La ventana de ciclo de vida que CASE-011 trata como "ya tiene expediente abierto". */
 export const ACTIVE_CASE_STATUSES: readonly CaseStatus[] = ['OPEN', 'IN_REVIEW'];
 
-/**
- * CASE-004's multi-criteria filter. Every field is optional and they compose
- * as AND; an omitted field never narrows the result.
- *
- * `organizationId` is deliberately nullable rather than absent: `null` means
- * "platform admin, span every tenant". Any other caller must pass a real id,
- * and the use case is what decides which — never the transport.
- */
-export interface CaseListFilter {
-  readonly organizationId?: string | null;
-  readonly limit?: number;
-  readonly cursor?: string;
-  /** Single status, or several. `'ALL'` is accepted as "do not filter". */
-  readonly status?: string | readonly string[];
-  readonly priority?: string | readonly string[];
-  readonly assignedToId?: string;
-  /** `'UNASSIGNED'` matches the general inbox — cases with no assignee. */
-  readonly assignedToType?: string;
-  /** Matches cases carrying ALL of these tags. */
-  readonly tags?: readonly string[];
-  readonly riskScoreMin?: number;
-  readonly riskScoreMax?: number;
-  readonly createdFrom?: string;
-  readonly createdTo?: string;
-  readonly dueBefore?: string;
-  /** When true, only cases whose deadline has already passed. */
-  readonly overdueOnly?: boolean;
-  readonly search?: string;
+export interface CaseListResult {
+  readonly items: readonly Case[];
+  readonly total: number;
 }
 
-/**
- * Outbound port for the `Case` aggregate.
- */
+/** Outbound port for the `Case` aggregate (save/findById + inbox `list`). */
 export interface CaseRepository {
   save(kase: Case, tx?: Transaction): Promise<void>;
   findById(id: CaseId, tx?: Transaction): Promise<Case | null>;
+  list(query: CaseListQuery, tx?: Transaction): Promise<CaseListResult>;
+  /**
+   * Deduplicacion de la ingesta de Finturu (CASE-011): devuelve el expediente
+   * de ESTA organizacion que ya cubre la identidad recibida, o `null`. Nunca
+   * cruza inquilinos ni devuelve expedientes borrados.
+   */
   findByCustomerOrBridgeId(options: FindCaseByIdentityOptions, tx?: Transaction): Promise<Case | null>;
-  list(filter?: CaseListFilter): Promise<CaseListPage>;
-  /** Same predicate as `list`, without pagination — backs CASE-013's export. */
-  countAll(filter?: CaseListFilter): Promise<number>;
 }

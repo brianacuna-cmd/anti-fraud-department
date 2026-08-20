@@ -38,6 +38,17 @@ export function forbiddenCrossTenant(
   return new CaseManagementError('FORBIDDEN_CROSS_TENANT', message);
 }
 
+export function forbiddenRole(
+  roleId: string | null,
+  allowed: readonly string[],
+): CaseManagementError {
+  return new CaseManagementError(
+    'FORBIDDEN_ROLE',
+    `role "${roleId ?? 'null'}" is not authorized for this operation`,
+    { roleId, allowed: [...allowed] },
+  );
+}
+
 export function organizationFraudConfigNotFound(organizationId: string): CaseManagementError {
   return new CaseManagementError(
     'ORGANIZATION_FRAUD_CONFIG_NOT_FOUND',
@@ -47,21 +58,55 @@ export function organizationFraudConfigNotFound(organizationId: string): CaseMan
 }
 
 export function caseNotFound(caseId: string): CaseManagementError {
+  return new CaseManagementError('CASE_NOT_FOUND', `case "${caseId}" was not found`, { caseId });
+}
+
+export function enforcementActionNotFound(enforcementActionId: string): CaseManagementError {
   return new CaseManagementError(
-    'CASE_NOT_FOUND',
-    `case with id "${caseId}" was not found`,
-    { caseId },
+    'ENFORCEMENT_ACTION_NOT_FOUND',
+    `enforcement action "${enforcementActionId}" was not found`,
+    { enforcementActionId },
   );
 }
 
-/**
- * El destinatario de la asignación no existe o no pertenece a la organización.
- * Asignar a un id inexistente dejaba el caso sin dueño real.
- */
-export function assigneeNotFound(type: string, id: string): CaseManagementError {
+export function routingRuleNotFound(ruleId: string): CaseManagementError {
   return new CaseManagementError(
-    'ASSIGNEE_NOT_FOUND',
-    `assignee ${type} "${id}" does not exist in this organization`,
-    { type, id },
+    'ROUTING_RULE_NOT_FOUND',
+    `routing rule "${ruleId}" was not found`,
+    { ruleId },
+  );
+}
+
+export function investigationNotFound(investigationId: string): CaseManagementError {
+  return new CaseManagementError(
+    'INVESTIGATION_NOT_FOUND',
+    `investigation "${investigationId}" was not found`,
+    { investigationId },
+  );
+}
+
+export function caseReportNotFound(reportId: string): CaseManagementError {
+  return new CaseManagementError('CASE_REPORT_NOT_FOUND', `case report "${reportId}" was not found`, {
+    reportId,
+  });
+}
+
+export function evidenceNotFound(evidenceId: string): CaseManagementError {
+  return new CaseManagementError('EVIDENCE_NOT_FOUND', `evidence "${evidenceId}" was not found`, {
+    evidenceId,
+  });
+}
+
+export function caseNoteNotFound(noteId: string): CaseManagementError {
+  return new CaseManagementError('CASE_NOTE_NOT_FOUND', `case note "${noteId}" was not found`, {
+    noteId,
+  });
+}
+
+export function approvalRequestNotFound(approvalRequestId: string): CaseManagementError {
+  return new CaseManagementError(
+    'APPROVAL_REQUEST_NOT_FOUND',
+    `approval request "${approvalRequestId}" was not found`,
+    { approvalRequestId },
   );
 }

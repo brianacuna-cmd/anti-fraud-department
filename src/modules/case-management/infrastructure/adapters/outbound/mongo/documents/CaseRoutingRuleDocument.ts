@@ -1,38 +1,23 @@
 /**
- * Mongo document shape for `CaseRoutingRules` (CASE-002). `_id` is the
- * aggregate's branded `CaseRoutingRuleId` stored as a native `ObjectId`,
- * mirroring `CaseDocument`.
+ * Mongo document shape for `case_routing_rules`. `_id` is the aggregate's
+ * branded `CaseRoutingRuleId` stored as a native BSON `ObjectId`. Instant
+ * fields are BSON `Date`. `organization_id` is an ObjectId FK.
  *
- * `AssignTo`/`AssignToType` are two separate columns, the same split
- * `CaseDocument` uses for `AssignedTo` — the mapper joins them back into the
- * value object.
- *
- * `Conditions` is stored as a nested document rather than flattened columns:
- * it is read whole, never queried field by field, and flattening would force
- * a migration every time a criterion is added.
+ * `conditions` stores the full JDM graph for ZEN Engine. `target_user_id` /
+ * `target_role_id` are optional fallbacks when the JDM output omits them.
  */
 
 import type { ObjectId } from 'mongodb';
 
-export interface CaseRoutingRuleConditionsDocument {
-  readonly RiskScoreMin?: number;
-  readonly RiskScoreMax?: number;
-  readonly Priorities?: readonly string[];
-  readonly Tags?: readonly string[];
-  readonly CustomerEmailDomain?: string;
-  readonly HasStripeCustomer?: boolean;
-  readonly HasBridgeWallet?: boolean;
-}
-
 export interface CaseRoutingRuleDocument {
   readonly _id: ObjectId;
-  readonly OrganizationId: string;
-  readonly Name: string;
-  readonly EvaluationOrder: number;
-  readonly Conditions: CaseRoutingRuleConditionsDocument;
-  readonly AssignTo: string;
-  readonly AssignToType: string;
-  readonly Status: string;
-  readonly CreatedAt: string;
-  readonly UpdatedAt: string;
+  readonly organization_id: ObjectId;
+  readonly name: string;
+  readonly conditions: Readonly<Record<string, unknown>>;
+  readonly conditions_version: number;
+  readonly target_role_id: string | null;
+  readonly target_user_id: string | null;
+  readonly status: string;
+  readonly created_at: Date;
+  readonly updated_at: Date;
 }

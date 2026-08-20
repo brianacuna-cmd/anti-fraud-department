@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createDeleteUserUseCase } from '../../../../src/modules/identity-access/application/DeleteUser.js';
 import { createTransitionUserStatusUseCase } from '../../../../src/modules/identity-access/application/TransitionUserStatus.js';
 import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
@@ -7,23 +8,21 @@ import { InMemoryAuditRecorder } from '../../../helpers/identity-access/InMemory
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { User } from '../../../../src/modules/identity-access/domain/model/aggregates/User.js';
-import { Session } from '../../../../src/modules/identity-access/domain/model/aggregates/Session.js';
 import { createUserId } from '../../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
 import { createRoleId } from '../../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
 import { createOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createEmail } from '../../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 import { createPasswordCredential } from '../../../../src/modules/identity-access/domain/model/value-objects/PasswordCredential.js';
-import { createSessionId } from '../../../../src/modules/identity-access/domain/model/value-objects/SessionId.js';
-import { createFamilyId } from '../../../../src/modules/identity-access/domain/model/value-objects/FamilyId.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
+import { buildSession } from '../../../helpers/identity-access/buildSession.js';
 import { IdentityAccessError } from '../../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
 
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const DELETED_AT = fromDate(new Date('2026-01-02T00:00:00.000Z'));
-const ORG_ADMIN = createAuthContext({ userId: 'u1', organizationId: 'org-1', actorType: 'ORGANIZATION' });
+const ORG_ADMIN = createAuthContext({ userId: oid('u1'), organizationId: oid('org-1'), actorType: 'ORGANIZATION' });
 
-async function seedUser(userRepositoryFactory: InMemoryUserRepositoryFactory, id = 'user-1'): Promise<void> {
-  const org = createOrganizationId('org-1');
+async function seedUser(userRepositoryFactory: InMemoryUserRepositoryFactory, id = oid('user-1')): Promise<void> {
+  const org = createOrganizationId(oid('org-1'));
   await userRepositoryFactory.forTenant(org).save(
     User.create({
       id: createUserId(id),
@@ -56,29 +55,13 @@ function buildUseCases(
   return { transitionUserStatus, deleteUser };
 }
 
-function buildSession(id: string): Session {
-  return Session.create({
-    id: createSessionId(id),
-    userId: 'user-1',
-    organizationId: createOrganizationId('org-1'),
-    actorType: 'USER',
-    tokenHash: `token-hash-${id}`,
-    refreshTokenHash: `refresh-hash-${id}`,
-    expiresAt: DELETED_AT,
-    refreshExpiresAt: DELETED_AT,
-    familyId: createFamilyId('family-1'),
-    familyExpiresAt: DELETED_AT,
-    now: CREATED_AT,
-  });
-}
-
 describe('createDeleteUserUseCase', () => {
   it('transitions the user to DISABLED', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
     await seedUser(userRepositoryFactory);
     const { deleteUser } = buildUseCases(userRepositoryFactory);
 
-    const user = await deleteUser({ auth: ORG_ADMIN, userId: 'user-1' });
+    const user = await deleteUser({ auth: ORG_ADMIN, userId: oid('user-1') });
 
     expect(user.status).toBe('DISABLED');
   });
@@ -91,8 +74,8 @@ describe('createDeleteUserUseCase', () => {
     const { deleteUser } = buildUseCases(factoryForDelete);
     const { transitionUserStatus } = buildUseCases(factoryForTransition);
 
-    const viaDelete = await deleteUser({ auth: ORG_ADMIN, userId: 'user-1' });
-    const viaTransition = await transitionUserStatus({ auth: ORG_ADMIN, userId: 'user-1', next: 'DISABLED' });
+    const viaDelete = await deleteUser({ auth: ORG_ADMIN, userId: oid('user-1') });
+    const viaTransition = await transitionUserStatus({ auth: ORG_ADMIN, userId: oid('user-1'), next: 'DISABLED' });
 
     expect(viaDelete.status).toBe(viaTransition.status);
     expect(viaDelete.updatedAt).toBe(viaTransition.updatedAt);
@@ -102,11 +85,11 @@ describe('createDeleteUserUseCase', () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
     await seedUser(userRepositoryFactory);
     const { deleteUser } = buildUseCases(userRepositoryFactory);
-    await deleteUser({ auth: ORG_ADMIN, userId: 'user-1' });
+    await deleteUser({ auth: ORG_ADMIN, userId: oid('user-1') });
 
     expect.assertions(2);
     try {
-      await deleteUser({ auth: ORG_ADMIN, userId: 'user-1' });
+      await deleteUser({ auth: ORG_ADMIN, userId: oid('user-1') });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('INVALID_TRANSITION');
@@ -117,13 +100,13 @@ describe('createDeleteUserUseCase', () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
     await seedUser(userRepositoryFactory);
     const sessions = new InMemorySessionRepository();
-    await sessions.save(buildSession('session-1'));
+    await sessions.save(buildSession({ id: oid('session-1'), now: CREATED_AT, expiresAt: DELETED_AT }));
     const auditRecorder = new InMemoryAuditRecorder();
     const { deleteUser } = buildUseCases(userRepositoryFactory, sessions, auditRecorder);
 
-    await deleteUser({ auth: ORG_ADMIN, userId: 'user-1' });
+    await deleteUser({ auth: ORG_ADMIN, userId: oid('user-1') });
 
-    const revoked = await sessions.findByTokenHash('token-hash-session-1');
+    const revoked = await sessions.findByTokenHash(`token-hash-${oid('session-1')}`);
     expect(revoked?.deletedAt).toBe(DELETED_AT);
     expect(auditRecorder.all().some((event) => event.action === 'USER_SESSIONS_REVOKED')).toBe(true);
   });

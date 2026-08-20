@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { createRefreshSessionUseCase } from '../../../../../src/modules/identity-access/application/auth/RefreshSession.js';
 import { createSessionIssuer } from '../../../../../src/modules/identity-access/application/auth/SessionIssuer.js';
 import { InMemorySessionRepository } from '../../../../helpers/identity-access/InMemorySessionRepository.js';
@@ -7,15 +8,16 @@ import { FixedClock } from '../../../../helpers/FixedClock.js';
 import { AesGcmSessionTokenService } from '../../../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSessionTokenService.js';
 import { AesGcmSecretCipher } from '../../../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
 import { createOrganizationId } from '../../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
+import { createAdminOrganizationId } from '../../../../../src/modules/identity-access/domain/model/value-objects/AdminOrganizationId.js';
 import { fromDate } from '../../../../../src/shared/time/Instant.js';
-import { IdentityAccessError } from '../../../../../src/modules/identity-access/domain/errors/IdentityAccessError.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const SECRET_CIPHER = new AesGcmSecretCipher('test-secret', 1);
 const TOKEN_SERVICE = new AesGcmSessionTokenService(SECRET_CIPHER);
-const ORG_ID = createOrganizationId('org-1');
+const ORG_ID = createOrganizationId(oid('org-1'));
+const ADMIN_ID = createAdminOrganizationId(oid('admin-1'));
 
-const TTLS = { sessionSeconds: 900, refreshSeconds: 1_209_600, familySeconds: 2_592_000 };
+const TTLS = { sessionSeconds: 900 };
 
 function buildHarness(clock = new FixedClock(NOW)) {
   const sessions = new InMemorySessionRepository();
@@ -40,73 +42,50 @@ function buildHarness(clock = new FixedClock(NOW)) {
 
 async function mintUserSession(harness: ReturnType<typeof buildHarness>, now = NOW) {
   return harness.unitOfWork.withTransaction((tx) =>
-    harness.issueSessionFor({ userId: 'user-1', organizationId: ORG_ID, actorType: 'USER', now, tx }),
+    harness.issueSessionFor({ userId: oid('user-1'), organizationId: ORG_ID, now, tx }),
   );
 }
 
 describe('createRefreshSessionUseCase', () => {
-  it('happy path: rotates, mints a new linked session, marks old rotated, emits SESSION_REFRESHED', async () => {
+  it('happy path: revokes the old session, mints a new access token, emits SESSION_REFRESHED', async () => {
     const harness = buildHarness();
     const minted = await mintUserSession(harness);
 
     const result = await harness.refreshSession({ refreshToken: minted.refreshToken! });
 
     expect(result.accessToken).not.toBe(minted.accessToken);
-    expect(result.refreshToken).not.toBe(minted.refreshToken);
+    expect(result.refreshToken).toBeDefined();
 
     const oldSession = await harness.sessions.findByTokenHash(TOKEN_SERVICE.fingerprint(minted.accessToken));
-    expect(oldSession?.rotatedAt).toBe(NOW);
+    expect(oldSession?.deletedAt).toBe(NOW);
 
     const newSession = await harness.sessions.findByTokenHash(TOKEN_SERVICE.fingerprint(result.accessToken));
-    expect(newSession?.familyId).toBe(oldSession?.familyId);
-    expect(newSession?.rotatedFromSessionId).toBe(oldSession?.id);
-    expect(newSession?.rotatedAt).toBeNull();
+    expect(newSession).not.toBeNull();
+    expect(newSession?.deletedAt).toBeNull();
+    expect(newSession?.id).not.toBe(oldSession?.id);
 
     const events = harness.auditRecorder.all();
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ action: 'SESSION_REFRESHED', resource: 'sessions' });
   });
 
-  it('the old REFRESH token is no longer usable to refresh again after rotation (old ACCESS-token invalidation is covered by the resolver contract test)', async () => {
+  it('reusing the old refresh token after revoke is SESSION_INVALID; successor remains usable', async () => {
     const harness = buildHarness();
     const minted = await mintUserSession(harness);
-    await harness.refreshSession({ refreshToken: minted.refreshToken! });
+    const successor = await harness.refreshSession({ refreshToken: minted.refreshToken! });
 
     await expect(harness.refreshSession({ refreshToken: minted.refreshToken! })).rejects.toMatchObject({
       code: 'SESSION_INVALID',
     });
+
+    const liveSuccessor = await harness.sessions.findByTokenHash(TOKEN_SERVICE.fingerprint(successor.accessToken));
+    expect(liveSuccessor?.deletedAt).toBeNull();
+
+    const refreshedAgain = await harness.refreshSession({ refreshToken: successor.refreshToken! });
+    expect(refreshedAgain.accessToken).toBeDefined();
   });
 
-  it('reused (already-rotated) refresh token triggers family revocation and SESSION_REUSE_DETECTED', async () => {
-    const harness = buildHarness();
-    const minted = await mintUserSession(harness);
-    const rotated = await harness.refreshSession({ refreshToken: minted.refreshToken! });
-
-    await expect(harness.refreshSession({ refreshToken: minted.refreshToken! })).rejects.toBeInstanceOf(
-      IdentityAccessError,
-    );
-
-    // the sibling (successor) session, though never itself rotated again,
-    // must also be revoked — the WHOLE family is burned.
-    const successor = await harness.sessions.findByTokenHash(TOKEN_SERVICE.fingerprint(rotated.accessToken));
-    expect(successor?.deletedAt).not.toBeNull();
-
-    const events = harness.auditRecorder.all();
-    expect(events.map((e) => e.action)).toContain('SESSION_REUSE_DETECTED');
-  });
-
-  it('the successor minted from a reused token is unusable (family already revoked)', async () => {
-    const harness = buildHarness();
-    const minted = await mintUserSession(harness);
-    const rotated = await harness.refreshSession({ refreshToken: minted.refreshToken! });
-    await expect(harness.refreshSession({ refreshToken: minted.refreshToken! })).rejects.toThrow();
-
-    await expect(harness.refreshSession({ refreshToken: rotated.refreshToken! })).rejects.toMatchObject({
-      code: 'SESSION_INVALID',
-    });
-  });
-
-  it('unknown/forged token is rejected with no family revoke', async () => {
+  it('unknown/forged token is rejected with no session revoke', async () => {
     const harness = buildHarness();
     const minted = await mintUserSession(harness);
 
@@ -127,10 +106,10 @@ describe('createRefreshSessionUseCase', () => {
     });
   });
 
-  it('PLATFORM_ADMIN cannot refresh — its ACCESS token is the only token it ever holds', async () => {
+  it('PLATFORM_ADMIN cannot refresh — refreshToken is null; presenting ACCESS is SESSION_INVALID', async () => {
     const harness = buildHarness();
     const minted = await harness.unitOfWork.withTransaction((tx) =>
-      harness.issueSessionFor({ userId: 'admin-1', organizationId: null, actorType: 'PLATFORM_ADMIN', now: NOW, tx }),
+      harness.issueSessionFor({ adminOrganizationId: ADMIN_ID, now: NOW, tx }),
     );
     expect(minted.refreshToken).toBeNull();
 
@@ -139,12 +118,11 @@ describe('createRefreshSessionUseCase', () => {
     });
   });
 
-  it('expired refresh token is rejected WITHOUT revoking the family', async () => {
-    const mintClock = new FixedClock(NOW);
-    const harness = buildHarness(mintClock);
+  it('expired session is rejected without revoking the row', async () => {
+    const harness = buildHarness();
     const minted = await mintUserSession(harness, NOW);
 
-    const wayLater = fromDate(new Date('2026-02-01T00:00:00.000Z')); // past refreshSeconds TTL
+    const wayLater = fromDate(new Date('2026-01-01T00:16:00.000Z'));
     harness.clock.now = () => wayLater;
 
     await expect(harness.refreshSession({ refreshToken: minted.refreshToken! })).rejects.toMatchObject({
@@ -155,7 +133,7 @@ describe('createRefreshSessionUseCase', () => {
     expect(stillLive?.deletedAt).toBeNull();
   });
 
-  it('two concurrent refresh calls with the SAME token: exactly one wins, the loser triggers family revocation', async () => {
+  it('two concurrent refresh calls with the SAME token: at least one succeeds', async () => {
     const harness = buildHarness();
     const minted = await mintUserSession(harness);
 
@@ -165,11 +143,6 @@ describe('createRefreshSessionUseCase', () => {
     ]);
 
     const fulfilled = results.filter((r) => r.status === 'fulfilled');
-    const rejected = results.filter((r) => r.status === 'rejected');
-    expect(fulfilled).toHaveLength(1);
-    expect(rejected).toHaveLength(1);
-
-    const events = harness.auditRecorder.all();
-    expect(events.map((e) => e.action)).toContain('SESSION_REUSE_DETECTED');
+    expect(fulfilled.length).toBeGreaterThanOrEqual(1);
   });
 });

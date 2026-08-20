@@ -10,6 +10,7 @@ import {
   generateCaseSlaTrackingId,
 } from '../../../../src/modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
+import { oid } from '../../../support/oid.js';
 
 const NOW = fromDate(new Date('2026-05-10T09:00:00.000Z'));
 const CASE_ID = createCaseId('64b7f1c2e4b0a1d2c3e4f5a6');
@@ -21,8 +22,8 @@ function build(seedConfig = true) {
   if (seedConfig) {
     fraudConfig.seed(
       OrganizationFraudConfig.create({
-        id: createOrganizationFraudConfigId('config-1'),
-        organizationId: 'org-1',
+        id: createOrganizationFraudConfigId(oid('config-1')),
+        organizationId: oid('org-1'),
         slaLowMinutes: 480,
         slaMediumMinutes: 240,
         slaHighMinutes: 120,
@@ -50,7 +51,7 @@ describe('createInitializeCaseSlaService', () => {
     const { slaTracking, initializeCaseSla } = build();
 
     const dueDate = await initializeCaseSla({
-      organizationId: 'org-1',
+      organizationId: oid('org-1'),
       caseId: CASE_ID,
       priority: 'CRITICAL',
       now: NOW,
@@ -63,14 +64,14 @@ describe('createInitializeCaseSlaService', () => {
     expect(rows[0]?.status).toBe('ON_TRACK');
     expect(rows[0]?.caseId).toBe(CASE_ID);
     expect(rows[0]?.dueDate).toBe(dueDate);
-    expect(rows[0]?.notificationSent).toBe(false);
+    expect(rows[0]?.notifiedStatuses.size).toBe(0);
   });
 
   it('falls back to the house window when the tenant has no fraud config', async () => {
     const { initializeCaseSla } = build(false);
 
     const dueDate = await initializeCaseSla({
-      organizationId: 'org-without-config',
+      organizationId: oid('org-without-config'),
       caseId: CASE_ID,
       priority: 'HIGH',
       now: NOW,
@@ -82,19 +83,19 @@ describe('createInitializeCaseSlaService', () => {
 
   it('resets the existing row instead of inserting a second one for the same case', async () => {
     const { slaTracking, initializeCaseSla } = build();
-    slaTracking.seed(
+    await slaTracking.save(
       CaseSlaTracking.create({
-        id: createCaseSlaTrackingId('tracking-1'),
+        id: createCaseSlaTrackingId(oid('tracking-1')),
         caseId: CASE_ID,
         dueDate: fromDate(new Date('2026-05-09T00:00:00.000Z')),
         now: fromDate(new Date('2026-05-08T00:00:00.000Z')),
       })
         .advanceTo('WARNING', NOW)
-        .markNotified(NOW),
+        .markNotified('WARNING', NOW),
     );
 
     await initializeCaseSla({
-      organizationId: 'org-1',
+      organizationId: oid('org-1'),
       caseId: CASE_ID,
       priority: 'MEDIUM',
       now: NOW,
@@ -102,17 +103,17 @@ describe('createInitializeCaseSlaService', () => {
 
     const rows = slaTracking.all();
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.id).toBe(createCaseSlaTrackingId('tracking-1'));
+    expect(rows[0]?.id).toBe(createCaseSlaTrackingId(oid('tracking-1')));
     expect(rows[0]?.status).toBe('ON_TRACK');
-    expect(rows[0]?.notificationSent).toBe(false);
+    expect(rows[0]?.notifiedStatuses.size).toBe(0);
     expect(rows[0]?.dueDate).toBe('2026-05-10T13:00:00.000Z');
   });
 
   it('resets a BREACHED row, which has no forward transition of its own', async () => {
     const { slaTracking, initializeCaseSla } = build();
-    slaTracking.seed(
+    await slaTracking.save(
       CaseSlaTracking.create({
-        id: createCaseSlaTrackingId('tracking-2'),
+        id: createCaseSlaTrackingId(oid('tracking-2')),
         caseId: CASE_ID,
         dueDate: fromDate(new Date('2026-05-01T00:00:00.000Z')),
         now: fromDate(new Date('2026-04-30T00:00:00.000Z')),
@@ -122,7 +123,7 @@ describe('createInitializeCaseSlaService', () => {
     );
 
     await expect(
-      initializeCaseSla({ organizationId: 'org-1', caseId: CASE_ID, priority: 'LOW', now: NOW }),
+      initializeCaseSla({ organizationId: oid('org-1'), caseId: CASE_ID, priority: 'LOW', now: NOW }),
     ).resolves.toBe('2026-05-10T17:00:00.000Z');
 
     expect(slaTracking.all()[0]?.status).toBe('ON_TRACK');

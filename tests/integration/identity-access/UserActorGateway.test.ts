@@ -67,8 +67,8 @@ describe('UserActorGateway (integration, real replica-set Mongo)', () => {
   });
 
   afterEach(async () => {
-    await db.collection('Organizations').deleteMany({});
-    await db.collection('Users').deleteMany({});
+    await db.collection('organizations').deleteMany({});
+    await db.collection('users').deleteMany({});
   });
 
   it('resolves a user by {organizationSlug, email} (design D29)', async () => {

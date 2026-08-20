@@ -1,13 +1,13 @@
-import { randomBytes } from 'node:crypto';
 import { brand, type Brand } from '../../../../../shared/kernel/Brand.js';
+import { generateObjectIdHex, isObjectIdHex } from '../../../../../shared/kernel/ObjectIdHex.js';
 import { invariantViolation } from '../../errors/IdentityAccessError.js';
 
 export type UserId = Brand<string, 'UserId'>;
 
 /** Validates a raw id coming from persistence, DTOs, or route params. */
 export function createUserId(value: string): UserId {
-  if (value.trim().length === 0) {
-    throw invariantViolation('UserId must be a non-empty string', { value });
+  if (!isObjectIdHex(value)) {
+    throw invariantViolation('UserId must be a 24-character hexadecimal ObjectId', { value });
   }
   return brand<string, 'UserId'>(value);
 }
@@ -18,5 +18,5 @@ export function createUserId(value: string): UserId {
  * the domain stays persistence-agnostic — it never imports the driver.
  */
 export function generateUserId(): UserId {
-  return brand<string, 'UserId'>(randomBytes(12).toString('hex'));
+  return brand<string, 'UserId'>(generateObjectIdHex());
 }

@@ -6,7 +6,8 @@ import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndex
 import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
 import { MongoCaseRepository } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRepository.js';
 import { MongoTimelineRecorder } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoTimelineRecorder.js';
-import { MongoOutboxRepository } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoOutboxRepository.js';
+import { MongoOutboxEventRepository } from '../../../src/shared/outbox/mongo/MongoOutboxEventRepository.js';
+import { generateOutboxEventId } from '../../../src/shared/outbox/OutboxEventId.js';
 import { MongoUnitOfWork } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { MongoAuditLogRepository } from '../../../src/modules/audit/infrastructure/adapters/outbound/mongo/MongoAuditLogRepository.js';
 import { createRecordAuditLogUseCase } from '../../../src/modules/audit/application/RecordAuditLog.js';
@@ -30,7 +31,7 @@ describe('IngestFinturuCase (integration)', () => {
   let db: Db;
   let cases: MongoCaseRepository;
   let timelineRecorder: MongoTimelineRecorder;
-  let outbox: MongoOutboxRepository;
+  let outbox: MongoOutboxEventRepository;
 
   beforeAll(async () => {
     replicaSet = await startReplicaSetMongo();
@@ -48,7 +49,7 @@ describe('IngestFinturuCase (integration)', () => {
   beforeEach(() => {
     cases = new MongoCaseRepository(db);
     timelineRecorder = new MongoTimelineRecorder(db);
-    outbox = new MongoOutboxRepository(db);
+    outbox = new MongoOutboxEventRepository(db);
   });
 
   it('ingests a consolidated plain JSON payload into cases, timeline, audit_logs, and outbox_events', async () => {
@@ -66,6 +67,7 @@ describe('IngestFinturuCase (integration)', () => {
       clock,
       generateCaseId,
       generateTimelineEventId,
+      generateOutboxEventId,
       auditRecorder,
       initializeCaseSla: createInitializeCaseSlaService({
         slaTracking: new MongoCaseSlaTrackingRepository(db),
@@ -116,29 +118,29 @@ describe('IngestFinturuCase (integration)', () => {
     expect(result.case.finturuCacheSnapshot).toEqual(samplePayload);
 
     // 1. Verify Cases collection
-    const caseDoc = await db.collection('Cases').findOne({ _id: new ObjectId(result.case.id) });
+    const caseDoc = await db.collection('cases').findOne({ _id: new ObjectId(result.case.id) });
     expect(caseDoc).not.toBeNull();
-    expect(caseDoc?.CustomerId).toBe('usr_finturu_456');
-    expect(caseDoc?.Status).toBe('OPEN');
-    expect(caseDoc?.FinturuCacheSnapshot).toBeDefined();
+    expect(caseDoc?.customer_id).toBe('usr_finturu_456');
+    expect(caseDoc?.status).toBe('OPEN');
+    expect(caseDoc?.finturu_cache_snapshot).toBeDefined();
 
     // 2. Verify CaseTimeline collection
-    const timelineDocs = await db.collection('CaseTimeline').find({ CaseId: new ObjectId(result.case.id) }).toArray();
+    const timelineDocs = await db.collection('case_timeline').find({ case_id: new ObjectId(result.case.id) }).toArray();
     expect(timelineDocs).toHaveLength(1);
-    expect(timelineDocs[0].EventType).toBe('CASE_CREATED');
-    expect(timelineDocs[0].NewValue).toBe('OPEN');
+    expect(timelineDocs[0].event_type).toBe('CASE_CREATED');
+    expect(timelineDocs[0].new_value).toBe('OPEN');
 
     // 3. Verify AuditLogs collection
-    const auditDocs = await db.collection('AuditLogs').find({ ResourceId: result.case.id }).toArray();
+    const auditDocs = await db.collection('audit_logs').find({ resource_id: result.case.id }).toArray();
     expect(auditDocs).toHaveLength(1);
-    expect(auditDocs[0].Action).toBe('CREATE_CASE');
-    expect(auditDocs[0].Detail.source).toBe('WEBHOOK_FINTURU');
+    expect(auditDocs[0].action).toBe('CREATE_CASE');
+    expect(auditDocs[0].detail.source).toBe('WEBHOOK_FINTURU');
 
     // 4. Verify OutboxEvents collection
-    const outboxDoc = await db.collection('OutboxEvents').findOne({ AggregateId: result.case.id });
+    const outboxDoc = await db.collection('outbox_events').findOne({ aggregate_id: result.case.id });
     expect(outboxDoc).not.toBeNull();
-    expect(outboxDoc?.EventType).toBe('case.created');
-    expect(outboxDoc?.Status).toBe('PENDING');
+    expect(outboxDoc?.event_type).toBe('case.created');
+    expect(outboxDoc?.status).toBe('PENDING');
   });
 
   it('decrypts AES-256-GCM payload correctly and ingests it', async () => {
@@ -182,6 +184,7 @@ describe('IngestFinturuCase (integration)', () => {
       clock,
       generateCaseId,
       generateTimelineEventId,
+      generateOutboxEventId,
       auditRecorder,
       initializeCaseSla: createInitializeCaseSlaService({
         slaTracking: new MongoCaseSlaTrackingRepository(db),
@@ -190,7 +193,9 @@ describe('IngestFinturuCase (integration)', () => {
       }),
     });
 
-    const result = await ingest({ rawPayload: decrypted });
+    // El payload cifrado no trae organizacion, asi que se pasa explicitamente
+    // igual que hace `finturuWebhookRouter` con `defaultOrganizationId`.
+    const result = await ingest({ rawPayload: decrypted, organizationId: '019d7e58aed0777318d11d4d' });
     expect(result.case.customerId).toBe('usr_encrypted_999');
     expect(result.case.priority).toBe('CRITICAL');
   });

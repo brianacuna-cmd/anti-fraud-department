@@ -86,7 +86,7 @@ describe('Login lockout — identical across Users and Organizations (integratio
       Organization.create({
         id: createOrganizationId(oid('org-actor-lockout')),
         name: 'Org Actor',
-        slug: createSlug('org-actor'),
+        slug: createSlug(oid('org-actor')),
         email: createEmail('org@acme.example.com'),
         credential: createPasswordCredential('hashed:correct-password'),
         now: NOW,
@@ -95,8 +95,8 @@ describe('Login lockout — identical across Users and Organizations (integratio
   });
 
   afterEach(async () => {
-    await db.collection('Organizations').deleteMany({});
-    await db.collection('Users').deleteMany({});
+    await db.collection('organizations').deleteMany({});
+    await db.collection('users').deleteMany({});
   });
 
   it('the 3rd consecutive failure locks BOTH a User and an Organization identically, real persistence round-tripped', async () => {

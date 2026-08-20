@@ -1,5 +1,5 @@
 import { ObjectId, type ClientSession, type Collection, type Db } from 'mongodb';
-import type { Instant } from '../../../../../../shared/time/Instant.js';
+import { toDate, type Instant } from '../../../../../../shared/time/Instant.js';
 import type { CaseSlaTracking } from '../../../../domain/model/aggregates/CaseSlaTracking.js';
 import type { CaseSlaTrackingRepository } from '../../../../domain/ports/CaseSlaTrackingRepository.js';
 import type { CaseId } from '../../../../domain/model/value-objects/CaseId.js';
@@ -7,21 +7,15 @@ import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
 import type { CaseSlaTrackingDocument } from './documents/CaseSlaTrackingDocument.js';
 import { toDocument, toDomain } from './mappers/CaseSlaTrackingDocumentMapper.js';
 
-/** Casts the opaque `Transaction` handle back to a real Mongo `ClientSession` (mirrors `MongoCaseRepository`). */
 function toSession(tx: Transaction | undefined): ClientSession | undefined {
   return tx as unknown as ClientSession | undefined;
 }
 
-const COLLECTION_NAME = 'CaseSlaTracking';
+const COLLECTION_NAME = 'case_sla_tracking';
 
-/**
- * Mongo adapter for `CaseSlaTrackingRepository` (design: "CaseSlaTracking:
- * one per CaseId — Status ON_TRACK -> WARNING -> BREACHED"). `save` is a
- * `replaceOne` upsert by `_id`, mirroring `MongoCaseRepository`; the
- * one-row-per-CaseId invariant is enforced by the `sla_tracking_case_unique`
- * index, never re-checked here. `findDueForSweep` queries the `DueDateAt`
- * BSON mirror — never the `DueDate` ISO string — per design ADR-6.
- */
+/** Sweep lease TTL: a claim older than this is considered abandoned (crashed claimer) and reclaimable. */
+const LEASE_TTL_MS = 5 * 60 * 1000;
+
 export class MongoCaseSlaTrackingRepository implements CaseSlaTrackingRepository {
   private readonly collection: Collection<CaseSlaTrackingDocument>;
 
@@ -38,17 +32,35 @@ export class MongoCaseSlaTrackingRepository implements CaseSlaTrackingRepository
   }
 
   async findByCaseId(caseId: CaseId, tx?: Transaction): Promise<CaseSlaTracking | null> {
-    const document = await this.collection.findOne({ CaseId: new ObjectId(caseId) }, { session: toSession(tx) });
+    const document = await this.collection.findOne({ case_id: new ObjectId(caseId) }, { session: toSession(tx) });
     return document ? toDomain(document) : null;
   }
 
-  async findDueForSweep(now: Instant, tx?: Transaction): Promise<CaseSlaTracking[]> {
-    const documents = await this.collection
-      .find(
-        { DueDateAt: { $lte: new Date(now) }, Status: { $ne: 'BREACHED' } },
-        { session: toSession(tx) },
-      )
-      .toArray();
-    return documents.map(toDomain);
+  async claimDueForSweep(now: Instant, limit: number, tx?: Transaction): Promise<CaseSlaTracking[]> {
+    const nowMs = toDate(now).getTime();
+    const nowDate = new Date(nowMs);
+    const leaseExpiry = new Date(nowMs - LEASE_TTL_MS);
+
+    const claimed: CaseSlaTrackingDocument[] = [];
+    // Exclusive lease claim: each findOneAndUpdate atomically reserves one due
+    // row, so concurrent sweep instances never process the same row twice.
+    for (let i = 0; i < limit; i += 1) {
+      const result = await this.collection.findOneAndUpdate(
+        {
+          due_date: { $lte: nowDate },
+          status: { $ne: 'BREACHED' },
+          $or: [{ claimed_at: null }, { claimed_at: { $exists: false } }, { claimed_at: { $lte: leaseExpiry } }],
+        },
+        { $set: { claimed_at: nowDate } },
+        { sort: { due_date: 1 }, returnDocument: 'after', session: toSession(tx) },
+      );
+
+      if (!result) {
+        break;
+      }
+      claimed.push(result);
+    }
+
+    return claimed.map(toDomain);
   }
 }

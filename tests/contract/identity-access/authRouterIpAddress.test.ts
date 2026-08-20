@@ -1,3 +1,4 @@
+import { oid } from '../../support/oid.js';
 import request from 'supertest';
 import { createApp } from '../../../src/shared/http/createApp.js';
 import { createErrorHandler } from '../../../src/shared/http/errorHandler.js';

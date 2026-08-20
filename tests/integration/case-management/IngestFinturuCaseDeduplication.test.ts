@@ -1,11 +1,12 @@
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
-import type { Db, MongoClient } from 'mongodb';
+import { ObjectId, type Db, type MongoClient } from 'mongodb';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
 import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
 import { MongoCaseRepository } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRepository.js';
 import { MongoTimelineRecorder } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoTimelineRecorder.js';
-import { MongoOutboxRepository } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoOutboxRepository.js';
+import { MongoOutboxEventRepository } from '../../../src/shared/outbox/mongo/MongoOutboxEventRepository.js';
+import { generateOutboxEventId } from '../../../src/shared/outbox/OutboxEventId.js';
 import { MongoUnitOfWork } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { MongoAuditLogRepository } from '../../../src/modules/audit/infrastructure/adapters/outbound/mongo/MongoAuditLogRepository.js';
 import { createRecordAuditLogUseCase } from '../../../src/modules/audit/application/RecordAuditLog.js';
@@ -51,9 +52,9 @@ describe('IngestFinturuCase deduplication (integration)', () => {
   });
 
   beforeEach(async () => {
-    await db.collection('Cases').deleteMany({});
-    await db.collection('CaseTimeline').deleteMany({});
-    await db.collection('OutboxEvents').deleteMany({});
+    await db.collection('cases').deleteMany({});
+    await db.collection('case_timeline').deleteMany({});
+    await db.collection('outbox_events').deleteMany({});
   });
 
   function buildIngest() {
@@ -63,11 +64,12 @@ describe('IngestFinturuCase deduplication (integration)', () => {
     return createIngestFinturuCaseUseCase({
       cases: new MongoCaseRepository(db),
       timelineRecorder: new MongoTimelineRecorder(db),
-      outbox: new MongoOutboxRepository(db),
+      outbox: new MongoOutboxEventRepository(db),
       unitOfWork: new MongoUnitOfWork(client),
       clock,
       generateCaseId,
       generateTimelineEventId,
+      generateOutboxEventId,
       auditRecorder: createCaseManagementAuditRecorderAdapter(recordAuditLog),
       initializeCaseSla: createInitializeCaseSlaService({
         slaTracking: new MongoCaseSlaTrackingRepository(db),
@@ -94,7 +96,7 @@ describe('IngestFinturuCase deduplication (integration)', () => {
 
     expect(second.case.id).toBe(first.case.id);
     expect(second.case.riskScore).toBe(85);
-    await expect(db.collection('Cases').countDocuments({ OrganizationId: ORG_A })).resolves.toBe(1);
+    await expect(db.collection('cases').countDocuments({ organization_id: new ObjectId(ORG_A) })).resolves.toBe(1);
   });
 
   it('records a SNAPSHOT_REFRESHED timeline entry instead of absorbing the repeat report silently', async () => {
@@ -104,17 +106,17 @@ describe('IngestFinturuCase deduplication (integration)', () => {
     await ingest({ rawPayload: payload({ risk_score: 91 }), organizationId: ORG_A });
 
     const events = await db
-      .collection('CaseTimeline')
-      .find({ CaseId: { $exists: true } })
+      .collection('case_timeline')
+      .find({ case_id: { $exists: true } })
       .toArray();
-    const types = events.map((e) => e.EventType);
+    const types = events.map((e) => e.event_type);
 
     expect(types).toContain('CASE_CREATED');
     expect(types).toContain('SNAPSHOT_REFRESHED');
 
-    const refreshed = events.find((e) => e.EventType === 'SNAPSHOT_REFRESHED');
-    expect(String(refreshed?.CaseId)).toBe(first.case.id);
-    expect(refreshed?.NewValue).toBe('91');
+    const refreshed = events.find((e) => e.event_type === 'SNAPSHOT_REFRESHED');
+    expect(String(refreshed?.case_id)).toBe(first.case.id);
+    expect(refreshed?.new_value).toBe('91');
   });
 
   it('publishes an outbox event for the refresh, not a fabricated id', async () => {
@@ -124,10 +126,10 @@ describe('IngestFinturuCase deduplication (integration)', () => {
     const second = await ingest({ rawPayload: payload({ risk_score: 70 }), organizationId: ORG_A });
 
     expect(second.outboxEventId).not.toMatch(/^outbox_update_/);
-    const event = await db.collection('OutboxEvents').findOne({ EventType: 'case.snapshot_refreshed' });
+    const event = await db.collection('outbox_events').findOne({ event_type: 'case.snapshot_refreshed' });
     expect(event).not.toBeNull();
-    expect(String(event?.AggregateId)).toBe(second.case.id);
-    expect(event?.Status).toBe('PENDING');
+    expect(String(event?.aggregate_id)).toBe(second.case.id);
+    expect(event?.status).toBe('PENDING');
   });
 
   it('opens a NEW case when the only prior case for that customer is already RESOLVED', async () => {
@@ -135,13 +137,13 @@ describe('IngestFinturuCase deduplication (integration)', () => {
 
     const first = await ingest({ rawPayload: payload(), organizationId: ORG_A });
     // El expediente se cierra; el cliente reincide más tarde.
-    await db.collection('Cases').updateOne({ CustomerId: 'usr_dedup_1' }, { $set: { Status: 'RESOLVED' } });
+    await db.collection('cases').updateOne({ customer_id: 'usr_dedup_1' }, { $set: { status: 'RESOLVED' } });
 
     const second = await ingest({ rawPayload: payload({ risk_score: 95 }), organizationId: ORG_A });
 
     expect(second.case.id).not.toBe(first.case.id);
     expect(second.case.status).toBe('OPEN');
-    await expect(db.collection('Cases').countDocuments({ CustomerId: 'usr_dedup_1' })).resolves.toBe(2);
+    await expect(db.collection('cases').countDocuments({ customer_id: 'usr_dedup_1' })).resolves.toBe(2);
   });
 
   it('never adopts another tenant’s case, even on an exact customer-id match', async () => {
@@ -152,6 +154,6 @@ describe('IngestFinturuCase deduplication (integration)', () => {
 
     expect(orgBCase.case.id).not.toBe(orgACase.case.id);
     expect(orgBCase.case.organizationId).toBe(ORG_B);
-    await expect(db.collection('Cases').countDocuments({ CustomerId: 'usr_dedup_1' })).resolves.toBe(2);
+    await expect(db.collection('cases').countDocuments({ customer_id: 'usr_dedup_1' })).resolves.toBe(2);
   });
 });

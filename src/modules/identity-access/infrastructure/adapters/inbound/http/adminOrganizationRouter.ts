@@ -23,7 +23,6 @@ import { parseRequest } from './parseRequest.js';
 
 export interface AdminOrganizationRouterDeps {
   readonly db?: Db;
-  readonly emailSender?: EmailSender;
   readonly provisionAdminOrganization: ReturnType<typeof createProvisionAdminOrganizationUseCase>;
   /** super-admin-auth PR1, step 1 — public, no `AuthContext` yet. */
   readonly requestAdminChallenge: ReturnType<typeof createRequestAdminChallengeUseCase>;
@@ -35,16 +34,23 @@ export interface AdminOrganizationRouterDeps {
   readonly rotateAdminKey: ReturnType<typeof createRotateAdminKeyUseCase>;
   /** super-admin-auth PR2 — `requirePlatformAdmin`-gated. */
   readonly revokeAdminKey: ReturnType<typeof createRevokeAdminKeyUseCase>;
+  /** Envia el OTP del paso 2. Sin el, el correo se omite y el flujo sigue igual. */
+  readonly emailSender?: EmailSender;
 }
 
-/** Vista mínima del documento `adminOrganizations` que estas rutas tocan directamente: el TOTP enrolado del paso 3. */
+/** Proyeccion minima de `admin_organizations` que necesita el flujo de MFA. */
 interface AdminOrganizationMfaDocument {
   readonly _id: string;
-  readonly MfaSecret?: string;
+  readonly email?: string;
+  readonly mfa_secret?: string;
 }
 
 export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Router {
   const router = Router();
+
+  // Logins de super admin a medio completar, entre el paso 1 (firma Ed25519)
+  // y el paso 3 (TOTP). La sesion ya esta emitida por `verifyAdminChallenge`
+  // pero NO se entrega hasta superar los otros dos factores.
   const pendingAdminLogins = new Map<
     string,
     {
@@ -69,23 +75,29 @@ export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Rout
       res.status(200).json([]);
       return;
     }
-    const docs = await deps.db.collection('adminOrganizations').find().toArray();
+    const docs = await deps.db.collection('admin_organizations').find().toArray();
     const items = docs.map((doc) => ({
       id: String(doc._id),
       email: doc.email as string,
       keys: ((doc.keys as unknown[]) || []).map((k) => {
         const item = k as Record<string, unknown>;
+        const asIso = (value: unknown): string | null => {
+          if (value instanceof Date) {
+            return value.toISOString();
+          }
+          return typeof value === 'string' ? value : null;
+        };
         return {
-          keyId: item.keyId as string,
-          publicKey: item.publicKey as string,
+          keyId: String(item.key_id ?? item.keyId ?? ''),
+          publicKey: (item.public_key ?? item.publicKey) as string,
           status: item.status as string,
-          createdAt: item.createdAt as string,
-          rotatedAt: (item.rotatedAt as string) ?? null,
-          revokedAt: (item.revokedAt as string) ?? null,
+          createdAt: asIso(item.created_at ?? item.createdAt) ?? '',
+          rotatedAt: asIso(item.rotated_at ?? item.rotatedAt),
+          revokedAt: asIso(item.revoked_at ?? item.revokedAt),
         };
       }),
-      createdAt: doc.createdAt as string,
-      updatedAt: doc.updatedAt as string,
+      createdAt: doc.created_at instanceof Date ? doc.created_at.toISOString() : (doc.created_at as string),
+      updatedAt: doc.updated_at instanceof Date ? doc.updated_at.toISOString() : (doc.updated_at as string),
     }));
     res.status(200).json(items);
   });
@@ -103,7 +115,9 @@ export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Rout
     res.status(201).json(result);
   });
 
-  // Step 1 of 3-step Super Admin Auth: Verify Ed25519 signature -> Generate & Send Email OTP
+  // Paso 1 de 3: verifica la firma Ed25519 y manda el OTP por correo. La
+  // sesion queda retenida en `pendingAdminLogins` hasta el paso 3 — devolverla
+  // aqui convertiria los otros dos factores en decorado.
   router.post('/admin-organizations/sessions', async (req, res) => {
     const body = parseRequest(verifyAdminChallengeSchema, req.body);
     const result = await deps.verifyAdminChallenge({
@@ -115,9 +129,11 @@ export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Rout
     let email = 'superadmin@antifraud.io';
     let adminOrgId = '';
     if (deps.db) {
-      const adminDoc = await deps.db.collection('adminOrganizations').findOne({ keys: { $elemMatch: { status: 'ACTIVE' } } });
+      const adminDoc = await deps.db
+        .collection<AdminOrganizationMfaDocument>('admin_organizations')
+        .findOne({ keys: { $elemMatch: { status: 'ACTIVE' } } });
       if (adminDoc) {
-        email = (adminDoc.email as string) || email;
+        email = adminDoc.email ?? email;
         adminOrgId = String(adminDoc._id);
       }
     }
@@ -137,38 +153,38 @@ export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Rout
         .send({
           from: 'fraud@backendstudio.tech',
           to: email,
-          subject: 'Código OTP Super Admin - AntiFraud',
-          text: `Tu código de verificación OTP para ingresar como Super Admin es: ${otp}`,
-          html: `<h2>Verificación Super Admin</h2><p>Tu código OTP de 6 dígitos para ingresar es: <strong>${otp}</strong></p>`,
+          subject: 'Codigo OTP Super Admin - AntiFraud',
+          text: `Tu codigo de verificacion OTP para ingresar como Super Admin es: ${otp}`,
+          html: `<h2>Verificacion Super Admin</h2><p>Tu codigo OTP de 6 digitos para ingresar es: <strong>${otp}</strong></p>`,
         })
-        .catch(() => { });
+        .catch(() => {});
     }
 
     res.status(200).json({
       status: 'OTP_REQUIRED',
       email,
       challengeToken,
-      message: 'Código OTP enviado al email de Super Admin',
+      message: 'Codigo OTP enviado al email de Super Admin',
     });
   });
 
-  // Step 2 of 3-step Super Admin Auth: Verify Email OTP -> Require QR Enrollment or TOTP Challenge
+  // Paso 2 de 3: valida el OTP del correo y decide enrolamiento (QR) o reto TOTP.
   router.post('/admin-organizations/otp/verify', async (req, res) => {
     const body = parseRequest(adminOtpVerifySchema, req.body);
     const pending = pendingAdminLogins.get(body.challengeToken);
 
     if (!pending || pending.otp !== body.otp) {
-      res.status(401).json({ message: 'Código OTP de Email incorrecto o expirado' });
+      res.status(401).json({ message: 'Codigo OTP de Email incorrecto o expirado' });
       return;
     }
 
     let existingSecret: string | null = null;
     if (deps.db && pending.adminOrganizationId) {
       const adminDoc = await deps.db
-        .collection<AdminOrganizationMfaDocument>('adminOrganizations')
+        .collection<AdminOrganizationMfaDocument>('admin_organizations')
         .findOne({ _id: pending.adminOrganizationId });
-      if (adminDoc?.MfaSecret) {
-        existingSecret = adminDoc.MfaSecret;
+      if (adminDoc?.mfa_secret) {
+        existingSecret = adminDoc.mfa_secret;
       }
     }
 
@@ -194,27 +210,25 @@ export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Rout
     });
   });
 
-  // Step 3 of 3-step Super Admin Auth: Verify App TOTP -> Issue Final Session Tokens
+  // Paso 3 de 3: valida el TOTP y recien entonces entrega la sesion retenida.
   router.post('/admin-organizations/mfa', async (req, res) => {
     const body = parseRequest(adminMfaSchema, req.body);
     const pending = pendingAdminLogins.get(body.challengeToken);
 
     if (!pending || !pending.totpSecret) {
-      res.status(401).json({ message: 'Sesión de verificación expirada o inválida' });
+      res.status(401).json({ message: 'Sesion de verificacion expirada o invalida' });
       return;
     }
 
-    const isValid = authenticator.check(body.code, pending.totpSecret);
-    if (!isValid) {
-      res.status(401).json({ message: 'Código de App Autenticadora (TOTP) incorrecto' });
+    if (!authenticator.check(body.code, pending.totpSecret)) {
+      res.status(401).json({ message: 'Codigo de App Autenticadora (TOTP) incorrecto' });
       return;
     }
 
     if (deps.db && pending.adminOrganizationId) {
-      await deps.db.collection<AdminOrganizationMfaDocument>('adminOrganizations').updateOne(
-        { _id: pending.adminOrganizationId },
-        { $set: { MfaSecret: pending.totpSecret } },
-      );
+      await deps.db
+        .collection<AdminOrganizationMfaDocument>('admin_organizations')
+        .updateOne({ _id: pending.adminOrganizationId }, { $set: { mfa_secret: pending.totpSecret } });
     }
 
     pendingAdminLogins.delete(body.challengeToken);

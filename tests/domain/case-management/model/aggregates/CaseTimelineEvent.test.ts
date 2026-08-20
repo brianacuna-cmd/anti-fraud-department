@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { CaseTimelineEvent } from '../../../../../src/modules/case-management/domain/model/aggregates/CaseTimelineEvent.js';
 import { createTimelineEventId } from '../../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { createCaseId } from '../../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
@@ -9,12 +10,12 @@ function buildEvent(
   overrides: Partial<Parameters<typeof CaseTimelineEvent.create>[0]> = {},
 ): CaseTimelineEvent {
   return CaseTimelineEvent.create({
-    id: createTimelineEventId('event-1'),
-    caseId: createCaseId('case-1'),
+    id: createTimelineEventId(oid('event-1')),
+    caseId: createCaseId(oid('case-1')),
     eventType: 'CASE_CREATED',
     previousValue: null,
     newValue: null,
-    createdBy: 'user-1',
+    createdBy: oid('user-1'),
     createdAt: NOW,
     ...overrides,
   });
@@ -24,11 +25,11 @@ describe('CaseTimelineEvent.create', () => {
   it('creates an event with all fields set', () => {
     const event = buildEvent();
 
-    expect(event.caseId).toBe('case-1');
+    expect(event.caseId).toBe(oid('case-1'));
     expect(event.eventType).toBe('CASE_CREATED');
     expect(event.previousValue).toBeNull();
     expect(event.newValue).toBeNull();
-    expect(event.createdBy).toBe('user-1');
+    expect(event.createdBy).toBe(oid('user-1'));
     expect(event.createdAt).toBe(NOW);
   });
 

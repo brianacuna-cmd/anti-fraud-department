@@ -1,6 +1,6 @@
 import type { Clock } from '../../../shared/time/Clock.js';
-import type { OutboxRepository } from '../domain/ports/OutboxRepository.js';
-import type { OutboxEvent } from '../domain/model/aggregates/OutboxEvent.js';
+import type { OutboxEventRelayRepository } from '../../../shared/outbox/OutboxEventRelayRepository.js';
+import type { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
 
 /**
  * Destino de un evento ya confirmado.
@@ -20,7 +20,7 @@ export interface PublishOutboxEventsResult {
 }
 
 export interface PublishOutboxEventsDeps {
-  readonly outbox: OutboxRepository;
+  readonly outbox: OutboxEventRelayRepository;
   readonly publisher: OutboxPublisher;
   readonly clock: Clock;
   readonly batchSize?: number;
@@ -54,13 +54,13 @@ export function createPublishOutboxEventsUseCase(deps: PublishOutboxEventsDeps) 
     for (const event of pending) {
       try {
         await deps.publisher.publish(event);
-        await deps.outbox.save(event.markPublished(deps.clock.now()));
+        await deps.outbox.update(event.markPublished(deps.clock.now()));
         published += 1;
       } catch (error) {
         const reason = (error as Error).message;
         console.warn(`[outbox] fallo al publicar ${event.eventType} (${event.id}): ${reason}`);
         try {
-          await deps.outbox.save(event.markFailed(reason));
+          await deps.outbox.update(event.markFailed(reason));
         } catch {
           // Si ni siquiera se puede anotar el fallo, se deja en PENDING: el
           // proximo pase lo reintentara, que es preferible a perderlo.

@@ -8,6 +8,11 @@ module.exports = {
   // can exceed Jest's 5s default (applied to hooks too), so give tests and
   // beforeAll/afterAll hooks a generous ceiling.
   testTimeout: 60000,
+  // Integration suites each boot a mongodb-memory-server; at full parallelism
+  // the workers race the mongod startup and exhaust CI runners, failing with
+  // "Instance failed to start within 10000ms". Cap workers to the stable
+  // ceiling so the suite is deterministic locally and in CI alike.
+  maxWorkers: 2,
   // Source uses NodeNext-style relative imports ending in .js (required by
   // tsconfig's "module": "NodeNext") even though the files on disk are .ts.
   // Jest's resolver doesn't know about that TS-specific convention, so strip

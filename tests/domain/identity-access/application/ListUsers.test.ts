@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createListUsersUseCase } from '../../../../src/modules/identity-access/application/ListUsers.js';
 import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
@@ -10,7 +11,7 @@ import { createPasswordCredential } from '../../../../src/modules/identity-acces
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const ORG_1_USER = createAuthContext({ userId: 'u1', organizationId: 'org-1', actorType: 'ORGANIZATION' });
+const ORG_1_USER = createAuthContext({ userId: oid('u1'), organizationId: oid('org-1'), actorType: 'ORGANIZATION' });
 
 async function seedUser(
   userRepositoryFactory: InMemoryUserRepositoryFactory,
@@ -34,20 +35,20 @@ async function seedUser(
 describe('createListUsersUseCase', () => {
   it('never leaks another organization\'s users', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
-    await seedUser(userRepositoryFactory, 'user-1', 'org-1');
-    await seedUser(userRepositoryFactory, 'user-2', 'org-2');
+    await seedUser(userRepositoryFactory, oid('user-1'), oid('org-1'));
+    await seedUser(userRepositoryFactory, oid('user-2'), oid('org-2'));
     const listUsers = createListUsersUseCase({ userRepositoryFactory });
 
     const page = await listUsers({ auth: ORG_1_USER, limit: 10 });
 
     expect(page.items).toHaveLength(1);
-    expect(page.items[0]?.id).toBe('user-1');
+    expect(page.items[0]?.id).toBe(oid('user-1'));
   });
 
   it('paginates within the caller\'s organization', async () => {
     const userRepositoryFactory = new InMemoryUserRepositoryFactory();
-    await seedUser(userRepositoryFactory, 'user-1', 'org-1');
-    await seedUser(userRepositoryFactory, 'user-2', 'org-1');
+    await seedUser(userRepositoryFactory, oid('user-1'), oid('org-1'));
+    await seedUser(userRepositoryFactory, oid('user-2'), oid('org-1'));
     const listUsers = createListUsersUseCase({ userRepositoryFactory });
 
     const firstPage = await listUsers({ auth: ORG_1_USER, limit: 1 });

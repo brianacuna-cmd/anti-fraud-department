@@ -1,158 +1,132 @@
 import type { AuthContext } from '../../../shared/kernel/AuthContext.js';
 import type { Clock } from '../../../shared/time/Clock.js';
+import { fromDate, toDate } from '../../../shared/time/Instant.js';
 import type { CaseRepository } from '../domain/ports/CaseRepository.js';
+import type { CaseSlaTrackingRepository } from '../domain/ports/CaseSlaTrackingRepository.js';
+import type { OrganizationFraudConfigRepository } from '../domain/ports/OrganizationFraudConfigRepository.js';
 import type { TimelineRecorder } from '../domain/ports/TimelineRecorder.js';
-import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
-import type { OutboxRepository } from '../domain/ports/OutboxRepository.js';
+import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
+import type { CaseSlaTrackingId } from '../domain/model/value-objects/CaseSlaTrackingId.js';
+import type { CaseStatus } from '../domain/model/value-objects/CaseStatus.js';
 import type { Case } from '../domain/model/aggregates/Case.js';
-import type { InitializeCaseSlaService } from './InitializeCaseSla.js';
+import { CaseSlaTracking } from '../domain/model/aggregates/CaseSlaTracking.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
-import { OutboxEvent } from '../domain/model/aggregates/OutboxEvent.js';
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
-import { createCaseStatus } from '../domain/model/value-objects/CaseStatus.js';
-import { caseNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
+import {
+  caseNotFound,
+  forbiddenCrossTenant,
+  invariantViolation,
+  organizationFraudConfigNotFound,
+} from '../domain/errors/CaseManagementError.js';
+import { requireTenantContext } from './authorization/requireTenantContext.js';
+import { requireRole } from './authorization/requireRole.js';
+
+const MS_PER_MINUTE = 60_000;
+const REOPEN_ROLES = ['SUPERVISOR', 'ADMIN'] as const;
 
 export interface ReopenCaseInput {
   readonly auth: AuthContext;
   readonly caseId: string;
-  /** Destino de la reapertura. Por defecto IN_REVIEW, que es lo que pide CASE-009. */
-  readonly nextStatus?: string;
-  readonly reason?: string;
+  readonly targetStatus: CaseStatus;
+  readonly justification: string;
 }
 
 export interface ReopenCaseDeps {
   readonly cases: CaseRepository;
+  readonly slaTracking: CaseSlaTrackingRepository;
+  readonly fraudConfig: OrganizationFraudConfigRepository;
   readonly timelineRecorder: TimelineRecorder;
+  readonly auditRecorder: AuditRecorder;
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
   readonly generateTimelineEventId: () => TimelineEventId;
-  readonly auditRecorder: AuditRecorder;
-  readonly initializeCaseSla: InitializeCaseSlaService;
-  readonly outbox: OutboxRepository;
+  readonly generateCaseSlaTrackingId: () => CaseSlaTrackingId;
 }
 
 /**
- * CASE-009 — desarchiva un expediente RESOLVED o ARCHIVED y lo devuelve a
- * IN_REVIEW reiniciando el seguimiento de SLA.
- *
- * Existe como caso de uso propio y no como una llamada mas a
- * `TransitionCaseStatus` por dos motivos que no son de estilo:
- *
- * 1. `Case.reopen` comprueba el estado de PARTIDA, algo que la tabla de
- *    transiciones por si sola no puede expresar: la arista OPEN -> IN_REVIEW
- *    es un avance perfectamente valido, asi que sin esa comprobacion un
- *    "reabrir" sobre un caso ya abierto se aceptaria en silencio.
- * 2. Reabrir reinicia el reloj. Sin el reinicio el expediente arrastraria el
- *    `dueDate` del ciclo anterior —vencido, casi siempre— y naceria
- *    incumpliendo su propio SLA en el mismo instante de reabrirse.
+ * T6 reopen (PR4). Role-gated to SUPERVISOR|ADMIN via `auth.roleId`.
+ * Requires non-empty justification. Soft-deleted cases surface as
+ * CASE_NOT_FOUND. Resets CaseSlaTracking when present (or creates one),
+ * recomputes dueDate from org fraud config minutes, and records
+ * CASE_REOPENED timeline + REOPEN_CASE audit.
  */
 export function createReopenCaseUseCase(deps: ReopenCaseDeps) {
   return async function reopenCase(input: ReopenCaseInput): Promise<Case> {
+    requireRole(input.auth, REOPEN_ROLES);
+    const organizationId = requireTenantContext(input.auth);
+    const justification = input.justification.trim();
+    if (justification.length === 0) {
+      throw invariantViolation('reopen justification is required');
+    }
     const caseId = createCaseId(input.caseId);
-    const nextStatus = createCaseStatus(input.nextStatus ?? 'IN_REVIEW');
-    const now = deps.clock.now();
 
     return deps.unitOfWork.withTransaction(async (tx) => {
-      const kase = await deps.cases.findById(caseId, tx);
-      if (!kase) {
-        throw caseNotFound(input.caseId);
+      const existing = await deps.cases.findById(caseId, tx);
+      if (existing === null || existing.deletedAt !== null) {
+        throw caseNotFound(caseId);
       }
-      if (
-        input.auth.actorType !== 'PLATFORM_ADMIN' &&
-        input.auth.organizationId &&
-        kase.organizationId !== input.auth.organizationId
-      ) {
-        throw forbiddenCrossTenant();
+      if (existing.organizationId !== organizationId) {
+        throw forbiddenCrossTenant('case does not belong to the actor organization');
       }
 
-      const organizationId = input.auth.organizationId ?? kase.organizationId;
-      const actorId = input.auth.userId ?? input.auth.organizationId ?? 'PLATFORM_ADMIN';
+      const now = deps.clock.now();
+      const previousStatus = existing.status;
+      const reopened = existing.reopen(input.targetStatus, now);
 
-      const previousStatus = kase.status;
+      const config = await deps.fraudConfig.findByOrganization(organizationId, tx);
+      if (!config) {
+        throw organizationFraudConfigNotFound(organizationId);
+      }
+      const minutes = config.slaMinutesFor(reopened.priority);
+      const dueDate = fromDate(new Date(toDate(now).getTime() + minutes * MS_PER_MINUTE));
 
-      // Lanza si el caso no estaba cerrado. Se comprueba antes de tocar el SLA
-      // para no dejar un reloj reiniciado sobre un caso que no llego a reabrirse.
-      let updated = kase.reopen(nextStatus, now);
+      const existingTracking = await deps.slaTracking.findByCaseId(reopened.id, tx);
+      const tracking =
+        existingTracking !== null
+          ? existingTracking.reset(dueDate, now)
+          : CaseSlaTracking.create({
+              id: deps.generateCaseSlaTrackingId(),
+              caseId: reopened.id,
+              dueDate,
+              now,
+            });
+      await deps.slaTracking.save(tracking, tx);
 
-      const dueDate = await deps.initializeCaseSla({
-        organizationId,
-        caseId: updated.id,
-        priority: updated.priority,
-        now,
-        tx,
+      const withDue = reopened.withDueDate(dueDate, now);
+      await deps.cases.save(withDue, tx);
+
+      const timelineEvent = CaseTimelineEvent.create({
+        id: deps.generateTimelineEventId(),
+        caseId: withDue.id,
+        eventType: 'CASE_REOPENED',
+        previousValue: previousStatus,
+        newValue: input.targetStatus,
+        createdBy: input.auth.userId,
+        createdAt: now,
       });
-      updated = updated.withDueDate(dueDate, now);
-
-      await deps.cases.save(updated, tx);
-
-      await deps.timelineRecorder.record(
-        CaseTimelineEvent.create({
-          id: deps.generateTimelineEventId(),
-          caseId: updated.id,
-          eventType: 'CASE_REOPENED',
-          previousValue: previousStatus,
-          newValue: updated.status,
-          createdBy: actorId,
-          createdAt: now,
-        }),
-        tx,
-      );
-
-      await deps.timelineRecorder.record(
-        CaseTimelineEvent.create({
-          id: deps.generateTimelineEventId(),
-          caseId: updated.id,
-          eventType: 'SLA_RESET',
-          previousValue: kase.dueDate,
-          newValue: dueDate,
-          createdBy: actorId,
-          createdAt: now,
-        }),
-        tx,
-      );
-
-      await deps.outbox.record(
-        OutboxEvent.create({
-          id: deps.generateTimelineEventId(),
-          aggregateType: 'case',
-          aggregateId: updated.id,
-          eventType: 'case.reopened',
-          payload: {
-            caseId: updated.id,
-            organizationId,
-            previousStatus,
-            nextStatus: updated.status,
-            dueDate,
-            reason: input.reason ?? null,
-          },
-          now,
-        }),
-        tx,
-      );
+      await deps.timelineRecorder.record(timelineEvent, tx);
 
       await deps.auditRecorder.record(
         {
           organizationId,
           actorType: input.auth.actorType,
-          actorId,
+          actorId: input.auth.userId,
           action: 'REOPEN_CASE',
           resource: 'case',
-          resourceId: updated.id,
+          resourceId: withDue.id,
           detail: {
+            targetStatus: input.targetStatus,
             previousStatus,
-            nextStatus: updated.status,
-            previousDueDate: kase.dueDate,
-            dueDate,
-            reason: input.reason ?? null,
+            justification,
           },
           ipAddress: input.auth.ipAddress,
         },
         tx,
       );
 
-      return updated;
+      return withDue;
     });
   };
 }

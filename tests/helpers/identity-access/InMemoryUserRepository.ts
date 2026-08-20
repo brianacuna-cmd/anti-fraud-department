@@ -2,6 +2,7 @@ import { buildCursorPage } from '../../../src/shared/http/pagination.js';
 import { User } from '../../../src/modules/identity-access/domain/model/aggregates/User.js';
 import type { UserListPage, UserRepository } from '../../../src/modules/identity-access/domain/ports/UserRepository.js';
 import type { UserId } from '../../../src/modules/identity-access/domain/model/value-objects/UserId.js';
+import type { RoleId } from '../../../src/modules/identity-access/domain/model/value-objects/RoleId.js';
 import type { OrganizationId } from '../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import type { Email } from '../../../src/modules/identity-access/domain/model/value-objects/Email.js';
 
@@ -43,6 +44,15 @@ export class InMemoryUserRepository implements UserRepository {
     const wrapped = users.map((user) => ({ value: user, cursorId: user.id as string }));
     const page = buildCursorPage(wrapped, limit);
     return { items: page.items.map((entry) => entry.value), nextCursor: page.nextCursor };
+  }
+
+  async listByRole(roleId: RoleId): Promise<readonly User[]> {
+    return [...this.byId.values()].filter(
+      (user) =>
+        this.belongsToTenant(user) &&
+        (user.roleId as string) === (roleId as string) &&
+        user.status === 'ACTIVE',
+    );
   }
 
   private belongsToTenant(user: User): boolean {

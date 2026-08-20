@@ -15,6 +15,8 @@ export interface OrganizationFraudConfigProps {
   readonly riskThresholdHigh: number;
   readonly riskThresholdCritical: number;
   readonly featureFlags: Readonly<Record<string, boolean>>;
+  /** Tenant webhook URL for enforcement outbox delivery; null/empty = unset. */
+  readonly outboundWebhookUrl: string | null;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
 }
@@ -31,6 +33,7 @@ export interface CreateOrganizationFraudConfigInput {
   readonly riskThresholdHigh: number;
   readonly riskThresholdCritical: number;
   readonly featureFlags?: Readonly<Record<string, boolean>>;
+  readonly outboundWebhookUrl?: string | null;
   readonly now: Instant;
 }
 
@@ -44,6 +47,7 @@ export interface UpdateOrganizationFraudConfigInput {
   readonly riskThresholdHigh?: number;
   readonly riskThresholdCritical?: number;
   readonly featureFlags?: Readonly<Record<string, boolean>>;
+  readonly outboundWebhookUrl?: string | null;
 }
 
 const SLA_FIELDS = [
@@ -89,6 +93,7 @@ export class OrganizationFraudConfig {
       riskThresholdHigh: input.riskThresholdHigh,
       riskThresholdCritical: input.riskThresholdCritical,
       featureFlags: input.featureFlags ?? {},
+      outboundWebhookUrl: input.outboundWebhookUrl ?? null,
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -143,6 +148,10 @@ export class OrganizationFraudConfig {
     return this.props.featureFlags;
   }
 
+  get outboundWebhookUrl(): string | null {
+    return this.props.outboundWebhookUrl;
+  }
+
   get createdAt(): Instant {
     return this.props.createdAt;
   }
@@ -169,6 +178,26 @@ export class OrganizationFraudConfig {
     }
   }
 
+  /**
+   * Highest risk band crossed for automated case open.
+   * Returns `null` when score is below `riskThresholdLow` (orchestrator skips CreateCase).
+   */
+  priorityForRiskScore(score: number): CasePriority | null {
+    if (score >= this.props.riskThresholdCritical) {
+      return 'CRITICAL';
+    }
+    if (score >= this.props.riskThresholdHigh) {
+      return 'HIGH';
+    }
+    if (score >= this.props.riskThresholdMedium) {
+      return 'MEDIUM';
+    }
+    if (score >= this.props.riskThresholdLow) {
+      return 'LOW';
+    }
+    return null;
+  }
+
   /** Partial update — undefined fields keep their current value. Used by the Upsert use case. */
   update(patch: UpdateOrganizationFraudConfigInput, now: Instant): OrganizationFraudConfig {
     for (const field of [...SLA_FIELDS, ...RISK_THRESHOLD_FIELDS]) {
@@ -177,6 +206,10 @@ export class OrganizationFraudConfig {
     return new OrganizationFraudConfig({
       ...this.props,
       ...patch,
+      outboundWebhookUrl:
+        patch.outboundWebhookUrl === undefined
+          ? this.props.outboundWebhookUrl
+          : patch.outboundWebhookUrl,
       updatedAt: now,
     });
   }

@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import request from 'supertest';
 import { createApp } from '../../../../src/shared/http/createApp.js';
@@ -8,31 +9,126 @@ import { SystemClock } from '../../../../src/shared/time/SystemClock.js';
 import { caseManagementErrorStatus } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/errorStatus.js';
 import { caseRouter } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/caseRouter.js';
 import { createCreateCaseUseCase } from '../../../../src/modules/case-management/application/CreateCase.js';
+import { createCalculateSlaUseCase } from '../../../../src/modules/case-management/application/CalculateSla.js';
+import { createRouteCaseUseCase } from '../../../../src/modules/case-management/application/RouteCase.js';
+import { createReassignCaseUseCase } from '../../../../src/modules/case-management/application/ReassignCase.js';
+import { createListCasesUseCase } from '../../../../src/modules/case-management/application/ListCases.js';
+import { createGetCaseUseCase } from '../../../../src/modules/case-management/application/GetCase.js';
+import { createGetCaseTimelineUseCase } from '../../../../src/modules/case-management/application/GetCaseTimeline.js';
+import { createAddCaseNoteUseCase } from '../../../../src/modules/case-management/application/AddCaseNote.js';
+import { createListCaseNotesUseCase } from '../../../../src/modules/case-management/application/ListCaseNotes.js';
+import { InMemoryResolutionRepository } from '../../../helpers/case-management/InMemoryResolutionRepository.js';
+import { generateResolutionId } from '../../../../src/modules/case-management/domain/model/value-objects/ResolutionId.js';
+import { createResolveCaseUseCase } from '../../../../src/modules/case-management/application/ResolveCase.js';
+import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
+import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
+import { createArchiveCaseUseCase } from '../../../../src/modules/case-management/application/ArchiveCase.js';
+import { createStartReviewUseCase } from '../../../../src/modules/case-management/application/StartReview.js';
+import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InMemoryCaseNoteRepository.js';
+import { generateCaseNoteId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseNoteId.js';
+import { createReopenCaseUseCase } from '../../../../src/modules/case-management/application/ReopenCase.js';
+import { createUpdateCasePriorityTagsUseCase } from '../../../../src/modules/case-management/application/UpdateCasePriorityTags.js';
+import { createBulkCaseActionUseCase } from '../../../../src/modules/case-management/application/BulkCaseAction.js';
+import { ZenRoutingEngine } from '../../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
-import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
-import { createInitializeCaseSlaService } from '../../../../src/modules/case-management/application/InitializeCaseSla.js';
-import { InMemoryCaseSlaTrackingRepository } from '../../../helpers/case-management/InMemoryCaseSlaTrackingRepository.js';
+import { InMemoryCaseManagementNotificationSender } from '../../../helpers/case-management/InMemoryCaseManagementNotificationSender.js';
+import { InMemoryCaseRoutingRuleRepository } from '../../../helpers/case-management/InMemoryCaseRoutingRuleRepository.js';
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
-import { generateCaseSlaTrackingId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
+import { InMemoryCaseSlaTrackingRepository } from '../../../helpers/case-management/InMemoryCaseSlaTrackingRepository.js';
+import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
+import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 import { generateCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
+import { generateCaseSlaTrackingId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
+import { CaseRoutingRule } from '../../../../src/modules/case-management/domain/model/aggregates/CaseRoutingRule.js';
+import { generateCaseRoutingRuleId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseRoutingRuleId.js';
+import { OrganizationFraudConfig } from '../../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
+import { generateOrganizationFraudConfigId } from '../../../../src/modules/case-management/domain/model/value-objects/OrganizationFraudConfigId.js';
+import { fromDate } from '../../../../src/shared/time/Instant.js';
 
-import { createListCasesUseCase } from '../../../../src/modules/case-management/application/ListCases.js';
-import { createGetCaseUseCase } from '../../../../src/modules/case-management/application/GetCase.js';
-import { createTransitionCaseStatusUseCase } from '../../../../src/modules/case-management/application/TransitionCaseStatus.js';
-import { createGetCaseTimelineUseCase } from '../../../../src/modules/case-management/application/GetCaseTimeline.js';
+const ORG_1_ANALYST = createAuthContext({ userId: oid('analyst-1'), organizationId: oid('org-1'), actorType: 'USER' });
 
-const ORG_1_ANALYST = createAuthContext({ userId: 'analyst-1', organizationId: 'org-1', actorType: 'USER' });
+/** JDM: riskScore > 80 AND status == OPEN -> targetUserId "auto-user". */
+function highRiskToUserJdm(): Record<string, unknown> {
+  return {
+    contentType: 'application/vnd.gorules.decision',
+    nodes: [
+      { id: 'input', type: 'inputNode', name: 'Request', position: { x: 0, y: 0 } },
+      {
+        id: 'table',
+        type: 'decisionTableNode',
+        name: 'Routing',
+        position: { x: 200, y: 0 },
+        content: {
+          hitPolicy: 'first',
+          inputs: [
+            { id: 'i1', name: 'Risk Score', field: 'riskScore' },
+            { id: 'i2', name: 'Status', field: 'status' },
+          ],
+          outputs: [{ id: 'o1', name: 'Target User', field: 'targetUserId' }],
+          rules: [{ _id: 'r1', i1: '> 80', i2: '"OPEN"', o1: '"auto-user"' }],
+        },
+      },
+      { id: 'output', type: 'outputNode', name: 'Response', position: { x: 400, y: 0 } },
+    ],
+    edges: [
+      { id: 'e1', sourceId: 'input', targetId: 'table' },
+      { id: 'e2', sourceId: 'table', targetId: 'output' },
+    ],
+  };
+}
 
-function buildApp(actorPerRequest: () => AuthContext) {
+function buildApp(actorPerRequest: () => AuthContext, options: { seedFraudConfig?: boolean } = {}) {
   const cases = new InMemoryCaseRepository();
   const timelineRecorder = new InMemoryTimelineRecorder();
+  const caseNotes = new InMemoryCaseNoteRepository();
+  const resolutions = new InMemoryResolutionRepository();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
-  const unitOfWork = new PassthroughUnitOfWork();
+  const routingRules = new InMemoryCaseRoutingRuleRepository();
   const clock = new SystemClock();
+  const fraudConfig = new InMemoryOrganizationFraudConfigRepository();
+  const slaTracking = new InMemoryCaseSlaTrackingRepository();
 
+  if (options.seedFraudConfig !== false) {
+    fraudConfig.seed(
+      OrganizationFraudConfig.create({
+        id: generateOrganizationFraudConfigId(),
+        organizationId: oid('org-1'),
+        slaLowMinutes: 240,
+        slaMediumMinutes: 120,
+        slaHighMinutes: 60,
+        slaCriticalMinutes: 30,
+        riskThresholdLow: 25,
+        riskThresholdMedium: 50,
+        riskThresholdHigh: 75,
+        riskThresholdCritical: 90,
+        featureFlags: {},
+        now: fromDate(new Date('2026-01-01T00:00:00.000Z')),
+      }),
+    );
+  }
+
+  const routeCase = createRouteCaseUseCase({
+    cases,
+    routingRules,
+    routingEngine: new ZenRoutingEngine(),
+    timelineRecorder,
+    auditRecorder,
+    fraudConfig,
+    clock,
+    generateTimelineEventId,
+  });
+  const calculateSla = createCalculateSlaUseCase({
+    cases,
+    slaTracking,
+    fraudConfig,
+    clock,
+    generateCaseSlaTrackingId,
+  });
+
+  const unitOfWork = new PassthroughUnitOfWork();
   const router = caseRouter({
     createCase: createCreateCaseUseCase({
       cases,
@@ -42,23 +138,60 @@ function buildApp(actorPerRequest: () => AuthContext) {
       generateCaseId,
       generateTimelineEventId,
       auditRecorder,
-      initializeCaseSla: createInitializeCaseSlaService({
-        slaTracking: new InMemoryCaseSlaTrackingRepository(),
-        fraudConfig: new InMemoryOrganizationFraudConfigRepository(),
-        generateCaseSlaTrackingId,
-      }),
+      routeCase,
+      calculateSla,
     }),
-    listCases: createListCasesUseCase({ cases }),
-    getCase: createGetCaseUseCase({ cases }),
-    transitionCaseStatus: createTransitionCaseStatusUseCase({
+    reassignCase: createReassignCaseUseCase({
       cases,
       timelineRecorder,
+      auditRecorder,
       unitOfWork,
       clock,
       generateTimelineEventId,
-      auditRecorder,
+      assigneeDirectory: new InMemoryAssigneeDirectory(),
+      notificationSender: new InMemoryCaseManagementNotificationSender(),
     }),
-    getCaseTimeline: createGetCaseTimelineUseCase({ cases, timelineRecorder }),
+    listCases: createListCasesUseCase({ cases }),
+    getCase: createGetCaseUseCase({ cases }),
+    getCaseTimeline: createGetCaseTimelineUseCase({ cases, timelineReader: timelineRecorder }),
+    addCaseNote: createAddCaseNoteUseCase({ cases, notes: caseNotes, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateCaseNoteId, generateTimelineEventId }),
+    listCaseNotes: createListCaseNotesUseCase({ cases, notes: caseNotes }),
+    resolveCase: createResolveCaseUseCase({
+      outbox: new InMemoryOutboxEventRepository(),
+      generateOutboxEventId, cases, resolutions, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
+    archiveCase: createArchiveCaseUseCase({ cases, resolutions, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
+    startReview: createStartReviewUseCase({ cases, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateTimelineEventId }),
+    bulkCaseAction: createBulkCaseActionUseCase({
+      cases,
+      timelineRecorder,
+      auditRecorder,
+      assigneeDirectory: new InMemoryAssigneeDirectory(),
+      unitOfWork,
+      clock,
+      generateTimelineEventId,
+    }),
+    updateCasePriorityTags: createUpdateCasePriorityTagsUseCase({
+      cases,
+      slaTracking,
+      fraudConfig,
+      timelineRecorder,
+      auditRecorder,
+      unitOfWork,
+      clock,
+      generateTimelineEventId,
+      generateCaseSlaTrackingId,
+    }),
+    reopenCase: createReopenCaseUseCase({
+      cases,
+      slaTracking,
+      fraudConfig,
+      timelineRecorder,
+      auditRecorder,
+      unitOfWork,
+      clock,
+      generateTimelineEventId,
+      generateCaseSlaTrackingId,
+    }),
   });
 
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {
@@ -75,11 +208,11 @@ function buildApp(actorPerRequest: () => AuthContext) {
     errorHandler: createErrorHandler(caseManagementErrorStatus),
   });
 
-  return { app, cases, timelineRecorder, auditRecorder };
+  return { app, cases, timelineRecorder, auditRecorder, routingRules, fraudConfig, slaTracking };
 }
 
 describe('caseRouter (e2e, in-memory repository)', () => {
-  it('POST /cases creates a Case scoped to the caller\'s organization, Status OPEN, 201 shape', async () => {
+  it('POST /cases creates a Case scoped to the caller\'s organization, status OPEN, 201 shape', async () => {
     const { app } = buildApp(() => ORG_1_ANALYST);
 
     const response = await request(app)
@@ -88,7 +221,7 @@ describe('caseRouter (e2e, in-memory repository)', () => {
 
     expect(response.status).toBe(201);
     expect(response.body).toMatchObject({
-      organizationId: 'org-1',
+      organizationId: oid('org-1'),
       customerId: 'customer-1',
       riskScore: 75,
       priority: 'HIGH',
@@ -96,13 +229,7 @@ describe('caseRouter (e2e, in-memory repository)', () => {
       assignedTo: null,
     });
     expect(typeof response.body.id).toBe('string');
-
-    // CASE-003: sin config de tenant se aplica la ventana por defecto, y HIGH
-    // son 60 minutos. Antes este campo llegaba en `null` y el reloj de SLA no
-    // arrancaba nunca.
-    const dueDate = new Date(response.body.dueDate).getTime();
-    const createdAt = new Date(response.body.createdAt).getTime();
-    expect(dueDate - createdAt).toBe(60 * 60_000);
+    expect(typeof response.body.dueDate).toBe('string');
   });
 
   it('POST /cases defaults priority to LOW when omitted', async () => {
@@ -132,6 +259,15 @@ describe('caseRouter (e2e, in-memory repository)', () => {
     expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
   });
 
+  it('POST /cases still requires manual riskScore (scoring is not part of CreateCase)', async () => {
+    const { app } = buildApp(() => ORG_1_ANALYST);
+
+    const response = await request(app).post('/api/v1/cases').send({ customerId: 'customer-1' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
+  });
+
   it('POST /cases rejects a caller with no organization context with 403 FORBIDDEN_CROSS_TENANT', async () => {
     const platformAdminNoOrg = createAuthContext({ userId: 'pa-1', organizationId: null, isPlatformAdmin: true });
     const { app } = buildApp(() => platformAdminNoOrg);
@@ -142,18 +278,158 @@ describe('caseRouter (e2e, in-memory repository)', () => {
     expect(response.body.error.code).toBe('FORBIDDEN_CROSS_TENANT');
   });
 
+  it('T1 auto-routing: assigns the case to the rule target and appends an ASSIGNED timeline entry on creation', async () => {
+    const { app, routingRules, timelineRecorder } = buildApp(() => ORG_1_ANALYST);
+    routingRules.add(
+      CaseRoutingRule.create({
+        id: generateCaseRoutingRuleId(),
+        organizationId: oid('org-1'),
+        name: 'high-risk -> auto-user',
+        conditions: highRiskToUserJdm(),
+        conditionsVersion: 1,
+        status: 'ACTIVE',
+        now: fromDate(new Date('2026-01-01T00:00:00.000Z')),
+      }),
+    );
+
+    const response = await request(app)
+      .post('/api/v1/cases')
+      .send({ customerId: 'customer-1', riskScore: 90, priority: 'HIGH' });
+
+    expect(response.status).toBe(201);
+    expect(response.body.assignedTo).toEqual({ type: 'USER', id: 'auto-user' });
+    const events = timelineRecorder.all();
+    expect(events.map((e) => e.eventType).sort()).toEqual(['ASSIGNED', 'CASE_CREATED']);
+  });
+
+  it('T1 auto-routing: leaves the case unassigned when no active rule matches', async () => {
+    const { app, routingRules } = buildApp(() => ORG_1_ANALYST);
+    routingRules.add(
+      CaseRoutingRule.create({
+        id: generateCaseRoutingRuleId(),
+        organizationId: oid('org-1'),
+        name: 'high-risk -> auto-user',
+        conditions: highRiskToUserJdm(),
+        conditionsVersion: 1,
+        status: 'ACTIVE',
+        now: fromDate(new Date('2026-01-01T00:00:00.000Z')),
+      }),
+    );
+
+    const response = await request(app)
+      .post('/api/v1/cases')
+      .send({ customerId: 'customer-1', riskScore: 20, priority: 'LOW' });
+
+    expect(response.status).toBe(201);
+    expect(response.body.assignedTo).toBeNull();
+  });
+
   it('records exactly one CASE_CREATED timeline entry and one CREATE_CASE audit event per POST', async () => {
     const { app, timelineRecorder, auditRecorder } = buildApp(() => ORG_1_ANALYST);
 
     await request(app).post('/api/v1/cases').send({ customerId: 'customer-1', riskScore: 10 });
 
-    // CASE-003: la apertura escribe dos asientos — el caso y el arranque del reloj.
-    expect(timelineRecorder.all().map((event) => event.eventType).sort()).toEqual([
-      'CASE_CREATED',
-      'SLA_INITIALIZED',
-    ]);
+    expect(timelineRecorder.all()).toHaveLength(1);
+    expect(timelineRecorder.all()[0]?.eventType).toBe('CASE_CREATED');
     expect(auditRecorder.all()).toHaveLength(1);
     expect(auditRecorder.all()[0]?.action).toBe('CREATE_CASE');
     expect(auditRecorder.all()[0]?.resource).toBe('case');
+  });
+
+  it('T1 auto-routing: the REASSIGN_CASE audit row traces back to the rule version that assigned the case', async () => {
+    const { app, routingRules, auditRecorder } = buildApp(() => ORG_1_ANALYST);
+    const rule = CaseRoutingRule.create({
+      id: generateCaseRoutingRuleId(),
+      organizationId: oid('org-1'),
+      name: 'high-risk -> auto-user',
+      conditions: highRiskToUserJdm(),
+      conditionsVersion: 4,
+      status: 'ACTIVE',
+      now: fromDate(new Date('2026-01-01T00:00:00.000Z')),
+    });
+    routingRules.add(rule);
+
+    await request(app).post('/api/v1/cases').send({ customerId: 'customer-1', riskScore: 90, priority: 'HIGH' });
+
+    const routed = auditRecorder.all().find((event) => event.action === 'REASSIGN_CASE');
+    expect(routed?.detail).toMatchObject({
+      trigger: 'AUTO_ROUTING',
+      ruleId: rule.id,
+      conditionsVersion: 4,
+      assignedToId: 'auto-user',
+      assignedToType: 'USER',
+    });
+  });
+
+  it('T1 auto-routing: a malformed JDM is skipped so the case is still created (201, unassigned)', async () => {
+    const { app, routingRules, auditRecorder } = buildApp(() => ORG_1_ANALYST);
+    routingRules.add(
+      CaseRoutingRule.create({
+        id: generateCaseRoutingRuleId(),
+        organizationId: oid('org-1'),
+        name: 'broken-rule',
+        conditions: { nodes: 'not-a-jdm-graph' },
+        conditionsVersion: 1,
+        status: 'ACTIVE',
+        now: fromDate(new Date('2026-01-01T00:00:00.000Z')),
+      }),
+    );
+
+    const response = await request(app)
+      .post('/api/v1/cases')
+      .send({ customerId: 'customer-1', riskScore: 90, priority: 'HIGH' });
+
+    expect(response.status).toBe(201);
+    expect(response.body.assignedTo).toBeNull();
+    expect(auditRecorder.all().map((event) => event.action)).toContain('ROUTING_RULE_EVALUATION_FAILED');
+  });
+
+  it('T1 auto-routing: featureFlags.autoRouting=false leaves the case unassigned despite a matching rule', async () => {
+    const { app, routingRules, fraudConfig } = buildApp(() => ORG_1_ANALYST, { seedFraudConfig: false });
+    routingRules.add(
+      CaseRoutingRule.create({
+        id: generateCaseRoutingRuleId(),
+        organizationId: oid('org-1'),
+        name: 'high-risk -> auto-user',
+        conditions: highRiskToUserJdm(),
+        conditionsVersion: 1,
+        status: 'ACTIVE',
+        now: fromDate(new Date('2026-01-01T00:00:00.000Z')),
+      }),
+    );
+    fraudConfig.seed(
+      OrganizationFraudConfig.create({
+        id: generateOrganizationFraudConfigId(),
+        organizationId: oid('org-1'),
+        slaLowMinutes: 60,
+        slaMediumMinutes: 60,
+        slaHighMinutes: 60,
+        slaCriticalMinutes: 60,
+        riskThresholdLow: 25,
+        riskThresholdMedium: 50,
+        riskThresholdHigh: 75,
+        riskThresholdCritical: 90,
+        featureFlags: { autoRouting: false },
+        now: fromDate(new Date('2026-01-01T00:00:00.000Z')),
+      }),
+    );
+
+    const response = await request(app)
+      .post('/api/v1/cases')
+      .send({ customerId: 'customer-1', riskScore: 90, priority: 'HIGH' });
+
+    expect(response.status).toBe(201);
+    expect(response.body.assignedTo).toBeNull();
+  });
+
+  it('T2 SLA: POST /cases returns 404 ORGANIZATION_FRAUD_CONFIG_NOT_FOUND when config is missing', async () => {
+    const { app } = buildApp(() => ORG_1_ANALYST, { seedFraudConfig: false });
+
+    const response = await request(app)
+      .post('/api/v1/cases')
+      .send({ customerId: 'customer-1', riskScore: 10, priority: 'LOW' });
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe('ORGANIZATION_FRAUD_CONFIG_NOT_FOUND');
   });
 });

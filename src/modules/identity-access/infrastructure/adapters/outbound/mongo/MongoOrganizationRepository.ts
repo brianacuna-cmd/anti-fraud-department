@@ -1,4 +1,4 @@
-import type { ClientSession, Collection, Db } from 'mongodb';
+import { ObjectId, type ClientSession, type Collection, type Db } from 'mongodb';
 import { buildCursorPage } from '../../../../../../shared/http/pagination.js';
 import type { Organization } from '../../../../domain/model/aggregates/Organization.js';
 import type {
@@ -19,7 +19,7 @@ function toSession(tx: Transaction | undefined): ClientSession | undefined {
   return tx as unknown as ClientSession | undefined;
 }
 
-const COLLECTION_NAME = 'Organizations';
+const COLLECTION_NAME = 'organizations';
 const SLUG_UNIQUE_INDEX_NAME = 'slug_unique';
 
 /**
@@ -49,22 +49,22 @@ export class MongoOrganizationRepository implements OrganizationRepository {
   }
 
   async findById(id: OrganizationId): Promise<Organization | null> {
-    const document = await this.collection.findOne({ _id: id });
+    const document = await this.collection.findOne({ _id: new ObjectId(id) });
     return document ? toDomain(document) : null;
   }
 
   async findBySlug(slug: Slug, tx?: Transaction): Promise<Organization | null> {
-    const document = await this.collection.findOne({ Slug: slug }, { session: toSession(tx) });
+    const document = await this.collection.findOne({ slug }, { session: toSession(tx) });
     return document ? toDomain(document) : null;
   }
 
   async findByEmail(email: Email): Promise<Organization | null> {
-    const document = await this.collection.findOne({ Email: email });
+    const document = await this.collection.findOne({ email });
     return document ? toDomain(document) : null;
   }
 
   async list(limit: number, cursor?: string): Promise<OrganizationListPage> {
-    const filter = cursor ? { _id: { $gt: cursor } } : {};
+    const filter = cursor ? { _id: { $gt: new ObjectId(cursor) } } : {};
     const documents = await this.collection.find(filter).sort({ _id: 1 }).limit(limit + 1).toArray();
 
     const wrapped = documents.map((document) => ({ value: toDomain(document), cursorId: document._id.toString() }));

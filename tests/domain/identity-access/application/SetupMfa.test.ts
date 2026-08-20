@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createSetupMfaUseCase } from '../../../../src/modules/identity-access/application/SetupMfa.js';
 import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
 import { InMemoryUnitOfWork } from '../../../helpers/identity-access/InMemoryUnitOfWork.js';
@@ -17,13 +18,13 @@ import { IdentityAccessError } from '../../../../src/modules/identity-access/dom
 
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const SETUP_AT = fromDate(new Date('2026-01-02T00:00:00.000Z'));
-const AUTH = createAuthContext({ userId: 'user-1', organizationId: 'org-1', isPlatformAdmin: false });
+const AUTH = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), isPlatformAdmin: false });
 const ISSUER = 'AntiFraud';
 
 async function seedUser(userRepositoryFactory: InMemoryUserRepositoryFactory): Promise<void> {
-  const org = createOrganizationId('org-1');
+  const org = createOrganizationId(oid('org-1'));
   const user = User.create({
-    id: createUserId('user-1'),
+    id: createUserId(oid('user-1')),
     organizationId: org,
     email: createEmail('alice@example.com'),
     credential: createPasswordCredential('hash'),
@@ -61,7 +62,7 @@ describe('createSetupMfaUseCase', () => {
     expect(result.otpauthUri).toContain('otpauth://totp/');
     expect(result.otpauthUri).toContain(encodeURIComponent(ISSUER));
 
-    const stored = await userRepositoryFactory.forTenant(createOrganizationId('org-1')).findById(createUserId('user-1'));
+    const stored = await userRepositoryFactory.forTenant(createOrganizationId(oid('org-1'))).findById(createUserId(oid('user-1')));
     expect(stored!.mfa.enabled).toBe(false);
     expect(stored!.mfa.secret).not.toBeNull();
     expect(stored!.mfa.secret).not.toEqual(expect.stringContaining('otpauth'));

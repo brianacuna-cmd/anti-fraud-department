@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import type { Request } from 'express';
 import { TieredAuthContextResolver } from '../../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/TieredAuthContextResolver.js';
 import type { AuthContextResolver } from '../../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/AuthContextResolver.js';
@@ -11,7 +12,7 @@ const REQ = {} as Request;
 
 describe('TieredAuthContextResolver (design D6)', () => {
   it('returns the primary (session) resolution for a USER context', async () => {
-    const userCtx = createAuthContext({ userId: 'u1', organizationId: null, actorType: 'USER' });
+    const userCtx = createAuthContext({ userId: oid('u1'), organizationId: null, actorType: 'USER' });
     const resolver = new TieredAuthContextResolver(fakeResolver(userCtx), null);
 
     await expect(resolver.resolve(REQ)).resolves.toEqual(userCtx);
@@ -44,14 +45,14 @@ describe('TieredAuthContextResolver (design D6)', () => {
   });
 
   it('ignores an admin-fallback result that resolves a non-PLATFORM_ADMIN actor (USER/ORG must never reach the fallback)', async () => {
-    const userCtx = createAuthContext({ userId: 'u1', organizationId: null, actorType: 'USER' });
+    const userCtx = createAuthContext({ userId: oid('u1'), organizationId: null, actorType: 'USER' });
     const resolver = new TieredAuthContextResolver(fakeResolver(null), fakeResolver(userCtx));
 
     await expect(resolver.resolve(REQ)).resolves.toBeNull();
   });
 
   it('never consults the admin fallback when the primary already resolved (USER/ORG must never reach trusted-header)', async () => {
-    const userCtx = createAuthContext({ userId: 'u1', organizationId: null, actorType: 'USER' });
+    const userCtx = createAuthContext({ userId: oid('u1'), organizationId: null, actorType: 'USER' });
     let adminCalled = false;
     const adminResolver: AuthContextResolver = {
       resolve: () => {

@@ -1,26 +1,17 @@
-/**
- * Mongo document shape for `Notifications`. `_id` is the aggregate's branded
- * `NotificationId` stored as a native `ObjectId`.
- *
- * `ReadAt` es la fecha de lectura en ISO, y `null` mientras no se haya leido:
- * el estado de lectura NO se duplica en un booleano aparte, para que no puedan
- * contradecirse.
- */
-
 import type { ObjectId } from 'mongodb';
 
+/**
+ * Mongo document shape for `notifications`. `_id` is the client-minted
+ * `NotificationId` hex, stored as `ObjectId` (mirrors `CaseSlaTracking`'s
+ * client-minted-id documents — not driver-generated like
+ * `NotificationPreferenceDocument`).
+ */
 export interface NotificationDocument {
   readonly _id: ObjectId;
-  readonly OrganizationId: string;
-  readonly RecipientUserId: string;
-  readonly AlertType: string;
-  readonly Channel: string;
-  readonly Title: string;
-  readonly Body: string;
-  readonly ResourceType: string | null;
-  readonly ResourceId: string | null;
-  readonly ReadAt: string | null;
-  readonly CreatedAt: string;
-  /** Espejo BSON de `CreatedAt` para ordenar y para el indice TTL. */
-  readonly CreatedAtDate: Date;
+  readonly organization_id: ObjectId;
+  readonly recipient_user_id: ObjectId;
+  readonly alert_type: string;
+  readonly channel: string;
+  readonly context: Record<string, unknown>;
+  readonly created_at: Date;
 }

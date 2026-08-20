@@ -2,8 +2,10 @@ import {
   createPublishOutboxEventsUseCase,
   type OutboxPublisher,
 } from '../../../../src/modules/case-management/application/PublishOutboxEvents.js';
-import { InMemoryOutboxRepository } from '../../../helpers/case-management/InMemoryOutboxRepository.js';
-import { OutboxEvent } from '../../../../src/modules/case-management/domain/model/aggregates/OutboxEvent.js';
+import { InMemoryOutboxRelayRepository } from '../../../helpers/case-management/InMemoryOutboxRelayRepository.js';
+import { OutboxEvent } from '../../../../src/shared/outbox/OutboxEvent.js';
+import { oid } from '../../../support/oid.js';
+import { createOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 
@@ -20,7 +22,8 @@ class RecordingPublisher implements OutboxPublisher {
 
 function event(id: string, eventType: string) {
   return OutboxEvent.create({
-    id,
+    id: createOutboxEventId(oid(id)),
+    organizationId: oid('org-1'),
     aggregateType: 'case',
     aggregateId: `case-${id}`,
     eventType,
@@ -30,7 +33,7 @@ function event(id: string, eventType: string) {
 }
 
 function build(events: OutboxEvent[], failOn: string[] = []) {
-  const outbox = new InMemoryOutboxRepository();
+  const outbox = new InMemoryOutboxRelayRepository();
   for (const e of events) void outbox.record(e);
   const publisher = new RecordingPublisher(failOn);
 
@@ -86,7 +89,7 @@ describe('createPublishOutboxEventsUseCase', () => {
 
     const failed = outbox.all().find((e) => e.eventType === 'case.rechazado');
     expect(failed?.status).toBe('FAILED');
-    expect(failed?.error).toContain('case.rechazado');
+    expect(failed?.lastError).toContain('case.rechazado');
     // Un evento fallido nunca llego a publicarse.
     expect(failed?.publishedAt).toBeNull();
   });
@@ -102,7 +105,7 @@ describe('createPublishOutboxEventsUseCase', () => {
   });
 
   it('clears the previous error when a retry finally succeeds', async () => {
-    const outbox = new InMemoryOutboxRepository();
+    const outbox = new InMemoryOutboxRelayRepository();
     void outbox.record(event('1', 'case.created').markFailed('el consumidor estaba caido'));
 
     const publishOutboxEvents = createPublishOutboxEventsUseCase({

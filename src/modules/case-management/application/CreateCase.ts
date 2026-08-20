@@ -4,10 +4,10 @@ import type { CaseRepository } from '../domain/ports/CaseRepository.js';
 import type { TimelineRecorder } from '../domain/ports/TimelineRecorder.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
-import type { InitializeCaseSlaService } from './InitializeCaseSla.js';
-import type { RouteCaseService } from './RouteCase.js';
 import type { CaseId } from '../domain/model/value-objects/CaseId.js';
 import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
+import type { RouteCaseInput } from './RouteCase.js';
+import type { CalculateSlaInput } from './CalculateSla.js';
 import { Case } from '../domain/model/aggregates/Case.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
 import { createRiskScore } from '../domain/model/value-objects/RiskScore.js';
@@ -24,6 +24,11 @@ export interface CreateCaseInput {
   readonly bridgeWallet?: string | null;
   readonly stripeCustomerId?: string | null;
   readonly tags?: readonly string[];
+  /**
+   * Optional evidence freeze for automated score→case opens.
+   * Manual `POST /cases` omits this; Case stores `null`.
+   */
+  readonly finturuCacheSnapshot?: Record<string, unknown> | null;
 }
 
 export interface CreateCaseDeps {
@@ -34,29 +39,34 @@ export interface CreateCaseDeps {
   readonly generateCaseId: () => CaseId;
   readonly generateTimelineEventId: () => TimelineEventId;
   readonly auditRecorder: AuditRecorder;
-  readonly initializeCaseSla: InitializeCaseSlaService;
-  /** Opcional: sin el, el caso nace sin asignar (bandeja general). */
-  readonly routeCase?: RouteCaseService;
+  /**
+   * T1 auto-routing (CASE-002), invoked inside this use case's transaction so
+   * the assignment + its `ASSIGNED` timeline event commit atomically with the
+   * new case. Injected as the composed `RouteCase` use case to keep CreateCase
+   * decoupled from routing's own dependencies (rules repo, ZEN engine).
+   */
+  readonly routeCase: (input: RouteCaseInput) => Promise<Case>;
+  /**
+   * T2 SLA calculation — runs after `routeCase` inside the same transaction.
+   * Fail-closed when OrganizationFraudConfig is missing.
+   */
+  readonly calculateSla: (input: CalculateSlaInput) => Promise<Case>;
 }
 
 /**
- * T5 — manual case creation (first vertical slice, design "Transaction
- * boundaries: CreateCase (T5)"). Within ONE `unitOfWork.withTransaction`:
- * inserts the `Case` (Status OPEN, no FinturuCacheSnapshot — that field is
- * only ever populated by an automated intake path, out of scope here),
+ * Manual + automated case creation. Within ONE `unitOfWork.withTransaction`:
+ * inserts the `Case` (Status OPEN; `finturuCacheSnapshot` optional — set by
+ * the composition score→case orchestrator, omitted/null on manual POST /cases),
  * appends a `CASE_CREATED` `CaseTimeline` entry, and records a
  * `CREATE_CASE` audit row.
  *
- * CASE-003 runs in the same transaction: `initializeCaseSla` writes the
- * `CaseSlaTracking` row and returns the deadline, which is denormalized onto
- * `Case.DueDate` before the single `save`. Doing it before the save keeps
- * this to one write per aggregate rather than an insert followed by an
- * update.
+ * T1 auto-routing (CASE-002): after the case is persisted, `RouteCase` runs
+ * inside this same transaction — it evaluates the org's ACTIVE ZEN routing
+ * rules against the case and, on the first match, sets `AssignedTo` and
+ * appends an `ASSIGNED` timeline event.
  *
- * CASE-002 tambien corre aqui dentro: `routeCase` resuelve el responsable
- * contra las reglas activas del inquilino ANTES de construir el agregado, de
- * modo que el expediente nace ya asignado en vez de aparecer un instante en la
- * bandeja general y moverse despues.
+ * T2 SLA: after routing, `CalculateSla` sets `dueDate` + ON_TRACK
+ * `CaseSlaTracking` inside the same transaction (fail-closed without fraud config).
  */
 export function createCreateCaseUseCase(deps: CreateCaseDeps) {
   return async function createCase(input: CreateCaseInput): Promise<Case> {
@@ -64,46 +74,20 @@ export function createCreateCaseUseCase(deps: CreateCaseDeps) {
     const now = deps.clock.now();
 
     return deps.unitOfWork.withTransaction(async (tx) => {
-      const caseId = deps.generateCaseId();
-      const priority = createCasePriority(input.priority ?? 'LOW');
-
-      const dueDate = await deps.initializeCaseSla({
-        organizationId,
-        caseId,
-        priority,
-        now,
-        tx,
-      });
-
-      const routed = deps.routeCase
-        ? await deps.routeCase({
-            organizationId,
-            kase: {
-              riskScore: createRiskScore(input.riskScore),
-              priority,
-              tags: input.tags ?? [],
-              customerEmail: input.customerEmail,
-              stripeCustomerId: input.stripeCustomerId,
-              bridgeWallet: input.bridgeWallet,
-            },
-            tx,
-          })
-        : null;
-
       const kase = Case.create({
-        id: caseId,
+        id: deps.generateCaseId(),
         organizationId,
         customerId: input.customerId,
         customerEmail: input.customerEmail,
         bridgeUserId: input.bridgeUserId,
         bridgeWallet: input.bridgeWallet,
         stripeCustomerId: input.stripeCustomerId,
+        finturuCacheSnapshot: input.finturuCacheSnapshot,
         riskScore: createRiskScore(input.riskScore),
-        priority,
-        assignedTo: routed?.assignedTo ?? null,
+        priority: createCasePriority(input.priority ?? 'LOW'),
         tags: input.tags,
         now,
-      }).withDueDate(dueDate, now);
+      });
 
       await deps.cases.save(kase, tx);
 
@@ -132,33 +116,20 @@ export function createCreateCaseUseCase(deps: CreateCaseDeps) {
         tx,
       );
 
-      const slaEvent = CaseTimelineEvent.create({
-        id: deps.generateTimelineEventId(),
-        caseId: kase.id,
-        eventType: 'SLA_INITIALIZED',
-        previousValue: null,
-        newValue: dueDate,
-        createdBy: input.auth.userId,
-        createdAt: now,
+      // T1 auto-routing (CASE-002): evaluate the org's ACTIVE routing rules and,
+      // on the first match, assign the case + append an ASSIGNED timeline event
+      // — all inside this same transaction. `createdBy: null` because the rule,
+      // not the caller, chose the assignee; actorType/ipAddress still carry the
+      // request's audit attribution.
+      const routed = await deps.routeCase({
+        kase,
+        tx,
+        createdBy: null,
+        actorType: input.auth.actorType,
+        ipAddress: input.auth.ipAddress,
       });
-      await deps.timelineRecorder.record(slaEvent, tx);
 
-      if (routed?.assignedTo) {
-        await deps.timelineRecorder.record(
-          CaseTimelineEvent.create({
-            id: deps.generateTimelineEventId(),
-            caseId: kase.id,
-            eventType: 'ROUTED',
-            previousValue: routed.ruleName,
-            newValue: `${routed.assignedTo.type}:${routed.assignedTo.id}`,
-            createdBy: input.auth.userId,
-            createdAt: now,
-          }),
-          tx,
-        );
-      }
-
-      return kase;
+      return deps.calculateSla({ kase: routed, tx });
     });
   };
 }

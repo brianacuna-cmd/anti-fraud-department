@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createSetNotificationPreferenceUseCase } from '../../../../src/modules/notifications/application/SetNotificationPreference.js';
 import { InMemoryNotificationPreferenceRepository } from '../../../helpers/notifications/InMemoryNotificationPreferenceRepository.js';
 import { InMemoryUnitOfWork } from '../../../helpers/notifications/InMemoryUnitOfWork.js';
@@ -14,7 +15,7 @@ import { NotificationsError } from '../../../../src/modules/notifications/domain
 
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const UPDATED_AT = fromDate(new Date('2026-01-02T00:00:00.000Z'));
-const ORG_1_USER = createAuthContext({ userId: 'user-1', organizationId: 'org-1' });
+const ORG_1_USER = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1') });
 
 function buildUseCase(repository: InMemoryNotificationPreferenceRepository, now = UPDATED_AT) {
   const unitOfWork = new InMemoryUnitOfWork();
@@ -43,8 +44,8 @@ describe('createSetNotificationPreferenceUseCase', () => {
     expect(result.enabled).toBe(false);
     expect(result.updatedAt).toBe(UPDATED_AT);
     const stored = await repository.findOne(
-      createOrganizationId('org-1'),
-      createUserId('user-1'),
+      createOrganizationId(oid('org-1')),
+      createUserId(oid('user-1')),
       createAlertType('RIESGO_CRITICO'),
       createNotificationChannel('EMAIL'),
     );
@@ -69,8 +70,8 @@ describe('createSetNotificationPreferenceUseCase', () => {
     const repository = new InMemoryNotificationPreferenceRepository();
     repository.seed(
       NotificationPreference.create({
-        organizationId: createOrganizationId('org-1'),
-        userId: createUserId('user-1'),
+        organizationId: createOrganizationId(oid('org-1')),
+        userId: createUserId(oid('user-1')),
         alertType: createAlertType('SLA_POR_VENCER'),
         channel: createNotificationChannel('EMAIL'),
         enabled: false,
@@ -94,8 +95,8 @@ describe('createSetNotificationPreferenceUseCase', () => {
     const repository = new InMemoryNotificationPreferenceRepository();
     repository.seed(
       NotificationPreference.create({
-        organizationId: createOrganizationId('org-1'),
-        userId: createUserId('user-1'),
+        organizationId: createOrganizationId(oid('org-1')),
+        userId: createUserId(oid('user-1')),
         alertType: createAlertType('SLA_POR_VENCER'),
         channel: createNotificationChannel('EMAIL'),
         enabled: false,
@@ -130,7 +131,7 @@ describe('createSetNotificationPreferenceUseCase', () => {
     const repository = new InMemoryNotificationPreferenceRepository();
     const upsertSpy = jest.spyOn(repository, 'upsert');
     const { setPreference, auditRecorder } = buildUseCase(repository);
-    const platformAdmin = createAuthContext({ userId: 'admin-1', organizationId: null, isPlatformAdmin: true });
+    const platformAdmin = createAuthContext({ userId: oid('admin-1'), organizationId: null, isPlatformAdmin: true });
 
     expect.assertions(4);
     try {
@@ -153,19 +154,19 @@ describe('createSetNotificationPreferenceUseCase', () => {
       channel: 'EMAIL',
       enabled: false,
       // @ts-expect-error — userId is not part of the input contract; verifying it is ignored if present
-      userId: 'user-2',
+      userId: oid('user-2'),
     });
 
     const spoofed = await repository.findOne(
-      createOrganizationId('org-1'),
-      createUserId('user-2'),
+      createOrganizationId(oid('org-1')),
+      createUserId(oid('user-2')),
       createAlertType('RIESGO_CRITICO'),
       createNotificationChannel('EMAIL'),
     );
     expect(spoofed).toBeNull();
     const real = await repository.findOne(
-      createOrganizationId('org-1'),
-      createUserId('user-1'),
+      createOrganizationId(oid('org-1')),
+      createUserId(oid('user-1')),
       createAlertType('RIESGO_CRITICO'),
       createNotificationChannel('EMAIL'),
     );

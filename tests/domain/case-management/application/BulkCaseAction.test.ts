@@ -1,248 +1,245 @@
-import {
-  createBulkCaseActionUseCase,
-  MAX_BULK_CASES,
-} from '../../../../src/modules/case-management/application/BulkCaseAction.js';
-import { createAssignCaseUseCase } from '../../../../src/modules/case-management/application/AssignCase.js';
-import { createReclassifyCaseUseCase } from '../../../../src/modules/case-management/application/ReclassifyCase.js';
-import { createInitializeCaseSlaService } from '../../../../src/modules/case-management/application/InitializeCaseSla.js';
+import { oid } from '../../../support/oid.js';
+import { createBulkCaseActionUseCase } from '../../../../src/modules/case-management/application/BulkCaseAction.js';
+import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
+import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
+import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
+import { createAssignedTo } from '../../../../src/modules/case-management/domain/model/value-objects/AssignedTo.js';
+import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
-import { InMemoryCaseSlaTrackingRepository } from '../../../helpers/case-management/InMemoryCaseSlaTrackingRepository.js';
-import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
+import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
-import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
-import { generateCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
-import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
-import { createCasePriority } from '../../../../src/modules/case-management/domain/model/value-objects/CasePriority.js';
-import { generateCaseSlaTrackingId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
-import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
-import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
+import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { CaseManagementError } from '../../../../src/modules/case-management/domain/errors/CaseManagementError.js';
-import type { AssigneeDirectory, ResolvedActor } from '../../../../src/modules/case-management/domain/ports/AssigneeDirectory.js';
 
-const NOW = fromDate(new Date('2026-09-01T08:00:00.000Z'));
-const ORG_1 = createAuthContext({ userId: 'analyst-1', organizationId: 'org-1', actorType: 'USER' });
+const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
+const ORG_1 = oid('org-1');
+const ORG_2 = oid('org-2');
+const CASE_A = oid('case-a');
+const CASE_B = oid('case-b');
+const ANALYST_ID = oid('analyst-99');
 
-class AlwaysFoundDirectory implements AssigneeDirectory {
-  async userExists(): Promise<boolean> {
-    return true;
+const ANALYST = createAuthContext({
+  userId: oid('analyst-1'),
+  organizationId: ORG_1,
+  actorType: 'USER',
+  roleId: 'ANALYST',
+});
+const AUDITOR = createAuthContext({
+  userId: oid('auditor-1'),
+  organizationId: ORG_1,
+  actorType: 'USER',
+  roleId: 'AUDITOR',
+});
+
+function buildCase(
+  id: string,
+  overrides: { organizationId?: string; priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'; tags?: string[]; deletedAt?: typeof NOW | null } = {},
+): Case {
+  const kase = Case.create({
+    id: createCaseId(id),
+    organizationId: overrides.organizationId ?? ORG_1,
+    customerId: 'customer-1',
+    riskScore: createRiskScore(50),
+    priority: overrides.priority ?? 'MEDIUM',
+    tags: overrides.tags ?? ['fraud'],
+    now: NOW,
+  });
+  if (overrides.deletedAt == null) {
+    return kase;
   }
-  async roleExists(): Promise<boolean> {
-    return true;
-  }
-  async resolveActors(_org: string, ids: readonly string[]): Promise<readonly ResolvedActor[]> {
-    return ids.map((id) => ({ id, kind: 'USER' as const, name: id }));
-  }
+  return Case.rehydrate({ ...kase.toProps(), deletedAt: overrides.deletedAt });
 }
 
-function build(caseSpecs: { organizationId?: string; priority?: string; tags?: string[] }[]) {
+function buildUseCase(seeds: Case[] = []) {
   const cases = new InMemoryCaseRepository();
+  for (const seed of seeds) {
+    void cases.save(seed);
+  }
   const timelineRecorder = new InMemoryTimelineRecorder();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
-  const unitOfWork = new PassthroughUnitOfWork();
-  const clock = new FixedClock(NOW);
+  const assigneeDirectory = new InMemoryAssigneeDirectory();
+  assigneeDirectory.allow(ORG_1, createAssignedTo('USER', ANALYST_ID));
 
-  const seeded = caseSpecs.map((spec) => {
-    const kase = Case.create({
-      id: generateCaseId(),
-      organizationId: spec.organizationId ?? 'org-1',
-      customerId: `customer-${Math.random().toString(16).slice(2, 8)}`,
-      riskScore: createRiskScore(50),
-      priority: createCasePriority(spec.priority ?? 'LOW'),
-      tags: spec.tags ?? [],
-      now: NOW,
-    });
-    void cases.save(kase);
-    return kase;
-  });
-
-  const shared = {
+  const bulkCaseAction = createBulkCaseActionUseCase({
     cases,
     timelineRecorder,
-    unitOfWork,
-    clock,
-    generateTimelineEventId,
     auditRecorder,
-  };
-
-  const assignCase = createAssignCaseUseCase({
-    ...shared,
-    assigneeDirectory: new AlwaysFoundDirectory(),
+    assigneeDirectory,
+    unitOfWork: new PassthroughUnitOfWork(),
+    clock: new FixedClock(NOW),
+    generateTimelineEventId,
   });
 
-  const reclassifyCase = createReclassifyCaseUseCase({
-    ...shared,
-    initializeCaseSla: createInitializeCaseSlaService({
-      slaTracking: new InMemoryCaseSlaTrackingRepository(),
-      fraudConfig: new InMemoryOrganizationFraudConfigRepository(),
-      generateCaseSlaTrackingId,
-    }),
-  });
-
-  const bulkCaseAction = createBulkCaseActionUseCase({ cases, assignCase, reclassifyCase });
-
-  return { cases, timelineRecorder, auditRecorder, seeded, bulkCaseAction };
+  return { bulkCaseAction, cases, timelineRecorder, auditRecorder, assigneeDirectory };
 }
 
 describe('createBulkCaseActionUseCase', () => {
-  it('reassigns every case in the batch', async () => {
-    const { seeded, cases, bulkCaseAction } = build([{}, {}, {}]);
+  it('CHANGE_PRIORITY across multiple cases records PRIORITY_CHANGED + BULK_CASE_ACTION per case', async () => {
+    const { bulkCaseAction, cases, timelineRecorder, auditRecorder } = buildUseCase([
+      buildCase(CASE_A, { priority: 'LOW' }),
+      buildCase(CASE_B, { priority: 'MEDIUM' }),
+    ]);
 
     const result = await bulkCaseAction({
-      auth: ORG_1,
-      caseIds: seeded.map((k) => k.id),
-      action: 'REASSIGN',
-      assignedTo: { type: 'USER', id: 'analyst-9' },
+      auth: ANALYST,
+      caseIds: [CASE_A, CASE_B],
+      action: { type: 'CHANGE_PRIORITY', priority: 'HIGH' },
     });
 
-    expect(result.succeeded).toBe(3);
-    expect(result.failed).toBe(0);
-    for (const kase of seeded) {
-      const stored = await cases.findById(kase.id);
-      expect(stored?.assignedTo?.id).toBe('analyst-9');
-    }
+    expect(result.cases.map((c) => c.priority)).toEqual(['HIGH', 'HIGH']);
+    expect(result.changedCaseIds).toEqual([CASE_A, CASE_B]);
+    expect(cases.all().every((c) => c.priority === 'HIGH')).toBe(true);
+    expect(timelineRecorder.all()).toHaveLength(2);
+    expect(timelineRecorder.all().every((e) => e.eventType === 'PRIORITY_CHANGED')).toBe(true);
+    expect(auditRecorder.all()).toHaveLength(2);
+    expect(auditRecorder.all()[0]?.action).toBe('BULK_CASE_ACTION');
+    expect(auditRecorder.all()[0]?.detail).toMatchObject({
+      bulkActionType: 'CHANGE_PRIORITY',
+      newPriority: 'HIGH',
+    });
   });
 
-  it('releases a whole batch to the general inbox with a null assignee', async () => {
-    const { seeded, cases, bulkCaseAction } = build([{}, {}]);
-    await bulkCaseAction({
-      auth: ORG_1,
-      caseIds: seeded.map((k) => k.id),
-      action: 'REASSIGN',
-      assignedTo: { type: 'USER', id: 'analyst-9' },
-    });
+  it('ADD_TAGS merges without duplicating existing tags', async () => {
+    const { bulkCaseAction, cases, timelineRecorder } = buildUseCase([
+      buildCase(CASE_A, { tags: ['fraud'] }),
+    ]);
 
     const result = await bulkCaseAction({
-      auth: ORG_1,
-      caseIds: seeded.map((k) => k.id),
-      action: 'REASSIGN',
-      assignedTo: null,
+      auth: ANALYST,
+      caseIds: [CASE_A],
+      action: { type: 'ADD_TAGS', tags: ['fraud', 'aml', 'aml'] },
     });
 
-    expect(result.succeeded).toBe(2);
-    expect((await cases.findById(seeded[0]!.id))?.assignedTo).toBeNull();
+    expect(result.cases[0]?.tags).toEqual(['fraud', 'aml']);
+    expect(cases.all()[0]?.tags).toEqual(['fraud', 'aml']);
+    expect(timelineRecorder.all()[0]?.eventType).toBe('TAGS_UPDATED');
   });
 
-  it('sets the priority and lets the single-case rules recompute each deadline', async () => {
-    const { seeded, cases, bulkCaseAction } = build([{ priority: 'LOW' }, { priority: 'MEDIUM' }]);
+  it('ASSIGN sets the assignee and records ASSIGNED', async () => {
+    const { bulkCaseAction, cases } = buildUseCase([buildCase(CASE_A)]);
 
     const result = await bulkCaseAction({
-      auth: ORG_1,
-      caseIds: seeded.map((k) => k.id),
-      action: 'SET_PRIORITY',
-      priority: 'CRITICAL',
+      auth: ANALYST,
+      caseIds: [CASE_A],
+      action: { type: 'ASSIGN', assignedToType: 'USER', assignedToId: ANALYST_ID },
     });
 
-    expect(result.succeeded).toBe(2);
-    for (const kase of seeded) {
-      const stored = await cases.findById(kase.id);
-      expect(stored?.priority).toBe('CRITICAL');
-      // La ventana CRITICAL por defecto son 30 minutos: el lote hereda el
-      // recalculo de SLA sin reimplementarlo.
-      expect(stored?.dueDate).toBe('2026-09-01T08:30:00.000Z');
-    }
+    expect(result.cases[0]?.assignedTo).toEqual({ type: 'USER', id: ANALYST_ID });
+    expect(cases.all()[0]?.assignedTo?.id).toBe(ANALYST_ID);
   });
 
-  it('adds tags on top of the existing ones instead of replacing them', async () => {
-    const { seeded, cases, bulkCaseAction } = build([{ tags: ['AML'] }, { tags: ['CHARGEBACK'] }]);
-
-    await bulkCaseAction({
-      auth: ORG_1,
-      caseIds: seeded.map((k) => k.id),
-      action: 'ADD_TAGS',
-      tags: ['REVISION_2026'],
-    });
-
-    expect((await cases.findById(seeded[0]!.id))?.tags).toEqual(['AML', 'REVISION_2026']);
-    expect((await cases.findById(seeded[1]!.id))?.tags).toEqual(['CHARGEBACK', 'REVISION_2026']);
-  });
-
-  it('does not duplicate a tag a case already carries', async () => {
-    const { seeded, cases, bulkCaseAction } = build([{ tags: ['AML'] }]);
-
-    await bulkCaseAction({ auth: ORG_1, caseIds: [seeded[0]!.id], action: 'ADD_TAGS', tags: ['AML'] });
-
-    expect((await cases.findById(seeded[0]!.id))?.tags).toEqual(['AML']);
-  });
-
-  it('removes only the requested tags', async () => {
-    const { seeded, cases, bulkCaseAction } = build([{ tags: ['AML', 'SANCTIONS', 'CHARGEBACK'] }]);
-
-    await bulkCaseAction({
-      auth: ORG_1,
-      caseIds: [seeded[0]!.id],
-      action: 'REMOVE_TAGS',
-      tags: ['SANCTIONS'],
-    });
-
-    expect((await cases.findById(seeded[0]!.id))?.tags).toEqual(['AML', 'CHARGEBACK']);
-  });
-
-  it('keeps the successful cases when one in the batch fails', async () => {
-    // El tercero pertenece a otro inquilino: debe fallar sin arrastrar a los otros.
-    const { seeded, cases, bulkCaseAction } = build([{}, {}, { organizationId: 'org-2' }]);
+  it('does NOT recompute SLA on bulk priority change (dueDate untouched)', async () => {
+    const withDue = buildCase(CASE_A, { priority: 'LOW' }).withDueDate(NOW, NOW);
+    const { bulkCaseAction } = buildUseCase([withDue]);
 
     const result = await bulkCaseAction({
-      auth: ORG_1,
-      caseIds: seeded.map((k) => k.id),
-      action: 'REASSIGN',
-      assignedTo: { type: 'USER', id: 'analyst-9' },
+      auth: ANALYST,
+      caseIds: [CASE_A],
+      action: { type: 'CHANGE_PRIORITY', priority: 'CRITICAL' },
     });
 
-    expect(result.succeeded).toBe(2);
-    expect(result.failed).toBe(1);
-    expect((await cases.findById(seeded[0]!.id))?.assignedTo?.id).toBe('analyst-9');
-    expect((await cases.findById(seeded[2]!.id))?.assignedTo).toBeNull();
+    expect(result.cases[0]?.priority).toBe('CRITICAL');
+    expect(result.cases[0]?.dueDate).toEqual(NOW);
   });
 
-  it('reports per-case outcomes so the UI can name what failed', async () => {
-    const { seeded, bulkCaseAction } = build([{}, { organizationId: 'org-2' }]);
+  it('skips no-op cases (already at target) without timeline/audit noise', async () => {
+    const { bulkCaseAction, timelineRecorder, auditRecorder } = buildUseCase([
+      buildCase(CASE_A, { priority: 'HIGH' }),
+      buildCase(CASE_B, { priority: 'LOW' }),
+    ]);
 
     const result = await bulkCaseAction({
-      auth: ORG_1,
-      caseIds: seeded.map((k) => k.id),
-      action: 'SET_PRIORITY',
-      priority: 'HIGH',
+      auth: ANALYST,
+      caseIds: [CASE_A, CASE_B],
+      action: { type: 'CHANGE_PRIORITY', priority: 'HIGH' },
     });
 
-    expect(result.outcomes).toHaveLength(2);
-    expect(result.outcomes[0]).toMatchObject({ caseId: seeded[0]!.id, ok: true });
-    expect(result.outcomes[1]?.ok).toBe(false);
-    expect(result.outcomes[1]?.errorCode).toBeDefined();
-  });
-
-  it('deduplicates repeated ids so a case is not written twice', async () => {
-    const { seeded, timelineRecorder, bulkCaseAction } = build([{ priority: 'LOW' }]);
-    const id = seeded[0]!.id;
-
-    const result = await bulkCaseAction({
-      auth: ORG_1,
-      caseIds: [id, id, id],
-      action: 'SET_PRIORITY',
-      priority: 'HIGH',
-    });
-
-    expect(result.outcomes).toHaveLength(1);
+    expect(result.changedCaseIds).toEqual([CASE_B]);
+    expect(result.cases).toHaveLength(2);
     expect(timelineRecorder.all()).toHaveLength(1);
+    expect(auditRecorder.all()).toHaveLength(1);
   });
 
-  it('rejects an empty batch', async () => {
-    const { bulkCaseAction } = build([{}]);
+  it('is all-or-nothing: a missing case aborts the batch (CASE_NOT_FOUND) with no writes', async () => {
+    const { bulkCaseAction, cases, timelineRecorder, auditRecorder } = buildUseCase([
+      buildCase(CASE_A, { priority: 'LOW' }),
+    ]);
 
     await expect(
-      bulkCaseAction({ auth: ORG_1, caseIds: [], action: 'SET_PRIORITY', priority: 'HIGH' }),
-    ).rejects.toThrow(CaseManagementError);
+      bulkCaseAction({
+        auth: ANALYST,
+        caseIds: [CASE_A, oid('case-missing')],
+        action: { type: 'CHANGE_PRIORITY', priority: 'HIGH' },
+      }),
+    ).rejects.toMatchObject({ code: 'CASE_NOT_FOUND' });
+
+    expect(cases.all()[0]?.priority).toBe('LOW');
+    expect(timelineRecorder.all()).toHaveLength(0);
+    expect(auditRecorder.all()).toHaveLength(0);
   });
 
-  it('rejects a batch above the cap rather than holding the request open', async () => {
-    const { bulkCaseAction } = build([{}]);
-    const tooMany = Array.from({ length: MAX_BULK_CASES + 1 }, (_, i) => `case-${i}`);
+  it('rejects a cross-tenant case with FORBIDDEN_CROSS_TENANT', async () => {
+    const { bulkCaseAction } = buildUseCase([buildCase(CASE_A, { organizationId: ORG_2 })]);
 
     await expect(
-      bulkCaseAction({ auth: ORG_1, caseIds: tooMany, action: 'SET_PRIORITY', priority: 'HIGH' }),
-    ).rejects.toThrow(CaseManagementError);
+      bulkCaseAction({
+        auth: ANALYST,
+        caseIds: [CASE_A],
+        action: { type: 'CHANGE_PRIORITY', priority: 'HIGH' },
+      }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN_CROSS_TENANT' });
+  });
+
+  it('rejects ASSIGN when the assignee does not belong to the org', async () => {
+    const { bulkCaseAction } = buildUseCase([buildCase(CASE_A)]);
+
+    await expect(
+      bulkCaseAction({
+        auth: ANALYST,
+        caseIds: [CASE_A],
+        action: { type: 'ASSIGN', assignedToType: 'USER', assignedToId: oid('stranger') },
+      }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN_CROSS_TENANT' });
+  });
+
+  it('rejects AUDITOR with FORBIDDEN_ROLE', async () => {
+    const { bulkCaseAction } = buildUseCase([buildCase(CASE_A)]);
+
+    await expect(
+      bulkCaseAction({
+        auth: AUDITOR,
+        caseIds: [CASE_A],
+        action: { type: 'CHANGE_PRIORITY', priority: 'HIGH' },
+      }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN_ROLE' });
+  });
+
+  it('rejects an empty case selection with INVARIANT_VIOLATION', async () => {
+    const { bulkCaseAction } = buildUseCase([]);
+
+    await expect(
+      bulkCaseAction({
+        auth: ANALYST,
+        caseIds: [],
+        action: { type: 'CHANGE_PRIORITY', priority: 'HIGH' },
+      }),
+    ).rejects.toMatchObject({ code: 'INVARIANT_VIOLATION' } satisfies Partial<CaseManagementError>);
+  });
+
+  it('de-duplicates repeated case ids', async () => {
+    const { bulkCaseAction, auditRecorder } = buildUseCase([buildCase(CASE_A, { priority: 'LOW' })]);
+
+    const result = await bulkCaseAction({
+      auth: ANALYST,
+      caseIds: [CASE_A, CASE_A],
+      action: { type: 'CHANGE_PRIORITY', priority: 'HIGH' },
+    });
+
+    expect(result.cases).toHaveLength(1);
+    expect(auditRecorder.all()).toHaveLength(1);
   });
 });

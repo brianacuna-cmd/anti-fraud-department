@@ -1,5 +1,6 @@
 import type { User } from '../model/aggregates/User.js';
 import type { UserId } from '../model/value-objects/UserId.js';
+import type { RoleId } from '../model/value-objects/RoleId.js';
 import type { Email } from '../model/value-objects/Email.js';
 import type { Transaction } from './UnitOfWork.js';
 
@@ -23,4 +24,6 @@ export interface UserRepository {
   findById(id: UserId): Promise<User | null>;
   findByEmail(email: Email): Promise<User | null>;
   list(limit: number, cursor?: string): Promise<UserListPage>;
+  /** Active users assigned the given role within the bound tenant (notification fan-out). */
+  listByRole(roleId: RoleId): Promise<readonly User[]>;
 }

@@ -1,84 +1,49 @@
 import { invariantViolation } from '../../errors/CaseManagementError.js';
 
 /**
- * CaseTimeline's closed EventType vocabulary.
- *
- * The set is grouped by the subsystem that emits each event. It stays closed
- * on purpose: the timeline is the immutable audit narrative of a case, and an
- * open string field would let any caller invent a verb that no reader knows
- * how to render. Adding a member is a deliberate act — the UI's
- * `movementLabel` mapping and any consumer of `case_timeline` must learn it
- * at the same time.
+ * CaseTimeline's closed EventType vocabulary (spec: "EventType/Action closed
+ * vocabulary" — DEFAULT, pending team confirmation). If the team changes this
+ * set, this VO and the `case_timeline_case_created_idx` index usage must be
+ * revisited (design ADR carried from tasks Slice 3, item 1's BLOCKING FLAG).
  */
 export type TimelineEventType =
-  // --- Case lifecycle (CASE-001, 008, 009) ---
+  | 'STATE_CHANGED'
+  | 'ASSIGNED'
+  | 'NOTE_ADDED'
+  | 'DECISION_MADE'
   | 'CASE_CREATED'
   | 'CASE_REOPENED'
-  | 'STATE_CHANGED'
-  // --- Intake / dedup (CASE-011) ---
-  | 'SNAPSHOT_REFRESHED'
-  // --- Triage (CASE-002, 006, 007) ---
-  | 'ASSIGNED'
-  | 'ROUTED'
+  | 'EVIDENCE_ADDED'
   | 'PRIORITY_CHANGED'
-  | 'TAGS_CHANGED'
-  // --- SLA (CASE-003, 009) ---
-  | 'SLA_INITIALIZED'
-  | 'SLA_RESET'
-  | 'SLA_BREACHED'
-  // --- Investigation (INV-001, 002, 005, 006, 011) ---
-  | 'NOTE_ADDED'
-  | 'NOTE_DELETED'
-  | 'EVIDENCE_UPLOADED'
+  | 'TAGS_UPDATED'
   | 'EVIDENCE_DELETED'
-  | 'DECISION_MADE'
-  | 'CASE_RESOLVED'
-  // --- Deep investigations (INV-008, 012) ---
-  | 'INVESTIGATION_LINKED'
-  | 'INVESTIGATION_UNLINKED'
-  // --- Enforcement & approvals (ENF-001, 003, 004) ---
-  | 'ENFORCEMENT_REQUESTED'
-  | 'ENFORCEMENT_APPROVED'
-  | 'ENFORCEMENT_REJECTED'
-  | 'ENFORCEMENT_EXECUTED'
-  | 'ENFORCEMENT_REVERTED'
-  // --- Customer disputes (DISP-001, 002) ---
-  | 'DISPUTE_OPENED'
-  | 'DISPUTE_RESOLVED';
+  | 'NOTE_DELETED'
+  | 'CASE_LINKED_TO_INVESTIGATION'
+  // Ingesta Finturu (CASE-011): una reincidencia sobre un expediente ya ACTIVO
+  // refresca el snapshot en vez de abrir uno nuevo. Sin este hito la
+  // reincidencia se absorbia en silencio y el analista no la veia.
+  | 'SNAPSHOT_REFRESHED';
 
 const VALID_EVENT_TYPES: ReadonlySet<string> = new Set<TimelineEventType>([
+  'STATE_CHANGED',
+  'ASSIGNED',
+  'NOTE_ADDED',
+  'DECISION_MADE',
   'CASE_CREATED',
   'CASE_REOPENED',
-  'STATE_CHANGED',
-  'SNAPSHOT_REFRESHED',
-  'ASSIGNED',
-  'ROUTED',
+  'EVIDENCE_ADDED',
   'PRIORITY_CHANGED',
-  'TAGS_CHANGED',
-  'SLA_INITIALIZED',
-  'SLA_RESET',
-  'SLA_BREACHED',
-  'NOTE_ADDED',
-  'NOTE_DELETED',
-  'EVIDENCE_UPLOADED',
+  'TAGS_UPDATED',
   'EVIDENCE_DELETED',
-  'DECISION_MADE',
-  'CASE_RESOLVED',
-  'INVESTIGATION_LINKED',
-  'INVESTIGATION_UNLINKED',
-  'ENFORCEMENT_REQUESTED',
-  'ENFORCEMENT_APPROVED',
-  'ENFORCEMENT_REJECTED',
-  'ENFORCEMENT_EXECUTED',
-  'ENFORCEMENT_REVERTED',
-  'DISPUTE_OPENED',
-  'DISPUTE_RESOLVED',
+  'NOTE_DELETED',
+  'CASE_LINKED_TO_INVESTIGATION',
+  'SNAPSHOT_REFRESHED',
 ]);
 
 export function createTimelineEventType(value: string): TimelineEventType {
   if (!VALID_EVENT_TYPES.has(value)) {
     throw invariantViolation(
-      `TimelineEventType must be one of ${[...VALID_EVENT_TYPES].join(', ')}`,
+      'TimelineEventType must be one of STATE_CHANGED, ASSIGNED, NOTE_ADDED, DECISION_MADE, CASE_CREATED, CASE_REOPENED, EVIDENCE_ADDED, PRIORITY_CHANGED, TAGS_UPDATED, EVIDENCE_DELETED, NOTE_DELETED, CASE_LINKED_TO_INVESTIGATION, SNAPSHOT_REFRESHED',
       { value },
     );
   }

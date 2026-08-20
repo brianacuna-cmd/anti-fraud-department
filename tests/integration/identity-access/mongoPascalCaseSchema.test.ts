@@ -1,5 +1,5 @@
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
-import type { Db, MongoClient } from 'mongodb';
+import { ObjectId, type Db, type MongoClient } from 'mongodb';
 import { oid } from '../../support/oid.js';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
@@ -20,7 +20,7 @@ jest.setTimeout(120_000);
 
 /** Loosely-typed raw document shape for reading collections bypassing the mapper on purpose. */
 interface RawDocument {
-  readonly _id: string;
+  readonly _id: import('mongodb').ObjectId;
   readonly [key: string]: unknown;
 }
 
@@ -35,7 +35,7 @@ const ORG_ID = createOrganizationId(oid('org-pascal-1'));
  * if a rename is only partially applied (e.g. document interface renamed but
  * the mapper still writes camelCase, or vice-versa).
  */
-describe('Identity-access Mongo persistence — PascalCase raw document shape (design A1/A2)', () => {
+describe('Identity-access Mongo persistence — snake_case raw document shape', () => {
   let replicaSet: MongoMemoryReplSet;
   let client: MongoClient;
   let db: Db;
@@ -61,11 +61,11 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
   });
 
   afterEach(async () => {
-    await db.collection('Organizations').deleteMany({});
-    await db.collection('Users').deleteMany({});
+    await db.collection('organizations').deleteMany({});
+    await db.collection('users').deleteMany({});
   });
 
-  it('persists organizations under the PascalCase "Organizations" collection with PascalCase field keys', async () => {
+  it('persists organizations under the snake_case "organizations" collection with snake_case field keys', async () => {
     const organization = Organization.create({
       id: ORG_ID,
       name: 'Acme Corp',
@@ -75,31 +75,29 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
     });
     await organizations.save(organization);
 
-    const rawDocument = await db.collection<RawDocument>('Organizations').findOne({ _id: ORG_ID });
+    const rawDocument = await db.collection<RawDocument>('organizations').findOne({ _id: new ObjectId(ORG_ID) });
 
     expect(rawDocument).not.toBeNull();
     expect(rawDocument).toMatchObject({
-      _id: ORG_ID,
-      Name: 'Acme Corp',
-      Slug: 'acme-corp-pascal',
-      Domain: 'acme.example.com',
-      Status: 'ACTIVE',
-      Configuration: {},
-      DeletedAt: null,
+      _id: new ObjectId(ORG_ID),
+      name: 'Acme Corp',
+      slug: 'acme-corp-pascal',
+      domain: 'acme.example.com',
+      status: 'ACTIVE',
+      configuration: {},
+      deleted_at: null,
     });
-    expect(typeof rawDocument?.CreatedAt).toBe('string');
-    expect(typeof rawDocument?.UpdatedAt).toBe('string');
-    // No stray camelCase leftovers and no `_Id` shadow field (A1).
-    expect(rawDocument).not.toHaveProperty('name');
-    expect(rawDocument).not.toHaveProperty('slug');
-    expect(rawDocument).not.toHaveProperty('configuration');
+    expect(rawDocument?.created_at).toBeInstanceOf(Date);
+    expect(rawDocument?.updated_at).toBeInstanceOf(Date);
+    expect(rawDocument).not.toHaveProperty('Name');
+    expect(rawDocument).not.toHaveProperty('Slug');
+    expect(rawDocument).not.toHaveProperty('createdAt');
     expect(rawDocument).not.toHaveProperty('logoUrl');
     expect(rawDocument).not.toHaveProperty('LogoUrl');
-    expect(rawDocument).not.toHaveProperty('createdAt');
     expect(rawDocument).not.toHaveProperty('_Id');
   });
 
-  it('persists users under the PascalCase "Users" collection with PascalCase field keys', async () => {
+  it('persists users under the snake_case "users" collection with snake_case field keys', async () => {
     const userId = createUserId(oid('user-pascal-1'));
     const user = User.create({
       id: userId,
@@ -114,33 +112,32 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
     });
     await userRepositoryFactory.forTenant(ORG_ID).save(user);
 
-    const rawDocument = await db.collection<RawDocument>('Users').findOne({ _id: userId });
+    const rawDocument = await db.collection<RawDocument>('users').findOne({ _id: new ObjectId(userId) });
 
     expect(rawDocument).not.toBeNull();
     expect(rawDocument).toMatchObject({
-      _id: userId,
-      OrganizationId: ORG_ID,
-      Email: 'pascal@example.com',
-      PasswordHash: 'a-bcrypt-hash',
-      FirstName: 'Pascal',
-      MiddleName: 'Middle',
-      LastName: 'Case',
-      AvatarUrl: null,
-      Status: 'ACTIVE',
-      IsPlatformAdmin: false,
-      ResetToken: null,
-      Mfa: { Secret: null, Enabled: false, RecoveryCodes: [] },
+      _id: new ObjectId(userId),
+      organization_id: new ObjectId(ORG_ID),
+      email: 'pascal@example.com',
+      password_hash: 'a-bcrypt-hash',
+      first_name: 'Pascal',
+      middle_name: 'Middle',
+      last_name: 'Case',
+      avatar_url: null,
+      status: 'ACTIVE',
+      is_platform_admin: false,
+      reset_token: null,
+      mfa: { secret: null, enabled: false, recovery_codes: [] },
     });
-    expect(typeof rawDocument?.CreatedAt).toBe('string');
-    expect(typeof rawDocument?.UpdatedAt).toBe('string');
-    // No stray camelCase leftovers and no `_Id` shadow field (A1).
+    expect(rawDocument?.created_at).toBeInstanceOf(Date);
+    expect(rawDocument?.updated_at).toBeInstanceOf(Date);
     expect(rawDocument).not.toHaveProperty('organizationId');
-    expect(rawDocument).not.toHaveProperty('email');
-    expect(rawDocument).not.toHaveProperty('passwordHash');
+    expect(rawDocument).not.toHaveProperty('OrganizationId');
     expect(rawDocument).not.toHaveProperty('firstName');
-    expect(rawDocument).not.toHaveProperty('middleName');
+    expect(rawDocument).not.toHaveProperty('FirstName');
+    expect(rawDocument).not.toHaveProperty('passwordHash');
     expect(rawDocument).not.toHaveProperty('resetToken');
-    expect(rawDocument).not.toHaveProperty('mfa');
+    expect(rawDocument).not.toHaveProperty('Mfa');
     expect(rawDocument).not.toHaveProperty('_Id');
   });
 
@@ -203,10 +200,10 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
     });
     await userRepositoryFactory.forTenant(ORG_ID).save(user);
 
-    const rawDocument = await db.collection<RawDocument>('Users').findOne({ _id: oid('user-id-guard') });
+    const rawDocument = await db.collection<RawDocument>('users').findOne({ _id: new ObjectId(oid('user-id-guard')) });
 
     expect(rawDocument).not.toBeNull();
-    expect(typeof rawDocument?._id).toBe('string');
+    expect(rawDocument?._id).toBeInstanceOf(ObjectId);
     expect(rawDocument?._id.toString()).toBe(oid('user-id-guard'));
     expect(rawDocument).not.toHaveProperty('_Id');
   });
@@ -222,7 +219,7 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
    * partial rename (e.g. index re-keyed but collection not renamed) fails
    * loudly here instead of only surfacing as a silent index-shape drift.
    */
-  it('enforces per-tenant email uniqueness via the PascalCase {OrganizationId, Email} compound index', async () => {
+  it('enforces per-tenant email uniqueness via the PascalCase {organization_id, email} compound index', async () => {
     const orgA = createOrganizationId(oid('org-pascal-a'));
     const orgB = createOrganizationId(oid('org-pascal-b'));
 
@@ -255,9 +252,9 @@ describe('Identity-access Mongo persistence — PascalCase raw document shape (d
       ),
     ).resolves.toBeUndefined();
 
-    const indexes = await db.collection('Users').indexes();
+    const indexes = await db.collection('users').indexes();
     const emailIndex = indexes.find((index) => index.name === 'user_email_unique');
-    expect(emailIndex?.key).toEqual({ OrganizationId: 1, Email: 1 });
+    expect(emailIndex?.key).toEqual({ organization_id: 1, email: 1 });
     expect(emailIndex?.unique).toBe(true);
   });
 });

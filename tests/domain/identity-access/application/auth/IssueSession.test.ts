@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { authenticator } from 'otplib';
 import { createIssueSessionUseCase } from '../../../../../src/modules/identity-access/application/auth/IssueSession.js';
 import { createSessionIssuer } from '../../../../../src/modules/identity-access/application/auth/SessionIssuer.js';
@@ -22,7 +23,7 @@ import type { MfaChallengeRecord } from '../../../../../src/modules/identity-acc
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const CREATED_AT = fromDate(new Date('2025-12-31T00:00:00.000Z'));
-const ORG_ID = createOrganizationId('org-1');
+const ORG_ID = createOrganizationId(oid('org-1'));
 const SECRET_CIPHER = new AesGcmSecretCipher('test-secret', 1);
 const TOTP_SERVICE = new OtplibTotpService();
 const TOKEN_SERVICE = new AesGcmSessionTokenService(SECRET_CIPHER);
@@ -32,7 +33,7 @@ async function seedActivatedUser(
   plaintextSecret: string,
 ): Promise<void> {
   const user = User.create({
-    id: createUserId('user-1'),
+    id: createUserId(oid('user-1')),
     organizationId: ORG_ID,
     email: createEmail('alice@example.com'),
     credential: createPasswordCredential('hash'),
@@ -51,8 +52,8 @@ function issueChallengeToken(jti: string, expiresAt = fromDate(new Date('2026-01
     tokenType: 'mfa_challenge',
     keyVersion: 1,
     jti,
-    userId: 'user-1',
-    organizationId: 'org-1',
+    userId: oid('user-1'),
+    organizationId: oid('org-1'),
     actorType: 'USER',
     expiresAt,
   });
@@ -68,7 +69,7 @@ function buildHarness() {
     sessionTokenService: TOKEN_SERVICE,
     sessions,
     tokenKeyVersion: 1,
-    ttls: { sessionSeconds: 900, refreshSeconds: 1_209_600, familySeconds: 2_592_000 },
+    ttls: { sessionSeconds: 900 },
   });
   const issueSession = createIssueSessionUseCase({
     sessionTokenService: TOKEN_SERVICE,
@@ -86,8 +87,8 @@ function buildHarness() {
 
 async function appendChallenge(mfaChallenges: InMemoryMfaChallengeStore, record: Partial<MfaChallengeRecord> & { jti: string }): Promise<void> {
   await mfaChallenges.append({
-    userId: 'user-1',
-    organizationId: 'org-1',
+    userId: oid('user-1'),
+    organizationId: oid('org-1'),
     actorType: 'USER',
     tokenType: 'mfa_challenge',
     expiresAt: fromDate(new Date('2026-01-01T00:05:00.000Z')),
@@ -112,7 +113,7 @@ describe('createIssueSessionUseCase', () => {
     expect(unitOfWork.transactionCount).toBe(1);
     expect((await mfaChallenges.get('jti-1'))?.consumedAt).toBe(NOW);
     const saved = await sessions.findByTokenHash(TOKEN_SERVICE.fingerprint(result.accessToken));
-    expect(saved?.userId).toBe('user-1');
+    expect(saved?.userId).toBe(oid('user-1'));
     const calls = auditRecorder.calls();
     expect(calls).toHaveLength(1);
     expect(calls[0].event.action).toBe('LOGIN');
@@ -176,7 +177,7 @@ describe('createIssueSessionUseCase', () => {
 
   it('rejects a malformed/ACCESS-typed token', async () => {
     const { issueSession } = buildHarness();
-    const accessToken = TOKEN_SERVICE.issue({ sessionId: 'session-1', tokenType: 'ACCESS', keyVersion: 1 });
+    const accessToken = TOKEN_SERVICE.issue({ sessionId: oid('session-1'), tokenType: 'ACCESS', keyVersion: 1 });
 
     await expect(issueSession({ challengeToken: accessToken, totp: '123456' })).rejects.toMatchObject({
       code: 'MFA_CHALLENGE_INVALID',
@@ -192,8 +193,8 @@ describe('createIssueSessionUseCase', () => {
       tokenType: 'mfa_enrollment',
       keyVersion: 1,
       jti: 'jti-5',
-      userId: 'user-1',
-      organizationId: 'org-1',
+      userId: oid('user-1'),
+      organizationId: oid('org-1'),
       actorType: 'USER',
       expiresAt: fromDate(new Date('2026-01-01T00:05:00.000Z')),
     });

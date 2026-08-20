@@ -10,7 +10,7 @@ function toSession(tx: Transaction | undefined): ClientSession | undefined {
   return tx as unknown as ClientSession | undefined;
 }
 
-const COLLECTION_NAME = 'AuditLogs';
+const COLLECTION_NAME = 'audit_logs';
 
 /**
  * Mongo adapter for `AuditLogRepository` (design D-A8). Append-only —

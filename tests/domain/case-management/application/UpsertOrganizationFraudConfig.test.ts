@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createUpsertOrganizationFraudConfigUseCase } from '../../../../src/modules/case-management/application/UpsertOrganizationFraudConfig.js';
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
 import { OrganizationFraudConfig } from '../../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
@@ -9,7 +10,7 @@ import { CaseManagementError } from '../../../../src/modules/case-management/dom
 
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const NOW = fromDate(new Date('2026-01-02T00:00:00.000Z'));
-const ORG_1_USER = createAuthContext({ userId: 'user-1', organizationId: 'org-1' });
+const ORG_1_USER = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1') });
 
 const VALID_INPUT = {
   slaLowMinutes: 240,
@@ -34,11 +35,11 @@ describe('createUpsertOrganizationFraudConfigUseCase', () => {
 
     const result = await upsertConfig({ auth: ORG_1_USER, ...VALID_INPUT });
 
-    expect(result.organizationId).toBe('org-1');
+    expect(result.organizationId).toBe(oid('org-1'));
     expect(result.slaCriticalMinutes).toBe(30);
     expect(result.createdAt).toBe(NOW);
     expect(result.updatedAt).toBe(NOW);
-    const stored = await repository.findByOrganization('org-1');
+    const stored = await repository.findByOrganization(oid('org-1'));
     expect(stored?.riskThresholdCritical).toBe(90);
   });
 
@@ -46,8 +47,8 @@ describe('createUpsertOrganizationFraudConfigUseCase', () => {
     const repository = new InMemoryOrganizationFraudConfigRepository();
     repository.seed(
       OrganizationFraudConfig.create({
-        id: createOrganizationFraudConfigId('config-1'),
-        organizationId: 'org-1',
+        id: createOrganizationFraudConfigId(oid('config-1')),
+        organizationId: oid('org-1'),
         ...VALID_INPUT,
         now: CREATED_AT,
       }),
@@ -56,7 +57,7 @@ describe('createUpsertOrganizationFraudConfigUseCase', () => {
 
     const result = await upsertConfig({ auth: ORG_1_USER, ...VALID_INPUT, slaCriticalMinutes: 15 });
 
-    expect(result.id).toBe(createOrganizationFraudConfigId('config-1'));
+    expect(result.id).toBe(createOrganizationFraudConfigId(oid('config-1')));
     expect(result.slaCriticalMinutes).toBe(15);
     expect(result.createdAt).toBe(CREATED_AT);
     expect(result.updatedAt).toBe(NOW);
@@ -66,7 +67,7 @@ describe('createUpsertOrganizationFraudConfigUseCase', () => {
     const repository = new InMemoryOrganizationFraudConfigRepository();
     const upsertSpy = jest.spyOn(repository, 'upsert');
     const upsertConfig = buildUseCase(repository);
-    const platformAdmin = createAuthContext({ userId: 'admin-1', organizationId: null, isPlatformAdmin: true });
+    const platformAdmin = createAuthContext({ userId: oid('admin-1'), organizationId: null, isPlatformAdmin: true });
 
     expect.assertions(3);
     try {

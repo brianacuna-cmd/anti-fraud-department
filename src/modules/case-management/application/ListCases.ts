@@ -1,26 +1,22 @@
 import type { AuthContext } from '../../../shared/kernel/AuthContext.js';
-import type { CaseListFilter, CaseListPage, CaseRepository } from '../domain/ports/CaseRepository.js';
-
-/** Hard ceiling on page size: an unbounded `limit` is a denial-of-service knob. */
-const MAX_LIMIT = 200;
-const DEFAULT_LIMIT = 50;
+import type { Instant } from '../../../shared/time/Instant.js';
+import type { CaseRepository, CaseListResult } from '../domain/ports/CaseRepository.js';
+import type { CaseStatus } from '../domain/model/value-objects/CaseStatus.js';
+import type { CasePriority } from '../domain/model/value-objects/CasePriority.js';
+import { requireTenantContext } from './authorization/requireTenantContext.js';
 
 export interface ListCasesInput {
   readonly auth: AuthContext;
-  readonly limit?: number;
-  readonly cursor?: string;
-  readonly status?: string | readonly string[];
-  readonly priority?: string | readonly string[];
+  readonly status?: readonly CaseStatus[];
+  readonly priority?: readonly CasePriority[];
   readonly assignedToId?: string;
-  readonly assignedToType?: string;
-  readonly tags?: readonly string[];
   readonly riskScoreMin?: number;
   readonly riskScoreMax?: number;
-  readonly createdFrom?: string;
-  readonly createdTo?: string;
-  readonly dueBefore?: string;
-  readonly overdueOnly?: boolean;
-  readonly search?: string;
+  readonly tags?: readonly string[];
+  readonly dueAfter?: Instant;
+  readonly dueBefore?: Instant;
+  readonly limit: number;
+  readonly offset: number;
 }
 
 export interface ListCasesDeps {
@@ -28,41 +24,24 @@ export interface ListCasesDeps {
 }
 
 /**
- * Builds the repository filter shared by CASE-004 (list) and CASE-013
- * (export), so a CSV can never contain rows the equivalent listing hides.
- *
- * Tenant scoping is decided here and nowhere else: a PLATFORM_ADMIN spans
- * every organization (`null`), anyone else is pinned to their own. The
- * transport may not override it — passing `organizationId` from a query
- * string would turn the filter into a tenant-escape hatch.
+ * Inbox list (PR3). Tenant-scopes the CaseRepository.list query and returns
+ * a filtered, paginated page (soft-deletes excluded; dueDate ASC nulls last).
  */
-export function toCaseListFilter(input: ListCasesInput): CaseListFilter {
-  const requestedLimit = Math.trunc(input.limit ?? DEFAULT_LIMIT);
-  const limit = Number.isFinite(requestedLimit)
-    ? Math.min(Math.max(requestedLimit, 1), MAX_LIMIT)
-    : DEFAULT_LIMIT;
-
-  return {
-    organizationId: input.auth.actorType === 'PLATFORM_ADMIN' ? null : input.auth.organizationId,
-    limit,
-    cursor: input.cursor,
-    status: input.status,
-    priority: input.priority,
-    assignedToId: input.assignedToId,
-    assignedToType: input.assignedToType,
-    tags: input.tags,
-    riskScoreMin: input.riskScoreMin,
-    riskScoreMax: input.riskScoreMax,
-    createdFrom: input.createdFrom,
-    createdTo: input.createdTo,
-    dueBefore: input.dueBefore,
-    overdueOnly: input.overdueOnly,
-    search: input.search,
-  };
-}
-
 export function createListCasesUseCase(deps: ListCasesDeps) {
-  return async function listCases(input: ListCasesInput): Promise<CaseListPage> {
-    return deps.cases.list(toCaseListFilter(input));
+  return async function listCases(input: ListCasesInput): Promise<CaseListResult> {
+    const organizationId = requireTenantContext(input.auth);
+    return deps.cases.list({
+      organizationId,
+      status: input.status,
+      priority: input.priority,
+      assignedToId: input.assignedToId,
+      riskScoreMin: input.riskScoreMin,
+      riskScoreMax: input.riskScoreMax,
+      tags: input.tags,
+      dueAfter: input.dueAfter,
+      dueBefore: input.dueBefore,
+      limit: input.limit,
+      offset: input.offset,
+    });
   };
 }

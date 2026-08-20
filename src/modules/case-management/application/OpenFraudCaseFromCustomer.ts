@@ -5,12 +5,13 @@ import type { TimelineRecorder } from '../domain/ports/TimelineRecorder.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { InitializeCaseSlaService } from './InitializeCaseSla.js';
-import type { OutboxRepository } from '../domain/ports/OutboxRepository.js';
+import type { OutboxEventRepository } from '../../../shared/outbox/OutboxEventRepository.js';
+import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
 import type { CaseId } from '../domain/model/value-objects/CaseId.js';
 import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
 import { Case } from '../domain/model/aggregates/Case.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
-import { OutboxEvent } from '../domain/model/aggregates/OutboxEvent.js';
+import { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
 import { createRiskScore } from '../domain/model/value-objects/RiskScore.js';
 import { createCasePriority } from '../domain/model/value-objects/CasePriority.js';
 import { createAssignedTo, type AssignedTo } from '../domain/model/value-objects/AssignedTo.js';
@@ -35,11 +36,12 @@ export interface OpenFraudCaseInput {
 export interface OpenFraudCaseDeps {
   readonly cases: CaseRepository;
   readonly timelineRecorder: TimelineRecorder;
-  readonly outbox: OutboxRepository;
+  readonly outbox: OutboxEventRepository;
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
   readonly generateCaseId: () => CaseId;
   readonly generateTimelineEventId: () => TimelineEventId;
+  readonly generateOutboxEventId: () => OutboxEventId;
   readonly auditRecorder: AuditRecorder;
   readonly initializeCaseSla: InitializeCaseSlaService;
 }
@@ -216,7 +218,8 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
 
       // Record Outbox Event
       const outboxEvent = OutboxEvent.create({
-        id: deps.generateTimelineEventId(),
+        id: deps.generateOutboxEventId(),
+        organizationId: kase.organizationId,
         aggregateType: 'Case',
         aggregateId: kase.id,
         eventType: 'case.created',
@@ -232,7 +235,7 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
         },
         now,
       });
-      await deps.outbox.record(outboxEvent, tx);
+      await deps.outbox.save(outboxEvent, tx);
 
       return kase;
     });

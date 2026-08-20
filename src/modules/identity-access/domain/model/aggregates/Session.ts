@@ -1,75 +1,82 @@
 import type { Instant } from '../../../../../shared/time/Instant.js';
 import type { SessionId } from '../value-objects/SessionId.js';
-import type { FamilyId } from '../value-objects/FamilyId.js';
 import type { OrganizationId } from '../value-objects/OrganizationId.js';
+import type { AdminOrganizationId } from '../value-objects/AdminOrganizationId.js';
 import type { ActorType } from '../value-objects/ActorType.js';
+import { invariantViolation } from '../../errors/IdentityAccessError.js';
 
 export interface SessionProps {
   readonly id: SessionId;
-  /** Polymorphic principal id (User or admin principal) — plain string per design D37. `null` for ORGANIZATION. */
+  /** Set for a USER session; null otherwise. */
   readonly userId: string | null;
+  /** Set for USER (tenant) and ORGANIZATION sessions; null for PLATFORM_ADMIN. */
   readonly organizationId: OrganizationId | null;
-  readonly actorType: ActorType;
+  /** Set for a SUPER ADMIN session; null otherwise. */
+  readonly adminOrganizationId: AdminOrganizationId | null;
   readonly tokenHash: string;
-  /** Nullable — the `PLATFORM_ADMIN` tier issues no refresh token (design D38). */
-  readonly refreshTokenHash: string | null;
   readonly expiresAt: Instant;
-  readonly refreshExpiresAt: Instant | null;
-  readonly familyId: FamilyId;
-  /** Fixed at initial issuance, never extended by rotation (design D15). */
-  readonly familyExpiresAt: Instant;
-  readonly rotatedAt: Instant | null;
-  readonly rotatedFromSessionId: SessionId | null;
+  readonly ipAddress: string | null;
+  readonly userAgent: string | null;
   readonly createdAt: Instant;
-  readonly updatedAt: Instant;
-  /** The SOLE revocation signal (design D14) — no separate `revokedAt`. */
+  /** The SOLE revocation signal — no separate `revokedAt`. */
   readonly deletedAt: Instant | null;
 }
 
 export interface CreateSessionInput {
   readonly id: SessionId;
-  readonly userId: string | null;
-  readonly organizationId: OrganizationId | null;
-  readonly actorType: ActorType;
+  readonly userId?: string | null;
+  readonly organizationId?: OrganizationId | null;
+  readonly adminOrganizationId?: AdminOrganizationId | null;
   readonly tokenHash: string;
-  readonly refreshTokenHash: string | null;
   readonly expiresAt: Instant;
-  readonly refreshExpiresAt: Instant | null;
-  readonly familyId: FamilyId;
-  readonly familyExpiresAt: Instant;
-  readonly rotatedFromSessionId?: SessionId | null;
+  readonly ipAddress?: string | null;
+  readonly userAgent?: string | null;
   readonly now: Instant;
 }
 
+function actorTypeOf(props: {
+  readonly userId: string | null;
+  readonly organizationId: OrganizationId | null;
+  readonly adminOrganizationId: AdminOrganizationId | null;
+}): ActorType {
+  if (props.adminOrganizationId !== null && (props.userId !== null || props.organizationId !== null)) {
+    throw invariantViolation('PLATFORM_ADMIN session cannot carry userId or organizationId');
+  }
+  if (props.adminOrganizationId !== null) {
+    return 'PLATFORM_ADMIN';
+  }
+  if (props.userId !== null) {
+    return 'USER';
+  }
+  if (props.organizationId !== null) {
+    return 'ORGANIZATION';
+  }
+  throw invariantViolation('Session must set userId, organizationId, or adminOrganizationId');
+}
+
 /**
- * A `Sessions` row = ONE rotation generation, never the whole family (design
- * D14). Immutable, mirrors `Organization`/`User`'s private-ctor +
- * create/rehydrate shape. `refreshTokenHash`/`refreshExpiresAt` are nullable
- * (design D38) — a tier may issue a session without a refresh token; a
- * non-null constraint would make the `PLATFORM_ADMIN` tier unrepresentable.
- * `deletedAt` is the SOLE revocation signal (design D14) — `isRevoked` is
- * derived from it alone, deliberately with no separate `revokedAt` field to
- * disagree with.
+ * A `sessions` row: one live (or revoked) access session. Actor kind is
+ * derived from which FK is set — USER (`user_id`), ORGANIZATION
+ * (`organization_id` only), or PLATFORM_ADMIN (`admin_organization_id`).
  */
 export class Session {
   private constructor(private readonly props: SessionProps) {}
 
   static create(input: CreateSessionInput): Session {
+    const userId = input.userId ?? null;
+    const organizationId = input.organizationId ?? null;
+    const adminOrganizationId = input.adminOrganizationId ?? null;
+    actorTypeOf({ userId, organizationId, adminOrganizationId });
     return new Session({
       id: input.id,
-      userId: input.userId,
-      organizationId: input.organizationId,
-      actorType: input.actorType,
+      userId,
+      organizationId,
+      adminOrganizationId,
       tokenHash: input.tokenHash,
-      refreshTokenHash: input.refreshTokenHash,
       expiresAt: input.expiresAt,
-      refreshExpiresAt: input.refreshExpiresAt,
-      familyId: input.familyId,
-      familyExpiresAt: input.familyExpiresAt,
-      rotatedAt: null,
-      rotatedFromSessionId: input.rotatedFromSessionId ?? null,
+      ipAddress: input.ipAddress ?? null,
+      userAgent: input.userAgent ?? null,
       createdAt: input.now,
-      updatedAt: input.now,
       deletedAt: null,
     });
   }
@@ -91,55 +98,38 @@ export class Session {
     return this.props.organizationId;
   }
 
+  get adminOrganizationId(): AdminOrganizationId | null {
+    return this.props.adminOrganizationId;
+  }
+
   get actorType(): ActorType {
-    return this.props.actorType;
+    return actorTypeOf(this.props);
   }
 
   get tokenHash(): string {
     return this.props.tokenHash;
   }
 
-  get refreshTokenHash(): string | null {
-    return this.props.refreshTokenHash;
-  }
-
   get expiresAt(): Instant {
     return this.props.expiresAt;
   }
 
-  get refreshExpiresAt(): Instant | null {
-    return this.props.refreshExpiresAt;
+  get ipAddress(): string | null {
+    return this.props.ipAddress;
   }
 
-  get familyId(): FamilyId {
-    return this.props.familyId;
-  }
-
-  get familyExpiresAt(): Instant {
-    return this.props.familyExpiresAt;
-  }
-
-  get rotatedAt(): Instant | null {
-    return this.props.rotatedAt;
-  }
-
-  get rotatedFromSessionId(): SessionId | null {
-    return this.props.rotatedFromSessionId;
+  get userAgent(): string | null {
+    return this.props.userAgent;
   }
 
   get createdAt(): Instant {
     return this.props.createdAt;
   }
 
-  get updatedAt(): Instant {
-    return this.props.updatedAt;
-  }
-
   get deletedAt(): Instant | null {
     return this.props.deletedAt;
   }
 
-  /** Derived purely from `deletedAt` (design D14) — never a separate stored flag. */
   get isRevoked(): boolean {
     return this.props.deletedAt !== null;
   }

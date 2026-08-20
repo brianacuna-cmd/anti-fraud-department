@@ -7,7 +7,7 @@ import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
 import { MongoOrganizationFraudConfigRepository } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoOrganizationFraudConfigRepository.js';
 import { OrganizationFraudConfig } from '../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
 import { createOrganizationFraudConfigId } from '../../../src/modules/case-management/domain/model/value-objects/OrganizationFraudConfigId.js';
-import { fromDate } from '../../../src/shared/time/Instant.js';
+import { fromDate, toDate } from '../../../src/shared/time/Instant.js';
 import { extractDuplicateKeyIndexName } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/duplicateKey.js';
 import type { OrganizationFraudConfigDocument } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/documents/OrganizationFraudConfigDocument.js';
 
@@ -16,7 +16,7 @@ jest.setTimeout(120_000);
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const LATER = fromDate(new Date('2026-01-02T00:00:00.000Z'));
 
-function buildConfig(id: string, organizationId = 'org-1'): OrganizationFraudConfig {
+function buildConfig(id: string, organizationId = oid('org-1')): OrganizationFraudConfig {
   return OrganizationFraudConfig.create({
     id: createOrganizationFraudConfigId(oid(id)),
     organizationId,
@@ -57,21 +57,32 @@ describe('MongoOrganizationFraudConfigRepository (integration, real replica-set 
   });
 
   afterEach(async () => {
-    await db.collection('OrganizationFraudConfig').deleteMany({});
+    await db.collection('organization_fraud_config').deleteMany({});
   });
 
   it('upserts a config and retrieves it by organization', async () => {
     await repository.upsert(buildConfig('config-1'));
 
-    const found = await repository.findByOrganization('org-1');
+    const found = await repository.findByOrganization(oid('org-1'));
 
-    expect(found?.organizationId).toBe('org-1');
+    expect(found?.organizationId).toBe(oid('org-1'));
     expect(found?.slaHighMinutes).toBe(60);
     expect(found?.riskThresholdCritical).toBe(90);
+    expect(found?.outboundWebhookUrl).toBeNull();
+  });
+
+  it('persists and reads outboundWebhookUrl', async () => {
+    await repository.upsert(
+      buildConfig('config-1').update({ outboundWebhookUrl: 'https://hooks.example/fraud' }, NOW),
+    );
+
+    const found = await repository.findByOrganization(oid('org-1'));
+
+    expect(found?.outboundWebhookUrl).toBe('https://hooks.example/fraud');
   });
 
   it('returns null when no config matches the given organization', async () => {
-    const found = await repository.findByOrganization('missing-org');
+    const found = await repository.findByOrganization(oid('missing-org'));
 
     expect(found).toBeNull();
   });
@@ -81,12 +92,12 @@ describe('MongoOrganizationFraudConfigRepository (integration, real replica-set 
     await repository.upsert(buildConfig('config-1').update({ slaCriticalMinutes: 15 }, LATER));
 
     const documents = await db
-      .collection<OrganizationFraudConfigDocument>('OrganizationFraudConfig')
-      .find({ OrganizationId: 'org-1' })
+      .collection<OrganizationFraudConfigDocument>('organization_fraud_config')
+      .find({ organization_id: new ObjectId(oid('org-1')) })
       .toArray();
 
     expect(documents).toHaveLength(1);
-    expect(documents[0]?.SlaCriticalMinutes).toBe(15);
+    expect(documents[0]?.sla_critical_minutes).toBe(15);
   });
 
   /**
@@ -102,20 +113,20 @@ describe('MongoOrganizationFraudConfigRepository (integration, real replica-set 
 
     let caughtError: unknown;
     try {
-      await db.collection<OrganizationFraudConfigDocument>('OrganizationFraudConfig').insertOne({
+      await db.collection<OrganizationFraudConfigDocument>('organization_fraud_config').insertOne({
         _id: new ObjectId(oid('config-2')),
-        OrganizationId: 'org-1',
-        SlaLowMinutes: 240,
-        SlaMediumMinutes: 120,
-        SlaHighMinutes: 60,
-        SlaCriticalMinutes: 30,
-        RiskThresholdLow: 25,
-        RiskThresholdMedium: 50,
-        RiskThresholdHigh: 75,
-        RiskThresholdCritical: 90,
-        FeatureFlags: {},
-        CreatedAt: NOW,
-        UpdatedAt: NOW,
+        organization_id: new ObjectId(oid('org-1')),
+        sla_low_minutes: 240,
+        sla_medium_minutes: 120,
+        sla_high_minutes: 60,
+        sla_critical_minutes: 30,
+        risk_threshold_low: 25,
+        risk_threshold_medium: 50,
+        risk_threshold_high: 75,
+        risk_threshold_critical: 90,
+        feature_flags: {},
+        created_at: toDate(NOW),
+        updated_at: toDate(NOW),
       });
     } catch (error) {
       caughtError = error;
@@ -129,8 +140,8 @@ describe('MongoOrganizationFraudConfigRepository (integration, real replica-set 
     await repository.upsert(buildConfig('config-id-guard'));
 
     const rawDocument = await db
-      .collection<OrganizationFraudConfigDocument>('OrganizationFraudConfig')
-      .findOne({ OrganizationId: 'org-1' });
+      .collection<OrganizationFraudConfigDocument>('organization_fraud_config')
+      .findOne({ organization_id: new ObjectId(oid('org-1')) });
 
     expect(rawDocument).not.toBeNull();
     expect(rawDocument?._id).toBeInstanceOf(ObjectId);

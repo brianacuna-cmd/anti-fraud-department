@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import type { Request } from 'express';
 import { TrustedHeaderAuthContextResolver } from '../../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/TrustedHeaderAuthContextResolver.js';
 
@@ -10,16 +11,16 @@ describe('TrustedHeaderAuthContextResolver', () => {
 
   it('resolves an AuthContext from x-actor-* headers', async () => {
     const request = buildRequest({
-      'x-actor-user-id': 'user-1',
-      'x-actor-organization-id': 'org-1',
+      'x-actor-user-id': oid('user-1'),
+      'x-actor-organization-id': oid('org-1'),
       'x-actor-is-platform-admin': 'true',
     });
 
     const auth = await resolver.resolve(request);
 
     expect(auth).toEqual({
-      userId: 'user-1',
-      organizationId: 'org-1',
+      userId: oid('user-1'),
+      organizationId: oid('org-1'),
       isPlatformAdmin: true,
       actorType: 'PLATFORM_ADMIN',
       roleId: null,
@@ -31,7 +32,7 @@ describe('TrustedHeaderAuthContextResolver', () => {
   });
 
   it('defaults isPlatformAdmin to false and actorType to USER when the header is absent', async () => {
-    const request = buildRequest({ 'x-actor-user-id': 'user-1', 'x-actor-organization-id': 'org-1' });
+    const request = buildRequest({ 'x-actor-user-id': oid('user-1'), 'x-actor-organization-id': oid('org-1') });
 
     const auth = await resolver.resolve(request);
 
@@ -40,7 +41,7 @@ describe('TrustedHeaderAuthContextResolver', () => {
   });
 
   it('resolves organizationId: null when the header is absent (design D11 — a platform admin has no organization)', async () => {
-    const request = buildRequest({ 'x-actor-user-id': 'admin-1', 'x-actor-is-platform-admin': 'true' });
+    const request = buildRequest({ 'x-actor-user-id': oid('admin-1'), 'x-actor-is-platform-admin': 'true' });
 
     const auth = await resolver.resolve(request);
 
@@ -49,7 +50,7 @@ describe('TrustedHeaderAuthContextResolver', () => {
   });
 
   it('returns null when x-actor-user-id is missing', async () => {
-    const request = buildRequest({ 'x-actor-organization-id': 'org-1' });
+    const request = buildRequest({ 'x-actor-organization-id': oid('org-1') });
 
     expect(await resolver.resolve(request)).toBeNull();
   });

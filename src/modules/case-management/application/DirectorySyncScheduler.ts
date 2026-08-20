@@ -46,7 +46,7 @@ export class DirectorySyncScheduler {
 
     this.inFlight = (async () => {
       try {
-        const result = await this.options.syncDirectory({});
+        const result = await this.options.syncDirectory();
         this.lastError = null;
         this.lastDurationMs = result.durationMs;
         console.log(`[directorio] ${result.total} clientes sincronizados en ${Math.round(result.durationMs / 1000)} s`);

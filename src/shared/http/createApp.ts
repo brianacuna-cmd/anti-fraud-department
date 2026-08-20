@@ -1,4 +1,9 @@
-import express, { type ErrorRequestHandler, type Express, type Router } from 'express';
+import express, {
+  type ErrorRequestHandler,
+  type Express,
+  type RequestHandler,
+  type Router,
+} from 'express';
 
 export interface RouterMount {
   readonly path: string;
@@ -7,6 +12,13 @@ export interface RouterMount {
 
 export interface CreateAppOptions {
   readonly routers: readonly RouterMount[];
+  /**
+   * Provider webhook mounts (design D1/A2). Applied before express.json()
+   * with a raw-body parser for every content type so HMAC/PKI verification
+   * sees the exact request bytes on `req.body`. These routers MUST NOT run
+   * JWT authContextMiddleware — callers pass a separate router from `routers`.
+   */
+  readonly webhookRouters?: readonly RouterMount[];
   readonly errorHandler: ErrorRequestHandler;
   /**
    * Express `trust proxy` setting (design D-A7/§4a) — governs whether
@@ -20,29 +32,29 @@ export interface CreateAppOptions {
   readonly trustProxy?: boolean | number | string;
 }
 
+function mountRouters(app: Express, mounts: readonly RouterMount[], middleware: RequestHandler[] = []): void {
+  for (const { path, router } of mounts) {
+    app.use(path, ...middleware, router);
+  }
+}
+
 /**
- * App factory (Express App Bootstrap requirement): wires JSON body parsing,
- * mounts every module's router, and registers the error handler LAST so it
- * catches errors from all of them. `main.ts` calls this once, after Mongo is
- * connected and indexes are ensured, with an empty `routers` list until
- * Phase 2 wires `organizationRouter`.
+ * App factory (Express App Bootstrap requirement): optional raw-body webhook
+ * mounts, then JSON body parsing for `/api/v1`, then module routers, then the
+ * error handler LAST so it catches errors from all of them.
  */
-export function createApp({ routers, errorHandler, trustProxy = false }: CreateAppOptions): Express {
+export function createApp({
+  routers,
+  webhookRouters = [],
+  errorHandler,
+  trustProxy = false,
+}: CreateAppOptions): Express {
   const app = express();
   app.set('trust proxy', trustProxy);
+
+  mountRouters(app, webhookRouters, [express.raw({ type: '*/*' })]);
   app.use(express.json());
-
-  // Global logging for debugging
-  app.use((req, res, next) => {
-    if (req.method === 'POST' && req.path.includes('/auth/organizations')) {
-      console.log(`[express middleware] ${req.method} ${req.path}`);
-    }
-    next();
-  });
-
-  for (const { path, router } of routers) {
-    app.use(path, router);
-  }
+  mountRouters(app, routers);
 
   app.use(errorHandler);
   return app;

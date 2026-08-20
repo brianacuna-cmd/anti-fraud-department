@@ -1,6 +1,5 @@
 import { ObjectId } from 'mongodb';
-import { brand } from '../../../../../../../shared/kernel/Brand.js';
-import { toDate } from '../../../../../../../shared/time/Instant.js';
+import { fromDate, toDate } from '../../../../../../../shared/time/Instant.js';
 import { Notification } from '../../../../../domain/model/aggregates/Notification.js';
 import { createNotificationId } from '../../../../../domain/model/value-objects/NotificationId.js';
 import { createOrganizationId } from '../../../../../domain/model/value-objects/OrganizationId.js';
@@ -9,37 +8,28 @@ import { createAlertType } from '../../../../../domain/model/value-objects/Alert
 import { createNotificationChannel } from '../../../../../domain/model/value-objects/NotificationChannel.js';
 import type { NotificationDocument } from '../documents/NotificationDocument.js';
 
-/** camelCase (domain) -> PascalCase (Mongo). */
-export function toDocument(notification: Notification): NotificationDocument {
-  return {
-    _id: new ObjectId(notification.id),
-    OrganizationId: notification.organizationId,
-    RecipientUserId: notification.recipientUserId,
-    AlertType: notification.alertType,
-    Channel: notification.channel,
-    Title: notification.title,
-    Body: notification.body,
-    ResourceType: notification.resourceType,
-    ResourceId: notification.resourceId,
-    ReadAt: notification.readAt,
-    CreatedAt: notification.createdAt,
-    CreatedAtDate: toDate(notification.createdAt),
-  };
-}
-
-/** PascalCase (Mongo) -> camelCase (domain). */
+/** snake_case (Mongo) -> camelCase (domain). */
 export function toDomain(document: NotificationDocument): Notification {
   return Notification.rehydrate({
     id: createNotificationId(document._id.toString()),
-    organizationId: createOrganizationId(document.OrganizationId),
-    recipientUserId: createUserId(document.RecipientUserId),
-    alertType: createAlertType(document.AlertType),
-    channel: createNotificationChannel(document.Channel),
-    title: document.Title,
-    body: document.Body,
-    resourceType: document.ResourceType,
-    resourceId: document.ResourceId,
-    readAt: document.ReadAt === null ? null : brand<string, 'Instant'>(document.ReadAt),
-    createdAt: brand<string, 'Instant'>(document.CreatedAt),
+    organizationId: createOrganizationId(document.organization_id.toString()),
+    recipientUserId: createUserId(document.recipient_user_id.toString()),
+    alertType: createAlertType(document.alert_type),
+    channel: createNotificationChannel(document.channel),
+    context: document.context,
+    createdAt: fromDate(document.created_at),
   });
+}
+
+/** domain -> snake_case (Mongo). `_id` is the client-minted `NotificationId`. */
+export function toDocument(notification: Notification): NotificationDocument {
+  return {
+    _id: new ObjectId(notification.id),
+    organization_id: new ObjectId(notification.organizationId),
+    recipient_user_id: new ObjectId(notification.recipientUserId),
+    alert_type: notification.alertType,
+    channel: notification.channel,
+    context: notification.context,
+    created_at: toDate(notification.createdAt),
+  };
 }

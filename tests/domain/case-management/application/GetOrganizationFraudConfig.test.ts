@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import { createGetOrganizationFraudConfigUseCase } from '../../../../src/modules/case-management/application/GetOrganizationFraudConfig.js';
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
 import { OrganizationFraudConfig } from '../../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
@@ -7,7 +8,7 @@ import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { CaseManagementError } from '../../../../src/modules/case-management/domain/errors/CaseManagementError.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const ORG_1_USER = createAuthContext({ userId: 'user-1', organizationId: 'org-1' });
+const ORG_1_USER = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1') });
 
 function buildUseCase(repository: InMemoryOrganizationFraudConfigRepository) {
   return createGetOrganizationFraudConfigUseCase({ repository });
@@ -18,8 +19,8 @@ describe('createGetOrganizationFraudConfigUseCase', () => {
     const repository = new InMemoryOrganizationFraudConfigRepository();
     repository.seed(
       OrganizationFraudConfig.create({
-        id: createOrganizationFraudConfigId('config-1'),
-        organizationId: 'org-1',
+        id: createOrganizationFraudConfigId(oid('config-1')),
+        organizationId: oid('org-1'),
         slaLowMinutes: 240,
         slaMediumMinutes: 120,
         slaHighMinutes: 60,
@@ -36,7 +37,7 @@ describe('createGetOrganizationFraudConfigUseCase', () => {
 
     const result = await getConfig({ auth: ORG_1_USER });
 
-    expect(result.organizationId).toBe('org-1');
+    expect(result.organizationId).toBe(oid('org-1'));
     expect(result.slaHighMinutes).toBe(60);
   });
 
@@ -57,7 +58,7 @@ describe('createGetOrganizationFraudConfigUseCase', () => {
     const repository = new InMemoryOrganizationFraudConfigRepository();
     const findSpy = jest.spyOn(repository, 'findByOrganization');
     const getConfig = buildUseCase(repository);
-    const platformAdmin = createAuthContext({ userId: 'admin-1', organizationId: null, isPlatformAdmin: true });
+    const platformAdmin = createAuthContext({ userId: oid('admin-1'), organizationId: null, isPlatformAdmin: true });
 
     expect.assertions(3);
     try {

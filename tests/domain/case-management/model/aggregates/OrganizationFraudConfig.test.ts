@@ -1,3 +1,4 @@
+import { oid } from '../../../../support/oid.js';
 import { OrganizationFraudConfig } from '../../../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
 import { createOrganizationFraudConfigId } from '../../../../../src/modules/case-management/domain/model/value-objects/OrganizationFraudConfigId.js';
 import { CaseManagementError } from '../../../../../src/modules/case-management/domain/errors/CaseManagementError.js';
@@ -8,8 +9,8 @@ const LATER = fromDate(new Date('2026-01-02T00:00:00.000Z'));
 
 function buildConfig(overrides: Partial<Parameters<typeof OrganizationFraudConfig.create>[0]> = {}): OrganizationFraudConfig {
   return OrganizationFraudConfig.create({
-    id: createOrganizationFraudConfigId('config-1'),
-    organizationId: 'org-1',
+    id: createOrganizationFraudConfigId(oid('config-1')),
+    organizationId: oid('org-1'),
     slaLowMinutes: 240,
     slaMediumMinutes: 120,
     slaHighMinutes: 60,
@@ -28,13 +29,20 @@ describe('OrganizationFraudConfig.create', () => {
   it('creates a config with all fields set', () => {
     const config = buildConfig();
 
-    expect(config.organizationId).toBe('org-1');
+    expect(config.organizationId).toBe(oid('org-1'));
     expect(config.slaLowMinutes).toBe(240);
     expect(config.slaCriticalMinutes).toBe(30);
     expect(config.riskThresholdCritical).toBe(90);
     expect(config.featureFlags).toEqual({});
+    expect(config.outboundWebhookUrl).toBeNull();
     expect(config.createdAt).toBe(NOW);
     expect(config.updatedAt).toBe(NOW);
+  });
+
+  it('stores an optional outboundWebhookUrl when provided', () => {
+    const config = buildConfig({ outboundWebhookUrl: 'https://hooks.example/fraud' });
+
+    expect(config.outboundWebhookUrl).toBe('https://hooks.example/fraud');
   });
 
   it('rejects an empty organizationId', () => {
@@ -91,5 +99,54 @@ describe('OrganizationFraudConfig#update', () => {
     // unchanged fields survive
     expect(updated.slaMediumMinutes).toBe(120);
     expect(updated.createdAt).toBe(NOW);
+  });
+
+  it('can set and clear outboundWebhookUrl', () => {
+    const withUrl = buildConfig().update(
+      { outboundWebhookUrl: 'https://hooks.example/fraud' },
+      LATER,
+    );
+    const cleared = withUrl.update({ outboundWebhookUrl: null }, LATER);
+
+    expect(withUrl.outboundWebhookUrl).toBe('https://hooks.example/fraud');
+    expect(cleared.outboundWebhookUrl).toBeNull();
+  });
+});
+
+describe('OrganizationFraudConfig#priorityForRiskScore', () => {
+  // Thresholds: low=25, medium=50, high=75, critical=90
+  it('returns the highest band crossed (critical ≥ high ≥ medium ≥ low)', () => {
+    const config = buildConfig();
+
+    expect(config.priorityForRiskScore(90)).toBe('CRITICAL');
+    expect(config.priorityForRiskScore(100)).toBe('CRITICAL');
+    expect(config.priorityForRiskScore(75)).toBe('HIGH');
+    expect(config.priorityForRiskScore(89)).toBe('HIGH');
+    expect(config.priorityForRiskScore(50)).toBe('MEDIUM');
+    expect(config.priorityForRiskScore(74)).toBe('MEDIUM');
+    expect(config.priorityForRiskScore(25)).toBe('LOW');
+    expect(config.priorityForRiskScore(49)).toBe('LOW');
+  });
+
+  it('returns null when score is below risk_threshold_low (no case open)', () => {
+    const config = buildConfig();
+
+    expect(config.priorityForRiskScore(24)).toBeNull();
+    expect(config.priorityForRiskScore(0)).toBeNull();
+  });
+
+  it('uses the org config thresholds, not hardcoded bands', () => {
+    const config = buildConfig({
+      riskThresholdLow: 10,
+      riskThresholdMedium: 20,
+      riskThresholdHigh: 30,
+      riskThresholdCritical: 40,
+    });
+
+    expect(config.priorityForRiskScore(40)).toBe('CRITICAL');
+    expect(config.priorityForRiskScore(30)).toBe('HIGH');
+    expect(config.priorityForRiskScore(20)).toBe('MEDIUM');
+    expect(config.priorityForRiskScore(10)).toBe('LOW');
+    expect(config.priorityForRiskScore(9)).toBeNull();
   });
 });

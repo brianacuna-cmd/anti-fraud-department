@@ -1,3 +1,4 @@
+import { oid } from '../../../support/oid.js';
 import {
   toPreferenceResponse,
   toPreferenceMatrixResponse,
@@ -12,8 +13,8 @@ const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 describe('toPreferenceResponse', () => {
   it('maps a NotificationPreference to wire shape, domain->wire alertType casing, no id/org leak', () => {
     const pref = NotificationPreference.create({
-      organizationId: createOrganizationId('org-1'),
-      userId: createUserId('user-1'),
+      organizationId: createOrganizationId(oid('org-1')),
+      userId: createUserId(oid('user-1')),
       alertType: 'CASO_ASIGNADO',
       channel: 'EMAIL',
       enabled: false,

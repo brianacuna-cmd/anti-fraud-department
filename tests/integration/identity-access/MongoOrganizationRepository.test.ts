@@ -1,5 +1,5 @@
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
-import type { Db, MongoClient } from 'mongodb';
+import { ObjectId, type Db, type MongoClient } from 'mongodb';
 import { oid } from '../../support/oid.js';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
 import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
@@ -20,7 +20,7 @@ jest.setTimeout(120_000);
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 
 function buildOrganization(id: string, slug: string): Organization {
-  return Organization.create({ id: createOrganizationId(oid(id)), name: `Org ${id}`, slug: createSlug(slug), now: NOW });
+  return Organization.create({ id: createOrganizationId(id), name: `Org ${id}`, slug: createSlug(slug), now: NOW });
 }
 
 describe('MongoOrganizationRepository (integration, real replica-set Mongo)', () => {
@@ -47,21 +47,21 @@ describe('MongoOrganizationRepository (integration, real replica-set Mongo)', ()
   });
 
   afterEach(async () => {
-    await db.collection('Organizations').deleteMany({});
+    await db.collection('organizations').deleteMany({});
   });
 
   it('persists an organization and retrieves it by id', async () => {
-    await repository.save(buildOrganization('org-1', 'acme'));
+    await repository.save(buildOrganization(oid('org-1'), 'acme'));
 
     const found = await repository.findById(createOrganizationId(oid('org-1')));
 
-    expect(found?.name).toBe('Org org-1');
+    expect(found?.name).toBe(`Org ${oid('org-1')}`);
     expect(found?.slug).toBe('acme');
     expect(found?.status).toBe('ACTIVE');
   });
 
   it('retrieves an organization by slug', async () => {
-    await repository.save(buildOrganization('org-1', 'acme'));
+    await repository.save(buildOrganization(oid('org-1'), 'acme'));
 
     const found = await repository.findBySlug(createSlug('acme'));
 
@@ -75,11 +75,11 @@ describe('MongoOrganizationRepository (integration, real replica-set Mongo)', ()
   });
 
   it('translates a duplicate slug write into ORGANIZATION_SLUG_TAKEN by index name, not message parsing', async () => {
-    await repository.save(buildOrganization('org-1', 'acme'));
+    await repository.save(buildOrganization(oid('org-1'), 'acme'));
 
     expect.assertions(2);
     try {
-      await repository.save(buildOrganization('org-2', 'acme'));
+      await repository.save(buildOrganization(oid('org-2'), 'acme'));
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
       expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('ORGANIZATION_SLUG_TAKEN');
@@ -87,9 +87,9 @@ describe('MongoOrganizationRepository (integration, real replica-set Mongo)', ()
   });
 
   it('paginates results in ascending _id order with a usable next cursor', async () => {
-    await repository.save(buildOrganization('org-1', 'acme'));
-    await repository.save(buildOrganization('org-2', 'globex'));
-    await repository.save(buildOrganization('org-3', 'initech'));
+    await repository.save(buildOrganization(oid('org-1'), 'acme'));
+    await repository.save(buildOrganization(oid('org-2'), 'globex'));
+    await repository.save(buildOrganization(oid('org-3'), 'initech'));
 
     // Native ObjectId `_id`s sort by their hex value, not by the readable
     // label, so derive the expected page order from the sorted ids.
@@ -109,7 +109,7 @@ describe('MongoOrganizationRepository (integration, real replica-set Mongo)', ()
 
     await expect(
       unitOfWork.withTransaction(async (tx) => {
-        await repository.save(buildOrganization('org-tx', 'tx-org'), tx);
+        await repository.save(buildOrganization(oid('org-tx'), 'tx-org'), tx);
         throw new Error('boom');
       }),
     ).rejects.toThrow('boom');
@@ -122,7 +122,7 @@ describe('MongoOrganizationRepository (integration, real replica-set Mongo)', ()
     const unitOfWork = new MongoUnitOfWork(client);
 
     const foundWithinTransaction = await unitOfWork.withTransaction(async (tx) => {
-      await repository.save(buildOrganization('org-tx-2', 'tx-org-2'), tx);
+      await repository.save(buildOrganization(oid('org-tx-2'), 'tx-org-2'), tx);
       return repository.findBySlug(createSlug('tx-org-2'), tx);
     });
 
@@ -145,7 +145,7 @@ describe('MongoOrganizationRepository (integration, real replica-set Mongo)', ()
     const withCredentials = Organization.create({
       id: createOrganizationId(oid('org-creds')),
       name: 'Org creds',
-      slug: createSlug('org-creds'),
+      slug: createSlug(oid('org-creds')),
       email: createEmail('org@acme.example.com'),
       credential: createPasswordCredential('a-bcrypt-hash'),
       now: NOW,
@@ -159,7 +159,7 @@ describe('MongoOrganizationRepository (integration, real replica-set Mongo)', ()
   });
 
   it('findByEmail() returns null for an unknown email, and never matches a null-Email row', async () => {
-    await repository.save(buildOrganization('org-no-creds', 'org-no-creds'));
+    await repository.save(buildOrganization(oid('org-no-creds'), oid('org-no-creds')));
 
     const found = await repository.findByEmail(createEmail('nobody@example.com'));
 
@@ -167,20 +167,20 @@ describe('MongoOrganizationRepository (integration, real replica-set Mongo)', ()
   });
 
   it('allows two organizations to coexist with a null Email (partial unique index, design D38 general rule)', async () => {
-    await repository.save(buildOrganization('org-null-1', 'org-null-1'));
+    await repository.save(buildOrganization(oid('org-null-1'), oid('org-null-1')));
 
-    await expect(repository.save(buildOrganization('org-null-2', 'org-null-2'))).resolves.toBeUndefined();
+    await expect(repository.save(buildOrganization(oid('org-null-2'), oid('org-null-2')))).resolves.toBeUndefined();
   });
 
   it('round-trips the raw document by _id (design A1 regression guard, renamed collection)', async () => {
-    await repository.save(buildOrganization('org-id-guard', 'id-guard'));
+    await repository.save(buildOrganization(oid('org-id-guard'), 'id-guard'));
 
     const rawDocument = await db
-      .collection<OrganizationDocument>('Organizations')
-      .findOne({ _id: oid('org-id-guard') });
+      .collection<OrganizationDocument>('organizations')
+      .findOne({ _id: new ObjectId(oid('org-id-guard')) });
 
     expect(rawDocument).not.toBeNull();
-    expect(typeof rawDocument?._id).toBe('string');
+    expect(rawDocument?._id).toBeInstanceOf(ObjectId);
     expect(rawDocument?._id.toString()).toBe(oid('org-id-guard'));
     expect(rawDocument).not.toHaveProperty('_Id');
   });

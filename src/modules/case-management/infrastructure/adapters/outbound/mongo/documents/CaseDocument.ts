@@ -1,34 +1,30 @@
 /**
- * Mongo document shape for `Cases` (design: "Persistence — collections,
- * documents, mappers"). `_id` is the aggregate's branded `CaseId` (a native
- * MongoDB `ObjectId`, mirrors `OrganizationDocument`).
- *
- * `AssignedTo`/`AssignedToType` are stored as two separate columns (mapper
- * splits/joins the `AssignedTo` VO) — design's "resolve via two separate
- * lookups, no `$lookup` union" decision. `DueDate` is the read-model copy
- * owned exclusively by SLA write paths (T2/T6), never mutated independently.
+ * Mongo document shape for `cases`. `_id` is the aggregate's branded `CaseId`
+ * stored as a native BSON `ObjectId`. Instant fields are BSON `Date`.
+ * `assigned_to` stays a string because it can be a user ObjectId hex or a
+ * catalog `RoleId` (`ADMIN`, …).
  */
 
-import type { ObjectId } from "mongodb";
+import type { ObjectId } from 'mongodb';
 
 export interface CaseDocument {
   readonly _id: ObjectId;
-  readonly OrganizationId: string;
-  readonly CustomerId: string;
-  readonly CustomerEmail: string | null;
-  readonly BridgeUserId: string | null;
-  readonly BridgeWallet: string | null;
-  readonly StripeCustomerId: string | null;
-  readonly FinturuReference: Record<string, unknown> | null;
-  readonly FinturuCacheSnapshot: Record<string, unknown> | null;
-  readonly RiskScore: number;
-  readonly Status: string;
-  readonly Priority: string;
-  readonly AssignedTo: string | null;
-  readonly AssignedToType: string | null;
-  readonly DueDate: string | null;
-  readonly Tags: readonly string[];
-  readonly CreatedAt: string;
-  readonly UpdatedAt: string;
-  readonly DeletedAt: string | null;
+  readonly organization_id: ObjectId;
+  readonly customer_id: string;
+  readonly customer_email: string | null;
+  readonly bridge_user_id: string | null;
+  readonly bridge_wallet: string | null;
+  readonly stripe_customer_id: string | null;
+  readonly finturu_reference: Record<string, unknown> | null;
+  readonly finturu_cache_snapshot: Record<string, unknown> | null;
+  readonly risk_score: number;
+  readonly status: string;
+  readonly priority: string;
+  readonly assigned_to: string | null;
+  readonly assigned_to_type: string | null;
+  readonly due_date: Date | null;
+  readonly tags: readonly string[];
+  readonly created_at: Date;
+  readonly updated_at: Date;
+  readonly deleted_at: Date | null;
 }

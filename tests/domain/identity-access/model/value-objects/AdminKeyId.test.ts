@@ -3,28 +3,25 @@ import {
   generateAdminKeyId,
 } from '../../../../../src/modules/identity-access/domain/model/value-objects/AdminKeyId.js';
 
+const HEX = 'a'.repeat(24);
+
 describe('createAdminKeyId', () => {
-  it('accepts a non-empty string and returns it unchanged', () => {
-    const id = createAdminKeyId('key-123');
-
-    expect(id).toBe('key-123');
+  it('accepts a 24-character hexadecimal ObjectId', () => {
+    expect(createAdminKeyId(HEX)).toBe(HEX);
   });
 
-  it('rejects an empty string as an invariant violation', () => {
-    expect(() => createAdminKeyId('')).toThrow(/non-empty/);
-  });
-
-  it('rejects a whitespace-only string as an invariant violation', () => {
-    expect(() => createAdminKeyId('   ')).toThrow(/non-empty/);
+  it('rejects a value that is not a 24-character hex ObjectId', () => {
+    expect(() => createAdminKeyId('')).toThrow(/24-character hexadecimal ObjectId/);
+    expect(() => createAdminKeyId('not-an-objectid')).toThrow(/24-character hexadecimal ObjectId/);
   });
 });
 
 describe('generateAdminKeyId', () => {
-  it('generates a fresh, non-empty id on every call', () => {
+  it('generates a unique 24-char hex id on every call', () => {
     const first = generateAdminKeyId();
     const second = generateAdminKeyId();
 
-    expect(first.length).toBeGreaterThan(0);
+    expect(first).toMatch(/^[a-f0-9]{24}$/);
     expect(first).not.toBe(second);
   });
 });

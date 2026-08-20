@@ -1,8 +1,8 @@
-import { ObjectId, type ClientSession, type Collection, type Db } from 'mongodb';
+import { ObjectId, type ClientSession, type Collection, type Db, type Filter } from 'mongodb';
 import type { Case } from '../../../../domain/model/aggregates/Case.js';
 import type {
-  CaseListFilter,
-  CaseListPage,
+  CaseListQuery,
+  CaseListResult,
   CaseRepository,
   FindCaseByIdentityOptions,
 } from '../../../../domain/ports/CaseRepository.js';
@@ -10,15 +10,16 @@ import type { CaseId } from '../../../../domain/model/value-objects/CaseId.js';
 import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
 import type { CaseDocument } from './documents/CaseDocument.js';
 import { toDocument, toDomain } from './mappers/CaseDocumentMapper.js';
+import { toDate } from '../../../../../../shared/time/Instant.js';
 
 /** Casts the opaque `Transaction` handle back to a real Mongo `ClientSession` (mirrors identity-access). */
 function toSession(tx: Transaction | undefined): ClientSession | undefined {
   return tx as unknown as ClientSession | undefined;
 }
 
-const COLLECTION_NAME = 'Cases';
+const COLLECTION_NAME = 'cases';
 
-/** Mongo adapter for `CaseRepository`. */
+/** Mongo adapter for `CaseRepository` (save/findById + inbox list). */
 export class MongoCaseRepository implements CaseRepository {
   private readonly collection: Collection<CaseDocument>;
 
@@ -35,11 +36,20 @@ export class MongoCaseRepository implements CaseRepository {
   }
 
   async findById(id: CaseId, tx?: Transaction): Promise<Case | null> {
-    if (!ObjectId.isValid(id)) return null;
     const document = await this.collection.findOne({ _id: new ObjectId(id) }, { session: toSession(tx) });
     return document ? toDomain(document) : null;
   }
 
+  /**
+   * CASE-011. `organization_id` NUNCA es opcional: una version anterior
+   * reintentaba la consulta sin el cuando no encontraba nada, de modo que la
+   * ingesta podia enganchar —y sobrescribir— el expediente de otro inquilino
+   * que compartiera identificador de cliente. Un expediente ajeno no es una
+   * coincidencia valida: si no hay caso en esta organizacion, toca crear uno.
+   *
+   * `deleted_at: null` excluye los borrados logicos, para que la ingesta no
+   * revuelva un expediente que el equipo ya habia retirado.
+   */
   async findByCustomerOrBridgeId(
     options: FindCaseByIdentityOptions,
     tx?: Transaction,
@@ -48,138 +58,96 @@ export class MongoCaseRepository implements CaseRepository {
 
     const conditions: Record<string, unknown>[] = [];
     if (customerId) {
-      conditions.push({ CustomerId: customerId });
-      conditions.push({ 'FinturuCacheSnapshot.idUser': customerId });
-      // El padrón de Finturu tipa `idUser` como número en unos payloads y como
-      // cadena en otros; sin las dos variantes la deduplicación fallaba para la
-      // mitad de los clientes y abría un expediente duplicado.
+      conditions.push({ customer_id: customerId });
+      conditions.push({ 'finturu_cache_snapshot.idUser': customerId });
+      // El padron de Finturu tipa `idUser` como numero en unos payloads y como
+      // cadena en otros; sin las dos variantes la deduplicacion fallaba para la
+      // mitad de los clientes y abria un expediente duplicado.
       const numericCustomerId = Number(customerId);
       if (Number.isFinite(numericCustomerId)) {
-        conditions.push({ 'FinturuCacheSnapshot.idUser': numericCustomerId });
+        conditions.push({ 'finturu_cache_snapshot.idUser': numericCustomerId });
       }
     }
     if (bridgeUserId) {
-      conditions.push({ BridgeUserId: bridgeUserId });
-      conditions.push({ 'FinturuCacheSnapshot.idUserBridge': bridgeUserId });
+      conditions.push({ bridge_user_id: bridgeUserId });
+      conditions.push({ 'finturu_cache_snapshot.idUserBridge': bridgeUserId });
     }
     if (conditions.length === 0) return null;
 
-    // `OrganizationId` NO es opcional. La versión anterior reintentaba la
-    // consulta sin él cuando no encontraba nada, de modo que la ingesta podía
-    // enganchar —y sobrescribir— el expediente de otro tenant que compartiera
-    // identificador de cliente. Un expediente ajeno nunca es una coincidencia
-    // válida: si no hay caso en esta organización, corresponde crear uno.
     const filter: Record<string, unknown> = {
-      OrganizationId: organizationId,
+      organization_id: new ObjectId(organizationId),
+      deleted_at: null,
       $or: conditions,
     };
-
-    if (statuses && statuses.length > 0) {
-      filter.Status = { $in: [...statuses] };
+    if (statuses !== undefined && statuses.length > 0) {
+      filter.status = { $in: [...statuses] };
     }
 
-    const document = await this.collection.findOne(filter, { session: toSession(tx) });
-
+    const document = await this.collection.findOne(filter as Filter<CaseDocument>, {
+      session: toSession(tx),
+      sort: { created_at: -1 },
+    });
     return document ? toDomain(document) : null;
   }
 
-  /**
-   * Translates CASE-004's filter into one Mongo predicate. Shared by `list`
-   * and `countAll` so a listing and its total can never disagree about what
-   * "matching" means.
-   *
-   * `DeletedAt` is excluded unconditionally: soft-deleted cases were showing
-   * up in every listing because the original query never mentioned the field.
-   */
-  private buildFilter(filter: CaseListFilter = {}): Record<string, unknown> {
-    const query: Record<string, unknown> = { DeletedAt: null };
+  async list(query: CaseListQuery, tx?: Transaction): Promise<CaseListResult> {
+    const filter = buildListFilter(query);
+    const session = toSession(tx);
+    const total = await this.collection.countDocuments(filter, { session });
 
-    if (filter.organizationId) {
-      query.OrganizationId = filter.organizationId;
-    }
+    // Aggregation so null due_date sorts last (Mongo find ASC puts nulls first).
+    const documents = await this.collection
+      .aggregate<CaseDocument>(
+        [
+          { $match: filter },
+          {
+            $addFields: {
+              _due_sort: { $cond: [{ $eq: ['$due_date', null] }, 1, 0] },
+            },
+          },
+          { $sort: { _due_sort: 1, due_date: 1 } },
+          { $skip: query.offset },
+          { $limit: query.limit },
+          { $project: { _due_sort: 0 } },
+        ],
+        { session },
+      )
+      .toArray();
 
-    const inOrEq = (value: string | readonly string[] | undefined): unknown => {
-      if (value === undefined) return undefined;
-      const values = (Array.isArray(value) ? value : [value]).filter((v) => v && v !== 'ALL');
-      if (values.length === 0) return undefined;
-      return values.length === 1 ? values[0] : { $in: values };
+    return { items: documents.map(toDomain), total };
+  }
+}
+
+function buildListFilter(query: CaseListQuery): Filter<CaseDocument> {
+  const filter: Record<string, unknown> = {
+    organization_id: new ObjectId(query.organizationId),
+    deleted_at: null,
+  };
+
+  if (query.status !== undefined && query.status.length > 0) {
+    filter.status = { $in: [...query.status] };
+  }
+  if (query.priority !== undefined && query.priority.length > 0) {
+    filter.priority = { $in: [...query.priority] };
+  }
+  if (query.assignedToId !== undefined) {
+    filter.assigned_to = query.assignedToId;
+  }
+  if (query.riskScoreMin !== undefined || query.riskScoreMax !== undefined) {
+    filter.risk_score = {
+      ...(query.riskScoreMin !== undefined ? { $gte: query.riskScoreMin } : {}),
+      ...(query.riskScoreMax !== undefined ? { $lte: query.riskScoreMax } : {}),
     };
-
-    const status = inOrEq(filter.status);
-    if (status !== undefined) query.Status = status;
-
-    const priority = inOrEq(filter.priority);
-    if (priority !== undefined) query.Priority = priority;
-
-    // 'UNASSIGNED' es la bandeja general, no un tipo de actor: se traduce a
-    // "sin asignatario" en lugar de buscar un AssignedToType con ese nombre.
-    if (filter.assignedToType === 'UNASSIGNED') {
-      query.AssignedTo = null;
-    } else {
-      if (filter.assignedToId) query.AssignedTo = filter.assignedToId;
-      if (filter.assignedToType) query.AssignedToType = filter.assignedToType;
-    }
-
-    if (filter.tags && filter.tags.length > 0) {
-      query.Tags = { $all: [...filter.tags] };
-    }
-
-    if (filter.riskScoreMin !== undefined || filter.riskScoreMax !== undefined) {
-      const range: Record<string, number> = {};
-      if (filter.riskScoreMin !== undefined) range.$gte = filter.riskScoreMin;
-      if (filter.riskScoreMax !== undefined) range.$lte = filter.riskScoreMax;
-      query.RiskScore = range;
-    }
-
-    // CreatedAt/DueDate se guardan como ISO-8601 UTC, cuyo orden lexicográfico
-    // coincide con el cronológico; por eso el rango se compara como cadena y no
-    // hace falta un espejo BSON como el de CaseSlaTracking.
-    if (filter.createdFrom !== undefined || filter.createdTo !== undefined) {
-      const range: Record<string, string> = {};
-      if (filter.createdFrom !== undefined) range.$gte = filter.createdFrom;
-      if (filter.createdTo !== undefined) range.$lte = filter.createdTo;
-      query.CreatedAt = range;
-    }
-
-    if (filter.overdueOnly) {
-      query.DueDate = { $ne: null, $lt: new Date().toISOString() };
-    } else if (filter.dueBefore !== undefined) {
-      query.DueDate = { $ne: null, $lte: filter.dueBefore };
-    }
-
-    if (filter.search && filter.search.trim().length > 0) {
-      const term = filter.search.trim();
-      // `escapeRegExp`: un término con caracteres de regex (por ejemplo el '+'
-      // de un email con alias) hacía estallar la consulta en vez de buscarlo.
-      const safe = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const rx = { $regex: safe, $options: 'i' };
-      query.$or = [
-        { CustomerId: rx },
-        { CustomerEmail: rx },
-        { BridgeUserId: rx },
-        { BridgeWallet: rx },
-        { StripeCustomerId: rx },
-      ];
-    }
-
-    return query;
+  }
+  if (query.tags !== undefined && query.tags.length > 0) {
+    filter.tags = { $all: [...query.tags] };
+  }
+  if (query.dueAfter !== undefined || query.dueBefore !== undefined) {
+    filter.due_date = {
+      ...(query.dueAfter !== undefined ? { $gte: toDate(query.dueAfter) } : {}),
+      ...(query.dueBefore !== undefined ? { $lt: toDate(query.dueBefore) } : {}),
+    };
   }
 
-  async list(filter: CaseListFilter = {}): Promise<CaseListPage> {
-    const limit = filter.limit ?? 50;
-    const query = this.buildFilter(filter);
-
-    if (filter.cursor && ObjectId.isValid(filter.cursor)) {
-      query._id = { $lt: new ObjectId(filter.cursor) };
-    }
-
-    const documents = await this.collection.find(query).sort({ _id: -1 }).limit(limit + 1).toArray();
-    const items = documents.slice(0, limit).map(toDomain);
-    const nextCursor = documents.length > limit ? documents[limit]._id.toString() : null;
-    return { items, nextCursor };
-  }
-
-  async countAll(filter: CaseListFilter = {}): Promise<number> {
-    return this.collection.countDocuments(this.buildFilter(filter));
-  }
+  return filter as Filter<CaseDocument>;
 }
