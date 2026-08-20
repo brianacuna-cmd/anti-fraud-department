@@ -41,4 +41,15 @@ export class MongoInvestigationRepository implements InvestigationRepository {
       .toArray();
     return documents.map(toDomain);
   }
+
+  async listActiveByOrganization(organizationId: string, tx?: Transaction): Promise<Investigation[]> {
+    const documents = await this.collection
+      .find(
+        { organization_id: new ObjectId(organizationId), status: { $in: ['OPEN', 'INVESTIGATING'] } },
+        { session: toSession(tx) },
+      )
+      .sort({ created_at: -1 })
+      .toArray();
+    return documents.map(toDomain);
+  }
 }

@@ -12,4 +12,6 @@ export interface InvestigationRepository {
   save(investigation: Investigation, tx?: Transaction): Promise<void>;
   findById(id: InvestigationId, tx?: Transaction): Promise<Investigation | null>;
   listByCaseId(caseId: CaseId, tx?: Transaction): Promise<Investigation[]>;
+  /** Active (OPEN|INVESTIGATING) investigations for one organization, newest-first. */
+  listActiveByOrganization(organizationId: string, tx?: Transaction): Promise<Investigation[]>;
 }
