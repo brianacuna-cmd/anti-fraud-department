@@ -25,6 +25,17 @@ export class InMemoryInvestigationRepository implements InvestigationRepository 
       .filter((investigation) => (investigation.caseId as string) === (caseId as string));
   }
 
+  async listActiveByOrganization(organizationId: string): Promise<Investigation[]> {
+    return this.order
+      .map((id) => this.byId.get(id)!)
+      .filter(
+        (investigation) =>
+          (investigation.organizationId as string) === organizationId &&
+          (investigation.status === 'OPEN' || investigation.status === 'INVESTIGATING'),
+      )
+      .reverse();
+  }
+
   /** Test-only: every stored investigation, oldest-first by insertion. */
   all(): Investigation[] {
     return this.order.map((id) => this.byId.get(id)!);

@@ -131,6 +131,22 @@ export class Investigation {
     return new Investigation({ ...this.props, linkedCaseIds: merged, updatedAt: now });
   }
 
+  /**
+   * Advances the lifecycle to INVESTIGATING or RESOLVED. Allowed edges:
+   * OPEN -> INVESTIGATING, OPEN -> RESOLVED, INVESTIGATING -> RESOLVED.
+   * Any other source (RESOLVED/CLOSED, or a no-op) throws `invalidTransition`.
+   * The findings-based `close()` path (-> CLOSED) is independent.
+   */
+  changeStatus(next: 'INVESTIGATING' | 'RESOLVED', now: Instant): Investigation {
+    const allowed =
+      (next === 'INVESTIGATING' && this.props.status === 'OPEN') ||
+      (next === 'RESOLVED' && (this.props.status === 'OPEN' || this.props.status === 'INVESTIGATING'));
+    if (!allowed) {
+      throw invalidTransition(this.props.status, next);
+    }
+    return new Investigation({ ...this.props, status: next, updatedAt: now });
+  }
+
   get id(): InvestigationId {
     return this.props.id;
   }

@@ -6,11 +6,14 @@ import type { createGetInvestigationUseCase } from '../../../../application/GetI
 import type { createCloseInvestigationUseCase } from '../../../../application/CloseInvestigation.js';
 import type { createUpdateInvestigationFindingsUseCase } from '../../../../application/UpdateInvestigationFindings.js';
 import type { createLinkInvestigationCasesUseCase } from '../../../../application/LinkInvestigationCases.js';
+import type { createListActiveInvestigationsUseCase } from '../../../../application/ListActiveInvestigations.js';
+import type { createUpdateInvestigationStatusUseCase } from '../../../../application/UpdateInvestigationStatus.js';
 import {
   openInvestigationSchema,
   closeInvestigationSchema,
   updateInvestigationFindingsSchema,
   linkInvestigationCasesSchema,
+  updateInvestigationStatusSchema,
 } from './dto/investigationSchemas.js';
 import { toInvestigationResponse } from './mappers/InvestigationHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
@@ -22,6 +25,8 @@ export interface InvestigationRouterDeps {
   readonly closeInvestigation: ReturnType<typeof createCloseInvestigationUseCase>;
   readonly updateInvestigationFindings: ReturnType<typeof createUpdateInvestigationFindingsUseCase>;
   readonly linkInvestigationCases: ReturnType<typeof createLinkInvestigationCasesUseCase>;
+  readonly listActiveInvestigations: ReturnType<typeof createListActiveInvestigationsUseCase>;
+  readonly updateInvestigationStatus: ReturnType<typeof createUpdateInvestigationStatusUseCase>;
 }
 
 /**
@@ -50,6 +55,12 @@ export function investigationRouter(deps: InvestigationRouterDeps): Router {
     res.status(200).json({ items: items.map(toInvestigationResponse) });
   });
 
+  router.get('/investigations', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const items = await deps.listActiveInvestigations({ auth });
+    res.status(200).json({ items: items.map(toInvestigationResponse) });
+  });
+
   router.get('/investigations/:investigationId', async (req, res) => {
     const auth = requireAuthContext(req);
     const investigation = await deps.getInvestigation({
@@ -66,6 +77,17 @@ export function investigationRouter(deps: InvestigationRouterDeps): Router {
       auth,
       investigationId: req.params.investigationId!,
       findings: body.findings,
+    });
+    res.status(200).json(toInvestigationResponse(investigation));
+  });
+
+  router.patch('/investigations/:investigationId/status', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(updateInvestigationStatusSchema, req.body);
+    const investigation = await deps.updateInvestigationStatus({
+      auth,
+      investigationId: req.params.investigationId!,
+      status: body.status,
     });
     res.status(200).json(toInvestigationResponse(investigation));
   });

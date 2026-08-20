@@ -123,6 +123,8 @@ import { createGetInvestigationUseCase } from './modules/case-management/applica
 import { createCloseInvestigationUseCase } from './modules/case-management/application/CloseInvestigation.js';
 import { createUpdateInvestigationFindingsUseCase } from './modules/case-management/application/UpdateInvestigationFindings.js';
 import { createLinkInvestigationCasesUseCase } from './modules/case-management/application/LinkInvestigationCases.js';
+import { createListActiveInvestigationsUseCase } from './modules/case-management/application/ListActiveInvestigations.js';
+import { createUpdateInvestigationStatusUseCase } from './modules/case-management/application/UpdateInvestigationStatus.js';
 import { generateInvestigationId } from './modules/case-management/domain/model/value-objects/InvestigationId.js';
 import { investigationRouter } from './modules/case-management/infrastructure/adapters/inbound/http/investigationRouter.js';
 import { createGenerateCaseReportUseCase } from './modules/case-management/application/GenerateCaseReport.js';
@@ -689,6 +691,13 @@ async function bootstrap(): Promise<void> {
       unitOfWork: caseManagementUnitOfWork,
       clock,
       generateTimelineEventId,
+    }),
+    listActiveInvestigations: createListActiveInvestigationsUseCase({ investigations }),
+    updateInvestigationStatus: createUpdateInvestigationStatusUseCase({
+      investigations,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
     }),
   });
   const organizationFraudConfigHttpRouter = organizationFraudConfigRouter({

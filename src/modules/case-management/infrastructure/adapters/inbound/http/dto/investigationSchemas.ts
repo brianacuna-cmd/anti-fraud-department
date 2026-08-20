@@ -29,3 +29,10 @@ export const linkInvestigationCasesSchema = z.object({
 });
 
 export type LinkInvestigationCasesBody = z.infer<typeof linkInvestigationCasesSchema>;
+
+/** PATCH /investigations/:investigationId/status body. */
+export const updateInvestigationStatusSchema = z.object({
+  status: z.enum(['INVESTIGATING', 'RESOLVED']),
+});
+
+export type UpdateInvestigationStatusBody = z.infer<typeof updateInvestigationStatusSchema>;
