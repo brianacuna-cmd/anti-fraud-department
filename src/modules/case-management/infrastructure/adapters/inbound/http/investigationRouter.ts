@@ -8,6 +8,7 @@ import type { createUpdateInvestigationFindingsUseCase } from '../../../../appli
 import type { createLinkInvestigationCasesUseCase } from '../../../../application/LinkInvestigationCases.js';
 import type { createListActiveInvestigationsUseCase } from '../../../../application/ListActiveInvestigations.js';
 import type { createUpdateInvestigationStatusUseCase } from '../../../../application/UpdateInvestigationStatus.js';
+import type { createExportInvestigationUseCase } from '../../../../application/ExportInvestigation.js';
 import {
   openInvestigationSchema,
   closeInvestigationSchema,
@@ -16,6 +17,7 @@ import {
   updateInvestigationStatusSchema,
 } from './dto/investigationSchemas.js';
 import { toInvestigationResponse } from './mappers/InvestigationHttpMapper.js';
+import { toCaseReportResponse } from './mappers/CaseReportHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
 
 export interface InvestigationRouterDeps {
@@ -27,6 +29,7 @@ export interface InvestigationRouterDeps {
   readonly linkInvestigationCases: ReturnType<typeof createLinkInvestigationCasesUseCase>;
   readonly listActiveInvestigations: ReturnType<typeof createListActiveInvestigationsUseCase>;
   readonly updateInvestigationStatus: ReturnType<typeof createUpdateInvestigationStatusUseCase>;
+  readonly exportInvestigation: ReturnType<typeof createExportInvestigationUseCase>;
 }
 
 /**
@@ -59,6 +62,15 @@ export function investigationRouter(deps: InvestigationRouterDeps): Router {
     const auth = requireAuthContext(req);
     const items = await deps.listActiveInvestigations({ auth });
     res.status(200).json({ items: items.map(toInvestigationResponse) });
+  });
+
+  router.get('/investigations/:investigationId/export', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const report = await deps.exportInvestigation({
+      auth,
+      investigationId: req.params.investigationId!,
+    });
+    res.status(200).json(toCaseReportResponse(report));
   });
 
   router.get('/investigations/:investigationId', async (req, res) => {

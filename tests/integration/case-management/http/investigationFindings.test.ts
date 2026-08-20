@@ -17,6 +17,11 @@ import { createUpdateInvestigationFindingsUseCase } from '../../../../src/module
 import { createLinkInvestigationCasesUseCase } from '../../../../src/modules/case-management/application/LinkInvestigationCases.js';
 import { createListActiveInvestigationsUseCase } from '../../../../src/modules/case-management/application/ListActiveInvestigations.js';
 import { createUpdateInvestigationStatusUseCase } from '../../../../src/modules/case-management/application/UpdateInvestigationStatus.js';
+import { createExportInvestigationUseCase } from '../../../../src/modules/case-management/application/ExportInvestigation.js';
+import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InMemoryCaseNoteRepository.js';
+import { InMemoryEvidenceRepository } from '../../../helpers/case-management/InMemoryEvidenceRepository.js';
+import { InMemoryCaseReportRepository } from '../../../helpers/case-management/InMemoryCaseReportRepository.js';
+import { generateCaseReportId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseReportId.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryInvestigationRepository } from '../../../helpers/case-management/InMemoryInvestigationRepository.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
@@ -69,6 +74,9 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
   );
 
   const timelineRecorder = new InMemoryTimelineRecorder();
+  const notes = new InMemoryCaseNoteRepository();
+  const evidence = new InMemoryEvidenceRepository();
+  const reports = new InMemoryCaseReportRepository();
   const deps = { investigations, auditRecorder, unitOfWork, clock };
   const router = investigationRouter({
     openInvestigation: createOpenInvestigationUseCase({ cases, ...deps, generateInvestigationId }),
@@ -85,6 +93,16 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
       generateTimelineEventId,
     }),
     listActiveInvestigations: createListActiveInvestigationsUseCase({ investigations }),
+    exportInvestigation: createExportInvestigationUseCase({
+      investigations,
+      cases,
+      notes,
+      evidence,
+      reports,
+      unitOfWork,
+      clock,
+      generateCaseReportId,
+    }),
     updateInvestigationStatus: createUpdateInvestigationStatusUseCase({
       investigations,
       auditRecorder,
@@ -271,6 +289,28 @@ describe('investigationRouter GET /investigations + PATCH /investigations/:id/st
       .patch(`/api/v1/investigations/${oid('missing')}/status`)
       .send({ status: 'RESOLVED' })
       .expect(404);
+    expect(res.body.error.code).toBe('INVESTIGATION_NOT_FOUND');
+  });
+});
+
+describe('investigationRouter GET /investigations/:id/export', () => {
+  it('exports a consolidated executive report', async () => {
+    const { app, investigations } = buildApp();
+    await investigations.save(seedInvestigation());
+
+    const res = await request(app).get(`/api/v1/investigations/${INV_ID}/export`).expect(200);
+
+    expect(res.body.caseId).toBe(CASE_ID);
+    expect(res.body.snapshot).toMatchObject({
+      reportType: 'INVESTIGATION_EXPORT',
+      investigationId: INV_ID,
+    });
+    expect(Array.isArray(res.body.snapshot.cases)).toBe(true);
+  });
+
+  it('returns 404 for a missing investigation', async () => {
+    const { app } = buildApp();
+    const res = await request(app).get(`/api/v1/investigations/${oid('missing')}/export`).expect(404);
     expect(res.body.error.code).toBe('INVESTIGATION_NOT_FOUND');
   });
 });

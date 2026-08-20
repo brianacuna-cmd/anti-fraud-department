@@ -18,4 +18,9 @@ export class InMemoryCaseReportRepository implements CaseReportRepository {
   async listByCaseId(caseId: CaseId): Promise<CaseReport[]> {
     return this.reports.filter((report) => (report.caseId as string) === (caseId as string)).reverse();
   }
+
+  /** Test-only: every stored report, insertion order. */
+  all(): readonly CaseReport[] {
+    return [...this.reports];
+  }
 }
