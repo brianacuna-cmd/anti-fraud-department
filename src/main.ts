@@ -1141,6 +1141,10 @@ async function bootstrap(): Promise<void> {
     // dispara un correo a esa direccion, dejando la verificacion de
     // credenciales para el paso 3.
     authenticateOrganization: organizationAuthenticator,
+    // Sin estas dos, el login de organizacion se degrada en silencio: el paso 1
+    // no manda el OTP y los pasos 2-3 no leen ni guardan el secreto TOTP.
+    emailSender,
+    db,
     issueOrganizationSession: createIssueOrganizationSessionUseCase({
       authenticateActor: organizationAuthenticator,
       issueSessionFor: sessionIssuer,

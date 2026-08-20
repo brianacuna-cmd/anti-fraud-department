@@ -63,8 +63,18 @@ export interface AuthRouterDeps {
    * credential, so this route never calls `requireAuthContext`.
    */
   readonly refreshSession: ReturnType<typeof createRefreshSessionUseCase>;
-  readonly emailSender?: EmailSender;
-  readonly db?: Db;
+  /**
+   * OBLIGATORIA: por aqui sale el OTP del paso 1 del login de organizacion.
+   * Mientras fue opcional, `main.ts` dejo de inyectarla y el flujo respondia
+   * `OTP_REQUIRED` sin enviar nada, dejando al usuario esperando un codigo
+   * que nunca salio.
+   */
+  readonly emailSender: EmailSender;
+  /**
+   * OBLIGATORIA: los pasos 2 y 3 leen y persisten el secreto TOTP. Sin ella el
+   * enrolamiento no se guarda y cada login vuelve a pedir el QR.
+   */
+  readonly db: Db;
 }
 
 /**
@@ -158,15 +168,20 @@ export function authRouter(deps: AuthRouterDeps): Router {
       attempts: 0,
     });
 
-    if (deps.emailSender) {
-      deps.emailSender.send({
+    // No se espera al envio: la respuesta no debe depender de la latencia del
+    // proveedor de correo. Pero el fallo SI se registra — tragarselo dejaba al
+    // usuario esperando un codigo que nunca salio, sin rastro de por que.
+    void deps.emailSender
+      .send({
         from: 'fraud@backendstudio.tech',
         to: body.email,
         subject: 'Código OTP de Inicio de Sesión - AntiFraud',
         text: `Tu código de verificación OTP para ingresar es: ${otp}`,
         html: `<h2>Código de Verificación</h2><p>Tu código OTP de 6 dígitos para ingresar es: <strong>${otp}</strong></p>`,
-      }).catch(() => {});
-    }
+      })
+      .catch((error: unknown) => {
+        console.error(`[auth] no se pudo enviar el OTP de organizacion a ${body.email}:`, error);
+      });
 
     res.status(200).json({
       status: 'OTP_REQUIRED',
@@ -195,17 +210,23 @@ export function authRouter(deps: AuthRouterDeps): Router {
       return;
     }
 
-    // Read persistent MfaSecret directly from MongoDB collection Organizations or Users
+    // Secreto TOTP ya enrolado, si lo hay. Nombres en snake_case: la migracion
+    // a `organizations`/`users` dejo atras las colecciones PascalCase, y estas
+    // consultas se quedaron apuntando a las viejas — nunca encontraban nada, de
+    // modo que cada login repetia el alta en vez de retar al factor existente.
     let existingSecret: string | null = null;
-    if (deps.db) {
+    {
       const pattern = `^${emailKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
-      const orgDoc = await deps.db.collection('Organizations').findOne({ Email: { $regex: pattern, $options: 'i' } });
-      if (orgDoc?.MfaSecret) {
-        existingSecret = orgDoc.MfaSecret as string;
+      const emailFilter = { email: { $regex: pattern, $options: 'i' } };
+
+      const orgDoc = await deps.db.collection('organizations').findOne(emailFilter);
+      if (typeof orgDoc?.mfa_secret === 'string' && orgDoc.mfa_secret.length > 0) {
+        existingSecret = orgDoc.mfa_secret;
       } else {
-        const userDoc = await deps.db.collection('Users').findOne({ Email: { $regex: pattern, $options: 'i' }, 'Mfa.Enabled': true });
-        if (userDoc?.Mfa?.Secret) {
-          existingSecret = userDoc.Mfa.Secret as string;
+        const userDoc = await deps.db.collection('users').findOne({ ...emailFilter, 'mfa.enabled': true });
+        const secret = (userDoc?.mfa as { secret?: unknown } | undefined)?.secret;
+        if (typeof secret === 'string' && secret.length > 0) {
+          existingSecret = secret;
         }
       }
     }
@@ -260,25 +281,23 @@ export function authRouter(deps: AuthRouterDeps): Router {
       return;
     }
 
-    // Save TOTP secret in MongoDB collection Organizations and Users
-    if (deps.db) {
+    // Persiste el secreto TOTP recien enrolado. `updated_at` va como Date, no
+    // como cadena ISO: el resto del esquema lo tipa asi, y guardarlo como texto
+    // rompia a cualquier lector que lo tratara como fecha.
+    {
       const pattern = `^${matchedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
-      await deps.db.collection('Organizations').updateOne(
-        { Email: { $regex: pattern, $options: 'i' } },
-        { $set: { MfaSecret: matchedCreds.totpSecret, UpdatedAt: new Date().toISOString() } }
-      );
+      const emailFilter = { email: { $regex: pattern, $options: 'i' } };
+      const now = new Date();
 
-      // Synchronize in Users collection so admin user document also shows MFA active
-      await deps.db.collection('Users').updateMany(
-        { Email: { $regex: pattern, $options: 'i' } },
-        {
-          $set: {
-            'Mfa.Secret': matchedCreds.totpSecret,
-            'Mfa.Enabled': true,
-            UpdatedAt: new Date().toISOString(),
-          },
-        }
-      );
+      await deps.db
+        .collection('organizations')
+        .updateOne(emailFilter, { $set: { mfa_secret: matchedCreds.totpSecret, updated_at: now } });
+
+      // El usuario administrador refleja el mismo factor, para que su ficha
+      // muestre MFA activo.
+      await deps.db.collection('users').updateMany(emailFilter, {
+        $set: { 'mfa.secret': matchedCreds.totpSecret, 'mfa.enabled': true, updated_at: now },
+      });
     }
 
     pendingOrgLogins.delete(matchedEmail);

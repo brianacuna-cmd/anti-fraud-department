@@ -12,6 +12,8 @@ import type { createRequestPasswordResetUseCase } from '../../../src/modules/ide
 import type { createConfirmPasswordResetUseCase } from '../../../src/modules/identity-access/application/auth/ConfirmPasswordReset.js';
 import type { createRefreshSessionUseCase } from '../../../src/modules/identity-access/application/auth/RefreshSession.js';
 import type { createAuthenticateActorUseCase } from '../../../src/modules/identity-access/application/auth/AuthenticateActor.js';
+import type { Db } from 'mongodb';
+import { FakeEmailSender } from '../../helpers/identity-access/FakeEmailSender.js';
 
 /**
  * Focused e2e for design D-A7's "Login captures IP from input" scenario:
@@ -36,6 +38,10 @@ describe('authRouter IP capture (design D-A7)', () => {
     const router = authRouter({
       beginUserLogin,
       issueOrganizationSession,
+      // Esta prueba solo recorre /auth/users/login, que no toca ninguna de las
+      // dos: se inyectan para satisfacer el contrato, no para ejercitarlas.
+      emailSender: new FakeEmailSender(),
+      db: {} as Db,
       authenticateOrganization: (async () => undefined) as unknown as ReturnType<
         typeof createAuthenticateActorUseCase
       >,
@@ -90,6 +96,10 @@ describe('authRouter IP capture (design D-A7)', () => {
 
     const router = authRouter({
       beginUserLogin,
+      // Esta prueba solo recorre /auth/users/login, que no toca ninguna de las
+      // dos: se inyectan para satisfacer el contrato, no para ejercitarlas.
+      emailSender: new FakeEmailSender(),
+      db: {} as Db,
       authenticateOrganization: (async () => undefined) as unknown as ReturnType<
         typeof createAuthenticateActorUseCase
       >,

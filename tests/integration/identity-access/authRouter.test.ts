@@ -41,6 +41,11 @@ import type { ActorCredentialRecord } from '../../../src/modules/identity-access
 import { oid } from '../../support/oid.js';
 import { buildSession } from '../../helpers/identity-access/buildSession.js';
 import { authenticator } from 'otplib';
+import type { Db, MongoClient } from 'mongodb';
+import type { MongoMemoryReplSet } from 'mongodb-memory-server';
+import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
+import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
+import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ORG_ID = createOrganizationId(oid('org-1'));
@@ -68,6 +73,30 @@ const ORG_RECORD: ActorCredentialRecord = {
 const SECRET_CIPHER = new AesGcmSecretCipher('test-secret', 1);
 const TOTP_SERVICE = new OtplibTotpService();
 const TOKEN_SERVICE = new AesGcmSessionTokenService(SECRET_CIPHER);
+
+let replicaSet: MongoMemoryReplSet;
+let mongoClient: MongoClient;
+let db: Db;
+
+beforeAll(async () => {
+  replicaSet = await startReplicaSetMongo();
+  const connection = await connectMongo(replicaSet.getUri(), 'auth_router_test');
+  mongoClient = connection.client;
+  db = connection.db;
+  await ensureIndexes(db);
+});
+
+afterAll(async () => {
+  await mongoClient.close();
+  await replicaSet.stop();
+});
+
+// El secreto TOTP se persiste en el paso 3; sin limpiar, la siguiente prueba
+// heredaria el enrolamiento y tomaria la rama de reto en vez de la de alta.
+beforeEach(async () => {
+  await db.collection('organizations').deleteMany({});
+  await db.collection('users').deleteMany({});
+});
 
 function buildApp(
   authOverrides: Partial<Parameters<typeof createAuthContext>[0]> = {},
@@ -131,6 +160,7 @@ function buildApp(
     // El paso 1 del login de organizacion manda el OTP por aqui; el fake lo
     // captura para que la prueba pueda completar los pasos 2 y 3.
     emailSender,
+    db,
     issueOrganizationSession: createIssueOrganizationSessionUseCase({
       authenticateActor: createAuthenticateActorUseCase({
         gateway: organizationGateway,
