@@ -125,6 +125,7 @@ import { createUpdateInvestigationFindingsUseCase } from './modules/case-managem
 import { createLinkInvestigationCasesUseCase } from './modules/case-management/application/LinkInvestigationCases.js';
 import { createListActiveInvestigationsUseCase } from './modules/case-management/application/ListActiveInvestigations.js';
 import { createUpdateInvestigationStatusUseCase } from './modules/case-management/application/UpdateInvestigationStatus.js';
+import { createExportInvestigationUseCase } from './modules/case-management/application/ExportInvestigation.js';
 import { generateInvestigationId } from './modules/case-management/domain/model/value-objects/InvestigationId.js';
 import { investigationRouter } from './modules/case-management/infrastructure/adapters/inbound/http/investigationRouter.js';
 import { createGenerateCaseReportUseCase } from './modules/case-management/application/GenerateCaseReport.js';
@@ -531,6 +532,8 @@ async function bootstrap(): Promise<void> {
       generateTimelineEventId,
     }),
   });
+  const caseReports = new MongoCaseReportRepository(db);
+  const evidence = new MongoEvidenceRepository(db);
   const investigationHttpRouter = investigationRouter({
     openInvestigation: createOpenInvestigationUseCase({
       cases,
@@ -569,6 +572,16 @@ async function bootstrap(): Promise<void> {
       unitOfWork: caseManagementUnitOfWork,
       clock,
     }),
+    exportInvestigation: createExportInvestigationUseCase({
+      investigations,
+      cases,
+      notes: caseNotes,
+      evidence,
+      reports: caseReports,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateCaseReportId,
+    }),
   });
   const organizationFraudConfigHttpRouter = organizationFraudConfigRouter({
     getOrganizationFraudConfig,
@@ -579,7 +592,6 @@ async function bootstrap(): Promise<void> {
   });
   const analystDecisions = new MongoAnalystDecisionRepository(db);
   const enforcementActions = new MongoEnforcementActionRepository(db);
-  const caseReports = new MongoCaseReportRepository(db);
   const reportHttpRouter = reportRouter({
     generateCaseReport: createGenerateCaseReportUseCase({
       cases,
@@ -598,7 +610,6 @@ async function bootstrap(): Promise<void> {
     listCaseReports: createListCaseReportsUseCase({ cases, reports: caseReports }),
     getCaseReport: createGetCaseReportUseCase({ reports: caseReports }),
   });
-  const evidence = new MongoEvidenceRepository(db);
   const evidenceStore = new FilesystemEvidenceStore(EVIDENCE_STORAGE_DIR);
   const timestampAuthority = new NullTimestampAuthority();
   const evidenceHttpRouter = evidenceRouter({
