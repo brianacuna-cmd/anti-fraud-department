@@ -10,6 +10,7 @@ import type { OutboxEventRepository } from '../../../shared/outbox/OutboxEventRe
 import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
 import type { CaseId } from '../domain/model/value-objects/CaseId.js';
 import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
+import { invariantViolation } from '../domain/errors/CaseManagementError.js';
 import { Case } from '../domain/model/aggregates/Case.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
 import { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
@@ -59,6 +60,43 @@ function extractString(obj: Record<string, unknown>, keys: readonly string[]): s
   return null;
 }
 
+/** La forma que Mongo acepta como ObjectId: 24 caracteres hexadecimales. */
+const OBJECT_ID_PATTERN = /^[0-9a-fA-F]{24}$/;
+
+/**
+ * Resuelve el inquilino al que pertenece el expediente, o falla diciendo por que.
+ *
+ * Antes, cuando no se resolvia ninguno, se inventaba el literal `'finturu-org'`.
+ * Desde la migracion a ObjectId nativo eso reventaba dentro del driver con un
+ * `BSONError` sobre cadenas hexadecimales: el webhook devolvia un 400 cuyo
+ * mensaje no decia nada del problema real, y el operador no tenia forma de
+ * saber que lo que faltaba era la organizacion.
+ *
+ * Un identificador que no sea un ObjectId —tipicamente un slug, que la lista de
+ * extraccion admite— se rechaza en lugar de caer al inquilino por defecto: el
+ * payload designo un inquilino concreto, y archivar su caso de fraude bajo otro
+ * seria una fuga entre inquilinos, mucho peor que un webhook rechazado.
+ */
+function requireTenantId(candidate: string | undefined): string {
+  const value = candidate?.trim();
+
+  if (!value) {
+    throw invariantViolation(
+      'Finturu ingestion resolved no organization: the payload carries none and no default was configured',
+      { field: 'organizationId' },
+    );
+  }
+
+  if (!OBJECT_ID_PATTERN.test(value)) {
+    throw invariantViolation(
+      `Finturu ingestion resolved organization "${value}", which is not a 24-character hexadecimal ObjectId`,
+      { field: 'organizationId', value },
+    );
+  }
+
+  return value;
+}
+
 function resolvePriorityFromRiskScore(riskScore: number): 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' {
   if (riskScore >= 80) return 'CRITICAL';
   if (riskScore >= 60) return 'HIGH';
@@ -84,7 +122,7 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
       input.organizationId ??
       input.defaultOrganizationId;
 
-    const organizationId = explicitOrgId && explicitOrgId.trim().length > 0 ? explicitOrgId.trim() : 'finturu-org';
+    const organizationId = requireTenantId(explicitOrgId);
 
     // 2. Extract Customer ID (idUser, customer_id, customerId, etc.)
     const customerId =
