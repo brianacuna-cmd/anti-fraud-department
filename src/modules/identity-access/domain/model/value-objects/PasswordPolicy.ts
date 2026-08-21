@@ -19,7 +19,7 @@ export type PasswordPolicyReason =
   | 'MISSING_UPPERCASE'
   | 'MISSING_DIGIT';
 
-export function checkPasswordPolicy(password: string): PasswordPolicyReason[] {
+function checkPasswordPolicy(password: string): PasswordPolicyReason[] {
   const reasons: PasswordPolicyReason[] = [];
   if (password.length < PASSWORD_MIN_LENGTH) {
     reasons.push('MIN_LENGTH');
