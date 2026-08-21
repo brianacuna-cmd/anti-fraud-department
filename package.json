@@ -11,8 +11,8 @@
     "test": "jest",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "bootstrap:admin": "tsx scripts/bootstrap-admin.ts",
-    "migrate:unique-active-scoring-rules": "tsx scripts/migrate-unique-active-scoring-rules.ts"
+    "bootstrap:admin": "tsx --env-file-if-exists=.env scripts/bootstrap-admin.ts",
+    "migrate:unique-active-scoring-rules": "tsx --env-file-if-exists=.env scripts/migrate-unique-active-scoring-rules.ts"
   },
   "dependencies": {
     "@gorules/zen-engine": "^0.54.0",
