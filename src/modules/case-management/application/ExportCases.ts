@@ -9,7 +9,7 @@ import { requireRole } from './authorization/requireRole.js';
 
 const EXPORT_READ_ROLES = ['SUPERVISOR', 'ADMIN', 'AUDITOR'] as const;
 /** Safety cap so a tenant-wide export cannot exhaust memory. */
-export const CASE_EXPORT_MAX_ROWS = 5000;
+const CASE_EXPORT_MAX_ROWS = 5000;
 
 export interface ExportCasesInput {
   readonly auth: AuthContext;

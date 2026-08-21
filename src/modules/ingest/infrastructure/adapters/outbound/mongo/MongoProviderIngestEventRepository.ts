@@ -12,10 +12,10 @@ import type { ProviderIngestEventDocument } from './documents/IngestDocuments.js
 import {
   extractDuplicateKeyIndexName,
   isDuplicateKeyError,
-  PROVIDER_INGEST_EVENT_UNIQUE_INDEX,
-} from './duplicateKey.js';
+} from '../../../../../../shared/persistence/mongo/duplicateKey.js';
 
 const COLLECTION_NAME = 'provider_ingest_events';
+export const PROVIDER_INGEST_EVENT_UNIQUE_INDEX = 'provider_ingest_event_org_provider_event_unique';
 
 export class MongoProviderIngestEventRepository implements ProviderIngestEventRepository {
   private readonly collection: Collection<ProviderIngestEventDocument>;

@@ -9,7 +9,7 @@ import { CaseSlaTracking } from '../../../src/modules/case-management/domain/mod
 import { createCaseSlaTrackingId } from '../../../src/modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
 import { createCaseId } from '../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { fromDate, toDate } from '../../../src/shared/time/Instant.js';
-import { extractDuplicateKeyIndexName } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/duplicateKey.js';
+import { extractDuplicateKeyIndexName } from '../../../src/shared/persistence/mongo/duplicateKey.js';
 import type { CaseSlaTrackingDocument } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/documents/CaseSlaTrackingDocument.js';
 import { oid } from '../../support/oid.js';
 
