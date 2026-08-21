@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import type { AmlAlert } from '../../../../domain/model/aggregates/AmlAlert.js';
 import type { AmlAlertId } from '../../../../domain/model/value-objects/AmlAlertId.js';
 import type { AmlAlertRepository } from '../../../../domain/ports/AmlAlertRepository.js';
+import { isDuplicateKeyError } from '../../../../../../shared/persistence/mongo/duplicateKey.js';
 import type { AmlAlertDocument } from './documents/AmlAlertDocument.js';
 import { toDocument, toDomain } from './mappers/AmlAlertDocumentMapper.js';
 
@@ -23,9 +24,9 @@ function naturalKeyFilter(document: AmlAlertDocument): Filter<AmlAlertDocument> 
  * natural key via existence-check-then-skip (spec RF-6): a repeated save
  * for the same (organization, customer, matched entry, match_field) is a
  * no-op, so outbox redelivery never creates a duplicate `aml_alerts`
- * record. A local unique index on that same key (see this slice's
- * integration test) backs this against races; Slice 6 promotes it into
- * the shared `ensureIndexes.ts`.
+ * record. A unique index on that same key (`aml_alerts_natural_key_unique`,
+ * see `src/shared/persistence/mongo/ensureIndexes.ts`) backs this against
+ * races.
  */
 export class MongoAmlAlertRepository implements AmlAlertRepository {
   private readonly collection: Collection<AmlAlertDocument>;
@@ -40,7 +41,18 @@ export class MongoAmlAlertRepository implements AmlAlertRepository {
     if (existing) {
       return;
     }
-    await this.collection.insertOne(document);
+    try {
+      await this.collection.insertOne(document);
+    } catch (error) {
+      // Concurrent save for the same natural key: the unique index
+      // (`aml_alerts_natural_key_unique`) rejects the loser with E11000.
+      // The alert already exists, so treat it as an idempotent no-op (RF-6)
+      // rather than propagating a failure to `persistAlerts`.
+      if (isDuplicateKeyError(error)) {
+        return;
+      }
+      throw error;
+    }
   }
 
   async findById(id: AmlAlertId): Promise<AmlAlert | null> {
