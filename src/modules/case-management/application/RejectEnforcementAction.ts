@@ -15,9 +15,7 @@ import {
   invariantViolation,
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
-
-const APPROVAL_ROLES = ['SUPERVISOR', 'ADMIN'] as const;
+import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
 
 export interface RejectEnforcementActionInput {
   readonly auth: AuthContext;
@@ -40,8 +38,7 @@ export interface RejectEnforcementActionDeps {
 }
 
 /**
- * Rejects a PENDING non-REVIEW enforcement action (PR3). SUPERVISOR|ADMIN
- * only. Transitions approval_requests PENDING→REJECTED and the action
+ * Rejects a PENDING non-REVIEW enforcement action (PR3). SUPERVISOR only. Transitions approval_requests PENDING→REJECTED and the action
  * PENDING→REJECTED. Rejected actions MUST NOT execute (PR4 gate).
  * REVIEW skips the approval gate entirely.
  */
@@ -49,7 +46,7 @@ export function createRejectEnforcementActionUseCase(deps: RejectEnforcementActi
   return async function rejectEnforcementAction(
     input: RejectEnforcementActionInput,
   ): Promise<RejectEnforcementActionResult> {
-    requireRole(input.auth, APPROVAL_ROLES);
+    requireOperationalRole(input.auth, SUPERVISION_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const enforcementActionId = createEnforcementActionId(input.enforcementActionId);
 

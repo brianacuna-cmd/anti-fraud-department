@@ -5,6 +5,7 @@ import type { AssignedTo } from '../../../src/modules/case-management/domain/mod
 export class InMemoryAssigneeDirectory implements AssigneeDirectory {
   private readonly members = new Map<string, Set<string>>();
   private readonly roleRecipients = new Map<string, string[]>();
+  private readonly names = new Map<string, string>();
 
   allow(organizationId: string, assignedTo: AssignedTo): void {
     const key = `${assignedTo.type}:${assignedTo.id}`;
@@ -18,11 +19,28 @@ export class InMemoryAssigneeDirectory implements AssigneeDirectory {
     this.roleRecipients.set(`${organizationId}:${roleId}`, [...userIds]);
   }
 
+  /** Registra el nombre legible de un asignatario (`${type}:${id}` → nombre). */
+  nameFor(organizationId: string, assignedTo: AssignedTo, name: string): void {
+    this.names.set(`${organizationId}:${assignedTo.type}:${assignedTo.id}`, name);
+  }
+
   async belongsToOrganization(organizationId: string, assignedTo: AssignedTo): Promise<boolean> {
     return this.members.get(organizationId)?.has(`${assignedTo.type}:${assignedTo.id}`) ?? false;
   }
 
   async listRoleRecipients(organizationId: string, roleId: string): Promise<readonly string[]> {
     return this.roleRecipients.get(`${organizationId}:${roleId}`) ?? [];
+  }
+
+  async displayNames(
+    organizationId: string,
+    assignees: readonly AssignedTo[],
+  ): Promise<ReadonlyMap<string, string>> {
+    const resolved = new Map<string, string>();
+    for (const assignee of assignees) {
+      const name = this.names.get(`${organizationId}:${assignee.type}:${assignee.id}`);
+      if (name !== undefined) resolved.set(assignee.id, name);
+    }
+    return resolved;
   }
 }

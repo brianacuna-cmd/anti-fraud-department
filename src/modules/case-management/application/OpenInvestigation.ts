@@ -11,6 +11,7 @@ import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { createInvestigationSubjectType } from '../domain/model/value-objects/InvestigationSubjectType.js';
 import { caseNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
+import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
 
 export interface OpenInvestigationInput {
   readonly auth: AuthContext;
@@ -37,6 +38,7 @@ export interface OpenInvestigationDeps {
  */
 export function createOpenInvestigationUseCase(deps: OpenInvestigationDeps) {
   return async function openInvestigation(input: OpenInvestigationInput): Promise<Investigation> {
+    requireOperationalRole(input.auth, CASE_WORK_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const caseId = createCaseId(input.caseId);
     const subjectType = createInvestigationSubjectType(input.subjectType);

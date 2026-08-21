@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
 import type { createRecordAnalystDecisionUseCase } from '../../../../application/RecordAnalystDecision.js';
+import type { createListCaseDecisionsUseCase } from '../../../../application/ListCaseDecisions.js';
 import type { createApproveEnforcementActionUseCase } from '../../../../application/ApproveEnforcementAction.js';
 import type { createRejectEnforcementActionUseCase } from '../../../../application/RejectEnforcementAction.js';
 import type { createExecuteEnforcementActionUseCase } from '../../../../application/ExecuteEnforcementAction.js';
@@ -12,6 +13,7 @@ import {
   listEnforcementActionsQuerySchema,
 } from './dto/enforcementSchemas.js';
 import {
+  toAnalystDecisionResponse,
   toExecuteEnforcementActionResponse,
   toRecordAnalystDecisionResponse,
   toReviewEnforcementActionResponse,
@@ -21,6 +23,7 @@ import { parseRequest } from './parseRequest.js';
 
 export interface EnforcementRouterDeps {
   readonly recordAnalystDecision: ReturnType<typeof createRecordAnalystDecisionUseCase>;
+  readonly listCaseDecisions: ReturnType<typeof createListCaseDecisionsUseCase>;
   readonly approveEnforcementAction: ReturnType<typeof createApproveEnforcementActionUseCase>;
   readonly rejectEnforcementAction: ReturnType<typeof createRejectEnforcementActionUseCase>;
   readonly executeEnforcementAction: ReturnType<typeof createExecuteEnforcementActionUseCase>;
@@ -51,6 +54,13 @@ export function enforcementRouter(deps: EnforcementRouterDeps): Router {
       targetId: body.targetId,
     });
     res.status(201).json(toRecordAnalystDecisionResponse(result));
+  });
+
+  /** Los dictamenes ya emitidos. Sin esto la ficha no sabe que se concluyo. */
+  router.get('/cases/:caseId/decisions', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const decisions = await deps.listCaseDecisions({ auth, caseId: req.params.caseId! });
+    res.status(200).json({ items: decisions.map(toAnalystDecisionResponse) });
   });
 
   router.get('/enforcement-actions', async (req, res) => {

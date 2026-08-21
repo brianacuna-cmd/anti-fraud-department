@@ -37,6 +37,23 @@ export function forbiddenRole(roleId: string | null, allowed: readonly string[])
   );
 }
 
+/**
+ * El actor pertenece al plano de gobierno (`ORGANIZATION`, `ADMIN`,
+ * `AUDITOR`): observa el inquilino entero y no opera sobre el. Ver
+ * `shared/kernel/AccessTier.ts`.
+ */
+export function forbiddenReadOnly(
+  auth: { readonly actorType: string; readonly roleId: string | null },
+  allowed: readonly string[],
+): IngestError {
+  const actor = auth.actorType === 'USER' ? (auth.roleId ?? 'null') : auth.actorType;
+  return new IngestError(
+    'FORBIDDEN_ROLE',
+    `"${actor}" has read-only access; this operation requires one of: ${allowed.join(', ')}`,
+    { actor, allowed: [...allowed], readOnly: true },
+  );
+}
+
 export function webhookSignatureInvalid(
   message = 'webhook signature is missing or invalid',
 ): IngestError {

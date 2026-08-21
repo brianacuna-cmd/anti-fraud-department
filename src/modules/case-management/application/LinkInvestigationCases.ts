@@ -17,6 +17,7 @@ import {
   invariantViolation,
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
+import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
 
 const MAX_LINKED_CASES = 100;
 
@@ -47,6 +48,7 @@ export function createLinkInvestigationCasesUseCase(deps: LinkInvestigationCases
   return async function linkInvestigationCases(
     input: LinkInvestigationCasesInput,
   ): Promise<Investigation> {
+    requireOperationalRole(input.auth, CASE_WORK_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const investigationId = createInvestigationId(input.investigationId);
     const caseIds = dedupe(input.caseIds).map(createCaseId);

@@ -106,7 +106,7 @@ describe('routingRuleRouter (HTTP)', () => {
       createAuthContext({
         userId: oid('user-1'),
         organizationId: oid('org-1'),
-        roleId: 'ADMIN',
+        roleId: 'SUPERVISOR',
       }),
     );
 
@@ -183,7 +183,7 @@ describe('routingRuleRouter (HTTP)', () => {
       createAuthContext({
         userId: oid('user-1'),
         organizationId: oid('org-1'),
-        roleId: 'ADMIN',
+        roleId: 'SUPERVISOR',
       }),
     );
 
@@ -233,7 +233,7 @@ describe('routingRuleRouter (HTTP)', () => {
         createAuthContext({
           userId: oid('user-1'),
           organizationId: org,
-          roleId: 'ADMIN',
+          roleId: 'SUPERVISOR',
         }),
       LATER,
     );

@@ -10,6 +10,7 @@ import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { caseManagementErrorStatus } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/errorStatus.js';
 import { approvalRequestRouter } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/approvalRequestRouter.js';
 import { createReviewApprovalRequestUseCase } from '../../../../src/modules/case-management/application/ReviewApprovalRequest.js';
+import { createListApprovalRequestsUseCase } from '../../../../src/modules/case-management/application/ListApprovalRequests.js';
 import { InMemoryEnforcementActionRepository } from '../../../helpers/case-management/InMemoryEnforcementActionRepository.js';
 import { InMemoryApprovalRequestRepository } from '../../../helpers/case-management/InMemoryApprovalRequestRepository.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
@@ -66,6 +67,10 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
       auditRecorder: new InMemoryCaseManagementAuditRecorder(),
       unitOfWork: new PassthroughUnitOfWork(),
       clock: new FixedClock(NOW),
+    }),
+    listApprovalRequests: createListApprovalRequestsUseCase({
+      enforcementActions,
+      approvalRequests,
     }),
   });
 

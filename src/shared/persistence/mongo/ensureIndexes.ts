@@ -75,6 +75,18 @@ export async function ensureIndexes(db: Db): Promise<void> {
 
   await db.collection('cases').createIndex({ tags: 1 }, { name: 'case_tags_idx' });
 
+  // Panel de gobierno (`GET /metrics/overview`): la serie diaria de altas
+  // recorre `cases` por inquilino y fecha de creacion. Sin este indice, cada
+  // apertura del panel es un barrido completo de la coleccion.
+  await db
+    .collection('cases')
+    .createIndex({ organization_id: 1, created_at: 1 }, { name: 'case_org_created_idx' });
+
+  // La misma serie, del lado de los cierres.
+  await db
+    .collection('resolutions')
+    .createIndex({ organization_id: 1, created_at: 1 }, { name: 'resolutions_org_created_idx' });
+
   await db
     .collection('organization_fraud_config')
     .createIndex({ organization_id: 1 }, { unique: true, name: 'org_fraud_config_unique' });

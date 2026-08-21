@@ -21,11 +21,9 @@ import {
   organizationFraudConfigNotFound,
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
+import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
 
 const MS_PER_MINUTE = 60_000;
-const REOPEN_ROLES = ['SUPERVISOR', 'ADMIN'] as const;
-
 export interface ReopenCaseInput {
   readonly auth: AuthContext;
   readonly caseId: string;
@@ -46,7 +44,7 @@ export interface ReopenCaseDeps {
 }
 
 /**
- * T6 reopen (PR4). Role-gated to SUPERVISOR|ADMIN via `auth.roleId`.
+ * T6 reopen (PR4). Role-gated to SUPERVISOR.
  * Requires non-empty justification. Soft-deleted cases surface as
  * CASE_NOT_FOUND. Resets CaseSlaTracking when present (or creates one),
  * recomputes dueDate from org fraud config minutes, and records
@@ -54,7 +52,7 @@ export interface ReopenCaseDeps {
  */
 export function createReopenCaseUseCase(deps: ReopenCaseDeps) {
   return async function reopenCase(input: ReopenCaseInput): Promise<Case> {
-    requireRole(input.auth, REOPEN_ROLES);
+    requireOperationalRole(input.auth, SUPERVISION_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const justification = input.justification.trim();
     if (justification.length === 0) {

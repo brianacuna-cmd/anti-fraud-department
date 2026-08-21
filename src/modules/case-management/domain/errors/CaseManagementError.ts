@@ -49,6 +49,45 @@ export function forbiddenRole(
   );
 }
 
+/**
+ * El actor pertenece al plano de gobierno (`ORGANIZATION`, `ADMIN`,
+ * `AUDITOR`): observa el inquilino entero y no opera sobre él.
+ *
+ * Se separa de `forbiddenRole` porque el mensaje es lo unico que llega a la
+ * pantalla: `role "null" is not authorized` no le dice a nadie que su acceso
+ * es de solo lectura por diseno, ni a quien tiene que pedirle la accion.
+ */
+export function forbiddenReadOnly(
+  auth: { readonly actorType: string; readonly roleId: string | null },
+  allowed: readonly string[],
+): CaseManagementError {
+  const actor = auth.actorType === 'USER' ? (auth.roleId ?? 'null') : auth.actorType;
+  return new CaseManagementError(
+    'FORBIDDEN_ROLE',
+    `"${actor}" has read-only access to case management; this operation requires one of: ${allowed.join(', ')}`,
+    { actor, allowed: [...allowed], readOnly: true },
+  );
+}
+
+/**
+ * Principio de cuatro ojos: quien solicita una sancion no puede autorizarla.
+ *
+ * Codigo propio y no `FORBIDDEN_ROLE` porque no es un problema de rol — el
+ * supervisor que la pidio TIENE el rol para aprobar. Lo que falla es la
+ * separacion entre quien propone y quien revisa, y quien lo recibe necesita
+ * entender que la accion no es suya, sino de otra persona.
+ */
+export function selfApprovalForbidden(
+  requesterId: string,
+  approvalRequestId: string,
+): CaseManagementError {
+  return new CaseManagementError(
+    'SELF_APPROVAL_FORBIDDEN',
+    'the requester of an enforcement action cannot review it: dual control requires a second person',
+    { requesterId, approvalRequestId },
+  );
+}
+
 export function organizationFraudConfigNotFound(organizationId: string): CaseManagementError {
   return new CaseManagementError(
     'ORGANIZATION_FRAUD_CONFIG_NOT_FOUND',

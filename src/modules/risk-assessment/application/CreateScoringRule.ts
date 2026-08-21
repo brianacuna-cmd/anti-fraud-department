@@ -6,9 +6,7 @@ import type { RiskScoringRuleId } from '../domain/model/value-objects/RiskScorin
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { RiskScoringRuleRepository } from '../domain/ports/RiskScoringRuleRepository.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
-
-const SCORING_RULE_ROLES = ['SUPERVISOR', 'ADMIN'] as const;
+import { requireOperationalRole, SCORING_RULE_WRITE_ROLES } from './authorization/policy.js';
 
 export interface CreateScoringRuleInput {
   readonly auth: AuthContext;
@@ -25,12 +23,12 @@ export interface CreateScoringRuleDeps {
 }
 
 /**
- * Draft create: SUPERVISOR|ADMIN only. Always persists INACTIVE.
+ * Draft create: SUPERVISOR only. Always persists INACTIVE.
  * Structural JDM validation happens at the HTTP boundary before this use case.
  */
 export function createCreateScoringRuleUseCase(deps: CreateScoringRuleDeps) {
   return async function createScoringRule(input: CreateScoringRuleInput): Promise<RiskScoringRule> {
-    requireRole(input.auth, SCORING_RULE_ROLES);
+    requireOperationalRole(input.auth, SCORING_RULE_WRITE_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const now = deps.clock.now();
 

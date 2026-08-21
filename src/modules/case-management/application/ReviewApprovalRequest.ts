@@ -14,9 +14,7 @@ import {
   invariantViolation,
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
-
-const REVIEW_ROLES = ['SUPERVISOR', 'ADMIN'] as const;
+import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
 
 export type ApprovalDecision = 'APPROVED' | 'REJECTED';
 
@@ -43,7 +41,7 @@ export interface ReviewApprovalRequestDeps {
 /**
  * PATCH /approval-requests/:id/review — a supervisor authorizes (APPROVED) or
  * denies (REJECTED) a requested sanction, keyed on the approval request itself.
- * SUPERVISOR|ADMIN only; a non-empty `comment` is mandatory. Tenant scope is
+ * SUPERVISOR only; a non-empty `comment` is mandatory. Tenant scope is
  * derived from the linked enforcement action (ApprovalRequest carries no org).
  * Within ONE transaction: transition the approval_request and cascade the
  * decision onto its enforcement_action (PENDING -> APPROVED|REJECTED), then
@@ -54,7 +52,7 @@ export function createReviewApprovalRequestUseCase(deps: ReviewApprovalRequestDe
   return async function reviewApprovalRequest(
     input: ReviewApprovalRequestInput,
   ): Promise<ReviewApprovalRequestResult> {
-    requireRole(input.auth, REVIEW_ROLES);
+    requireOperationalRole(input.auth, SUPERVISION_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const approvalRequestId = createApprovalRequestId(input.approvalRequestId);
     const comment = input.comment.trim();

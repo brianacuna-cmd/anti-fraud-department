@@ -17,6 +17,7 @@ import {
   invariantViolation,
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
+import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
 
 export interface ReassignCaseInput {
   readonly auth: AuthContext;
@@ -48,6 +49,7 @@ export interface ReassignCaseDeps {
  */
 export function createReassignCaseUseCase(deps: ReassignCaseDeps) {
   return async function reassignCase(input: ReassignCaseInput): Promise<Case> {
+    requireOperationalRole(input.auth, CASE_WORK_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const caseId = createCaseId(input.caseId);
     const assignedTo = createAssignedTo(input.assignedToType, input.assignedToId);

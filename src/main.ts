@@ -106,6 +106,7 @@ import { createRouteCaseUseCase } from './modules/case-management/application/Ro
 import { createReassignCaseUseCase } from './modules/case-management/application/ReassignCase.js';
 import { createListCasesUseCase } from './modules/case-management/application/ListCases.js';
 import { createExportCasesUseCase } from './modules/case-management/application/ExportCases.js';
+import { createGetFraudMetricsUseCase } from './modules/case-management/application/GetFraudMetrics.js';
 import { createReopenCaseUseCase } from './modules/case-management/application/ReopenCase.js';
 import { createUpdateCasePriorityTagsUseCase } from './modules/case-management/application/UpdateCasePriorityTags.js';
 import { createBulkCaseActionUseCase } from './modules/case-management/application/BulkCaseAction.js';
@@ -151,6 +152,8 @@ import { MongoCaseSlaTrackingRepository } from './modules/case-management/infras
 import { ZenRoutingEngine } from './modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { caseRouter } from './modules/case-management/infrastructure/adapters/inbound/http/caseRouter.js';
 import { caseExportRouter } from './modules/case-management/infrastructure/adapters/inbound/http/caseExportRouter.js';
+import { metricsRouter } from './modules/case-management/infrastructure/adapters/inbound/http/metricsRouter.js';
+import { MongoFraudMetricsReader } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoFraudMetricsReader.js';
 // Integracion Finturu (propia de este fork): ingesta por webhook, padron de
 // clientes y consultas en vivo a los proveedores.
 import { createIngestFinturuCaseUseCase } from './modules/case-management/application/IngestFinturuCase.js';
@@ -176,6 +179,7 @@ import { generateCaseSlaTrackingId } from './modules/case-management/domain/mode
 import { createGetOrganizationFraudConfigUseCase } from './modules/case-management/application/GetOrganizationFraudConfig.js';
 import { createUpsertOrganizationFraudConfigUseCase } from './modules/case-management/application/UpsertOrganizationFraudConfig.js';
 import { createRecordAnalystDecisionUseCase } from './modules/case-management/application/RecordAnalystDecision.js';
+import { createListCaseDecisionsUseCase } from './modules/case-management/application/ListCaseDecisions.js';
 import { createApproveEnforcementActionUseCase } from './modules/case-management/application/ApproveEnforcementAction.js';
 import { createRejectEnforcementActionUseCase } from './modules/case-management/application/RejectEnforcementAction.js';
 import { createExecuteEnforcementActionUseCase } from './modules/case-management/application/ExecuteEnforcementAction.js';
@@ -190,6 +194,7 @@ import { organizationFraudConfigRouter } from './modules/case-management/infrast
 import { enforcementRouter } from './modules/case-management/infrastructure/adapters/inbound/http/enforcementRouter.js';
 import { approvalRequestRouter } from './modules/case-management/infrastructure/adapters/inbound/http/approvalRequestRouter.js';
 import { createReviewApprovalRequestUseCase } from './modules/case-management/application/ReviewApprovalRequest.js';
+import { createListApprovalRequestsUseCase } from './modules/case-management/application/ListApprovalRequests.js';
 import { routingRuleRouter } from './modules/case-management/infrastructure/adapters/inbound/http/routingRuleRouter.js';
 import { MongoAnalystDecisionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoAnalystDecisionRepository.js';
 import { MongoEnforcementActionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoEnforcementActionRepository.js';
@@ -427,6 +432,11 @@ async function bootstrap(): Promise<void> {
   const caseRoutingEngine = new ZenRoutingEngine();
   const organizationFraudConfig = new MongoOrganizationFraudConfigRepository(db);
   const caseSlaTracking = new MongoCaseSlaTrackingRepository(db);
+  // Suben aqui, con el resto de repositorios: `GenerateCaseReport` los
+  // necesita para congelar la evidencia y las aprobaciones, y se cablea
+  // antes que los routers que los usaban originalmente.
+  const evidence = new MongoEvidenceRepository(db);
+  const approvalRequests = new MongoApprovalRequestRepository(db);
   const routeCase = createRouteCaseUseCase({
     cases,
     routingRules: caseRoutingRules,
@@ -569,6 +579,13 @@ async function bootstrap(): Promise<void> {
 
   const caseExportHttpRouter = caseExportRouter({
     exportCases: createExportCasesUseCase({ cases }),
+  });
+  const caseMetricsHttpRouter = metricsRouter({
+    getFraudMetrics: createGetFraudMetricsUseCase({
+      metrics: new MongoFraudMetricsReader(db),
+      clock,
+      assignees: assigneeDirectory,
+    }),
   });
   const getOrganizationFraudConfig = createGetOrganizationFraudConfigUseCase({
     repository: organizationFraudConfig,
@@ -719,6 +736,10 @@ async function bootstrap(): Promise<void> {
       resolutions,
       enforcementActions,
       analystDecisions,
+      evidence,
+      approvalRequests,
+      slaTracking: caseSlaTracking,
+      assignees: assigneeDirectory,
       reports: caseReports,
       auditRecorder: caseManagementAuditRecorder,
       unitOfWork: caseManagementUnitOfWork,
@@ -728,7 +749,6 @@ async function bootstrap(): Promise<void> {
     listCaseReports: createListCaseReportsUseCase({ cases, reports: caseReports }),
     getCaseReport: createGetCaseReportUseCase({ reports: caseReports }),
   });
-  const evidence = new MongoEvidenceRepository(db);
   const evidenceStore = new FilesystemEvidenceStore(EVIDENCE_STORAGE_DIR);
   const timestampAuthority = new NullTimestampAuthority();
   const evidenceHttpRouter = evidenceRouter({
@@ -767,7 +787,6 @@ async function bootstrap(): Promise<void> {
       generateTimelineEventId,
     }),
   });
-  const approvalRequests = new MongoApprovalRequestRepository(db);
   const customerOutgoingEvents = new MongoCustomerOutgoingEventRepository(db);
   const outgoingWebhookClient = new HttpOutgoingWebhookClient();
   const customerOutgoingEventDispatcher = createCustomerOutgoingEventDispatcher({
@@ -792,14 +811,19 @@ async function bootstrap(): Promise<void> {
       cases,
       decisions: analystDecisions,
       enforcementActions,
+      approvalRequests,
       timelineRecorder: caseTimelineRecorder,
       auditRecorder: caseManagementAuditRecorder,
+      notificationSender: caseManagementNotificationSender,
+      assigneeDirectory,
       unitOfWork: caseManagementUnitOfWork,
       clock,
       generateAnalystDecisionId,
       generateEnforcementActionId,
+      generateApprovalRequestId,
       generateTimelineEventId,
     }),
+    listCaseDecisions: createListCaseDecisionsUseCase({ cases, analystDecisions }),
     approveEnforcementAction: createApproveEnforcementActionUseCase({
       enforcementActions,
       approvalRequests,
@@ -845,6 +869,10 @@ async function bootstrap(): Promise<void> {
       auditRecorder: caseManagementAuditRecorder,
       unitOfWork: caseManagementUnitOfWork,
       clock,
+    }),
+    listApprovalRequests: createListApprovalRequestsUseCase({
+      enforcementActions,
+      approvalRequests,
     }),
   });
   const routingRuleHttpRouter = routingRuleRouter({
@@ -1219,6 +1247,7 @@ async function bootstrap(): Promise<void> {
   // on the SAME authenticated `/api/v1` router — rely on
   // `authContextMiddleware` above to resolve the caller's AuthContext.
   identityAccessRouter.use(caseExportHttpRouter);
+  identityAccessRouter.use(caseMetricsHttpRouter);
   identityAccessRouter.use(caseManagementCasesRouter);
   identityAccessRouter.use(caseManagementFinturuRouter);
   identityAccessRouter.use(finturuWebhook);

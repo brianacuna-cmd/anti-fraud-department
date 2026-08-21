@@ -19,9 +19,7 @@ import { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { caseNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
-
-const CLOSE_ROLES = ['SUPERVISOR', 'ADMIN'] as const;
+import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
 
 export interface CloseCaseInput {
   readonly auth: AuthContext;
@@ -54,7 +52,7 @@ export interface CloseCaseConfig {
 
 /**
  * Shared closure routine for resolve/archive (case-lifecycle-core PR3).
- * SUPERVISOR|ADMIN only. Within ONE `unitOfWork.withTransaction`: transition
+ * SUPERVISOR only. Within ONE `unitOfWork.withTransaction`: transition
  * the case (throws `invalidTransition`/422 if the edge is illegal), append a
  * `Resolution` row (1:N, historical — reopen never voids it), record a
  * `STATE_CHANGED` timeline event, and audit. Case status finally gets a
@@ -63,7 +61,7 @@ export interface CloseCaseConfig {
 export function closeCase(deps: CloseCaseDeps, config: CloseCaseConfig) {
   const { closureType, auditAction } = config;
   return async function close(input: CloseCaseInput): Promise<Case> {
-    requireRole(input.auth, CLOSE_ROLES);
+    requireOperationalRole(input.auth, SUPERVISION_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const caseId = createCaseId(input.caseId);
 

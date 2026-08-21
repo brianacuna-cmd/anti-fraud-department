@@ -10,9 +10,7 @@ import {
   routingRuleNotFound,
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
-
-const ROUTING_RULE_WRITE_ROLES = ['SUPERVISOR', 'ADMIN'] as const;
+import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
 
 export interface ActivateRoutingRuleInput {
   readonly auth: AuthContext;
@@ -28,14 +26,14 @@ export interface ActivateRoutingRuleDeps {
 
 /**
  * Non-exclusive activate: flips one INACTIVE draft to ACTIVE. Sibling ACTIVE
- * rules remain ACTIVE (contrast ActivateScoringRule). SUPERVISOR|ADMIN only.
+ * rules remain ACTIVE (contrast ActivateScoringRule). SUPERVISOR only.
  * REQ-E2: already-ACTIVE is a no-op — no save, no audit event. REQ-E1: the
  * save+audit pair for a real transition runs inside one UnitOfWork (mirrors
  * ApproveEnforcementAction.ts).
  */
 export function createActivateRoutingRuleUseCase(deps: ActivateRoutingRuleDeps) {
   return async function activateRoutingRule(input: ActivateRoutingRuleInput): Promise<CaseRoutingRule> {
-    requireRole(input.auth, ROUTING_RULE_WRITE_ROLES);
+    requireOperationalRole(input.auth, SUPERVISION_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const ruleId = createCaseRoutingRuleId(input.ruleId);
 

@@ -22,11 +22,9 @@ import {
   organizationFraudConfigNotFound,
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
+import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
 
 const MS_PER_MINUTE = 60_000;
-const UPDATE_PRIORITY_TAGS_ROLES = ['ANALYST', 'SUPERVISOR', 'ADMIN'] as const;
-
 export interface UpdateCasePriorityTagsInput {
   readonly auth: AuthContext;
   readonly caseId: string;
@@ -47,7 +45,7 @@ export interface UpdateCasePriorityTagsDeps {
 }
 
 /**
- * PATCH /cases/:id/priority-tags. Role-gated to ANALYST|SUPERVISOR|ADMIN via
+ * PATCH /cases/:id/priority-tags. Role-gated to ANALYST|SUPERVISOR via
  * `auth.roleId` (triage operation). Replaces the whole `tags` array and sets
  * `priority`. When the priority actually changes, recomputes the SLA dueDate
  * from org fraud config minutes and resets (or creates) CaseSlaTracking,
@@ -60,7 +58,7 @@ export function createUpdateCasePriorityTagsUseCase(deps: UpdateCasePriorityTags
   return async function updateCasePriorityTags(
     input: UpdateCasePriorityTagsInput,
   ): Promise<Case> {
-    requireRole(input.auth, UPDATE_PRIORITY_TAGS_ROLES);
+    requireOperationalRole(input.auth, CASE_WORK_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const caseId = createCaseId(input.caseId);
     const nextPriority = createCasePriority(input.priority);

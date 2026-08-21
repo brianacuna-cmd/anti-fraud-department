@@ -130,7 +130,7 @@ describe('createApproveEnforcementActionUseCase', () => {
     const { approveEnforcementAction, approvalRequests } = buildUseCase(buildPendingAction());
 
     const result = await approveEnforcementAction({
-      auth: ADMIN,
+      auth: SUPERVISOR,
       enforcementActionId: ACTION_ID,
       reviewerComment: null,
     });
@@ -138,7 +138,7 @@ describe('createApproveEnforcementActionUseCase', () => {
     expect(result.enforcementAction.status).toBe('APPROVED');
     expect(result.approvalRequest.status).toBe('APPROVED');
     expect(result.approvalRequest.requesterId).toBe(oid('analyst-1'));
-    expect(result.approvalRequest.reviewerId).toBe(oid('admin-1'));
+    expect(result.approvalRequest.reviewerId).toBe(oid('supervisor-1'));
     expect(approvalRequests.all()).toHaveLength(1);
   });
 
@@ -163,20 +163,21 @@ describe('createApproveEnforcementActionUseCase', () => {
     expect(auditRecorder.all()).toHaveLength(0);
   });
 
-  it('rejects ANALYST and AUDITOR with FORBIDDEN_ROLE', async () => {
+  /**
+   * ADMIN esta aqui a proposito: autorizar una sancion es un acto operativo,
+   * y quien administra los permisos del equipo no lo ejerce (SoD, ver
+   * `shared/kernel/AccessTier.ts`).
+   */
+  it.each([
+    ['ANALYST', () => ANALYST],
+    ['AUDITOR', () => AUDITOR],
+    ['ADMIN', () => ADMIN],
+  ])('rejects %s with FORBIDDEN_ROLE', async (_role, actor) => {
     const { approveEnforcementAction } = buildUseCase(buildPendingAction());
 
     await expect(
       approveEnforcementAction({
-        auth: ANALYST,
-        enforcementActionId: ACTION_ID,
-        reviewerComment: null,
-      }),
-    ).rejects.toMatchObject({ code: 'FORBIDDEN_ROLE' } satisfies Partial<CaseManagementError>);
-
-    await expect(
-      approveEnforcementAction({
-        auth: AUDITOR,
+        auth: actor(),
         enforcementActionId: ACTION_ID,
         reviewerComment: null,
       }),

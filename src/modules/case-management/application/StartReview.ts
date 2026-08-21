@@ -10,6 +10,7 @@ import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { caseNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
+import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
 
 export interface StartReviewInput {
   readonly auth: AuthContext;
@@ -27,13 +28,15 @@ export interface StartReviewDeps {
 
 /**
  * Moves a case OPEN -> IN_REVIEW (the review gate: a case must be reviewed
- * before it can be resolved). Any authenticated tenant actor may pull a case
- * into review. Within ONE transaction: transition + STATE_CHANGED timeline +
+ * before it can be resolved). ANALYST|SUPERVISOR only — pulling a case into
+ * review is case work, and the governance tier (ORGANIZATION, ADMIN, AUDITOR)
+ * observes without operating. Within ONE transaction: transition + STATE_CHANGED timeline +
  * START_REVIEW audit. An illegal transition (e.g. already RESOLVED) throws
  * `invalidTransition` (422).
  */
 export function createStartReviewUseCase(deps: StartReviewDeps) {
   return async function startReview(input: StartReviewInput): Promise<Case> {
+    requireOperationalRole(input.auth, CASE_WORK_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const caseId = createCaseId(input.caseId);
 

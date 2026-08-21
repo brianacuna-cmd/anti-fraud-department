@@ -7,9 +7,7 @@ import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { CaseRoutingRuleRepository } from '../domain/ports/CaseRoutingRuleRepository.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
-
-const ROUTING_RULE_WRITE_ROLES = ['SUPERVISOR', 'ADMIN'] as const;
+import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
 
 export interface CreateRoutingRuleInput {
   readonly auth: AuthContext;
@@ -29,7 +27,7 @@ export interface CreateRoutingRuleDeps {
 }
 
 /**
- * Draft create: SUPERVISOR|ADMIN only. Always persists INACTIVE. Structural
+ * Draft create: SUPERVISOR only. Always persists INACTIVE. Structural
  * JDM validation happens at the HTTP boundary before this use case.
  * REQ-E1: save + audit run inside one UnitOfWork (mirrors
  * ApproveEnforcementAction.ts) so the rule is never persisted without its
@@ -37,7 +35,7 @@ export interface CreateRoutingRuleDeps {
  */
 export function createCreateRoutingRuleUseCase(deps: CreateRoutingRuleDeps) {
   return async function createRoutingRule(input: CreateRoutingRuleInput): Promise<CaseRoutingRule> {
-    requireRole(input.auth, ROUTING_RULE_WRITE_ROLES);
+    requireOperationalRole(input.auth, SUPERVISION_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const now = deps.clock.now();
 

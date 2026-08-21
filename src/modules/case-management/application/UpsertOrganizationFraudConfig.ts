@@ -4,6 +4,7 @@ import type { OrganizationFraudConfigRepository } from '../domain/ports/Organiza
 import { OrganizationFraudConfig } from '../domain/model/aggregates/OrganizationFraudConfig.js';
 import { generateOrganizationFraudConfigId } from '../domain/model/value-objects/OrganizationFraudConfigId.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
+import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
 
 export interface UpsertOrganizationFraudConfigInput {
   readonly auth: AuthContext;
@@ -35,6 +36,7 @@ export function createUpsertOrganizationFraudConfigUseCase(deps: UpsertOrganizat
   return async function upsertOrganizationFraudConfig(
     input: UpsertOrganizationFraudConfigInput,
   ): Promise<OrganizationFraudConfig> {
+    requireOperationalRole(input.auth, SUPERVISION_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const now = deps.clock.now();
 

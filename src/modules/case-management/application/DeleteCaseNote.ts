@@ -10,9 +10,7 @@ import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.
 import { createCaseNoteId } from '../domain/model/value-objects/CaseNoteId.js';
 import { caseNoteNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
-
-const DELETE_CASE_NOTE_ROLES = ['SUPERVISOR', 'ADMIN'] as const;
+import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
 
 export interface DeleteCaseNoteInput {
   readonly auth: AuthContext;
@@ -29,7 +27,7 @@ export interface DeleteCaseNoteDeps {
 }
 
 /**
- * DELETE /notes/:id — logical (soft) delete. Role-gated to SUPERVISOR|ADMIN.
+ * DELETE /notes/:id — logical (soft) delete. Role-gated to SUPERVISOR.
  * Marks `deletedAt = now` so an erroneous note is hidden from the ficha without
  * dropping the row (append-only history + referential integrity preserved).
  * Idempotent: re-deleting an already-deleted note is a no-op. Records
@@ -38,7 +36,7 @@ export interface DeleteCaseNoteDeps {
  */
 export function createDeleteCaseNoteUseCase(deps: DeleteCaseNoteDeps) {
   return async function deleteCaseNote(input: DeleteCaseNoteInput): Promise<CaseNote> {
-    requireRole(input.auth, DELETE_CASE_NOTE_ROLES);
+    requireOperationalRole(input.auth, SUPERVISION_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const noteId = createCaseNoteId(input.noteId);
 

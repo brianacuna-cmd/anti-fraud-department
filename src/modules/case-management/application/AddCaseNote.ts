@@ -14,6 +14,7 @@ import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { caseNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
+import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
 
 export interface AddCaseNoteInput {
   readonly auth: AuthContext;
@@ -41,6 +42,7 @@ export interface AddCaseNoteDeps {
  */
 export function createAddCaseNoteUseCase(deps: AddCaseNoteDeps) {
   return async function addCaseNote(input: AddCaseNoteInput): Promise<CaseNote> {
+    requireOperationalRole(input.auth, CASE_WORK_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const caseId = createCaseId(input.caseId);
 

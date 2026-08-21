@@ -22,6 +22,7 @@ import {
   investigationNotFound,
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
+import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
 
 export interface RegisterEvidenceInput {
   readonly auth: AuthContext;
@@ -56,6 +57,7 @@ export interface RegisterEvidenceDeps {
  */
 export function createRegisterEvidenceUseCase(deps: RegisterEvidenceDeps) {
   return async function registerEvidence(input: RegisterEvidenceInput): Promise<Evidence> {
+    requireOperationalRole(input.auth, CASE_WORK_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const caseId = createCaseId(input.caseId);
 

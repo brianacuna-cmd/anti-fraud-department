@@ -190,12 +190,12 @@ describe('createReopenCaseUseCase (role-gated reopen + SLA reset)', () => {
     });
   });
 
-  it('allows ADMIN to reopen an ARCHIVED case to IN_REVIEW', async () => {
+  it('allows SUPERVISOR to reopen an ARCHIVED case to IN_REVIEW', async () => {
     const archived = buildResolvedCase().transitionTo('ARCHIVED', NOW);
     const { reopenCase } = buildUseCase(archived);
 
     const result = await reopenCase({
-      auth: ADMIN,
+      auth: SUPERVISOR,
       caseId: CASE_ID,
       targetStatus: 'IN_REVIEW',
       justification: 'Supervisor requested reopen',
@@ -203,6 +203,23 @@ describe('createReopenCaseUseCase (role-gated reopen + SLA reset)', () => {
 
     expect(result.status).toBe('IN_REVIEW');
     expect(result.dueDate).toEqual(EXPECTED_DUE);
+  });
+
+  /**
+   * Reabrir revive un expediente cerrado: es un acto de autoridad operativa,
+   * no de gobierno. ADMIN lo ve, no lo hace (SoD).
+   */
+  it('rejects ADMIN as read-only', async () => {
+    const { reopenCase } = buildUseCase(buildResolvedCase());
+
+    await expect(
+      reopenCase({
+        auth: ADMIN,
+        caseId: CASE_ID,
+        targetStatus: 'IN_REVIEW',
+        justification: 'Admin should not be able to do this',
+      }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN_ROLE' });
   });
 
   it('rejects missing justification with INVARIANT_VIOLATION', async () => {

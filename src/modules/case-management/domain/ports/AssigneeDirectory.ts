@@ -13,4 +13,17 @@ export interface AssigneeDirectory {
    * when the role has no active members.
    */
   listRoleRecipients(organizationId: string, roleId: string): Promise<readonly string[]>;
+  /**
+   * Nombres legibles para un puñado de asignatarios, por su id.
+   *
+   * Los devuelve el panel de carga de trabajo: sin esto la barra de cada
+   * responsable se rotula con un ObjectId en hexadecimal, que no le dice a
+   * nadie quién tiene los expedientes encima. Un id que no se resuelva
+   * (usuario borrado, rol retirado) simplemente no aparece en el mapa, y
+   * quien llama decide con qué rotularlo.
+   */
+  displayNames(
+    organizationId: string,
+    assignees: readonly AssignedTo[],
+  ): Promise<ReadonlyMap<string, string>>;
 }

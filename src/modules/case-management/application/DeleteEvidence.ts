@@ -10,9 +10,7 @@ import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.
 import { createEvidenceId } from '../domain/model/value-objects/EvidenceId.js';
 import { evidenceNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
-
-const DELETE_EVIDENCE_ROLES = ['SUPERVISOR', 'ADMIN'] as const;
+import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
 
 export interface DeleteEvidenceInput {
   readonly auth: AuthContext;
@@ -29,7 +27,7 @@ export interface DeleteEvidenceDeps {
 }
 
 /**
- * DELETE /evidence/:id — logical (soft) delete. Role-gated to SUPERVISOR|ADMIN.
+ * DELETE /evidence/:id — logical (soft) delete. Role-gated to SUPERVISOR.
  * Marks `deletedAt = now` so the evidence is hidden from reads/lists without
  * dropping the row (referential integrity, sha256 chain-of-custody preserved).
  * Idempotent: re-deleting an already-deleted row is a no-op (no timeline/audit
@@ -38,7 +36,7 @@ export interface DeleteEvidenceDeps {
  */
 export function createDeleteEvidenceUseCase(deps: DeleteEvidenceDeps) {
   return async function deleteEvidence(input: DeleteEvidenceInput): Promise<Evidence> {
-    requireRole(input.auth, DELETE_EVIDENCE_ROLES);
+    requireOperationalRole(input.auth, SUPERVISION_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const evidenceId = createEvidenceId(input.evidenceId);
 

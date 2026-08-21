@@ -21,9 +21,8 @@ import {
   invariantViolation,
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
+import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
 
-const BULK_ACTION_ROLES = ['ANALYST', 'SUPERVISOR', 'ADMIN'] as const;
 const MAX_BULK_CASES = 100;
 
 export type BulkCaseAction =
@@ -64,7 +63,7 @@ interface AppliedChange {
 /**
  * POST /cases/bulk-action. Applies ONE action (ASSIGN | CHANGE_PRIORITY |
  * ADD_TAGS) to a selection of cases atomically. Role-gated to
- * ANALYST|SUPERVISOR|ADMIN. Scope (design "bulk-action tables"): cases,
+ * ANALYST|SUPERVISOR. Scope (design "bulk-action tables"): cases,
  * case_timeline, audit_logs — SLA is intentionally NOT recomputed on a bulk
  * priority change (that is a triage relabel; the per-case
  * PATCH /cases/:id/priority-tags path owns SLA recalculation). All-or-nothing:
@@ -75,7 +74,7 @@ export function createBulkCaseActionUseCase(deps: BulkCaseActionDeps) {
   return async function bulkCaseAction(
     input: BulkCaseActionInput,
   ): Promise<BulkCaseActionResult> {
-    requireRole(input.auth, BULK_ACTION_ROLES);
+    requireOperationalRole(input.auth, CASE_WORK_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const caseIds = dedupe(input.caseIds);
     if (caseIds.length === 0) {

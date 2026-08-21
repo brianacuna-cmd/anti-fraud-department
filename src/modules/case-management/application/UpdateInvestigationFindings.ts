@@ -7,6 +7,7 @@ import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import { createInvestigationId } from '../domain/model/value-objects/InvestigationId.js';
 import { investigationNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
+import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
 
 export interface UpdateInvestigationFindingsInput {
   readonly auth: AuthContext;
@@ -33,6 +34,7 @@ export function createUpdateInvestigationFindingsUseCase(deps: UpdateInvestigati
   return async function updateInvestigationFindings(
     input: UpdateInvestigationFindingsInput,
   ): Promise<Investigation> {
+    requireOperationalRole(input.auth, CASE_WORK_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const investigationId = createInvestigationId(input.investigationId);
 

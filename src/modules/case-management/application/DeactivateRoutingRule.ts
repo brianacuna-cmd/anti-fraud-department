@@ -10,9 +10,7 @@ import {
   routingRuleNotFound,
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
-
-const ROUTING_RULE_WRITE_ROLES = ['SUPERVISOR', 'ADMIN'] as const;
+import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
 
 export interface DeactivateRoutingRuleInput {
   readonly auth: AuthContext;
@@ -28,7 +26,7 @@ export interface DeactivateRoutingRuleDeps {
 
 /**
  * Deactivates one ACTIVE rule to INACTIVE without affecting siblings.
- * SUPERVISOR|ADMIN only. Already-INACTIVE is a no-op — no save, no audit
+ * SUPERVISOR only. Already-INACTIVE is a no-op — no save, no audit
  * event (mirrors ActivateRoutingRule's REQ-E2 no-op suppression). A real
  * transition's save+audit pair runs inside one UnitOfWork (REQ-E1, folded
  * into this slice for invariant consistency with create/activate).
@@ -37,7 +35,7 @@ export function createDeactivateRoutingRuleUseCase(deps: DeactivateRoutingRuleDe
   return async function deactivateRoutingRule(
     input: DeactivateRoutingRuleInput,
   ): Promise<CaseRoutingRule> {
-    requireRole(input.auth, ROUTING_RULE_WRITE_ROLES);
+    requireOperationalRole(input.auth, SUPERVISION_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const ruleId = createCaseRoutingRuleId(input.ruleId);
 

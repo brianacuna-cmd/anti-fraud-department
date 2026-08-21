@@ -19,7 +19,12 @@ import { CaseManagementError } from '../../../../src/modules/case-management/dom
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ORG_1 = oid('org-1');
 const ORG_2 = oid('org-2');
-const ANALYST = createAuthContext({ userId: oid('analyst-1'), organizationId: ORG_1, actorType: 'USER' });
+const ANALYST = createAuthContext({
+  userId: oid('analyst-1'),
+  organizationId: ORG_1,
+  actorType: 'USER',
+  roleId: 'ANALYST',
+});
 
 function buildCase(organizationId = ORG_1): Case {
   return Case.create({

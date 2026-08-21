@@ -36,7 +36,57 @@ export function createIdentityAssigneeDirectory(
         return [];
       }
     },
+    async displayNames(
+      organizationId: string,
+      assignees: readonly AssignedTo[],
+    ): Promise<ReadonlyMap<string, string>> {
+      // Son como mucho ocho (el tope de `workload`), asi que una lectura por
+      // asignatario es barata y evita un metodo `findManyByIds` en el puerto
+      // de identity-access solo para esto.
+      const users = userRepositoryFactory.forTenant(createOrganizationId(organizationId));
+      const resolved = new Map<string, string>();
+
+      for (const assignee of assignees) {
+        const name =
+          assignee.type === 'USER'
+            ? await userDisplayName(users, assignee.id)
+            : await roleDisplayName(roleRepository, assignee.id);
+        if (name !== null) resolved.set(assignee.id, name);
+      }
+      return resolved;
+    },
   };
+}
+
+/**
+ * Nombre completo del usuario, o su correo si no tiene nombre cargado.
+ * `null` cuando el id no resuelve —usuario borrado o id con forma invalida—:
+ * el panel prefiere una barra sin nombre a un nombre inventado.
+ */
+async function userDisplayName(
+  users: ReturnType<UserRepositoryFactory['forTenant']>,
+  userIdRaw: string,
+): Promise<string | null> {
+  try {
+    const user = await users.findById(createUserId(userIdRaw));
+    if (!user) return null;
+    const name = `${user.firstName} ${user.lastName}`.trim();
+    return name.length > 0 ? name : (user.email as string);
+  } catch {
+    return null;
+  }
+}
+
+async function roleDisplayName(
+  roleRepository: RoleRepository,
+  roleIdRaw: string,
+): Promise<string | null> {
+  try {
+    const role = await roleRepository.findById(createRoleId(roleIdRaw));
+    return role?.name ?? null;
+  } catch {
+    return null;
+  }
 }
 
 async function userBelongsToOrganization(

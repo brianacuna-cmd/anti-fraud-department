@@ -19,4 +19,6 @@ export const caseManagementErrorStatus: StatusByCode = {
   EVIDENCE_NOT_FOUND: 404,
   CASE_NOTE_NOT_FOUND: 404,
   APPROVAL_REQUEST_NOT_FOUND: 404,
+  // 403 y no 422: la peticion es valida, el actor no.
+  SELF_APPROVAL_FORBIDDEN: 403,
 };

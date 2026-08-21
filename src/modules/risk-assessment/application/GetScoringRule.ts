@@ -7,9 +7,7 @@ import {
   scoringRuleByIdNotFound,
 } from '../domain/errors/RiskAssessmentError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
-
-const SCORING_RULE_ROLES = ['SUPERVISOR', 'ADMIN'] as const;
+import { requireReadRole, SCORING_RULE_READ_ROLES } from './authorization/policy.js';
 
 export interface GetScoringRuleInput {
   readonly auth: AuthContext;
@@ -20,10 +18,13 @@ export interface GetScoringRuleDeps {
   readonly scoringRules: RiskScoringRuleRepository;
 }
 
-/** Loads a scoring rule by id; SUPERVISOR|ADMIN; tenant-scoped. */
+/**
+ * Loads a scoring rule by id; SUPERVISOR|ADMIN|AUDITOR + the ORGANIZATION
+ * actor; tenant-scoped.
+ */
 export function createGetScoringRuleUseCase(deps: GetScoringRuleDeps) {
   return async function getScoringRule(input: GetScoringRuleInput): Promise<RiskScoringRule> {
-    requireRole(input.auth, SCORING_RULE_ROLES);
+    requireReadRole(input.auth, SCORING_RULE_READ_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const ruleId = createRiskScoringRuleId(input.ruleId);
     const rule = await deps.scoringRules.findById(ruleId);

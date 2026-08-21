@@ -10,9 +10,8 @@ import { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
 import { createEnforcementActionId } from '../domain/model/value-objects/EnforcementActionId.js';
 import { enforcementActionNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
+import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
 
-const REVERT_ROLES = ['SUPERVISOR', 'ADMIN'] as const;
 const OUTBOX_EVENT_TYPE = 'ENFORCEMENT_REVERTED';
 
 export interface RevertEnforcementActionInput {
@@ -30,8 +29,7 @@ export interface RevertEnforcementActionDeps {
 }
 
 /**
- * Reverses a previously executed sanction (EXECUTED -> REVERTED). SUPERVISOR|
- * ADMIN only. Reverting from any status other than EXECUTED throws
+ * Reverses a previously executed sanction (EXECUTED -> REVERTED). SUPERVISOR only. Reverting from any status other than EXECUTED throws
  * `invalidTransition` (422). Within ONE transaction: mark REVERTED, emit an
  * ENFORCEMENT_REVERTED `outbox_events` row, and audit.
  * Scope: enforcement_actions, outbox_events, audit_logs.
@@ -40,7 +38,7 @@ export function createRevertEnforcementActionUseCase(deps: RevertEnforcementActi
   return async function revertEnforcementAction(
     input: RevertEnforcementActionInput,
   ): Promise<EnforcementAction> {
-    requireRole(input.auth, REVERT_ROLES);
+    requireOperationalRole(input.auth, SUPERVISION_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const enforcementActionId = createEnforcementActionId(input.enforcementActionId);
 

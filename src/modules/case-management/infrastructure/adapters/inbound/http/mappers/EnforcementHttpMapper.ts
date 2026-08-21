@@ -6,6 +6,7 @@ import type { RecordAnalystDecisionResult } from '../../../../../application/Rec
 import type { ApproveEnforcementActionResult } from '../../../../../application/ApproveEnforcementAction.js';
 import type { RejectEnforcementActionResult } from '../../../../../application/RejectEnforcementAction.js';
 import type { ExecuteEnforcementActionResult } from '../../../../../application/ExecuteEnforcementAction.js';
+import type { PendingApproval } from '../../../../../application/ListApprovalRequests.js';
 
 export interface AnalystDecisionResponseDto {
   readonly id: string;
@@ -46,6 +47,8 @@ export interface ApprovalRequestResponseDto {
 export interface RecordAnalystDecisionResponseDto {
   readonly decision: AnalystDecisionResponseDto;
   readonly enforcementAction: EnforcementActionResponseDto | null;
+  /** La solicitud de doble firma abierta con la sancion (ENF-002). */
+  readonly approvalRequest: ApprovalRequestResponseDto | null;
   readonly caseStatus: string;
 }
 
@@ -123,6 +126,20 @@ export function toApprovalRequestResponse(request: ApprovalRequest): ApprovalReq
   };
 }
 
+export interface PendingApprovalResponseDto {
+  readonly approvalRequest: ApprovalRequestResponseDto;
+  readonly enforcementAction: EnforcementActionResponseDto;
+  readonly reviewableByCaller: boolean;
+}
+
+export function toPendingApprovalResponse(entry: PendingApproval): PendingApprovalResponseDto {
+  return {
+    approvalRequest: toApprovalRequestResponse(entry.approvalRequest),
+    enforcementAction: toEnforcementActionResponse(entry.enforcementAction),
+    reviewableByCaller: entry.reviewableByCaller,
+  };
+}
+
 export function toRecordAnalystDecisionResponse(
   result: RecordAnalystDecisionResult,
 ): RecordAnalystDecisionResponseDto {
@@ -130,6 +147,8 @@ export function toRecordAnalystDecisionResponse(
     decision: toAnalystDecisionResponse(result.decision),
     enforcementAction:
       result.enforcementAction === null ? null : toEnforcementActionResponse(result.enforcementAction),
+    approvalRequest:
+      result.approvalRequest === null ? null : toApprovalRequestResponse(result.approvalRequest),
     caseStatus: result.caseStatus,
   };
 }
