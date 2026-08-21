@@ -30,3 +30,7 @@ export function invalidTransition(current: string, next: string): ScreeningError
     { current, next },
   );
 }
+
+export function forbiddenCrossTenant(message: string): ScreeningError {
+  return new ScreeningError('FORBIDDEN_CROSS_TENANT', message, {});
+}
