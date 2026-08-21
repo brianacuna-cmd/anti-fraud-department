@@ -10,7 +10,7 @@ import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
 import { userEmailTaken } from '../../../../domain/errors/IdentityAccessError.js';
 import type { UserDocument } from './documents/UserDocument.js';
 import { toDocument, toDomain } from './mappers/UserDocumentMapper.js';
-import { extractDuplicateKeyIndexName } from './duplicateKey.js';
+import { extractDuplicateKeyIndexName } from '../../../../../../shared/persistence/mongo/duplicateKey.js';
 
 const COLLECTION_NAME = 'users';
 const USER_EMAIL_UNIQUE_INDEX_NAME = 'user_email_unique';
