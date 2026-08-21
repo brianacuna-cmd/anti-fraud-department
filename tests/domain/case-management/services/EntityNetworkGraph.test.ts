@@ -1,0 +1,207 @@
+import { oid } from '../../../support/oid.js';
+import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
+import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
+import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
+import {
+  EntityNetworkGraphBuilder,
+  entityIdentifiersOf,
+  MAX_GRAPH_NODES,
+} from '../../../../src/modules/case-management/domain/services/EntityNetworkGraph.js';
+import { CaseManagementError } from '../../../../src/modules/case-management/domain/errors/CaseManagementError.js';
+import { fromDate } from '../../../../src/shared/time/Instant.js';
+
+const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
+const ORG = oid('org-1');
+
+let seq = 0;
+function buildCase(
+  overrides: {
+    customerId?: string;
+    customerEmail?: string | null;
+    bridgeWallet?: string | null;
+    bridgeUserId?: string | null;
+    stripeCustomerId?: string | null;
+  } = {},
+): Case {
+  seq += 1;
+  return Case.create({
+    id: createCaseId(oid(`case-${seq}`)),
+    organizationId: ORG,
+    customerId: overrides.customerId ?? `customer-${seq}`,
+    customerEmail: overrides.customerEmail ?? null,
+    bridgeWallet: overrides.bridgeWallet ?? null,
+    bridgeUserId: overrides.bridgeUserId ?? null,
+    stripeCustomerId: overrides.stripeCustomerId ?? null,
+    riskScore: createRiskScore(50),
+    priority: 'MEDIUM',
+    now: NOW,
+  });
+}
+
+describe('entityIdentifiersOf', () => {
+  it('reúne los cinco identificadores normalizados del expediente', () => {
+    const kase = buildCase({
+      customerId: 'cus-1',
+      customerEmail: 'Fraude@Example.COM',
+      bridgeWallet: '0xAbC',
+      bridgeUserId: 'bru-1',
+      stripeCustomerId: 'cus_stripe_1',
+    });
+
+    expect(entityIdentifiersOf(kase)).toEqual([
+      { type: 'CUSTOMER', value: 'cus-1' },
+      // El email baja a minúsculas; la wallet conserva el checksum-case EIP-55.
+      { type: 'EMAIL', value: 'fraude@example.com' },
+      { type: 'WALLET', value: '0xAbC' },
+      { type: 'BRIDGE_USER', value: 'bru-1' },
+      { type: 'STRIPE_CUSTOMER', value: 'cus_stripe_1' },
+    ]);
+  });
+
+  it('descarta los identificadores ausentes y los que solo traen espacios', () => {
+    const kase = buildCase({ customerId: 'cus-1', customerEmail: '   ', bridgeWallet: null });
+
+    // Un email en blanco agruparía bajo un mismo nodo a todo expediente sin email.
+    expect(entityIdentifiersOf(kase)).toEqual([{ type: 'CUSTOMER', value: 'cus-1' }]);
+  });
+});
+
+describe('EntityNetworkGraphBuilder', () => {
+  it('rechaza una profundidad no positiva', () => {
+    expect(() => new EntityNetworkGraphBuilder({ type: 'WALLET', value: '0xabc' }, 0)).toThrow(
+      CaseManagementError,
+    );
+  });
+
+  it('rechaza una raíz vacía', () => {
+    expect(() => new EntityNetworkGraphBuilder({ type: 'WALLET', value: '  ' }, 3)).toThrow(
+      CaseManagementError,
+    );
+  });
+
+  it('arranca con la raíz como único nodo, a profundidad 0', () => {
+    const builder = new EntityNetworkGraphBuilder({ type: 'EMAIL', value: 'A@B.com' }, 3);
+
+    expect(builder.frontier()).toEqual([{ type: 'EMAIL', value: 'a@b.com' }]);
+    const graph = builder.build([]);
+    expect(graph.rootId).toBe('EMAIL:a@b.com');
+    expect(graph.nodes).toEqual([
+      { kind: 'ENTITY', id: 'EMAIL:a@b.com', type: 'EMAIL', value: 'a@b.com', depth: 0 },
+    ]);
+    expect(graph.edges).toEqual([]);
+    expect(graph.depthReached).toBe(0);
+    expect(graph.truncated).toBe(false);
+  });
+
+  it('conecta dos expedientes a través del identificador que comparten', () => {
+    const shared = '0xshared';
+    const a = buildCase({ customerId: 'cus-a', bridgeWallet: shared });
+    const b = buildCase({ customerId: 'cus-b', bridgeWallet: shared });
+
+    const builder = new EntityNetworkGraphBuilder({ type: 'WALLET', value: shared }, 3);
+    const next = builder.absorb([a, b], 1);
+    const graph = builder.build(next);
+
+    // La wallet es el puente: cada caso cuelga de ella, y el camino
+    // caso A → wallet → caso B queda explícito sin arista caso-caso.
+    expect(graph.edges).toContainEqual({
+      from: `CASE:${a.id}`,
+      to: `WALLET:${shared}`,
+      type: 'WALLET',
+    });
+    expect(graph.edges).toContainEqual({
+      from: `CASE:${b.id}`,
+      to: `WALLET:${shared}`,
+      type: 'WALLET',
+    });
+    expect(graph.edges.some((edge) => edge.from.startsWith('CASE:') && edge.to.startsWith('CASE:'))).toBe(
+      false,
+    );
+
+    // Los customerId propios de cada caso entran como frente siguiente.
+    expect(next).toEqual([
+      { type: 'CUSTOMER', value: 'cus-a' },
+      { type: 'CUSTOMER', value: 'cus-b' },
+    ]);
+  });
+
+  it('no devuelve al frente un identificador ya visitado', () => {
+    const shared = '0xshared';
+    const a = buildCase({ customerId: 'cus-a', bridgeWallet: shared });
+
+    const builder = new EntityNetworkGraphBuilder({ type: 'WALLET', value: shared }, 3);
+    const next = builder.absorb([a], 1);
+
+    // La raíz ya estaba visitada: si volviera al frente, la ronda siguiente
+    // repetiría la misma consulta y el recorrido no terminaría nunca.
+    expect(next).not.toContainEqual({ type: 'WALLET', value: shared });
+  });
+
+  it('deduplica nodos y aristas cuando el mismo caso llega dos veces', () => {
+    const kase = buildCase({ customerId: 'cus-a', bridgeWallet: '0xabc' });
+
+    const builder = new EntityNetworkGraphBuilder({ type: 'WALLET', value: '0xabc' }, 3);
+    builder.absorb([kase], 1);
+    builder.absorb([kase], 2);
+    const graph = builder.build([]);
+
+    expect(graph.nodes.filter((node) => node.id === `CASE:${kase.id}`)).toHaveLength(1);
+    expect(graph.edges).toHaveLength(2); // wallet + customer, una vez cada una
+  });
+
+  it('conserva la profundidad del primer descubrimiento', () => {
+    const first = buildCase({ customerId: 'cus-a', bridgeWallet: '0xabc' });
+    const second = buildCase({ customerId: 'cus-b', bridgeWallet: '0xabc' });
+
+    const builder = new EntityNetworkGraphBuilder({ type: 'WALLET', value: '0xabc' }, 3);
+    builder.absorb([first], 1);
+    builder.absorb([second], 2);
+    const graph = builder.build([]);
+
+    const nodeFor = (id: string) => graph.nodes.find((node) => node.id === id);
+    expect(nodeFor(`CASE:${first.id}`)?.depth).toBe(1);
+    expect(nodeFor(`CASE:${second.id}`)?.depth).toBe(2);
+    expect(graph.depthReached).toBe(2);
+  });
+
+  it('rechaza una ronda fuera de 1..maxDepth', () => {
+    const builder = new EntityNetworkGraphBuilder({ type: 'WALLET', value: '0xabc' }, 2);
+
+    expect(() => builder.absorb([], 0)).toThrow(CaseManagementError);
+    expect(() => builder.absorb([], 3)).toThrow(CaseManagementError);
+  });
+
+  it('marca truncated cuando queda frente sin expandir', () => {
+    const kase = buildCase({ customerId: 'cus-a', bridgeWallet: '0xabc' });
+    const builder = new EntityNetworkGraphBuilder({ type: 'WALLET', value: '0xabc' }, 1);
+    const next = builder.absorb([kase], 1);
+
+    // Se acabaron las rondas pero `cus-a` seguía sin explorar: el grafo es un
+    // recorte, y leerlo como red completa sería una conclusión falsa.
+    expect(next.length).toBeGreaterThan(0);
+    expect(builder.build(next).truncated).toBe(true);
+  });
+
+  it('no marca truncated cuando la red se agota sola', () => {
+    const builder = new EntityNetworkGraphBuilder({ type: 'WALLET', value: '0xabc' }, 3);
+    const next = builder.absorb([], 1);
+
+    expect(next).toEqual([]);
+    expect(builder.build(next).truncated).toBe(false);
+  });
+
+  it('corta en el techo de nodos y lo marca como truncado', () => {
+    // Cada caso aporta 2 nodos (el caso y su customerId), así que con holgura
+    // sobre el techo la expansión tiene que frenar sola.
+    const many = Array.from({ length: MAX_GRAPH_NODES }, (_, i) =>
+      buildCase({ customerId: `cus-${i}`, bridgeWallet: '0xabc' }),
+    );
+
+    const builder = new EntityNetworkGraphBuilder({ type: 'WALLET', value: '0xabc' }, 3);
+    const next = builder.absorb(many, 1);
+    const graph = builder.build(next);
+
+    expect(graph.nodes.length).toBeLessThanOrEqual(MAX_GRAPH_NODES);
+    expect(graph.truncated).toBe(true);
+  });
+});

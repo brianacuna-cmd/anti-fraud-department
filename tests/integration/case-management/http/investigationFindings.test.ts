@@ -11,6 +11,7 @@ import { caseManagementErrorStatus } from '../../../../src/modules/case-manageme
 import { investigationRouter } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/investigationRouter.js';
 import { createOpenInvestigationUseCase } from '../../../../src/modules/case-management/application/OpenInvestigation.js';
 import { createListInvestigationsUseCase } from '../../../../src/modules/case-management/application/ListInvestigations.js';
+import { createBuildEntityNetworkGraphUseCase } from '../../../../src/modules/case-management/application/BuildEntityNetworkGraph.js';
 import { createGetInvestigationUseCase } from '../../../../src/modules/case-management/application/GetInvestigation.js';
 import { createCloseInvestigationUseCase } from '../../../../src/modules/case-management/application/CloseInvestigation.js';
 import { createUpdateInvestigationFindingsUseCase } from '../../../../src/modules/case-management/application/UpdateInvestigationFindings.js';
@@ -74,6 +75,7 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
     openInvestigation: createOpenInvestigationUseCase({ cases, ...deps, generateInvestigationId }),
     listInvestigations: createListInvestigationsUseCase({ cases, investigations }),
     getInvestigation: createGetInvestigationUseCase({ investigations }),
+    buildEntityNetworkGraph: createBuildEntityNetworkGraphUseCase({ cases, investigations }),
     closeInvestigation: createCloseInvestigationUseCase(deps),
     updateInvestigationFindings: createUpdateInvestigationFindingsUseCase(deps),
     linkInvestigationCases: createLinkInvestigationCasesUseCase({

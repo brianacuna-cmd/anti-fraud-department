@@ -75,6 +75,34 @@ export async function ensureIndexes(db: Db): Promise<void> {
 
   await db.collection('cases').createIndex({ tags: 1 }, { name: 'case_tags_idx' });
 
+  // Grafo de entidades (INV-013) y deduplicacion de la ingesta (CASE-011):
+  // ambos buscan expedientes por identificador dentro de un inquilino. La
+  // expansion del grafo hace una consulta POR RONDA, asi que sin estos indices
+  // cada salto es un barrido completo de `cases` y el coste se multiplica por
+  // la profundidad pedida.
+  //
+  // Van compuestos con `organization_id` delante porque ninguna consulta busca
+  // un identificador sin acotar el inquilino: el aislamiento no es opcional.
+  await db
+    .collection('cases')
+    .createIndex({ organization_id: 1, customer_id: 1 }, { name: 'case_org_customer_idx' });
+
+  await db
+    .collection('cases')
+    .createIndex({ organization_id: 1, customer_email: 1 }, { name: 'case_org_email_idx' });
+
+  await db
+    .collection('cases')
+    .createIndex({ organization_id: 1, bridge_wallet: 1 }, { name: 'case_org_wallet_idx' });
+
+  await db
+    .collection('cases')
+    .createIndex({ organization_id: 1, bridge_user_id: 1 }, { name: 'case_org_bridge_user_idx' });
+
+  await db
+    .collection('cases')
+    .createIndex({ organization_id: 1, stripe_customer_id: 1 }, { name: 'case_org_stripe_customer_idx' });
+
   // Panel de gobierno (`GET /metrics/overview`): la serie diaria de altas
   // recorre `cases` por inquilino y fecha de creacion. Sin este indice, cada
   // apertura del panel es un barrido completo de la coleccion.

@@ -121,6 +121,7 @@ import { createStartReviewUseCase } from './modules/case-management/application/
 import { createOpenInvestigationUseCase } from './modules/case-management/application/OpenInvestigation.js';
 import { createListInvestigationsUseCase } from './modules/case-management/application/ListInvestigations.js';
 import { createGetInvestigationUseCase } from './modules/case-management/application/GetInvestigation.js';
+import { createBuildEntityNetworkGraphUseCase } from './modules/case-management/application/BuildEntityNetworkGraph.js';
 import { createCloseInvestigationUseCase } from './modules/case-management/application/CloseInvestigation.js';
 import { createUpdateInvestigationFindingsUseCase } from './modules/case-management/application/UpdateInvestigationFindings.js';
 import { createLinkInvestigationCasesUseCase } from './modules/case-management/application/LinkInvestigationCases.js';
@@ -689,6 +690,7 @@ async function bootstrap(): Promise<void> {
     }),
     listInvestigations: createListInvestigationsUseCase({ cases, investigations }),
     getInvestigation: createGetInvestigationUseCase({ investigations }),
+    buildEntityNetworkGraph: createBuildEntityNetworkGraphUseCase({ cases, investigations }),
     closeInvestigation: createCloseInvestigationUseCase({
       investigations,
       auditRecorder: caseManagementAuditRecorder,

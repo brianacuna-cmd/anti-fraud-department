@@ -3,8 +3,11 @@ import type {
   CaseListQuery,
   CaseListResult,
   CaseRepository,
+  EntityIdentifierQuery,
   FindCaseByIdentityOptions,
 } from '../../../src/modules/case-management/domain/ports/CaseRepository.js';
+import { entityIdentifiersOf } from '../../../src/modules/case-management/domain/services/EntityNetworkGraph.js';
+import { entityNodeKey } from '../../../src/modules/case-management/domain/model/value-objects/EntityNodeType.js';
 import type { CaseId } from '../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import type { Transaction } from '../../../src/modules/case-management/domain/ports/UnitOfWork.js';
 import { toDate } from '../../../src/shared/time/Instant.js';
@@ -59,6 +62,29 @@ export class InMemoryCaseRepository implements CaseRepository {
     // El adaptador Mongo ordena por `created_at` descendente: gana el mas reciente.
     matches.sort((a, b) => toDate(b.createdAt).getTime() - toDate(a.createdAt).getTime());
     return matches[0]!;
+  }
+
+  /**
+   * Espeja el adaptador Mongo: mismo inquilino, no borrados, y basta compartir
+   * UN identificador. Reutiliza `entityIdentifiersOf` para que el fake y el
+   * dominio no puedan discrepar sobre que campos cuentan como identificador.
+   */
+  async findByEntityIdentifiers(
+    query: EntityIdentifierQuery,
+    _tx?: Transaction,
+  ): Promise<readonly Case[]> {
+    const { organizationId, refs, limit } = query;
+    if (refs.length === 0 || limit <= 0) return [];
+
+    const wanted = new Set(refs.map((ref) => entityNodeKey(ref.type, ref.value)));
+    const matches = [...this.byId.values()].filter((kase) => {
+      if (kase.deletedAt !== null) return false;
+      if (kase.organizationId !== organizationId) return false;
+      return entityIdentifiersOf(kase).some((ref) => wanted.has(entityNodeKey(ref.type, ref.value)));
+    });
+
+    matches.sort((a, b) => toDate(b.createdAt).getTime() - toDate(a.createdAt).getTime());
+    return matches.slice(0, limit);
   }
 
   all(): readonly Case[] {

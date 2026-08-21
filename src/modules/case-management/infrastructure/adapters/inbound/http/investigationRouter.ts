@@ -8,12 +8,14 @@ import type { createUpdateInvestigationFindingsUseCase } from '../../../../appli
 import type { createLinkInvestigationCasesUseCase } from '../../../../application/LinkInvestigationCases.js';
 import type { createListActiveInvestigationsUseCase } from '../../../../application/ListActiveInvestigations.js';
 import type { createUpdateInvestigationStatusUseCase } from '../../../../application/UpdateInvestigationStatus.js';
+import type { createBuildEntityNetworkGraphUseCase } from '../../../../application/BuildEntityNetworkGraph.js';
 import {
   openInvestigationSchema,
   closeInvestigationSchema,
   updateInvestigationFindingsSchema,
   linkInvestigationCasesSchema,
   updateInvestigationStatusSchema,
+  entityNetworkGraphQuerySchema,
 } from './dto/investigationSchemas.js';
 import { toInvestigationResponse } from './mappers/InvestigationHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
@@ -27,6 +29,7 @@ export interface InvestigationRouterDeps {
   readonly linkInvestigationCases: ReturnType<typeof createLinkInvestigationCasesUseCase>;
   readonly listActiveInvestigations: ReturnType<typeof createListActiveInvestigationsUseCase>;
   readonly updateInvestigationStatus: ReturnType<typeof createUpdateInvestigationStatusUseCase>;
+  readonly buildEntityNetworkGraph: ReturnType<typeof createBuildEntityNetworkGraphUseCase>;
 }
 
 /**
@@ -59,6 +62,19 @@ export function investigationRouter(deps: InvestigationRouterDeps): Router {
     const auth = requireAuthContext(req);
     const items = await deps.listActiveInvestigations({ auth });
     res.status(200).json({ items: items.map(toInvestigationResponse) });
+  });
+
+  // Antes que `/investigations/:investigationId`: Express casa por orden y
+  // ese patron tragaria "graph" como si fuera un id.
+  router.get('/investigations/:investigationId/graph', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const query = parseRequest(entityNetworkGraphQuerySchema, req.query);
+    const graph = await deps.buildEntityNetworkGraph({
+      auth,
+      investigationId: req.params.investigationId!,
+      ...(query.maxDepth === undefined ? {} : { maxDepth: query.maxDepth }),
+    });
+    res.status(200).json(graph);
   });
 
   router.get('/investigations/:investigationId', async (req, res) => {

@@ -3,6 +3,7 @@ import type { CaseId } from '../model/value-objects/CaseId.js';
 import type { CaseStatus } from '../model/value-objects/CaseStatus.js';
 import type { CasePriority } from '../model/value-objects/CasePriority.js';
 import type { Instant } from '../../../../shared/time/Instant.js';
+import type { EntityRef } from '../model/value-objects/EntityNodeType.js';
 import type { Transaction } from './UnitOfWork.js';
 
 /**
@@ -48,6 +49,21 @@ export interface CaseListResult {
   readonly total: number;
 }
 
+/**
+ * Expansión del grafo de entidades (INV-013): los expedientes de ESTA
+ * organización que citan cualquiera de `refs`.
+ *
+ * Los `refs` componen como OR —basta compartir un identificador para estar en
+ * la red— y `limit` acota cada ronda, porque un identificador muy compartido
+ * (un email de dominio corporativo, una wallet de exchange) puede arrastrar
+ * miles de expedientes y la ronda siguiente los multiplicaría.
+ */
+export interface EntityIdentifierQuery {
+  readonly organizationId: string;
+  readonly refs: readonly EntityRef[];
+  readonly limit: number;
+}
+
 /** Outbound port for the `Case` aggregate (save/findById + inbox `list`). */
 export interface CaseRepository {
   save(kase: Case, tx?: Transaction): Promise<void>;
@@ -59,4 +75,10 @@ export interface CaseRepository {
    * cruza inquilinos ni devuelve expedientes borrados.
    */
   findByCustomerOrBridgeId(options: FindCaseByIdentityOptions, tx?: Transaction): Promise<Case | null>;
+  /**
+   * Expansion del grafo de entidades (INV-013). Devuelve los expedientes de la
+   * organizacion que citan cualquiera de los identificadores pedidos, sin
+   * borrados logicos y sin cruzar inquilinos.
+   */
+  findByEntityIdentifiers(query: EntityIdentifierQuery, tx?: Transaction): Promise<readonly Case[]>;
 }
