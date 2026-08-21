@@ -27,6 +27,13 @@ export type CaseManagementAuditAction =
   | 'DELETE_EVIDENCE'
   | 'DELETE_CASE_NOTE'
   | 'RECORD_ANALYST_DECISION'
+  /**
+   * ENF-001: la medida se pidio suelta, no como efecto de un dictamen. Se
+   * audita aparte de `RECORD_ANALYST_DECISION` porque la pregunta que hace un
+   * regulador —quien pidio restringir este dinero y con que veredicto
+   * detras— se responde distinto en cada caso.
+   */
+  | 'REQUEST_ENFORCEMENT_ACTION'
   | 'APPROVE_ENFORCEMENT_ACTION'
   | 'REJECT_ENFORCEMENT_ACTION'
   | 'REVIEW_APPROVAL_REQUEST'
@@ -51,4 +58,5 @@ export type CaseManagementAuditResource =
   | 'rule'
   | 'investigation'
   | 'report'
-  | 'evidence';
+  | 'evidence'
+  | 'enforcement_action';

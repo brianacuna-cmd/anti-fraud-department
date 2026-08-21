@@ -18,4 +18,9 @@ export type CaseManagementErrorCode =
   | 'EVIDENCE_NOT_FOUND'
   | 'CASE_NOTE_NOT_FOUND'
   | 'APPROVAL_REQUEST_NOT_FOUND'
-  | 'SELF_APPROVAL_FORBIDDEN';
+  | 'SELF_APPROVAL_FORBIDDEN'
+  /**
+   * INV-015: el antivirus encontro malware en el fichero subido. El fichero NO
+   * se almacena ni se registra: lo unico que queda es la entrada de auditoria.
+   */
+  | 'EVIDENCE_INFECTED';

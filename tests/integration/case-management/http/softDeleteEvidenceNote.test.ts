@@ -11,6 +11,7 @@ import { caseManagementErrorStatus } from '../../../../src/modules/case-manageme
 import { evidenceRouter } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/evidenceRouter.js';
 import { noteRouter } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/noteRouter.js';
 import { createRegisterEvidenceUseCase } from '../../../../src/modules/case-management/application/RegisterEvidence.js';
+import { createCreateEvidenceDownloadUrlUseCase } from '../../../../src/modules/case-management/application/CreateEvidenceDownloadUrl.js';
 import { createListEvidenceUseCase } from '../../../../src/modules/case-management/application/ListEvidence.js';
 import { createGetEvidenceUseCase } from '../../../../src/modules/case-management/application/GetEvidence.js';
 import { createDownloadEvidenceUseCase } from '../../../../src/modules/case-management/application/DownloadEvidence.js';
@@ -20,6 +21,7 @@ import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemor
 import { InMemoryInvestigationRepository } from '../../../helpers/case-management/InMemoryInvestigationRepository.js';
 import { InMemoryEvidenceRepository } from '../../../helpers/case-management/InMemoryEvidenceRepository.js';
 import { InMemoryEvidenceStore } from '../../../helpers/case-management/InMemoryEvidenceStore.js';
+import { FakeMalwareScanner } from '../../../helpers/case-management/FakeMalwareScanner.js';
 import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InMemoryCaseNoteRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
@@ -56,6 +58,7 @@ function seedEvidence(): Evidence {
     sha256: 'a'.repeat(64),
     storageKey: 'k/1',
     timestamp: null,
+    scanStatus: 'CLEAN',
     uploadedBy: oid('an-1'),
     now: NOW,
   });
@@ -87,12 +90,14 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
   };
 
   const evidenceHttp = evidenceRouter({
+    createEvidenceDownloadUrl: createCreateEvidenceDownloadUrlUseCase({ evidence, evidenceStore, clock: new FixedClock(NOW) }),
     registerEvidence: createRegisterEvidenceUseCase({
       cases,
       investigations,
       evidence,
       evidenceStore,
       timestampAuthority: { requestTimestamp: async () => null },
+      malwareScanner: new FakeMalwareScanner(),
       ...shared,
       generateEvidenceId,
     }),

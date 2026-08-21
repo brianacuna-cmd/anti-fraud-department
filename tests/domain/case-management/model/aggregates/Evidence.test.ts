@@ -19,6 +19,7 @@ function register(overrides: { byteSize?: number; sha256?: string } = {}): Evide
     sha256: overrides.sha256 ?? 'deadbeef',
     storageKey: 'org/case/ev',
     timestamp: null,
+    scanStatus: 'CLEAN',
     uploadedBy: oid('analyst-1'),
     now: NOW,
   });

@@ -9,6 +9,7 @@ import type { createLinkInvestigationCasesUseCase } from '../../../../applicatio
 import type { createListActiveInvestigationsUseCase } from '../../../../application/ListActiveInvestigations.js';
 import type { createUpdateInvestigationStatusUseCase } from '../../../../application/UpdateInvestigationStatus.js';
 import type { createBuildEntityNetworkGraphUseCase } from '../../../../application/BuildEntityNetworkGraph.js';
+import type { createExportInvestigationSummaryUseCase } from '../../../../application/ExportInvestigationSummary.js';
 import {
   openInvestigationSchema,
   closeInvestigationSchema,
@@ -30,6 +31,7 @@ export interface InvestigationRouterDeps {
   readonly listActiveInvestigations: ReturnType<typeof createListActiveInvestigationsUseCase>;
   readonly updateInvestigationStatus: ReturnType<typeof createUpdateInvestigationStatusUseCase>;
   readonly buildEntityNetworkGraph: ReturnType<typeof createBuildEntityNetworkGraphUseCase>;
+  readonly exportInvestigationSummary: ReturnType<typeof createExportInvestigationSummaryUseCase>;
 }
 
 /**
@@ -62,6 +64,19 @@ export function investigationRouter(deps: InvestigationRouterDeps): Router {
     const auth = requireAuthContext(req);
     const items = await deps.listActiveInvestigations({ auth });
     res.status(200).json({ items: items.map(toInvestigationResponse) });
+  });
+
+  // INV-014. Antes que `/investigations/:investigationId`, por lo mismo que
+  // el grafo: ese patron tragaria "summary" como si fuera un id.
+  router.get('/investigations/:investigationId/summary', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const query = parseRequest(entityNetworkGraphQuerySchema, req.query);
+    const summary = await deps.exportInvestigationSummary({
+      auth,
+      investigationId: req.params.investigationId!,
+      ...(query.maxDepth === undefined ? {} : { maxDepth: query.maxDepth }),
+    });
+    res.status(200).json(summary);
   });
 
   // Antes que `/investigations/:investigationId`: Express casa por orden y

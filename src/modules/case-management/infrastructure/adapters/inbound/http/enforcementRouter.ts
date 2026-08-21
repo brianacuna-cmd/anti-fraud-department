@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
 import type { createRecordAnalystDecisionUseCase } from '../../../../application/RecordAnalystDecision.js';
+import type { createRequestEnforcementActionUseCase } from '../../../../application/RequestEnforcementAction.js';
 import type { createListCaseDecisionsUseCase } from '../../../../application/ListCaseDecisions.js';
 import type { createApproveEnforcementActionUseCase } from '../../../../application/ApproveEnforcementAction.js';
 import type { createRejectEnforcementActionUseCase } from '../../../../application/RejectEnforcementAction.js';
@@ -9,6 +10,7 @@ import type { createRevertEnforcementActionUseCase } from '../../../../applicati
 import type { createListEnforcementActionsUseCase } from '../../../../application/ListEnforcementActions.js';
 import {
   recordAnalystDecisionSchema,
+  requestEnforcementActionSchema,
   reviewEnforcementActionSchema,
   listEnforcementActionsQuerySchema,
 } from './dto/enforcementSchemas.js';
@@ -23,6 +25,7 @@ import { parseRequest } from './parseRequest.js';
 
 export interface EnforcementRouterDeps {
   readonly recordAnalystDecision: ReturnType<typeof createRecordAnalystDecisionUseCase>;
+  readonly requestEnforcementAction: ReturnType<typeof createRequestEnforcementActionUseCase>;
   readonly listCaseDecisions: ReturnType<typeof createListCaseDecisionsUseCase>;
   readonly approveEnforcementAction: ReturnType<typeof createApproveEnforcementActionUseCase>;
   readonly rejectEnforcementAction: ReturnType<typeof createRejectEnforcementActionUseCase>;
@@ -61,6 +64,25 @@ export function enforcementRouter(deps: EnforcementRouterDeps): Router {
     const auth = requireAuthContext(req);
     const decisions = await deps.listCaseDecisions({ auth, caseId: req.params.caseId! });
     res.status(200).json({ items: decisions.map(toAnalystDecisionResponse) });
+  });
+
+  // ENF-001: pedir una medida sobre un dictamen ya registrado, sin tener que
+  // volver a dictaminar el caso solo para anadir una segunda sancion.
+  router.post('/cases/:caseId/enforcement-actions', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(requestEnforcementActionSchema, req.body);
+    const result = await deps.requestEnforcementAction({
+      auth,
+      caseId: req.params.caseId!,
+      analystDecisionId: body.analystDecisionId,
+      actionType: body.actionType,
+      targetType: body.targetType,
+      targetId: body.targetId,
+    });
+    res.status(201).json({
+      enforcementAction: toEnforcementActionResponse(result.enforcementAction),
+      approvalRequestId: result.approvalRequest?.id ?? null,
+    });
   });
 
   router.get('/enforcement-actions', async (req, res) => {

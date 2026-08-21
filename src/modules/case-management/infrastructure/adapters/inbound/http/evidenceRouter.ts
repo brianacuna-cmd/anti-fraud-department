@@ -6,6 +6,7 @@ import type { createRegisterEvidenceUseCase } from '../../../../application/Regi
 import type { createListEvidenceUseCase } from '../../../../application/ListEvidence.js';
 import type { createGetEvidenceUseCase } from '../../../../application/GetEvidence.js';
 import type { createDownloadEvidenceUseCase } from '../../../../application/DownloadEvidence.js';
+import type { createCreateEvidenceDownloadUrlUseCase } from '../../../../application/CreateEvidenceDownloadUrl.js';
 import type { createDeleteEvidenceUseCase } from '../../../../application/DeleteEvidence.js';
 import { toEvidenceResponse } from './mappers/EvidenceHttpMapper.js';
 
@@ -17,6 +18,7 @@ export interface EvidenceRouterDeps {
   readonly deleteEvidence: ReturnType<typeof createDeleteEvidenceUseCase>;
   /** Max upload size in bytes (default 25 MB). */
   readonly maxUploadBytes?: number;
+  readonly createEvidenceDownloadUrl: ReturnType<typeof createCreateEvidenceDownloadUrlUseCase>;
 }
 
 /**
@@ -60,6 +62,31 @@ export function evidenceRouter(deps: EvidenceRouterDeps): Router {
     const auth = requireAuthContext(req);
     const evidence = await deps.getEvidence({ auth, evidenceId: req.params.evidenceId! });
     res.status(200).json(toEvidenceResponse(evidence));
+  });
+
+  /**
+   * INV-004. Antes que `/download`: son rutas hermanas y el orden importa poco
+   * aqui, pero mantenerlas juntas evita que alguien meta un patron con
+   * comodin en medio.
+   *
+   * Devuelve una URL, no el fichero: la descarga va directa contra el almacen
+   * de objetos y no atraviesa este proceso. Falla explicitamente si el almacen
+   * configurado no sabe firmar (filesystem en desarrollo), en cuyo caso la
+   * ruta de streaming de abajo es la que sirve.
+   */
+  router.get('/evidence/:evidenceId/download-url', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const result = await deps.createEvidenceDownloadUrl({
+      auth,
+      evidenceId: req.params.evidenceId!,
+    });
+    res.status(200).json({
+      url: result.url,
+      expiresAt: result.expiresAt,
+      filename: result.evidence.filename,
+      contentType: result.evidence.contentType,
+      sha256: result.evidence.sha256,
+    });
   });
 
   router.get('/evidence/:evidenceId/download', async (req, res) => {

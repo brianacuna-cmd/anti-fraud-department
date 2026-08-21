@@ -149,3 +149,17 @@ export function approvalRequestNotFound(approvalRequestId: string): CaseManageme
     { approvalRequestId },
   );
 }
+
+/**
+ * INV-015: el antivirus reconocio malware. Se nombra la firma porque el
+ * analista necesita saber QUE se detecto —un falso positivo de un PDF con
+ * macros no se trata igual que un troyano— y porque sin ella el rechazo es
+ * indistinguible de un fallo del sistema.
+ */
+export function evidenceInfected(filename: string, signature: string): CaseManagementError {
+  return new CaseManagementError(
+    'EVIDENCE_INFECTED',
+    `evidence "${filename}" was rejected by the malware scanner: ${signature}`,
+    { filename, signature },
+  );
+}

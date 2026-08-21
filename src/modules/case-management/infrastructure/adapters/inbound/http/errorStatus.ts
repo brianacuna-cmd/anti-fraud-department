@@ -21,4 +21,6 @@ export const caseManagementErrorStatus: StatusByCode = {
   APPROVAL_REQUEST_NOT_FOUND: 404,
   // 403 y no 422: la peticion es valida, el actor no.
   SELF_APPROVAL_FORBIDDEN: 403,
+  // 422 y no 400: la peticion esta bien formada, el fichero es el problema.
+  EVIDENCE_INFECTED: 422,
 };

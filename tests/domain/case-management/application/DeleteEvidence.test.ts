@@ -34,6 +34,7 @@ function buildEvidence(organizationId = ORG_1): Evidence {
     sha256: 'a'.repeat(64),
     storageKey: 'k/1',
     timestamp: null,
+    scanStatus: 'CLEAN',
     uploadedBy: oid('an-1'),
     now: NOW,
   });

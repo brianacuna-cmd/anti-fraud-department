@@ -183,6 +183,12 @@ export function createGenerateCaseReportUseCase(deps: GenerateCaseReportDeps) {
                 timestampedAt: item.timestamp.timestampedAt,
               }
             : null,
+          // INV-015. Va en el informe congelado por la misma razon que el hash
+          // y el sello: es procedencia de la prueba. Si dentro de dos anos
+          // alguien pregunta que se comprobo sobre este fichero antes de
+          // aceptarlo, la respuesta tiene que estar dentro del snapshot, no en
+          // una coleccion viva que para entonces habra cambiado.
+          scanStatus: item.scanStatus,
           uploadedBy: item.uploadedBy,
           createdAt: item.createdAt,
           deletedAt: item.deletedAt,

@@ -193,6 +193,7 @@ describe('createGenerateCaseReportUseCase — full case file', () => {
         sha256: 'a'.repeat(64),
         storageKey: 'k/1',
         timestamp: { token: 'tok', authority: 'FreeTSA', timestampedAt: NOW },
+        scanStatus: 'CLEAN',
         uploadedBy: ANALYST_ID,
         now: NOW,
       }),
@@ -251,6 +252,7 @@ describe('createGenerateCaseReportUseCase — full case file', () => {
         sha256: 'a'.repeat(64),
         byteSize: 2048,
         timestamp: { authority: 'FreeTSA', timestampedAt: NOW },
+        scanStatus: 'CLEAN',
         uploadedBy: ANALYST_ID,
       }),
     ]);

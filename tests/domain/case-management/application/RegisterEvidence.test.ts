@@ -17,6 +17,7 @@ import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemor
 import { InMemoryInvestigationRepository } from '../../../helpers/case-management/InMemoryInvestigationRepository.js';
 import { InMemoryEvidenceRepository } from '../../../helpers/case-management/InMemoryEvidenceRepository.js';
 import { InMemoryEvidenceStore } from '../../../helpers/case-management/InMemoryEvidenceStore.js';
+import { FakeMalwareScanner } from '../../../helpers/case-management/FakeMalwareScanner.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
@@ -41,7 +42,7 @@ function buildCase(organizationId = ORG_1): Case {
   });
 }
 
-function build(tsa: TimestampAuthority = nullTsa) {
+function build(tsa: TimestampAuthority = nullTsa, malwareScanner = new FakeMalwareScanner()) {
   const cases = new InMemoryCaseRepository();
   const investigations = new InMemoryInvestigationRepository();
   const evidence = new InMemoryEvidenceRepository();
@@ -54,6 +55,7 @@ function build(tsa: TimestampAuthority = nullTsa) {
     evidence,
     evidenceStore,
     timestampAuthority: tsa,
+    malwareScanner,
     timelineRecorder,
     auditRecorder,
     unitOfWork: new PassthroughUnitOfWork(),
@@ -68,6 +70,7 @@ function build(tsa: TimestampAuthority = nullTsa) {
     evidenceStore,
     timelineRecorder,
     auditRecorder,
+    malwareScanner,
     registerEvidence: createRegisterEvidenceUseCase(deps),
     listEvidence: createListEvidenceUseCase({ cases, evidence }),
     getEvidence: createGetEvidenceUseCase({ evidence }),
@@ -190,5 +193,86 @@ describe('read evidence', () => {
     await expect(
       h.getEvidence({ auth: ANALYST, evidenceId: oid('missing') }),
     ).rejects.toMatchObject({ code: 'EVIDENCE_NOT_FOUND' });
+  });
+});
+
+describe('escaneo antivirus al registrar evidencia (INV-015)', () => {
+  it('marca CLEAN cuando el escáner no encuentra nada', async () => {
+    const h = build();
+    await h.cases.save(buildCase());
+
+    const evidence = await h.registerEvidence({
+      auth: ANALYST,
+      caseId: oid('case-1'),
+      filename: 'extracto.pdf',
+      contentType: 'application/pdf',
+      bytes: Buffer.from('contenido'),
+    });
+
+    expect(evidence.scanStatus).toBe('CLEAN');
+    expect(h.malwareScanner.scanned).toHaveLength(1);
+  });
+
+  it('marca SKIPPED —no CLEAN— cuando no hay antivirus configurado', async () => {
+    const scanner = new FakeMalwareScanner();
+    scanner.setVerdict({ status: 'SKIPPED', reason: 'no malware scanner configured' });
+    const h = build(nullTsa, scanner);
+    await h.cases.save(buildCase());
+
+    const evidence = await h.registerEvidence({
+      auth: ANALYST,
+      caseId: oid('case-1'),
+      filename: 'extracto.pdf',
+      contentType: 'application/pdf',
+      bytes: Buffer.from('contenido'),
+    });
+
+    // "Nadie lo miro" y "estaba limpio" son afirmaciones distintas.
+    expect(evidence.scanStatus).toBe('SKIPPED');
+  });
+
+  it('rechaza el fichero infectado SIN guardarlo en ningún sitio', async () => {
+    const scanner = new FakeMalwareScanner();
+    scanner.setVerdict({ status: 'INFECTED', signature: 'Eicar-Test-Signature' });
+    const h = build(nullTsa, scanner);
+    await h.cases.save(buildCase());
+
+    await expect(
+      h.registerEvidence({
+        auth: ANALYST,
+        caseId: oid('case-1'),
+        filename: 'malo.exe',
+        contentType: 'application/octet-stream',
+        bytes: Buffer.from('X5O!P%@AP'),
+      }),
+    ).rejects.toThrow(/Eicar-Test-Signature/);
+
+    // Ni blob en el almacen ni fila de metadatos: no queda una copia de
+    // malware en el bucket de evidencias esperando a que alguien la baje.
+    expect(h.evidenceStore.all()).toHaveLength(0);
+    expect(await h.evidence.listByCaseId(createCaseId(oid('case-1')))).toHaveLength(0);
+  });
+
+  it('audita el intento rechazado con la firma detectada', async () => {
+    const scanner = new FakeMalwareScanner();
+    scanner.setVerdict({ status: 'INFECTED', signature: 'Win.Trojan.Agent' });
+    const h = build(nullTsa, scanner);
+    await h.cases.save(buildCase());
+
+    await expect(
+      h.registerEvidence({
+        auth: ANALYST,
+        caseId: oid('case-1'),
+        filename: 'malo.exe',
+        contentType: 'application/octet-stream',
+        bytes: Buffer.from('X5O!P%@AP'),
+      }),
+    ).rejects.toThrow();
+
+    // El intento es en si mismo informacion: alguien subio malware al
+    // expediente y eso tiene que quedar escrito aunque el fichero se rechace.
+    const entry = h.auditRecorder.all().find((event) => event.detail.rejected === true);
+    expect(entry).toBeDefined();
+    expect(entry!.detail).toMatchObject({ signature: 'Win.Trojan.Agent', filename: 'malo.exe' });
   });
 });

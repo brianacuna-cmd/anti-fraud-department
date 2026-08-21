@@ -1,3 +1,4 @@
+import type { ScanStatus } from '../../ports/MalwareScanner.js';
 import type { Instant } from '../../../../../shared/time/Instant.js';
 import type { CaseId } from '../value-objects/CaseId.js';
 import type { InvestigationId } from '../value-objects/InvestigationId.js';
@@ -22,6 +23,11 @@ export interface EvidenceProps {
   readonly sha256: string;
   readonly storageKey: string;
   readonly timestamp: EvidenceTimestamp | null;
+  /**
+   * Veredicto del antivirus (INV-015). `SKIPPED` significa que no habia
+   * escaner configurado — NO que el fichero este limpio.
+   */
+  readonly scanStatus: ScanStatus;
   readonly uploadedBy: string;
   readonly createdAt: Instant;
   readonly deletedAt: Instant | null;
@@ -38,6 +44,7 @@ export interface RegisterEvidenceInput {
   readonly sha256: string;
   readonly storageKey: string;
   readonly timestamp: EvidenceTimestamp | null;
+  readonly scanStatus: ScanStatus;
   readonly uploadedBy: string;
   readonly now: Instant;
 }
@@ -72,6 +79,7 @@ export class Evidence {
       sha256: input.sha256,
       storageKey: input.storageKey,
       timestamp: input.timestamp,
+      scanStatus: input.scanStatus,
       uploadedBy: input.uploadedBy,
       createdAt: input.now,
       deletedAt: null,
@@ -132,6 +140,10 @@ export class Evidence {
 
   get timestamp(): EvidenceTimestamp | null {
     return this.props.timestamp;
+  }
+
+  get scanStatus(): ScanStatus {
+    return this.props.scanStatus;
   }
 
   get uploadedBy(): string {

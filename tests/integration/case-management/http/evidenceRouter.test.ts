@@ -8,6 +8,7 @@ import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js'
 import { caseManagementErrorStatus } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/errorStatus.js';
 import { evidenceRouter } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/evidenceRouter.js';
 import { createRegisterEvidenceUseCase } from '../../../../src/modules/case-management/application/RegisterEvidence.js';
+import { createCreateEvidenceDownloadUrlUseCase } from '../../../../src/modules/case-management/application/CreateEvidenceDownloadUrl.js';
 import { createListEvidenceUseCase } from '../../../../src/modules/case-management/application/ListEvidence.js';
 import { createGetEvidenceUseCase } from '../../../../src/modules/case-management/application/GetEvidence.js';
 import { createDownloadEvidenceUseCase } from '../../../../src/modules/case-management/application/DownloadEvidence.js';
@@ -21,6 +22,7 @@ import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemor
 import { InMemoryInvestigationRepository } from '../../../helpers/case-management/InMemoryInvestigationRepository.js';
 import { InMemoryEvidenceRepository } from '../../../helpers/case-management/InMemoryEvidenceRepository.js';
 import { InMemoryEvidenceStore } from '../../../helpers/case-management/InMemoryEvidenceStore.js';
+import { FakeMalwareScanner } from '../../../helpers/case-management/FakeMalwareScanner.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
@@ -47,12 +49,14 @@ async function buildApp() {
   const evidence = new InMemoryEvidenceRepository();
   const evidenceStore = new InMemoryEvidenceStore();
   const router = evidenceRouter({
+    createEvidenceDownloadUrl: createCreateEvidenceDownloadUrlUseCase({ evidence, evidenceStore, clock: new FixedClock(NOW) }),
     registerEvidence: createRegisterEvidenceUseCase({
       cases,
       investigations,
       evidence,
       evidenceStore,
       timestampAuthority: { requestTimestamp: async () => null },
+      malwareScanner: new FakeMalwareScanner(),
       timelineRecorder: new InMemoryTimelineRecorder(),
       auditRecorder: new InMemoryCaseManagementAuditRecorder(),
       unitOfWork: new PassthroughUnitOfWork(),

@@ -19,6 +19,23 @@ export const recordAnalystDecisionSchema = z.object({
 
 export type RecordAnalystDecisionBody = z.infer<typeof recordAnalystDecisionSchema>;
 
+/**
+ * POST /cases/:caseId/enforcement-actions body (ENF-001).
+ *
+ * `analystDecisionId` es obligatorio y no opcional: una sancion sin veredicto
+ * registrado es una restriccion sobre el dinero de alguien que nadie firmo.
+ * Aqui se pide una medida ADICIONAL sobre un dictamen que ya existe, no se
+ * abre una via para saltarselo.
+ */
+export const requestEnforcementActionSchema = z.object({
+  analystDecisionId: z.string().min(1),
+  actionType: actionTypeEnum,
+  targetType: z.string().min(1),
+  targetId: z.string().min(1),
+});
+
+export type RequestEnforcementActionBody = z.infer<typeof requestEnforcementActionSchema>;
+
 /** POST /enforcement-actions/:id/approve|reject body. */
 export const reviewEnforcementActionSchema = z.object({
   reviewerComment: z.string().nullable().optional(),

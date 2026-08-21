@@ -30,6 +30,7 @@ import {
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
+import { notifyApprovers } from './notifyApprovers.js';
 
 export interface RecordAnalystDecisionInput {
   readonly auth: AuthContext;
@@ -70,9 +71,6 @@ export interface RecordAnalystDecisionDeps {
   readonly generateApprovalRequestId: () => ApprovalRequestId;
   readonly generateTimelineEventId: () => TimelineEventId;
 }
-
-/** Quien revisa las sanciones. Ver `authorization/policy.ts`. */
-const APPROVER_ROLE = 'SUPERVISOR';
 
 /**
  * Records an analyst decision on a case (PR2). Role-gated to
@@ -205,55 +203,6 @@ export function createRecordAnalystDecisionUseCase(deps: RecordAnalystDecisionDe
       };
     });
   };
-}
-
-/**
- * Avisa a los supervisores de que hay una sancion esperando doble firma.
- *
- * Se excluye al solicitante aunque sea supervisor: el agregado le va a negar
- * la revision de todos modos (cuatro ojos), asi que avisarle solo seria
- * ofrecerle algo que no puede hacer.
- *
- * Va DENTRO de la transaccion, como en `ReassignCase`: si la sancion se
- * guarda y el aviso no, la cola queda con trabajo que nadie sabe que existe.
- */
-async function notifyApprovers(
-  deps: RecordAnalystDecisionDeps,
-  input: {
-    organizationId: string;
-    requesterId: string;
-    caseId: string;
-    enforcementActionId: string;
-    approvalRequestId: string;
-    actionType: string;
-    tx: Parameters<NotificationSender['send']>[1];
-  },
-): Promise<void> {
-  const approvers = await deps.assigneeDirectory.listRoleRecipients(
-    input.organizationId,
-    APPROVER_ROLE,
-  );
-
-  for (const recipientUserId of approvers) {
-    if (recipientUserId === input.requesterId) {
-      continue;
-    }
-    await deps.notificationSender.send(
-      {
-        organizationId: input.organizationId,
-        recipientUserId,
-        alertType: 'APROBACION_PENDIENTE',
-        context: {
-          caseId: input.caseId,
-          enforcementActionId: input.enforcementActionId,
-          approvalRequestId: input.approvalRequestId,
-          actionType: input.actionType,
-          requesterId: input.requesterId,
-        },
-      },
-      input.tx,
-    );
-  }
 }
 
 interface ResolvedActionFields {

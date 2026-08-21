@@ -7,6 +7,7 @@ import type { InvestigationRepository } from '../domain/ports/InvestigationRepos
 import type { EvidenceRepository } from '../domain/ports/EvidenceRepository.js';
 import type { EvidenceStore } from '../domain/ports/EvidenceStore.js';
 import type { TimestampAuthority } from '../domain/ports/TimestampAuthority.js';
+import type { MalwareScanner } from '../domain/ports/MalwareScanner.js';
 import type { TimelineRecorder } from '../domain/ports/TimelineRecorder.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
@@ -20,6 +21,7 @@ import {
   caseNotFound,
   forbiddenCrossTenant,
   investigationNotFound,
+  evidenceInfected,
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
@@ -39,6 +41,7 @@ export interface RegisterEvidenceDeps {
   readonly evidence: EvidenceRepository;
   readonly evidenceStore: EvidenceStore;
   readonly timestampAuthority: TimestampAuthority;
+  readonly malwareScanner: MalwareScanner;
   readonly timelineRecorder: TimelineRecorder;
   readonly auditRecorder: AuditRecorder;
   readonly unitOfWork: UnitOfWork;
@@ -86,8 +89,34 @@ export function createRegisterEvidenceUseCase(deps: RegisterEvidenceDeps) {
     const sha256 = createHash('sha256').update(input.bytes).digest('hex');
     const storageKey = `${organizationId}/${caseId}/${evidenceId}`;
 
+    // INV-015: escanear ANTES de tocar el almacen. Si el fichero esta
+    // infectado no se guarda en ningun sitio, asi que no hay nada que limpiar
+    // despues — y no queda una copia de malware en el bucket de evidencias
+    // esperando a que alguien la descargue. La entrada de auditoria del
+    // rechazo se escribe igual: el intento es en si mismo informacion.
+    const verdict = await deps.malwareScanner.scan(input.bytes, input.filename);
+    if (verdict.status === 'INFECTED') {
+      await deps.auditRecorder.record({
+        organizationId,
+        actorType: input.auth.actorType,
+        actorId: input.auth.userId,
+        action: 'REGISTER_EVIDENCE',
+        resource: 'evidence',
+        resourceId: null,
+        detail: {
+          caseId,
+          filename: input.filename,
+          sha256,
+          rejected: true,
+          signature: verdict.signature,
+        },
+        ipAddress: input.auth.ipAddress,
+      });
+      throw evidenceInfected(input.filename, verdict.signature);
+    }
+
     // Store the blob first — an object-store write is not part of the Mongo tx.
-    await deps.evidenceStore.put(storageKey, input.bytes);
+    await deps.evidenceStore.put(storageKey, input.bytes, input.contentType);
     const timestamp = await deps.timestampAuthority.requestTimestamp(sha256);
 
     const now = deps.clock.now();
@@ -102,6 +131,7 @@ export function createRegisterEvidenceUseCase(deps: RegisterEvidenceDeps) {
       sha256,
       storageKey,
       timestamp,
+      scanStatus: verdict.status,
       uploadedBy: input.auth.userId,
       now,
     });

@@ -5,11 +5,14 @@ import type { createListCaseReportsUseCase } from '../../../../application/ListC
 import type { createGetCaseReportUseCase } from '../../../../application/GetCaseReport.js';
 import { toCaseReportResponse } from './mappers/CaseReportHttpMapper.js';
 import { CaseReportPdfRenderer } from './report/CaseReportPdfRenderer.js';
+import { DossierZipPacker } from './report/DossierZipPacker.js';
+import type { createGenerateCaseAuditDossierUseCase } from '../../../../application/GenerateCaseAuditDossier.js';
 
 export interface ReportRouterDeps {
   readonly generateCaseReport: ReturnType<typeof createGenerateCaseReportUseCase>;
   readonly listCaseReports: ReturnType<typeof createListCaseReportsUseCase>;
   readonly getCaseReport: ReturnType<typeof createGetCaseReportUseCase>;
+  readonly generateCaseAuditDossier: ReturnType<typeof createGenerateCaseAuditDossierUseCase>;
 }
 
 /**
@@ -24,6 +27,7 @@ export function reportRouter(deps: ReportRouterDeps): Router {
   // Sin estado: una instancia para todo el router, como los renderizadores de
   // `caseExportRouter`.
   const pdf = new CaseReportPdfRenderer();
+  const dossierPacker = new DossierZipPacker();
 
   router.post('/cases/:caseId/reports', async (req, res) => {
     const auth = requireAuthContext(req);
@@ -63,6 +67,29 @@ export function reportRouter(deps: ReportRouterDeps): Router {
       'Content-Disposition',
       `attachment; filename="informe-${report.caseId}-${report.id}.pdf"`,
     );
+    res.status(200).send(body);
+  });
+
+  /**
+   * INV-016. `X-Dossier-Missing-Evidence` avisa de las evidencias cuyo blob no
+   * estaba en el almacen: el paquete se entrega igual —lo que hay sigue
+   * sirviendo— pero quien lo recibe tiene que enterarse sin abrir el ZIP.
+   */
+  router.get('/cases/:caseId/dossier', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const dossier = await deps.generateCaseAuditDossier({
+      auth,
+      caseId: req.params.caseId!,
+      ...(typeof req.query.reportId === 'string' ? { reportId: req.query.reportId } : {}),
+    });
+    const body = await dossierPacker.pack(dossier);
+
+    res.setHeader('Content-Type', dossierPacker.contentType);
+    res.setHeader('Content-Length', String(body.length));
+    res.setHeader('Content-Disposition', `attachment; filename="${dossierPacker.filenameFor(dossier)}"`);
+    if (dossier.missingEvidenceIds.length > 0) {
+      res.setHeader('X-Dossier-Missing-Evidence', dossier.missingEvidenceIds.join(','));
+    }
     res.status(200).send(body);
   });
 

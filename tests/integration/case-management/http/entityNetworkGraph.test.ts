@@ -12,6 +12,9 @@ import { investigationRouter } from '../../../../src/modules/case-management/inf
 import { createOpenInvestigationUseCase } from '../../../../src/modules/case-management/application/OpenInvestigation.js';
 import { createListInvestigationsUseCase } from '../../../../src/modules/case-management/application/ListInvestigations.js';
 import { createBuildEntityNetworkGraphUseCase } from '../../../../src/modules/case-management/application/BuildEntityNetworkGraph.js';
+import { createExportInvestigationSummaryUseCase } from '../../../../src/modules/case-management/application/ExportInvestigationSummary.js';
+import { InMemoryAnalystDecisionRepository } from '../../../helpers/case-management/InMemoryAnalystDecisionRepository.js';
+import { InMemoryEnforcementActionRepository } from '../../../helpers/case-management/InMemoryEnforcementActionRepository.js';
 import { createGetInvestigationUseCase } from '../../../../src/modules/case-management/application/GetInvestigation.js';
 import { createCloseInvestigationUseCase } from '../../../../src/modules/case-management/application/CloseInvestigation.js';
 import { createUpdateInvestigationFindingsUseCase } from '../../../../src/modules/case-management/application/UpdateInvestigationFindings.js';
@@ -80,6 +83,14 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
 
   const deps = { investigations, auditRecorder, unitOfWork, clock };
   const router = investigationRouter({
+    exportInvestigationSummary: createExportInvestigationSummaryUseCase({
+      cases,
+      investigations,
+      decisions: new InMemoryAnalystDecisionRepository(),
+      enforcementActions: new InMemoryEnforcementActionRepository(),
+      buildEntityNetworkGraph: createBuildEntityNetworkGraphUseCase({ cases, investigations }),
+      clock,
+    }),
     openInvestigation: createOpenInvestigationUseCase({ cases, ...deps, generateInvestigationId }),
     listInvestigations: createListInvestigationsUseCase({ cases, investigations }),
     getInvestigation: createGetInvestigationUseCase({ investigations }),

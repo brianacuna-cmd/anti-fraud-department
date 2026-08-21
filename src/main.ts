@@ -96,6 +96,16 @@ import { MongoInvestigationRepository } from './modules/case-management/infrastr
 import { MongoCaseReportRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseReportRepository.js';
 import { MongoEvidenceRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoEvidenceRepository.js';
 import { FilesystemEvidenceStore } from './modules/case-management/infrastructure/adapters/outbound/storage/FilesystemEvidenceStore.js';
+import { S3EvidenceStore } from './modules/case-management/infrastructure/adapters/outbound/storage/S3EvidenceStore.js';
+import { Rfc3161TimestampAuthority } from './modules/case-management/infrastructure/adapters/outbound/timestamp/Rfc3161TimestampAuthority.js';
+import { ClamAvMalwareScanner } from './modules/case-management/infrastructure/adapters/outbound/antivirus/ClamAvMalwareScanner.js';
+import { DisabledMalwareScanner } from './modules/case-management/infrastructure/adapters/outbound/antivirus/DisabledMalwareScanner.js';
+import { createGenerateCaseAuditDossierUseCase } from './modules/case-management/application/GenerateCaseAuditDossier.js';
+import { createCreateEvidenceDownloadUrlUseCase } from './modules/case-management/application/CreateEvidenceDownloadUrl.js';
+import { CaseReportPdfRenderer } from './modules/case-management/infrastructure/adapters/inbound/http/report/CaseReportPdfRenderer.js';
+import type { EvidenceStore } from './modules/case-management/domain/ports/EvidenceStore.js';
+import type { TimestampAuthority } from './modules/case-management/domain/ports/TimestampAuthority.js';
+import type { MalwareScanner } from './modules/case-management/domain/ports/MalwareScanner.js';
 import { NullTimestampAuthority } from './modules/case-management/infrastructure/adapters/outbound/timestamp/NullTimestampAuthority.js';
 import { MongoUnitOfWork as CaseManagementMongoUnitOfWork } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { generateCaseId } from './modules/case-management/domain/model/value-objects/CaseId.js';
@@ -122,6 +132,7 @@ import { createOpenInvestigationUseCase } from './modules/case-management/applic
 import { createListInvestigationsUseCase } from './modules/case-management/application/ListInvestigations.js';
 import { createGetInvestigationUseCase } from './modules/case-management/application/GetInvestigation.js';
 import { createBuildEntityNetworkGraphUseCase } from './modules/case-management/application/BuildEntityNetworkGraph.js';
+import { createExportInvestigationSummaryUseCase } from './modules/case-management/application/ExportInvestigationSummary.js';
 import { createCloseInvestigationUseCase } from './modules/case-management/application/CloseInvestigation.js';
 import { createUpdateInvestigationFindingsUseCase } from './modules/case-management/application/UpdateInvestigationFindings.js';
 import { createLinkInvestigationCasesUseCase } from './modules/case-management/application/LinkInvestigationCases.js';
@@ -180,6 +191,7 @@ import { generateCaseSlaTrackingId } from './modules/case-management/domain/mode
 import { createGetOrganizationFraudConfigUseCase } from './modules/case-management/application/GetOrganizationFraudConfig.js';
 import { createUpsertOrganizationFraudConfigUseCase } from './modules/case-management/application/UpsertOrganizationFraudConfig.js';
 import { createRecordAnalystDecisionUseCase } from './modules/case-management/application/RecordAnalystDecision.js';
+import { createRequestEnforcementActionUseCase } from './modules/case-management/application/RequestEnforcementAction.js';
 import { createListCaseDecisionsUseCase } from './modules/case-management/application/ListCaseDecisions.js';
 import { createApproveEnforcementActionUseCase } from './modules/case-management/application/ApproveEnforcementAction.js';
 import { createRejectEnforcementActionUseCase } from './modules/case-management/application/RejectEnforcementAction.js';
@@ -290,6 +302,28 @@ const AUTH_PASSWORD_RESET_TTL_SECONDS = Number(process.env.AUTH_PASSWORD_RESET_T
 const PASSWORD_RESET_EMAIL_FROM = process.env.PASSWORD_RESET_EMAIL_FROM ?? 'fraud@backendstudio.tech';
 const NOTIFICATION_EMAIL_FROM = process.env.NOTIFICATION_EMAIL_FROM ?? PASSWORD_RESET_EMAIL_FROM;
 const EVIDENCE_STORAGE_DIR = process.env.EVIDENCE_STORAGE_DIR ?? './.evidence';
+/**
+ * Almacen de evidencias. `EVIDENCE_S3_BUCKET` presente = S3 (INV-002/004);
+ * ausente = filesystem local, que sirve en desarrollo pero NO sabe emitir URLs
+ * prefirmadas. Las credenciales no se leen aqui: las resuelve la cadena por
+ * defecto del SDK (rol de la instancia, perfil, entorno).
+ */
+const EVIDENCE_S3_BUCKET = process.env.EVIDENCE_S3_BUCKET;
+const EVIDENCE_S3_REGION = process.env.EVIDENCE_S3_REGION ?? 'us-east-1';
+const EVIDENCE_S3_PREFIX = process.env.EVIDENCE_S3_PREFIX;
+const EVIDENCE_S3_ENDPOINT = process.env.EVIDENCE_S3_ENDPOINT;
+/**
+ * TSA RFC 3161 (INV-003). Sin `TSA_URL` no se sella: la evidencia se registra
+ * igual con su SHA-256, pero sin sello de tiempo oponible a un tercero.
+ */
+const TSA_URL = process.env.TSA_URL;
+const TSA_AUTHORITY_NAME = process.env.TSA_AUTHORITY_NAME ?? TSA_URL ?? 'unknown';
+/**
+ * Antivirus (INV-015). Sin `CLAMAV_HOST` los ficheros se marcan SKIPPED — que
+ * es lo que de verdad ocurrio— en vez de CLEAN.
+ */
+const CLAMAV_HOST = process.env.CLAMAV_HOST;
+const CLAMAV_PORT = Number(process.env.CLAMAV_PORT ?? 3310);
 const PASSWORD_RESET_LINK_BASE_URL = process.env.PASSWORD_RESET_LINK_BASE_URL ?? 'http://localhost:3000/reset-password';
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 /** Poll interval for customer_outgoing_events webhook dispatcher (PR5). */
@@ -438,6 +472,8 @@ async function bootstrap(): Promise<void> {
   // antes que los routers que los usaban originalmente.
   const evidence = new MongoEvidenceRepository(db);
   const approvalRequests = new MongoApprovalRequestRepository(db);
+  const analystDecisions = new MongoAnalystDecisionRepository(db);
+  const enforcementActions = new MongoEnforcementActionRepository(db);
   const routeCase = createRouteCaseUseCase({
     cases,
     routingRules: caseRoutingRules,
@@ -691,6 +727,14 @@ async function bootstrap(): Promise<void> {
     listInvestigations: createListInvestigationsUseCase({ cases, investigations }),
     getInvestigation: createGetInvestigationUseCase({ investigations }),
     buildEntityNetworkGraph: createBuildEntityNetworkGraphUseCase({ cases, investigations }),
+    exportInvestigationSummary: createExportInvestigationSummaryUseCase({
+      cases,
+      investigations,
+      decisions: analystDecisions,
+      enforcementActions,
+      buildEntityNetworkGraph: createBuildEntityNetworkGraphUseCase({ cases, investigations }),
+      clock,
+    }),
     closeInvestigation: createCloseInvestigationUseCase({
       investigations,
       auditRecorder: caseManagementAuditRecorder,
@@ -726,9 +770,44 @@ async function bootstrap(): Promise<void> {
       clock,
     }),
   });
-  const analystDecisions = new MongoAnalystDecisionRepository(db);
-  const enforcementActions = new MongoEnforcementActionRepository(db);
   const caseReports = new MongoCaseReportRepository(db);
+  const evidenceStore: EvidenceStore =
+    EVIDENCE_S3_BUCKET === undefined
+      ? new FilesystemEvidenceStore(EVIDENCE_STORAGE_DIR)
+      : new S3EvidenceStore({
+          bucket: EVIDENCE_S3_BUCKET,
+          region: EVIDENCE_S3_REGION,
+          ...(EVIDENCE_S3_PREFIX === undefined ? {} : { prefix: EVIDENCE_S3_PREFIX }),
+          ...(EVIDENCE_S3_ENDPOINT === undefined
+            ? {}
+            : { endpoint: EVIDENCE_S3_ENDPOINT, forcePathStyle: true }),
+        });
+  console.log(
+    EVIDENCE_S3_BUCKET === undefined
+      ? `Evidence store: filesystem (${EVIDENCE_STORAGE_DIR}) — presigned URLs unavailable`
+      : `Evidence store: S3 bucket ${EVIDENCE_S3_BUCKET} (${EVIDENCE_S3_REGION})`,
+  );
+
+  const timestampAuthority: TimestampAuthority =
+    TSA_URL === undefined
+      ? new NullTimestampAuthority()
+      : new Rfc3161TimestampAuthority({ url: TSA_URL, authorityName: TSA_AUTHORITY_NAME });
+  console.log(
+    TSA_URL === undefined
+      ? 'RFC3161 timestamping: DISABLED — evidence is hashed but not sealed'
+      : `RFC3161 timestamping: ${TSA_AUTHORITY_NAME}`,
+  );
+
+  const malwareScanner: MalwareScanner =
+    CLAMAV_HOST === undefined
+      ? new DisabledMalwareScanner()
+      : new ClamAvMalwareScanner({ host: CLAMAV_HOST, port: CLAMAV_PORT });
+  console.log(
+    CLAMAV_HOST === undefined
+      ? 'Malware scanning: DISABLED — uploads are recorded as SKIPPED, not CLEAN'
+      : `Malware scanning: clamd at ${CLAMAV_HOST}:${CLAMAV_PORT}`,
+  );
+
   const reportHttpRouter = reportRouter({
     generateCaseReport: createGenerateCaseReportUseCase({
       cases,
@@ -750,16 +829,29 @@ async function bootstrap(): Promise<void> {
     }),
     listCaseReports: createListCaseReportsUseCase({ cases, reports: caseReports }),
     getCaseReport: createGetCaseReportUseCase({ reports: caseReports }),
+    generateCaseAuditDossier: createGenerateCaseAuditDossierUseCase({
+      cases,
+      reports: caseReports,
+      evidence,
+      evidenceStore,
+      timelineRecorder: caseTimelineRecorder,
+      renderReportPdf: (report) => new CaseReportPdfRenderer().render(report),
+      clock,
+    }),
   });
-  const evidenceStore = new FilesystemEvidenceStore(EVIDENCE_STORAGE_DIR);
-  const timestampAuthority = new NullTimestampAuthority();
   const evidenceHttpRouter = evidenceRouter({
+    createEvidenceDownloadUrl: createCreateEvidenceDownloadUrlUseCase({
+      evidence,
+      evidenceStore,
+      clock,
+    }),
     registerEvidence: createRegisterEvidenceUseCase({
       cases,
       investigations,
       evidence,
       evidenceStore,
       timestampAuthority,
+      malwareScanner,
       timelineRecorder: caseTimelineRecorder,
       auditRecorder: caseManagementAuditRecorder,
       unitOfWork: caseManagementUnitOfWork,
@@ -821,6 +913,21 @@ async function bootstrap(): Promise<void> {
       unitOfWork: caseManagementUnitOfWork,
       clock,
       generateAnalystDecisionId,
+      generateEnforcementActionId,
+      generateApprovalRequestId,
+      generateTimelineEventId,
+    }),
+    requestEnforcementAction: createRequestEnforcementActionUseCase({
+      cases,
+      decisions: analystDecisions,
+      enforcementActions,
+      approvalRequests,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      notificationSender: caseManagementNotificationSender,
+      assigneeDirectory,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
       generateEnforcementActionId,
       generateApprovalRequestId,
       generateTimelineEventId,
