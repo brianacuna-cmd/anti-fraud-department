@@ -93,6 +93,17 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
     expect(count).toBe(1);
   });
 
+  it('persists an opaque non-hex customer_id (e.g. Stripe cus_...) as a plain string', async () => {
+    const alert = buildAlert({ customerId: 'cus_9aFbZ_external' });
+
+    await expect(repository.save(alert)).resolves.not.toThrow();
+
+    const stored = await db.collection('aml_alerts').findOne({ customer_id: 'cus_9aFbZ_external' });
+    expect(stored).not.toBeNull();
+    const roundTripped = await repository.findById(alert.id);
+    expect(roundTripped?.customerId).toBe('cus_9aFbZ_external');
+  });
+
   it('treats a concurrent duplicate-key race as an idempotent no-op instead of throwing', async () => {
     // Two distinct alert instances (different _id) with the SAME natural key.
     // Under find-then-insert both may find nothing and race to insert; the
