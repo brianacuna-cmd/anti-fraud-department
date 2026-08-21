@@ -12,7 +12,7 @@ import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
 import { organizationSlugTaken } from '../../../../domain/errors/IdentityAccessError.js';
 import type { OrganizationDocument } from './documents/OrganizationDocument.js';
 import { toDocument, toDomain } from './mappers/OrganizationDocumentMapper.js';
-import { extractDuplicateKeyIndexName } from './duplicateKey.js';
+import { extractDuplicateKeyIndexName } from '../../../../../../shared/persistence/mongo/duplicateKey.js';
 
 /** Casts the opaque `Transaction` handle back to a real Mongo `ClientSession` (design D6). */
 function toSession(tx: Transaction | undefined): ClientSession | undefined {
