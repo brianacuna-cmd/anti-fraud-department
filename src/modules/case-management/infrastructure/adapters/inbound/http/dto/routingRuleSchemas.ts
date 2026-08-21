@@ -1,38 +1,7 @@
 import { z } from 'zod';
+import { jdmGraphSchema, type JdmGraph } from '../../../../../../../shared/http/dto/jdmGraphSchema.js';
 
-/**
- * Structural JDM graph validation for routing-rule create (design ADR A6:
- * clone of scoring `jdmGraphSchema` — shape only, not semantic correctness).
- */
-export const jdmGraphSchema = z
-  .object({
-    contentType: z.literal('application/vnd.gorules.decision'),
-    nodes: z
-      .array(
-        z
-          .object({
-            id: z.string().min(1),
-            type: z.string().min(1),
-            name: z.string().optional(),
-            position: z.object({ x: z.number(), y: z.number() }).optional(),
-            content: z.unknown().optional(),
-          })
-          .passthrough(),
-      )
-      .min(1),
-    edges: z.array(
-      z
-        .object({
-          id: z.string().min(1),
-          sourceId: z.string().min(1),
-          targetId: z.string().min(1),
-        })
-        .passthrough(),
-    ),
-  })
-  .passthrough();
-
-export type JdmGraph = z.infer<typeof jdmGraphSchema>;
+export { jdmGraphSchema, type JdmGraph };
 
 /**
  * POST /case-routing-rules body. Persists as INACTIVE draft after structural
