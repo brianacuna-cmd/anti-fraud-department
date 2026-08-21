@@ -4,26 +4,6 @@ import { OrganizationFraudConfig } from '../../../../../domain/model/aggregates/
 import { createOrganizationFraudConfigId } from '../../../../../domain/model/value-objects/OrganizationFraudConfigId.js';
 import type { OrganizationFraudConfigDocument } from '../documents/OrganizationFraudConfigDocument.js';
 
-/** camelCase (domain) -> snake_case (Mongo). Instant fields become BSON `Date`. */
-export function toDocument(config: OrganizationFraudConfig): OrganizationFraudConfigDocument {
-  return {
-    _id: new ObjectId(config.id),
-    organization_id: new ObjectId(config.organizationId),
-    sla_low_minutes: config.slaLowMinutes,
-    sla_medium_minutes: config.slaMediumMinutes,
-    sla_high_minutes: config.slaHighMinutes,
-    sla_critical_minutes: config.slaCriticalMinutes,
-    risk_threshold_low: config.riskThresholdLow,
-    risk_threshold_medium: config.riskThresholdMedium,
-    risk_threshold_high: config.riskThresholdHigh,
-    risk_threshold_critical: config.riskThresholdCritical,
-    feature_flags: config.featureFlags,
-    outbound_webhook_url: config.outboundWebhookUrl,
-    created_at: toDate(config.createdAt),
-    updated_at: toDate(config.updatedAt),
-  };
-}
-
 export interface UpsertFields {
   readonly key: { readonly organization_id: ObjectId };
   readonly set: {

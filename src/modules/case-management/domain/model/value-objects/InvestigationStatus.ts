@@ -8,7 +8,7 @@ import { invariantViolation } from '../../errors/CaseManagementError.js';
  */
 export type InvestigationStatus = 'OPEN' | 'INVESTIGATING' | 'RESOLVED' | 'CLOSED';
 
-export const INVESTIGATION_STATUSES = ['OPEN', 'INVESTIGATING', 'RESOLVED', 'CLOSED'] as const;
+const INVESTIGATION_STATUSES = ['OPEN', 'INVESTIGATING', 'RESOLVED', 'CLOSED'] as const;
 
 /** Non-terminal statuses surfaced by the org-wide "active investigations" list. */
 export const ACTIVE_INVESTIGATION_STATUSES = ['OPEN', 'INVESTIGATING'] as const;
