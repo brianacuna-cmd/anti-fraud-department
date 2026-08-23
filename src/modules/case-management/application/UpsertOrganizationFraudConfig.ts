@@ -18,6 +18,7 @@ export interface UpsertOrganizationFraudConfigInput {
   readonly riskThresholdCritical: number;
   readonly featureFlags?: Readonly<Record<string, boolean>>;
   readonly outboundWebhookUrl?: string | null;
+  readonly outboundWebhookSecret?: string | null;
 }
 
 export interface UpsertOrganizationFraudConfigDeps {
@@ -54,6 +55,7 @@ export function createUpsertOrganizationFraudConfigUseCase(deps: UpsertOrganizat
             riskThresholdCritical: input.riskThresholdCritical,
             featureFlags: input.featureFlags,
             outboundWebhookUrl: input.outboundWebhookUrl,
+            outboundWebhookSecret: input.outboundWebhookSecret,
           },
           now,
         )
@@ -70,6 +72,7 @@ export function createUpsertOrganizationFraudConfigUseCase(deps: UpsertOrganizat
           riskThresholdCritical: input.riskThresholdCritical,
           featureFlags: input.featureFlags,
           outboundWebhookUrl: input.outboundWebhookUrl,
+          outboundWebhookSecret: input.outboundWebhookSecret,
           now,
         });
 

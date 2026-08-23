@@ -11,7 +11,10 @@ import { organizationRouter } from './modules/identity-access/infrastructure/ada
 import { userRouter } from './modules/identity-access/infrastructure/adapters/inbound/http/userRouter.js';
 import { adminOrganizationRouter } from './modules/identity-access/infrastructure/adapters/inbound/http/adminOrganizationRouter.js';
 import { authRouter } from './modules/identity-access/infrastructure/adapters/inbound/http/authRouter.js';
-import { assertAuthConfigSafeForProduction } from './modules/identity-access/infrastructure/adapters/inbound/http/auth/assertAuthConfigSafeForProduction.js';
+import {
+  assertAuthConfigSafeForProduction,
+  DEV_TOKEN_SECRET,
+} from './modules/identity-access/infrastructure/adapters/inbound/http/auth/assertAuthConfigSafeForProduction.js';
 import { resolveAuthContextResolver } from './modules/identity-access/infrastructure/adapters/inbound/http/auth/resolveAuthContextResolver.js';
 import { createAuthContextMiddleware } from './modules/identity-access/infrastructure/adapters/inbound/http/auth/authContextMiddleware.js';
 import { MongoOrganizationRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoOrganizationRepository.js';
@@ -268,7 +271,7 @@ const PLATFORM_ADMIN_AUTH = process.env.PLATFORM_ADMIN_AUTH ?? 'disabled';
 // wire) so a future key rotation only needs to bump this and start a new
 // AesGcmSecretCipher instance; old tokens under the old version simply fail
 // to decrypt (`decrypt` returns null, never throws).
-const TOKEN_SECRET = process.env.TOKEN_SECRET ?? 'dev-only-insecure-token-secret';
+const TOKEN_SECRET = process.env.TOKEN_SECRET ?? DEV_TOKEN_SECRET;
 const TOKEN_KEY_VERSION = Number(process.env.TOKEN_KEY_VERSION ?? 1);
 // Fail-safe default `false` (design D-A7/§4a): a production deployment
 // behind a real reverse proxy MUST set TRUST_PROXY explicitly, or `req.ip`
@@ -359,7 +362,12 @@ async function bootstrap(): Promise<void> {
   // Fail-closed (design D4, D6): AUTH_MODE=trusted-header trusts client
   // headers verbatim and must never run in production; PLATFORM_ADMIN_AUTH=
   // trusted-header is likewise production-forbidden for every tier.
-  assertAuthConfigSafeForProduction(process.env.NODE_ENV, AUTH_MODE, PLATFORM_ADMIN_AUTH);
+  assertAuthConfigSafeForProduction(
+    process.env.NODE_ENV,
+    AUTH_MODE,
+    PLATFORM_ADMIN_AUTH,
+    process.env.TOKEN_SECRET,
+  );
 
   const { client, db } = await connectMongo(MONGO_URI, MONGO_DB_NAME);
   const clock = new SystemClock();
@@ -929,6 +937,7 @@ async function bootstrap(): Promise<void> {
   const customerOutgoingEventDispatcher = createCustomerOutgoingEventDispatcher({
     outgoingEvents: customerOutgoingEvents,
     webhookClient: outgoingWebhookClient,
+    fraudConfig: organizationFraudConfig,
     clock,
   });
   // casemgmt-notifications-sla-sweep PR2 (Slice 13): advances due

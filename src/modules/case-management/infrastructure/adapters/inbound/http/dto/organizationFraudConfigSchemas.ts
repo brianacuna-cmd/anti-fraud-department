@@ -17,6 +17,13 @@ export const upsertOrganizationFraudConfigSchema = z
     riskThresholdCritical: z.number().int().nonnegative(),
     featureFlags: z.record(z.string(), z.boolean()).optional(),
     outboundWebhookUrl: z.string().url().nullable().optional(),
+  /**
+   * Secreto compartido para firmar lo que enviamos a `outboundWebhookUrl`.
+   * Se acepta al escribir y NUNCA se devuelve: la respuesta solo dice si hay
+   * uno puesto. Un secreto que la API devuelve deja de ser un secreto en
+   * cuanto alguien con permiso de lectura mira la configuracion.
+   */
+  outboundWebhookSecret: z.string().min(32).nullable().optional(),
   })
   .strict();
 

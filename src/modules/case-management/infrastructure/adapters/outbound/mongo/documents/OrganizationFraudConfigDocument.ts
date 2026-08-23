@@ -19,6 +19,8 @@ export interface OrganizationFraudConfigDocument {
   readonly feature_flags: Readonly<Record<string, boolean>>;
   /** Present on new writes; legacy docs may omit — mapper defaults to null. */
   readonly outbound_webhook_url?: string | null;
+  /** Secreto HMAC compartido con el inquilino. Nunca sale por la API. */
+  readonly outbound_webhook_secret?: string | null;
   readonly created_at: Date;
   readonly updated_at: Date;
 }

@@ -7,6 +7,9 @@ import { InMemoryCustomerOutgoingEventRepository } from '../../../helpers/case-m
 import { FakeOutgoingWebhookClient } from '../../../helpers/case-management/FakeOutgoingWebhookClient.js';
 import { ControllableClock } from '../../../helpers/ControllableClock.js';
 import { FakeSleeper } from '../../../helpers/FakeSleeper.js';
+import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
+import { OrganizationFraudConfig } from '../../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
+import { createOrganizationFraudConfigId } from '../../../../src/modules/case-management/domain/model/value-objects/OrganizationFraudConfigId.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 
 const T0 = fromDate(new Date('2026-01-01T00:00:00.000Z'));
@@ -43,6 +46,7 @@ function buildDispatcher(opts?: {
   events?: InMemoryCustomerOutgoingEventRepository;
   sleeper?: FakeSleeper;
   claimLimit?: number;
+  fraudConfig?: InMemoryOrganizationFraudConfigRepository;
 }) {
   const clock = opts?.clock ?? new ControllableClock(T0);
   const client = opts?.client ?? new FakeOutgoingWebhookClient();
@@ -54,6 +58,7 @@ function buildDispatcher(opts?: {
     clock,
     sleeper: (ms) => sleeper.sleep(ms),
     claimLimit: opts?.claimLimit,
+    ...(opts?.fraudConfig === undefined ? {} : { fraudConfig: opts.fraudConfig }),
   });
   return { dispatcher, clock, client, events, sleeper };
 }
@@ -73,6 +78,9 @@ describe('CustomerOutgoingEventDispatcher', () => {
       {
         url: WEBHOOK_URL,
         payload: { ...PAYLOAD },
+        // Sin `fraudConfig` cableado no hay secreto que resolver: EVT-003 no
+        // cambia el comportamiento de un montaje que no lo pide.
+        secret: null,
       },
     ]);
     const saved = await events.findById(pending.id);
@@ -227,5 +235,105 @@ describe('CustomerOutgoingEventDispatcher', () => {
     handle.stop();
     sleepGate.release?.();
     await new Promise((resolve) => setImmediate(resolve));
+  });
+});
+
+describe('CustomerOutgoingEventDispatcher — secreto de firma por inquilino (EVT-003)', () => {
+  const SECRET = 'k'.repeat(48);
+
+  function configFor(organizationId: string, secret: string | null) {
+    return OrganizationFraudConfig.create({
+      id: createOrganizationFraudConfigId(oid(`cfg-${organizationId}`)),
+      organizationId,
+      slaLowMinutes: 60,
+      slaMediumMinutes: 60,
+      slaHighMinutes: 60,
+      slaCriticalMinutes: 60,
+      riskThresholdLow: 10,
+      riskThresholdMedium: 40,
+      riskThresholdHigh: 70,
+      riskThresholdCritical: 90,
+      outboundWebhookUrl: WEBHOOK_URL,
+      outboundWebhookSecret: secret,
+      now: T0,
+    });
+  }
+
+  it('pasa al cliente el secreto del inquilino del evento', async () => {
+    const fraudConfig = new InMemoryOrganizationFraudConfigRepository();
+    await fraudConfig.upsert(configFor(oid('org-1'), SECRET));
+    const events = new InMemoryCustomerOutgoingEventRepository();
+    await events.save(buildPending());
+    const { dispatcher, client } = buildDispatcher({ events, fraudConfig });
+
+    await dispatcher.dispatchOnce();
+
+    expect(client.posts).toHaveLength(1);
+    expect(client.posts[0]?.secret).toBe(SECRET);
+  });
+
+  it('sin secreto configurado entrega sin firmar', async () => {
+    const fraudConfig = new InMemoryOrganizationFraudConfigRepository();
+    await fraudConfig.upsert(configFor(oid('org-1'), null));
+    const events = new InMemoryCustomerOutgoingEventRepository();
+    await events.save(buildPending());
+    const { dispatcher, client } = buildDispatcher({ events, fraudConfig });
+
+    await dispatcher.dispatchOnce();
+
+    expect(client.posts[0]?.secret).toBeNull();
+  });
+
+  /**
+   * La razon de la cache: una tanda toca pocos inquilinos y muchos eventos.
+   * Sin ella, entregar 50 sanciones del mismo inquilino son 50 lecturas de la
+   * misma fila de configuracion.
+   */
+  it('lee la configuracion una vez por inquilino y no por evento', async () => {
+    const fraudConfig = new InMemoryOrganizationFraudConfigRepository();
+    await fraudConfig.upsert(configFor(oid('org-1'), SECRET));
+    let reads = 0;
+    const counting = {
+      ...fraudConfig,
+      findByOrganization: async (organizationId: string) => {
+        reads += 1;
+        return fraudConfig.findByOrganization(organizationId);
+      },
+    } as unknown as InMemoryOrganizationFraudConfigRepository;
+
+    const events = new InMemoryCustomerOutgoingEventRepository();
+    await events.save(buildPending());
+    await events.save(
+      buildPending({ id: createCustomerOutgoingEventId(oid('outbox-dispatch-2')) }),
+    );
+    await events.save(
+      buildPending({ id: createCustomerOutgoingEventId(oid('outbox-dispatch-3')) }),
+    );
+    const { dispatcher, client } = buildDispatcher({ events, fraudConfig: counting });
+
+    await dispatcher.dispatchOnce();
+
+    expect(client.posts).toHaveLength(3);
+    expect(reads).toBe(1);
+  });
+
+  /**
+   * Estas entregas levantan y aplican sanciones sobre clientes reales. Un fallo
+   * al leer la configuracion no puede dejar una restriccion puesta de mas.
+   */
+  it('si la configuracion no se puede leer, entrega sin firmar en vez de no entregar', async () => {
+    const broken = {
+      findByOrganization: async () => {
+        throw new Error('mongo caido');
+      },
+    } as unknown as InMemoryOrganizationFraudConfigRepository;
+    const events = new InMemoryCustomerOutgoingEventRepository();
+    await events.save(buildPending());
+    const { dispatcher, client } = buildDispatcher({ events, fraudConfig: broken });
+
+    const result = await dispatcher.dispatchOnce();
+
+    expect(result.sent).toBe(1);
+    expect(client.posts[0]?.secret).toBeNull();
   });
 });

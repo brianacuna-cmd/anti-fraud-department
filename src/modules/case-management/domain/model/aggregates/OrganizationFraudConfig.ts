@@ -17,6 +17,19 @@ export interface OrganizationFraudConfigProps {
   readonly featureFlags: Readonly<Record<string, boolean>>;
   /** Tenant webhook URL for enforcement outbox delivery; null/empty = unset. */
   readonly outboundWebhookUrl: string | null;
+  /**
+   * Secreto compartido con el inquilino para firmar lo que le enviamos.
+   *
+   * Es POR INQUILINO y no del despliegue a proposito: con un secreto unico,
+   * cualquier inquilino que conociera el suyo podria falsificar entregas
+   * firmadas al endpoint de otro, y una notificacion de sancion falsificada es
+   * exactamente lo que este canal no puede permitir.
+   *
+   * `null` = sin firmar. Se permite para no romper integraciones que ya estan
+   * en pie, pero el receptor no puede distinguir nuestros envios de los de
+   * cualquiera que conozca su URL.
+   */
+  readonly outboundWebhookSecret: string | null;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
 }
@@ -34,6 +47,7 @@ export interface CreateOrganizationFraudConfigInput {
   readonly riskThresholdCritical: number;
   readonly featureFlags?: Readonly<Record<string, boolean>>;
   readonly outboundWebhookUrl?: string | null;
+  readonly outboundWebhookSecret?: string | null;
   readonly now: Instant;
 }
 
@@ -48,6 +62,7 @@ export interface UpdateOrganizationFraudConfigInput {
   readonly riskThresholdCritical?: number;
   readonly featureFlags?: Readonly<Record<string, boolean>>;
   readonly outboundWebhookUrl?: string | null;
+  readonly outboundWebhookSecret?: string | null;
 }
 
 const SLA_FIELDS = [
@@ -94,6 +109,7 @@ export class OrganizationFraudConfig {
       riskThresholdCritical: input.riskThresholdCritical,
       featureFlags: input.featureFlags ?? {},
       outboundWebhookUrl: input.outboundWebhookUrl ?? null,
+      outboundWebhookSecret: input.outboundWebhookSecret ?? null,
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -150,6 +166,10 @@ export class OrganizationFraudConfig {
 
   get outboundWebhookUrl(): string | null {
     return this.props.outboundWebhookUrl;
+  }
+
+  get outboundWebhookSecret(): string | null {
+    return this.props.outboundWebhookSecret;
   }
 
   get createdAt(): Instant {
@@ -210,6 +230,10 @@ export class OrganizationFraudConfig {
         patch.outboundWebhookUrl === undefined
           ? this.props.outboundWebhookUrl
           : patch.outboundWebhookUrl,
+      outboundWebhookSecret:
+        patch.outboundWebhookSecret === undefined
+          ? this.props.outboundWebhookSecret
+          : patch.outboundWebhookSecret,
       updatedAt: now,
     });
   }
