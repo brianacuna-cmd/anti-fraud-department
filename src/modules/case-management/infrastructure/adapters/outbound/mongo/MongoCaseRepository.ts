@@ -175,36 +175,59 @@ export class MongoCaseRepository implements CaseRepository {
   }
 }
 
+function statusFilterFragment(query: CaseListQuery): Record<string, unknown> {
+  return query.status !== undefined && query.status.length > 0 ? { status: { $in: [...query.status] } } : {};
+}
+
+function priorityFilterFragment(query: CaseListQuery): Record<string, unknown> {
+  return query.priority !== undefined && query.priority.length > 0
+    ? { priority: { $in: [...query.priority] } }
+    : {};
+}
+
+function assignedToFilterFragment(query: CaseListQuery): Record<string, unknown> {
+  return query.assignedToId !== undefined ? { assigned_to: query.assignedToId } : {};
+}
+
+function riskScoreFilterFragment(query: CaseListQuery): Record<string, unknown> {
+  if (query.riskScoreMin === undefined && query.riskScoreMax === undefined) {
+    return {};
+  }
+  return {
+    risk_score: {
+      ...(query.riskScoreMin !== undefined ? { $gte: query.riskScoreMin } : {}),
+      ...(query.riskScoreMax !== undefined ? { $lte: query.riskScoreMax } : {}),
+    },
+  };
+}
+
+function tagsFilterFragment(query: CaseListQuery): Record<string, unknown> {
+  return query.tags !== undefined && query.tags.length > 0 ? { tags: { $all: [...query.tags] } } : {};
+}
+
+function dueDateFilterFragment(query: CaseListQuery): Record<string, unknown> {
+  if (query.dueAfter === undefined && query.dueBefore === undefined) {
+    return {};
+  }
+  return {
+    due_date: {
+      ...(query.dueAfter !== undefined ? { $gte: toDate(query.dueAfter) } : {}),
+      ...(query.dueBefore !== undefined ? { $lt: toDate(query.dueBefore) } : {}),
+    },
+  };
+}
+
 function buildListFilter(query: CaseListQuery): Filter<CaseDocument> {
   const filter: Record<string, unknown> = {
     organization_id: new ObjectId(query.organizationId),
     deleted_at: null,
+    ...statusFilterFragment(query),
+    ...priorityFilterFragment(query),
+    ...assignedToFilterFragment(query),
+    ...riskScoreFilterFragment(query),
+    ...tagsFilterFragment(query),
+    ...dueDateFilterFragment(query),
   };
-
-  if (query.status !== undefined && query.status.length > 0) {
-    filter.status = { $in: [...query.status] };
-  }
-  if (query.priority !== undefined && query.priority.length > 0) {
-    filter.priority = { $in: [...query.priority] };
-  }
-  if (query.assignedToId !== undefined) {
-    filter.assigned_to = query.assignedToId;
-  }
-  if (query.riskScoreMin !== undefined || query.riskScoreMax !== undefined) {
-    filter.risk_score = {
-      ...(query.riskScoreMin !== undefined ? { $gte: query.riskScoreMin } : {}),
-      ...(query.riskScoreMax !== undefined ? { $lte: query.riskScoreMax } : {}),
-    };
-  }
-  if (query.tags !== undefined && query.tags.length > 0) {
-    filter.tags = { $all: [...query.tags] };
-  }
-  if (query.dueAfter !== undefined || query.dueBefore !== undefined) {
-    filter.due_date = {
-      ...(query.dueAfter !== undefined ? { $gte: toDate(query.dueAfter) } : {}),
-      ...(query.dueBefore !== undefined ? { $lt: toDate(query.dueBefore) } : {}),
-    };
-  }
 
   return filter as Filter<CaseDocument>;
 }

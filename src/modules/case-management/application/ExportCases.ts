@@ -8,7 +8,7 @@ import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireReadRole, OVERSIGHT_READ_ROLES } from './authorization/policy.js';
 
 /** Safety cap so a tenant-wide export cannot exhaust memory. */
-export const CASE_EXPORT_MAX_ROWS = 5000;
+const CASE_EXPORT_MAX_ROWS = 5000;
 
 export interface ExportCasesInput {
   readonly auth: AuthContext;

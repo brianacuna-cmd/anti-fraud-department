@@ -8,7 +8,7 @@ import { MongoOrganizationFraudConfigRepository } from '../../../src/modules/cas
 import { OrganizationFraudConfig } from '../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
 import { createOrganizationFraudConfigId } from '../../../src/modules/case-management/domain/model/value-objects/OrganizationFraudConfigId.js';
 import { fromDate, toDate } from '../../../src/shared/time/Instant.js';
-import { extractDuplicateKeyIndexName } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/duplicateKey.js';
+import { extractDuplicateKeyIndexName } from '../../../src/shared/persistence/mongo/duplicateKey.js';
 import type { OrganizationFraudConfigDocument } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/documents/OrganizationFraudConfigDocument.js';
 
 jest.setTimeout(120_000);

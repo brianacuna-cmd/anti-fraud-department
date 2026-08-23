@@ -27,7 +27,13 @@ export function toDocument(event: OutboxEvent): OutboxEventDocument {
   };
 }
 
-/** snake_case (Mongo) -> camelCase (domain). */
+/**
+ * snake_case (Mongo) -> camelCase (domain).
+ *
+ * OJO al tocarlo: parece codigo muerto si solo se mira `save`. Lo usa
+ * `findPending`, que es como el publicador saca los eventos de la cola —
+ * borrarlo deja el outbox escribiendose pero sin nadie que lo vacie.
+ */
 export function toDomain(document: OutboxEventDocument): OutboxEvent {
   return OutboxEvent.rehydrate({
     id: createOutboxEventId(document._id.toString()),

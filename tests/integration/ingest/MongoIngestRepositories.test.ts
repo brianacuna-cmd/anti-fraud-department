@@ -11,10 +11,8 @@ import { InboundWebhookSecret } from '../../../src/modules/ingest/domain/model/a
 import { generateProviderIngestEventId } from '../../../src/modules/ingest/domain/model/value-objects/ProviderIngestEventId.js';
 import { generateInboundWebhookSecretId } from '../../../src/modules/ingest/domain/model/value-objects/InboundWebhookSecretId.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
-import {
-  extractDuplicateKeyIndexName,
-  PROVIDER_INGEST_EVENT_UNIQUE_INDEX,
-} from '../../../src/modules/ingest/infrastructure/adapters/outbound/mongo/duplicateKey.js';
+import { extractDuplicateKeyIndexName } from '../../../src/shared/persistence/mongo/duplicateKey.js';
+import { PROVIDER_INGEST_EVENT_UNIQUE_INDEX } from '../../../src/modules/ingest/infrastructure/adapters/outbound/mongo/MongoProviderIngestEventRepository.js';
 
 jest.setTimeout(120_000);
 
