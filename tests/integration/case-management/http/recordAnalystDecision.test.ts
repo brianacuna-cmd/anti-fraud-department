@@ -37,6 +37,7 @@ import { generateCustomerOutgoingEventId } from '../../../../src/modules/case-ma
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
 import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
+import { createAssignedTo } from '../../../../src/modules/case-management/domain/model/value-objects/AssignedTo.js';
 import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
@@ -167,6 +168,9 @@ describe('enforcementRouter POST /cases/:caseId/decisions', () => {
         customerId: 'customer-1',
         riskScore: createRiskScore(80),
         priority: 'HIGH',
+        // La regla de asignacion congela los expedientes huerfanos:
+        // sin responsable no se pueden trabajar.
+        assignedTo: createAssignedTo('USER', oid('analyst-1')),
         now: NOW,
       }).transitionTo('IN_REVIEW', NOW),
     );
@@ -204,6 +208,9 @@ describe('enforcementRouter POST /cases/:caseId/decisions', () => {
         customerId: 'customer-1',
         riskScore: createRiskScore(20),
         priority: 'LOW',
+        // La regla de asignacion congela los expedientes huerfanos:
+        // sin responsable no se pueden trabajar.
+        assignedTo: createAssignedTo('USER', oid('analyst-1')),
         now: NOW,
       }),
     );
@@ -231,6 +238,9 @@ describe('enforcementRouter POST /cases/:caseId/decisions', () => {
         customerId: 'customer-1',
         riskScore: createRiskScore(50),
         priority: 'MEDIUM',
+        // La regla de asignacion congela los expedientes huerfanos:
+        // sin responsable no se pueden trabajar.
+        assignedTo: createAssignedTo('USER', oid('analyst-1')),
         now: NOW,
       }),
     );
@@ -256,6 +266,9 @@ describe('enforcementRouter POST /cases/:caseId/decisions', () => {
         customerId: 'customer-1',
         riskScore: createRiskScore(50),
         priority: 'MEDIUM',
+        // La regla de asignacion congela los expedientes huerfanos:
+        // sin responsable no se pueden trabajar.
+        assignedTo: createAssignedTo('USER', oid('analyst-1')),
         now: NOW,
       }),
     );

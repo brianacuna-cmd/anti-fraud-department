@@ -163,3 +163,33 @@ export function evidenceInfected(filename: string, signature: string): CaseManag
     { filename, signature },
   );
 }
+
+/**
+ * Un expediente sin responsable esta congelado.
+ *
+ * La regla existe para que ningun caso avance mientras nadie responde por el:
+ * un expediente que se instruye, se dictamina y se cierra sin que conste quien
+ * lo llevaba es justo el que no se puede defender despues.
+ */
+export function caseNotAssigned(caseId: string): CaseManagementError {
+  return new CaseManagementError(
+    'CASE_NOT_ASSIGNED',
+    'the case has no assignee: it must be assigned before it can be worked',
+    { caseId },
+  );
+}
+
+/**
+ * Un expediente cerrado ya no se instruye.
+ *
+ * El mensaje nombra el camino de salida —reabrir— porque quien recibe este
+ * error casi siempre tiene el permiso y solo le falta saber que hay un paso
+ * previo.
+ */
+export function caseClosed(caseId: string, status: string): CaseManagementError {
+  return new CaseManagementError(
+    'CASE_CLOSED',
+    `the case is ${status.toLowerCase()}: reopen it before working on it again`,
+    { caseId, status },
+  );
+}

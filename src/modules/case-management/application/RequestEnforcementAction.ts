@@ -18,6 +18,8 @@ import { EnforcementAction } from '../domain/model/aggregates/EnforcementAction.
 import { createAnalystDecisionId } from '../domain/model/value-objects/AnalystDecisionId.js';
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { createEnforcementActionType } from '../domain/model/value-objects/EnforcementActionType.js';
+import { assertAssigned } from '../domain/services/AssignmentGate.js';
+import { assertNotClosed } from '../domain/services/ClosedCaseGate.js';
 import {
   caseNotFound,
   forbiddenCrossTenant,
@@ -100,6 +102,10 @@ export function createRequestEnforcementActionUseCase(deps: RequestEnforcementAc
       if (existing.organizationId !== organizationId) {
         throw forbiddenCrossTenant('case does not belong to the actor organization');
       }
+      // Sin responsable el expediente esta congelado. Ver `AssignmentGate`.
+      assertAssigned(existing);
+      // Un expediente cerrado no se instruye. Ver `ClosedCaseGate`.
+      assertNotClosed(existing);
 
       const decision = await deps.decisions.findById(analystDecisionId, tx);
       if (decision === null || decision.caseId !== existing.id) {

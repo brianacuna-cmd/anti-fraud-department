@@ -35,6 +35,43 @@ export const CASE_WORK_ROLES: readonly string[] = [ROLE_ANALYST, ROLE_SUPERVISOR
  */
 export const SUPERVISION_ROLES: readonly string[] = [ROLE_SUPERVISOR];
 
+/**
+ * Repartir trabajo: asignar y reasignar expedientes.
+ *
+ * SOLO el `ADMIN`. El reparto de trabajo es una decisión de quien administra
+ * personas, no de quien las hace: un analista no elige su carga y un
+ * supervisor no se queda los casos que prefiere.
+ *
+ * Junto con `AssignmentGate` esto define el flujo del departamento: los casos
+ * entran, el enrutamiento automático los reparte cuando alguna regla casa, y
+ * lo que quede huérfano espera a que el ADMIN lo adjudique. Nadie trabaja un
+ * expediente que no le dieron.
+ *
+ * EL COSTE, dicho: sin un ADMIN disponible los casos sin asignar se quedan
+ * congelados. No es un efecto colateral, es la consecuencia directa de que el
+ * reparto sea una sola puerta.
+ */
+export const CASE_ASSIGN_ROLES: readonly string[] = [ROLE_ADMIN];
+
+/**
+ * Guarda de ASIGNACIÓN. No pasa por `isObserver` a propósito.
+ *
+ * `requireOperationalRole` rechaza a todo observador antes de mirar la lista,
+ * que es lo correcto para instruir; aquí la lista SÍ manda, porque el `ADMIN`
+ * es observador de expedientes y aun así reparte el trabajo. Poner esta
+ * excepción en su propia guarda —en vez de abrir un hueco en la otra— es lo
+ * que evita que mañana se cuele por ahí algo que sí instruye.
+ */
+export function requireAssignmentRole(auth: AuthContext): void {
+  if (
+    auth.actorType !== 'USER' ||
+    auth.roleId === null ||
+    !CASE_ASSIGN_ROLES.includes(auth.roleId)
+  ) {
+    throw forbiddenRole(auth.roleId, CASE_ASSIGN_ROLES);
+  }
+}
+
 /** Lectura de gobierno: cola de sanciones, reglas, exportaciones. */
 export const OVERSIGHT_READ_ROLES: readonly string[] = [ROLE_SUPERVISOR, ROLE_ADMIN, ROLE_AUDITOR];
 

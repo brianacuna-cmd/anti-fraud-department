@@ -56,7 +56,8 @@ const ORG_1_ANALYST = createAuthContext({
   userId: oid('analyst-1'),
   organizationId: ORG_1,
   actorType: 'USER',
-  roleId: 'ANALYST',
+  // Repartir trabajo es del ADMIN: el analista ya no elige su carga.
+  roleId: 'ADMIN',
 });
 const CASE_ID = createCaseId(oid('case-reassign-1'));
 const TARGET_USER = oid('analyst-2');

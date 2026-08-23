@@ -10,6 +10,8 @@ import { Investigation as InvestigationAggregate } from '../domain/model/aggrega
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { createInvestigationSubjectType } from '../domain/model/value-objects/InvestigationSubjectType.js';
 import { caseNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
+import { assertAssigned } from '../domain/services/AssignmentGate.js';
+import { assertNotClosed } from '../domain/services/ClosedCaseGate.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
 
@@ -51,6 +53,10 @@ export function createOpenInvestigationUseCase(deps: OpenInvestigationDeps) {
       if (kase.organizationId !== organizationId) {
         throw forbiddenCrossTenant('case does not belong to the actor organization');
       }
+      // Sin responsable el expediente esta congelado. Ver `AssignmentGate`.
+      assertAssigned(kase);
+      // Un expediente cerrado no se instruye. Ver `ClosedCaseGate`.
+      assertNotClosed(kase);
 
       const now = deps.clock.now();
       const investigation = InvestigationAggregate.open({

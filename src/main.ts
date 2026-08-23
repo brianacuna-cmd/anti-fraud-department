@@ -140,6 +140,7 @@ import { createListActiveInvestigationsUseCase } from './modules/case-management
 import { createUpdateInvestigationStatusUseCase } from './modules/case-management/application/UpdateInvestigationStatus.js';
 import { generateInvestigationId } from './modules/case-management/domain/model/value-objects/InvestigationId.js';
 import { investigationRouter } from './modules/case-management/infrastructure/adapters/inbound/http/investigationRouter.js';
+import { createResolveToReportOrchestrator } from './composition/resolveToReportOrchestrator.js';
 import { createGenerateCaseReportUseCase } from './modules/case-management/application/GenerateCaseReport.js';
 import { createListCaseReportsUseCase } from './modules/case-management/application/ListCaseReports.js';
 import { createGetCaseReportUseCase } from './modules/case-management/application/GetCaseReport.js';
@@ -308,21 +309,35 @@ const EVIDENCE_STORAGE_DIR = process.env.EVIDENCE_STORAGE_DIR ?? './.evidence';
  * prefirmadas. Las credenciales no se leen aqui: las resuelve la cadena por
  * defecto del SDK (rol de la instancia, perfil, entorno).
  */
-const EVIDENCE_S3_BUCKET = process.env.EVIDENCE_S3_BUCKET;
+/**
+ * Variable opcional que ACTIVA una función cuando está presente.
+ *
+ * Trata la cadena vacía como ausente. `TSA_URL=` en un `.env` produce `''`,
+ * que no es `undefined`, así que un simple `process.env.X` encendía la función
+ * con una URL vacía y fallaba en tiempo de ejecución en vez de quedarse
+ * apagada. Quien deja la variable en blanco está diciendo «esto no», no
+ * «esto, con el valor vacío».
+ */
+function optionalEnv(name: string): string | undefined {
+  const raw = process.env[name];
+  return raw === undefined || raw.trim() === '' ? undefined : raw.trim();
+}
+
+const EVIDENCE_S3_BUCKET = optionalEnv('EVIDENCE_S3_BUCKET');
 const EVIDENCE_S3_REGION = process.env.EVIDENCE_S3_REGION ?? 'us-east-1';
-const EVIDENCE_S3_PREFIX = process.env.EVIDENCE_S3_PREFIX;
-const EVIDENCE_S3_ENDPOINT = process.env.EVIDENCE_S3_ENDPOINT;
+const EVIDENCE_S3_PREFIX = optionalEnv('EVIDENCE_S3_PREFIX');
+const EVIDENCE_S3_ENDPOINT = optionalEnv('EVIDENCE_S3_ENDPOINT');
 /**
  * TSA RFC 3161 (INV-003). Sin `TSA_URL` no se sella: la evidencia se registra
  * igual con su SHA-256, pero sin sello de tiempo oponible a un tercero.
  */
-const TSA_URL = process.env.TSA_URL;
-const TSA_AUTHORITY_NAME = process.env.TSA_AUTHORITY_NAME ?? TSA_URL ?? 'unknown';
+const TSA_URL = optionalEnv('TSA_URL');
+const TSA_AUTHORITY_NAME = optionalEnv('TSA_AUTHORITY_NAME') ?? TSA_URL ?? 'unknown';
 /**
  * Antivirus (INV-015). Sin `CLAMAV_HOST` los ficheros se marcan SKIPPED — que
  * es lo que de verdad ocurrio— en vez de CLEAN.
  */
-const CLAMAV_HOST = process.env.CLAMAV_HOST;
+const CLAMAV_HOST = optionalEnv('CLAMAV_HOST');
 const CLAMAV_PORT = Number(process.env.CLAMAV_PORT ?? 3310);
 const PASSWORD_RESET_LINK_BASE_URL = process.env.PASSWORD_RESET_LINK_BASE_URL ?? 'http://localhost:3000/reset-password';
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
@@ -467,6 +482,7 @@ async function bootstrap(): Promise<void> {
   const caseRoutingEngine = new ZenRoutingEngine();
   const organizationFraudConfig = new MongoOrganizationFraudConfigRepository(db);
   const caseSlaTracking = new MongoCaseSlaTrackingRepository(db);
+  const caseReports = new MongoCaseReportRepository(db);
   // Suben aqui, con el resto de repositorios: `GenerateCaseReport` los
   // necesita para congelar la evidencia y las aprobaciones, y se cablea
   // antes que los routers que los usaban originalmente.
@@ -627,6 +643,30 @@ async function bootstrap(): Promise<void> {
   const getOrganizationFraudConfig = createGetOrganizationFraudConfigUseCase({
     repository: organizationFraudConfig,
   });
+  /*
+   * Compartido: lo usa el router de informes (generacion manual) y el
+   * orquestador que lo dispara solo al resolver. Una sola instancia para que
+   * no puedan divergir.
+   */
+  const generateCaseReport = createGenerateCaseReportUseCase({
+    cases,
+    timelineReader: caseTimelineReader,
+    notes: caseNotes,
+    investigations,
+    resolutions,
+    enforcementActions,
+    analystDecisions,
+    evidence,
+    approvalRequests,
+    slaTracking: caseSlaTracking,
+    assignees: assigneeDirectory,
+    reports: caseReports,
+    auditRecorder: caseManagementAuditRecorder,
+    unitOfWork: caseManagementUnitOfWork,
+    clock,
+    generateCaseReportId,
+  });
+
   const caseManagementCasesRouter = caseRouter({
     createCase,
     reassignCase: createReassignCaseUseCase({
@@ -684,17 +724,21 @@ async function bootstrap(): Promise<void> {
       generateTimelineEventId,
     }),
     listCaseNotes: createListCaseNotesUseCase({ cases, notes: caseNotes }),
-    resolveCase: createResolveCaseUseCase({
-      cases,
-      resolutions,
-      timelineRecorder: caseTimelineRecorder,
-      auditRecorder: caseManagementAuditRecorder,
-      unitOfWork: caseManagementUnitOfWork,
-      clock,
-      generateResolutionId,
-      generateTimelineEventId,
-      outbox: outboxEvents,
-      generateOutboxEventId,
+    // Al resolver, el informe se congela solo. Ver `resolveToReportOrchestrator`.
+    resolveCase: createResolveToReportOrchestrator({
+      resolveCase: createResolveCaseUseCase({
+        cases,
+        resolutions,
+        timelineRecorder: caseTimelineRecorder,
+        auditRecorder: caseManagementAuditRecorder,
+        unitOfWork: caseManagementUnitOfWork,
+        clock,
+        generateResolutionId,
+        generateTimelineEventId,
+        outbox: outboxEvents,
+        generateOutboxEventId,
+      }),
+      generateCaseReport,
     }),
     archiveCase: createArchiveCaseUseCase({
       cases,
@@ -770,7 +814,6 @@ async function bootstrap(): Promise<void> {
       clock,
     }),
   });
-  const caseReports = new MongoCaseReportRepository(db);
   const evidenceStore: EvidenceStore =
     EVIDENCE_S3_BUCKET === undefined
       ? new FilesystemEvidenceStore(EVIDENCE_STORAGE_DIR)
@@ -809,24 +852,7 @@ async function bootstrap(): Promise<void> {
   );
 
   const reportHttpRouter = reportRouter({
-    generateCaseReport: createGenerateCaseReportUseCase({
-      cases,
-      timelineReader: caseTimelineReader,
-      notes: caseNotes,
-      investigations,
-      resolutions,
-      enforcementActions,
-      analystDecisions,
-      evidence,
-      approvalRequests,
-      slaTracking: caseSlaTracking,
-      assignees: assigneeDirectory,
-      reports: caseReports,
-      auditRecorder: caseManagementAuditRecorder,
-      unitOfWork: caseManagementUnitOfWork,
-      clock,
-      generateCaseReportId,
-    }),
+    generateCaseReport,
     listCaseReports: createListCaseReportsUseCase({ cases, reports: caseReports }),
     getCaseReport: createGetCaseReportUseCase({ reports: caseReports }),
     generateCaseAuditDossier: createGenerateCaseAuditDossierUseCase({

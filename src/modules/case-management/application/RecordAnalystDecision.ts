@@ -23,6 +23,8 @@ import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { createAnalystDecisionType } from '../domain/model/value-objects/AnalystDecisionType.js';
 import { createEnforcementActionType } from '../domain/model/value-objects/EnforcementActionType.js';
+import { assertAssigned } from '../domain/services/AssignmentGate.js';
+import { assertNotClosed } from '../domain/services/ClosedCaseGate.js';
 import {
   caseNotFound,
   forbiddenCrossTenant,
@@ -108,6 +110,10 @@ export function createRecordAnalystDecisionUseCase(deps: RecordAnalystDecisionDe
       if (existing.organizationId !== organizationId) {
         throw forbiddenCrossTenant('case does not belong to the actor organization');
       }
+      // Sin responsable el expediente esta congelado. Ver `AssignmentGate`.
+      assertAssigned(existing);
+      // Un expediente cerrado no se instruye. Ver `ClosedCaseGate`.
+      assertNotClosed(existing);
 
       const now = deps.clock.now();
       const decision = AnalystDecision.create({

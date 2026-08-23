@@ -41,6 +41,7 @@ import { InMemoryCaseSlaTrackingRepository } from '../../../helpers/case-managem
 import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 import { generateCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
+import { createAssignedTo } from '../../../../src/modules/case-management/domain/model/value-objects/AssignedTo.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { generateCaseSlaTrackingId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
 import { OrganizationFraudConfig } from '../../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
@@ -76,6 +77,9 @@ function buildResolvedCase(deleted = false): Case {
     customerId: 'customer-1',
     riskScore: createRiskScore(40),
     priority: 'MEDIUM',
+    // La regla de asignacion congela los expedientes huerfanos:
+    // sin responsable no se pueden trabajar.
+    assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   })
     .transitionTo('IN_REVIEW', NOW)
@@ -322,6 +326,9 @@ describe('caseRouter PATCH /cases/:caseId/priority-tags', () => {
       riskScore: createRiskScore(40),
       priority: 'MEDIUM',
       tags: ['fraud'],
+      // La regla de asignacion congela los expedientes huerfanos:
+      // sin responsable no se pueden trabajar.
+      assignedTo: createAssignedTo('USER', oid('analyst-1')),
       now: NOW,
     }).withDueDate(OLD_DUE, NOW);
   }
@@ -396,6 +403,9 @@ describe('caseRouter POST /cases/bulk-action', () => {
       riskScore: createRiskScore(40),
       priority,
       tags: ['fraud'],
+      // La regla de asignacion congela los expedientes huerfanos:
+      // sin responsable no se pueden trabajar.
+      assignedTo: createAssignedTo('USER', oid('analyst-1')),
       now: NOW,
     });
   }

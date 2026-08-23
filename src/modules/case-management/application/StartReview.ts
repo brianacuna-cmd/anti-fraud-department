@@ -9,6 +9,7 @@ import type { TimelineEventId } from '../domain/model/value-objects/TimelineEven
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { caseNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
+import { assertAssigned } from '../domain/services/AssignmentGate.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
 
@@ -48,6 +49,8 @@ export function createStartReviewUseCase(deps: StartReviewDeps) {
       if (existing.organizationId !== organizationId) {
         throw forbiddenCrossTenant('case does not belong to the actor organization');
       }
+      // Sin responsable el expediente esta congelado. Ver `AssignmentGate`.
+      assertAssigned(existing);
 
       const now = deps.clock.now();
       const previousStatus = existing.status;

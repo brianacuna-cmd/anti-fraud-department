@@ -4,6 +4,7 @@ import { createListInvestigationsUseCase } from '../../../../src/modules/case-ma
 import { createGetInvestigationUseCase } from '../../../../src/modules/case-management/application/GetInvestigation.js';
 import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
 import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
+import { createAssignedTo } from '../../../../src/modules/case-management/domain/model/value-objects/AssignedTo.js';
 import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
 import { generateInvestigationId } from '../../../../src/modules/case-management/domain/model/value-objects/InvestigationId.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
@@ -27,6 +28,9 @@ function buildCase(organizationId = ORG_1): Case {
     customerId: 'customer-1',
     riskScore: createRiskScore(50),
     priority: 'MEDIUM',
+    // La regla de asignacion congela los expedientes huerfanos:
+    // sin responsable no se pueden trabajar.
+    assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   });
 }

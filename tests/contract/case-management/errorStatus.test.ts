@@ -24,6 +24,8 @@ describe('caseManagementErrorStatus', () => {
       APPROVAL_REQUEST_NOT_FOUND: 404,
       SELF_APPROVAL_FORBIDDEN: 403,
       EVIDENCE_INFECTED: 422,
+      CASE_NOT_ASSIGNED: 409,
+      CASE_CLOSED: 409,
     });
   });
 

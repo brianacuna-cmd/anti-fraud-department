@@ -17,6 +17,8 @@ import { Evidence as EvidenceAggregate } from '../domain/model/aggregates/Eviden
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { createInvestigationId } from '../domain/model/value-objects/InvestigationId.js';
+import { assertAssigned } from '../domain/services/AssignmentGate.js';
+import { assertNotClosed } from '../domain/services/ClosedCaseGate.js';
 import {
   caseNotFound,
   forbiddenCrossTenant,
@@ -71,6 +73,10 @@ export function createRegisterEvidenceUseCase(deps: RegisterEvidenceDeps) {
     if (kase.organizationId !== organizationId) {
       throw forbiddenCrossTenant('case does not belong to the actor organization');
     }
+    // Sin responsable el expediente esta congelado. Ver `AssignmentGate`.
+    assertAssigned(kase);
+    // Un expediente cerrado no se instruye. Ver `ClosedCaseGate`.
+    assertNotClosed(kase);
 
     let investigationId = null;
     if (input.investigationId !== undefined && input.investigationId !== null) {

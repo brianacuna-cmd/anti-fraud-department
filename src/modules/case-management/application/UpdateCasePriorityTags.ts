@@ -15,6 +15,8 @@ import { CaseSlaTracking } from '../domain/model/aggregates/CaseSlaTracking.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { createCasePriority } from '../domain/model/value-objects/CasePriority.js';
+import { assertAssigned } from '../domain/services/AssignmentGate.js';
+import { assertNotClosed } from '../domain/services/ClosedCaseGate.js';
 import {
   caseNotFound,
   forbiddenCrossTenant,
@@ -72,6 +74,10 @@ export function createUpdateCasePriorityTagsUseCase(deps: UpdateCasePriorityTags
       if (existing.organizationId !== organizationId) {
         throw forbiddenCrossTenant('case does not belong to the actor organization');
       }
+      // Sin responsable el expediente esta congelado. Ver `AssignmentGate`.
+      assertAssigned(existing);
+      // Un expediente cerrado no se instruye. Ver `ClosedCaseGate`.
+      assertNotClosed(existing);
 
       const previousPriority = existing.priority;
       const previousTags = [...existing.tags];

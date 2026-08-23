@@ -50,6 +50,9 @@ function buildCase(organizationId = ORG_1): Case {
     customerId: 'customer-1',
     riskScore: createRiskScore(50),
     priority: 'MEDIUM',
+    // La regla de asignacion congela los expedientes huerfanos:
+    // sin responsable no se pueden trabajar.
+    assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   });
 }

@@ -3,6 +3,7 @@ import { createRequestEnforcementActionUseCase } from '../../../../src/modules/c
 import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
 import { AnalystDecision } from '../../../../src/modules/case-management/domain/model/aggregates/AnalystDecision.js';
 import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
+import { createAssignedTo } from '../../../../src/modules/case-management/domain/model/value-objects/AssignedTo.js';
 import { createAnalystDecisionId } from '../../../../src/modules/case-management/domain/model/value-objects/AnalystDecisionId.js';
 import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
 import { generateEnforcementActionId } from '../../../../src/modules/case-management/domain/model/value-objects/EnforcementActionId.js';
@@ -51,6 +52,9 @@ function buildCase(organizationId = ORG_1, id = CASE_ID): Case {
     customerId: 'customer-1',
     riskScore: createRiskScore(80),
     priority: 'HIGH',
+    // La regla de asignacion congela los expedientes huerfanos:
+    // sin responsable no se pueden trabajar.
+    assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   });
 }

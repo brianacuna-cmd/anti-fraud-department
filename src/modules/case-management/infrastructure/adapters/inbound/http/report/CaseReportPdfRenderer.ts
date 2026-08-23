@@ -121,7 +121,43 @@ const LABELS: Readonly<Record<Translatable, string>> = {
  * el mapa `actors` viaja dentro del snapshot. Un id que no esta en el mapa se
  * imprime crudo antes que atribuirle a nadie lo que hizo.
  */
-type LineContext = { actor: (value: unknown) => string };
+type LineContext = {
+  actor: (value: unknown) => string;
+  /** id de evidencia -> nombre del fichero, resuelto contra el propio snapshot. */
+  evidenceName: (id: string) => string | null;
+};
+
+/**
+ * Detalle legible de un hito de la cronologia.
+ *
+ * Varios eventos guardan un IDENTIFICADOR en `newValue` —la evidencia, la
+ * nota, la investigacion vinculada— y el informe los imprimia crudos: una
+ * linea que decia «Nota anadida · 6a8acd5e55dd874d4afe713c», que no le dice
+ * nada a quien lee el documento desde fuera, que es justamente su lector.
+ *
+ * Los ids se resuelven contra el snapshot cuando se puede, y cuando no, se
+ * omiten: el hito, su autor y su fecha ya cuentan lo que paso.
+ */
+function timelineDetail(row: Record<string, unknown>, ctx: LineContext): string {
+  const type = str(row.eventType);
+
+  if (type === 'EVIDENCE_ADDED') {
+    return ctx.evidenceName(str(row.newValue)) ?? '';
+  }
+  // El cuerpo de la nota sale entero en su propia seccion; repetir el id no
+  // ayuda y repetir el texto duplicaria media pagina.
+  if (type === 'NOTE_ADDED' || type === 'NOTE_DELETED' || type === 'EVIDENCE_DELETED') {
+    return '';
+  }
+  if (type === 'ASSIGNED') {
+    return ctx.actor(row.newValue);
+  }
+  if (type === 'CASE_LINKED_TO_INVESTIGATION') {
+    return '';
+  }
+
+  return [label(row.previousValue), label(row.newValue)].filter(Boolean).join(' -> ');
+}
 
 const SECTIONS: readonly {
   key: string;
@@ -136,7 +172,7 @@ const SECTIONS: readonly {
       [
         // `->` y no `→`: la Helvetica base de pdfkit no lleva la flecha
         // Unicode y la imprimia como dos caracteres sueltos sin sentido.
-        [label(row.previousValue), label(row.newValue)].filter(Boolean).join(' -> '),
+        timelineDetail(row, ctx),
         ctx.actor(row.createdBy),
         date(row.createdAt),
       ]
@@ -241,7 +277,13 @@ export class CaseReportPdfRenderer {
   async render(report: CaseReport): Promise<Buffer> {
     const snapshot = report.snapshot as Record<string, unknown>;
     const kase = record(snapshot.case);
-    const ctx: LineContext = { actor: actorLookup(snapshot.actors) };
+    const evidenceNames = new Map(
+      list(snapshot.evidence).map((e) => [str(e.id), str(e.filename)]),
+    );
+    const ctx: LineContext = {
+      actor: actorLookup(snapshot.actors),
+      evidenceName: (id) => evidenceNames.get(id) ?? null,
+    };
 
     const doc = new PDFDocument({ size: 'LETTER', margin: MARGIN, autoFirstPage: true });
     const chunks: Buffer[] = [];
@@ -252,6 +294,7 @@ export class CaseReportPdfRenderer {
     });
 
     this.header(doc, report, kase, ctx);
+    this.verdict(doc, snapshot, kase, ctx);
     this.caseSummary(doc, kase, record(snapshot.sla), ctx);
 
     for (const section of SECTIONS) {
@@ -270,6 +313,90 @@ export class CaseReportPdfRenderer {
     this.footer(doc, report);
     doc.end();
     return done;
+  }
+
+
+  /**
+   * Conclusion, arriba del todo.
+   *
+   * El informe salia como un registro: ocho secciones cronologicas que habia
+   * que leer enteras para saber en que acabo el expediente. Quien lo abre
+   * —un regulador, un banco corresponsal, un juzgado— necesita el desenlace
+   * en la primera pantalla, y el detalle despues como respaldo.
+   *
+   * Todo sale del propio snapshot congelado: no consulta nada vivo, asi que
+   * el resumen envejece igual que el resto del documento, que es lo correcto
+   * para una foto inmutable.
+   */
+  private verdict(
+    doc: PDFKit.PDFDocument,
+    snapshot: Record<string, unknown>,
+    kase: Record<string, unknown>,
+    ctx: LineContext,
+  ): void {
+    const decisions = list(snapshot.analystDecisions);
+    const actions = list(snapshot.enforcementActions);
+    const resolutions = list(snapshot.resolutions);
+    const evidence = list(snapshot.evidence);
+
+    // El ultimo dictamen es el que vale: los anteriores quedan como historia
+    // en su seccion, pero el veredicto del expediente es el mas reciente.
+    const lastDecision = decisions[decisions.length - 1];
+    const closure = resolutions[resolutions.length - 1];
+    const executed = actions.filter((a) => str(a.status) === 'EXECUTED');
+    const sealed = evidence.filter((e) => e.timestamp !== null && e.timestamp !== undefined);
+
+    this.section(doc, 'Conclusión', null);
+
+    this.entry(
+      doc,
+      'Veredicto',
+      lastDecision
+        ? `${label(lastDecision.decision)} · confianza ${str(lastDecision.confidence)}%`
+        : 'Sin dictamen registrado',
+    );
+    if (lastDecision && str(lastDecision.comment)) {
+      this.entry(doc, 'Motivo', str(lastDecision.comment));
+    }
+
+    this.entry(
+      doc,
+      'Cierre',
+      closure
+        ? `${label(closure.closureType)} · ${ctx.actor(closure.resolvedBy)} · ${date(closure.createdAt)}`
+        : 'Expediente sin cerrar al congelar este informe',
+    );
+    if (closure && str(closure.reason)) {
+      this.entry(doc, 'Justificación', str(closure.reason));
+    }
+
+    this.entry(
+      doc,
+      'Medidas aplicadas',
+      actions.length === 0
+        ? 'Ninguna'
+        : `${executed.length} de ${actions.length} ejecutadas` +
+          (executed.length > 0
+            ? ` (${executed.map((a) => label(a.actionType)).join(', ')})`
+            : ' — el resto no llegó a aplicarse'),
+    );
+
+    /*
+     * Se dice cuantas piezas van selladas y cuantas no. Una prueba sin sello
+     * RFC 3161 sigue teniendo su hash, pero no tiene fecha oponible a un
+     * tercero, y esa diferencia la tiene que ver quien recibe el informe sin
+     * ponerse a contar la seccion de evidencia.
+     */
+    this.entry(
+      doc,
+      'Soporte probatorio',
+      evidence.length === 0
+        ? 'Sin evidencia adjunta'
+        : `${evidence.length} pieza(s), ${sealed.length} con sello RFC 3161` +
+          (sealed.length < evidence.length ? ' — el resto solo con hash' : ''),
+    );
+
+    this.rule(doc, 0.6);
   }
 
   private header(

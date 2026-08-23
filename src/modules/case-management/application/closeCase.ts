@@ -18,6 +18,7 @@ import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.
 import { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { caseNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
+import { assertAssigned } from '../domain/services/AssignmentGate.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
 
@@ -73,6 +74,8 @@ export function closeCase(deps: CloseCaseDeps, config: CloseCaseConfig) {
       if (existing.organizationId !== organizationId) {
         throw forbiddenCrossTenant('case does not belong to the actor organization');
       }
+      // Sin responsable el expediente esta congelado. Ver `AssignmentGate`.
+      assertAssigned(existing);
 
       const now = deps.clock.now();
       const previousStatus = existing.status;

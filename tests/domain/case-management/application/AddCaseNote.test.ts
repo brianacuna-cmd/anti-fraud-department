@@ -3,6 +3,7 @@ import { createAddCaseNoteUseCase } from '../../../../src/modules/case-managemen
 import { createListCaseNotesUseCase } from '../../../../src/modules/case-management/application/ListCaseNotes.js';
 import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
 import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
+import { createAssignedTo } from '../../../../src/modules/case-management/domain/model/value-objects/AssignedTo.js';
 import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
 import { generateCaseNoteId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
@@ -33,6 +34,9 @@ function buildCase(organizationId = ORG_1): Case {
     customerId: 'customer-1',
     riskScore: createRiskScore(50),
     priority: 'MEDIUM',
+    // La regla de asignacion congela los expedientes huerfanos:
+    // sin responsable no se pueden trabajar.
+    assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   });
 }
@@ -100,3 +104,47 @@ describe('createAddCaseNoteUseCase', () => {
     expect(listed.map((n) => n.body)).toEqual(['first', 'second']);
   });
 });
+
+/*
+ * El informe congelado se genera al cerrar el expediente. Permitir que
+ * despues se le anadan notas o evidencia produce la peor combinacion posible:
+ * un expediente cuyo contenido real ya no coincide con el documento que se
+ * entrego como su foto inmutable.
+ */
+describe('un expediente cerrado no se instruye', () => {
+  it('rechaza anadir una nota a un caso resuelto', async () => {
+    const { addCaseNote, cases } = build();
+    const resuelto = Case.rehydrate({
+      ...toProps(buildCase()),
+      status: 'RESOLVED',
+    });
+    await cases.save(resuelto);
+
+    await expect(
+      addCaseNote({ auth: ANALYST, caseId: oid('case-1'), body: 'tarde' }),
+    ).rejects.toThrow(/reopen it before working on it again/);
+  });
+});
+
+function toProps(kase: Case) {
+  return {
+    id: kase.id,
+    organizationId: kase.organizationId,
+    customerId: kase.customerId,
+    customerEmail: kase.customerEmail,
+    bridgeUserId: kase.bridgeUserId,
+    bridgeWallet: kase.bridgeWallet,
+    stripeCustomerId: kase.stripeCustomerId,
+    finturuReference: kase.finturuReference,
+    finturuCacheSnapshot: kase.finturuCacheSnapshot,
+    riskScore: kase.riskScore,
+    status: kase.status,
+    priority: kase.priority,
+    assignedTo: kase.assignedTo,
+    dueDate: kase.dueDate,
+    tags: kase.tags,
+    createdAt: kase.createdAt,
+    updatedAt: kase.updatedAt,
+    deletedAt: kase.deletedAt,
+  };
+}
