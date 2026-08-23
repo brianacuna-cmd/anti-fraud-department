@@ -10,6 +10,7 @@ import type { createListActiveInvestigationsUseCase } from '../../../../applicat
 import type { createUpdateInvestigationStatusUseCase } from '../../../../application/UpdateInvestigationStatus.js';
 import type { createBuildEntityNetworkGraphUseCase } from '../../../../application/BuildEntityNetworkGraph.js';
 import type { createExportInvestigationSummaryUseCase } from '../../../../application/ExportInvestigationSummary.js';
+import type { createExportInvestigationUseCase } from '../../../../application/ExportInvestigation.js';
 import {
   openInvestigationSchema,
   closeInvestigationSchema,
@@ -19,6 +20,7 @@ import {
   entityNetworkGraphQuerySchema,
 } from './dto/investigationSchemas.js';
 import { toInvestigationResponse } from './mappers/InvestigationHttpMapper.js';
+import { toCaseReportResponse } from './mappers/CaseReportHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
 
 export interface InvestigationRouterDeps {
@@ -32,6 +34,7 @@ export interface InvestigationRouterDeps {
   readonly updateInvestigationStatus: ReturnType<typeof createUpdateInvestigationStatusUseCase>;
   readonly buildEntityNetworkGraph: ReturnType<typeof createBuildEntityNetworkGraphUseCase>;
   readonly exportInvestigationSummary: ReturnType<typeof createExportInvestigationSummaryUseCase>;
+  readonly exportInvestigation: ReturnType<typeof createExportInvestigationUseCase>;
 }
 
 /**
@@ -77,6 +80,22 @@ export function investigationRouter(deps: InvestigationRouterDeps): Router {
       ...(query.maxDepth === undefined ? {} : { maxDepth: query.maxDepth }),
     });
     res.status(200).json(summary);
+  });
+
+  // INV-014, mismo informe que `/summary` pero congelado en `case_reports`.
+  // Es una escritura, no una consulta; se deja en GET porque lo que produce es
+  // un documento y quien lo pide espera descargarselo, pero no es idempotente:
+  // cada llamada deja un informe nuevo, y eso es lo que se quiere — el
+  // historial de que se entrego, y cuando.
+  router.get('/investigations/:investigationId/export', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const query = parseRequest(entityNetworkGraphQuerySchema, req.query);
+    const report = await deps.exportInvestigation({
+      auth,
+      investigationId: req.params.investigationId!,
+      ...(query.maxDepth === undefined ? {} : { maxDepth: query.maxDepth }),
+    });
+    res.status(200).json(toCaseReportResponse(report));
   });
 
   // Antes que `/investigations/:investigationId`: Express casa por orden y

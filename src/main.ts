@@ -132,6 +132,7 @@ import { createOpenInvestigationUseCase } from './modules/case-management/applic
 import { createListInvestigationsUseCase } from './modules/case-management/application/ListInvestigations.js';
 import { createGetInvestigationUseCase } from './modules/case-management/application/GetInvestigation.js';
 import { createBuildEntityNetworkGraphUseCase } from './modules/case-management/application/BuildEntityNetworkGraph.js';
+import { createExportInvestigationUseCase } from './modules/case-management/application/ExportInvestigation.js';
 import { createExportInvestigationSummaryUseCase } from './modules/case-management/application/ExportInvestigationSummary.js';
 import { createCloseInvestigationUseCase } from './modules/case-management/application/CloseInvestigation.js';
 import { createUpdateInvestigationFindingsUseCase } from './modules/case-management/application/UpdateInvestigationFindings.js';
@@ -667,6 +668,22 @@ async function bootstrap(): Promise<void> {
     generateCaseReportId,
   });
 
+  /**
+   * Compartido: lo sirve `/investigations/:id/summary` en vivo y lo consume
+   * `ExportInvestigation` para congelarlo. Una sola instancia para que la
+   * vista y el documento entregado no puedan divergir.
+   */
+  const exportInvestigationSummary = createExportInvestigationSummaryUseCase({
+    cases,
+    investigations,
+    decisions: analystDecisions,
+    enforcementActions,
+    notes: caseNotes,
+    evidence,
+    buildEntityNetworkGraph: createBuildEntityNetworkGraphUseCase({ cases, investigations }),
+    clock,
+  });
+
   const caseManagementCasesRouter = caseRouter({
     createCase,
     reassignCase: createReassignCaseUseCase({
@@ -771,13 +788,13 @@ async function bootstrap(): Promise<void> {
     listInvestigations: createListInvestigationsUseCase({ cases, investigations }),
     getInvestigation: createGetInvestigationUseCase({ investigations }),
     buildEntityNetworkGraph: createBuildEntityNetworkGraphUseCase({ cases, investigations }),
-    exportInvestigationSummary: createExportInvestigationSummaryUseCase({
-      cases,
-      investigations,
-      decisions: analystDecisions,
-      enforcementActions,
-      buildEntityNetworkGraph: createBuildEntityNetworkGraphUseCase({ cases, investigations }),
+    exportInvestigationSummary,
+    exportInvestigation: createExportInvestigationUseCase({
+      exportInvestigationSummary,
+      reports: caseReports,
+      unitOfWork: caseManagementUnitOfWork,
       clock,
+      generateCaseReportId,
     }),
     closeInvestigation: createCloseInvestigationUseCase({
       investigations,

@@ -13,6 +13,11 @@ import { createOpenInvestigationUseCase } from '../../../../src/modules/case-man
 import { createListInvestigationsUseCase } from '../../../../src/modules/case-management/application/ListInvestigations.js';
 import { createBuildEntityNetworkGraphUseCase } from '../../../../src/modules/case-management/application/BuildEntityNetworkGraph.js';
 import { createExportInvestigationSummaryUseCase } from '../../../../src/modules/case-management/application/ExportInvestigationSummary.js';
+import { createExportInvestigationUseCase } from '../../../../src/modules/case-management/application/ExportInvestigation.js';
+import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InMemoryCaseNoteRepository.js';
+import { InMemoryEvidenceRepository } from '../../../helpers/case-management/InMemoryEvidenceRepository.js';
+import { InMemoryCaseReportRepository } from '../../../helpers/case-management/InMemoryCaseReportRepository.js';
+import { generateCaseReportId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseReportId.js';
 import { InMemoryAnalystDecisionRepository } from '../../../helpers/case-management/InMemoryAnalystDecisionRepository.js';
 import { InMemoryEnforcementActionRepository } from '../../../helpers/case-management/InMemoryEnforcementActionRepository.js';
 import { createGetInvestigationUseCase } from '../../../../src/modules/case-management/application/GetInvestigation.js';
@@ -82,14 +87,25 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
   const timelineRecorder = new InMemoryTimelineRecorder();
 
   const deps = { investigations, auditRecorder, unitOfWork, clock };
+  const exportInvestigationSummary = createExportInvestigationSummaryUseCase({
+    cases,
+    investigations,
+    decisions: new InMemoryAnalystDecisionRepository(),
+    enforcementActions: new InMemoryEnforcementActionRepository(),
+    notes: new InMemoryCaseNoteRepository(),
+    evidence: new InMemoryEvidenceRepository(),
+    buildEntityNetworkGraph: createBuildEntityNetworkGraphUseCase({ cases, investigations }),
+    clock,
+  });
+
   const router = investigationRouter({
-    exportInvestigationSummary: createExportInvestigationSummaryUseCase({
-      cases,
-      investigations,
-      decisions: new InMemoryAnalystDecisionRepository(),
-      enforcementActions: new InMemoryEnforcementActionRepository(),
-      buildEntityNetworkGraph: createBuildEntityNetworkGraphUseCase({ cases, investigations }),
+    exportInvestigationSummary,
+    exportInvestigation: createExportInvestigationUseCase({
+      exportInvestigationSummary,
+      reports: new InMemoryCaseReportRepository(),
+      unitOfWork,
       clock,
+      generateCaseReportId,
     }),
     openInvestigation: createOpenInvestigationUseCase({ cases, ...deps, generateInvestigationId }),
     listInvestigations: createListInvestigationsUseCase({ cases, investigations }),
@@ -218,5 +234,55 @@ describe('investigationRouter GET /investigations/:id/graph (INV-013)', () => {
 
     expect(response.body).toHaveProperty('nodes');
     expect(response.body).not.toHaveProperty('subjectType');
+  });
+});
+
+
+describe('investigationRouter INV-014 (/summary y /export)', () => {
+  it('/summary consolida la red sin congelar nada', async () => {
+    const { app, investigations, cases } = buildApp();
+    await seedInvestigation(investigations);
+    const kase = seedCase({ customerId: 'cus-a', bridgeWallet: ROOT_WALLET });
+    await cases.save(kase);
+
+    const response = await request(app).get(`/api/v1/investigations/${INV_ID}/summary`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.totals.totalCases).toBeGreaterThan(0);
+    // Vista viva: sin notas ni evidencia, que es lo que la hace barata.
+    expect(response.body.cases[0]).not.toHaveProperty('notes');
+  });
+
+  it('/export devuelve un informe persistido con su id', async () => {
+    const { app, investigations, cases } = buildApp();
+    await seedInvestigation(investigations);
+    await cases.save(seedCase({ customerId: 'cus-a', bridgeWallet: ROOT_WALLET }));
+
+    const response = await request(app).get(`/api/v1/investigations/${INV_ID}/export`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('id');
+    expect(response.body.snapshot.reportType).toBe('INVESTIGATION_EXPORT');
+  });
+
+  it('no confunde "summary" ni "export" con un id de investigación', async () => {
+    const { app, investigations } = buildApp();
+    await seedInvestigation(investigations);
+
+    const summary = await request(app).get(`/api/v1/investigations/${INV_ID}/summary`);
+    const exported = await request(app).get(`/api/v1/investigations/${INV_ID}/export`);
+
+    expect(summary.body).toHaveProperty('network');
+    expect(exported.body).toHaveProperty('snapshot');
+    expect(exported.body).not.toHaveProperty('subjectType');
+  });
+
+  it('403 en /export cuando la investigación es de otro inquilino', async () => {
+    const { app, investigations } = buildApp(() => OTHER_TENANT);
+    await seedInvestigation(investigations, ORG_1);
+
+    const response = await request(app).get(`/api/v1/investigations/${INV_ID}/export`);
+
+    expect(response.status).toBe(403);
   });
 });

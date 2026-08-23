@@ -13,6 +13,11 @@ import { createOpenInvestigationUseCase } from '../../../../src/modules/case-man
 import { createListInvestigationsUseCase } from '../../../../src/modules/case-management/application/ListInvestigations.js';
 import { createBuildEntityNetworkGraphUseCase } from '../../../../src/modules/case-management/application/BuildEntityNetworkGraph.js';
 import { createExportInvestigationSummaryUseCase } from '../../../../src/modules/case-management/application/ExportInvestigationSummary.js';
+import { createExportInvestigationUseCase } from '../../../../src/modules/case-management/application/ExportInvestigation.js';
+import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InMemoryCaseNoteRepository.js';
+import { InMemoryEvidenceRepository } from '../../../helpers/case-management/InMemoryEvidenceRepository.js';
+import { InMemoryCaseReportRepository } from '../../../helpers/case-management/InMemoryCaseReportRepository.js';
+import { generateCaseReportId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseReportId.js';
 import { InMemoryAnalystDecisionRepository } from '../../../helpers/case-management/InMemoryAnalystDecisionRepository.js';
 import { InMemoryEnforcementActionRepository } from '../../../helpers/case-management/InMemoryEnforcementActionRepository.js';
 import { createGetInvestigationUseCase } from '../../../../src/modules/case-management/application/GetInvestigation.js';
@@ -74,14 +79,25 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
 
   const timelineRecorder = new InMemoryTimelineRecorder();
   const deps = { investigations, auditRecorder, unitOfWork, clock };
+  const exportInvestigationSummary = createExportInvestigationSummaryUseCase({
+    cases,
+    investigations,
+    decisions: new InMemoryAnalystDecisionRepository(),
+    enforcementActions: new InMemoryEnforcementActionRepository(),
+    notes: new InMemoryCaseNoteRepository(),
+    evidence: new InMemoryEvidenceRepository(),
+    buildEntityNetworkGraph: createBuildEntityNetworkGraphUseCase({ cases, investigations }),
+    clock,
+  });
+
   const router = investigationRouter({
-    exportInvestigationSummary: createExportInvestigationSummaryUseCase({
-      cases,
-      investigations,
-      decisions: new InMemoryAnalystDecisionRepository(),
-      enforcementActions: new InMemoryEnforcementActionRepository(),
-      buildEntityNetworkGraph: createBuildEntityNetworkGraphUseCase({ cases, investigations }),
+    exportInvestigationSummary,
+    exportInvestigation: createExportInvestigationUseCase({
+      exportInvestigationSummary,
+      reports: new InMemoryCaseReportRepository(),
+      unitOfWork,
       clock,
+      generateCaseReportId,
     }),
     openInvestigation: createOpenInvestigationUseCase({ cases, ...deps, generateInvestigationId }),
     listInvestigations: createListInvestigationsUseCase({ cases, investigations }),
