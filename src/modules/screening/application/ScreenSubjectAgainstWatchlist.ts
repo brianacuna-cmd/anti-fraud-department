@@ -38,7 +38,13 @@ export interface ScreeningMatchResult {
   readonly match: ScreeningMatch;
   readonly confianza: MatchScore;
   readonly tier: ConfianzaTier;
-  readonly alertId: string | null;
+  /**
+   * Mutable by design (D-7): starts `null` at scoring time and is set in
+   * place by `persistAlerts` to the real persisted `AmlAlertId` for every
+   * non-DISCARD match, since `matches` and the internally persisted alerts
+   * share the same object references.
+   */
+  alertId: string | null;
 }
 
 /**
@@ -194,6 +200,7 @@ async function persistAlerts(
       now,
     });
     await deps.amlAlertRepository.save(alert);
+    result.alertId = String(alert.id);
   }
 }
 
