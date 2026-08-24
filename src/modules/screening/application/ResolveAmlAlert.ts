@@ -69,7 +69,7 @@ export function createResolveAmlAlertUseCase(deps: ResolveAmlAlertDeps) {
       }
 
       const now = deps.clock.now();
-      const previous = existing.estado;
+      const previous = existing.status;
       const transitioned = existing.transitionTo(next, now);
       await deps.amlAlertRepository.save(transitioned, tx);
 
@@ -79,7 +79,7 @@ export function createResolveAmlAlertUseCase(deps: ResolveAmlAlertDeps) {
           caseId: String(transitioned.id),
           eventType: 'STATE_CHANGED',
           previousValue: previous,
-          newValue: transitioned.estado,
+          newValue: transitioned.status,
           createdBy: input.auth.userId,
           createdAt: now,
         },

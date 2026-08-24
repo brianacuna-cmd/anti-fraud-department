@@ -24,14 +24,14 @@ function buildAlert(organizationId = ORG_1): AmlAlert {
     id: createAmlAlertId(oid('alert-1')),
     organizationId,
     customerId: oid('customer-1'),
-    entidadSospechosa: 'John Smith',
-    confianza: createMatchScore(82),
-    fuenteDeteccion: 'index',
-    severidad: 'HIGH',
+    suspectedEntity: 'John Smith',
+    confidence: createMatchScore(82),
+    detectionSource: 'index',
+    severity: 'HIGH',
     matchedEntry: createScreeningMatch({
       entryId: createWatchlistEntryId(oid('entry-1')),
       watchlistId: createWatchlistId(oid('watchlist-1')),
-      nombre: 'John Smith',
+      name: 'John Smith',
       matchField: 'NAME',
       algorithm: 'JARO_WINKLER_DOUBLE_METAPHONE',
     }),
@@ -63,8 +63,8 @@ describe('createTransitionAmlAlertUseCase', () => {
       next: 'INVESTIGATING',
     });
 
-    expect(alert.estado).toBe('INVESTIGATING');
-    expect(amlAlertRepository.all()[0]?.estado).toBe('INVESTIGATING');
+    expect(alert.status).toBe('INVESTIGATING');
+    expect(amlAlertRepository.all()[0]?.status).toBe('INVESTIGATING');
     expect(timelineRecorder.all()).toHaveLength(1);
     expect(timelineRecorder.all()[0]).toMatchObject({
       caseId: oid('alert-1'),
@@ -85,7 +85,7 @@ describe('createTransitionAmlAlertUseCase', () => {
       next: 'FALSE_POSITIVE',
     });
 
-    expect(alert.estado).toBe('FALSE_POSITIVE');
+    expect(alert.status).toBe('FALSE_POSITIVE');
     expect(alert.caseId).toBeNull();
   });
 

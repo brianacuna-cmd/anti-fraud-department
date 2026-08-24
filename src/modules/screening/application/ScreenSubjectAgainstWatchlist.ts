@@ -167,9 +167,9 @@ async function scoreCandidatesForField(
     const match = createScreeningMatch({
       entryId: candidate.id,
       watchlistId: candidate.watchlistId,
-      nombre: candidate.nombre,
-      documento: candidate.documento,
-      nivelRiesgo: candidate.nivelRiesgo,
+      name: candidate.nombre,
+      document: candidate.documento,
+      riskLevel: candidate.nivelRiesgo,
       matchField: subjectField.field,
       algorithm: algorithmFor(subjectField.field),
     });
@@ -197,7 +197,7 @@ async function persistAlerts(
       auth: input.auth,
       customerId: input.customerId,
       match: result.match,
-      confianza: result.confidence,
+      confidence: result.confidence,
       thresholds,
     });
     result.alertId = opened.alert === null ? null : String(opened.alert.id);
@@ -213,7 +213,7 @@ function buildRiskSignal(sorted: readonly ScreeningMatchResult[]): WatchlistRisk
     watchlistHit: true,
     watchlistConfidence: top.confidence,
     watchlistSource: String(top.match.watchlistId),
-    watchlistRiskLevel: top.match.nivelRiesgo,
+    watchlistRiskLevel: top.match.riskLevel,
   };
 }
 

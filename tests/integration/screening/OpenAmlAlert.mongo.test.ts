@@ -33,9 +33,9 @@ function buildMatch() {
   return createScreeningMatch({
     entryId: createWatchlistEntryId(oid('entry-1')),
     watchlistId: createWatchlistId(oid('watchlist-1')),
-    nombre: 'John Smith',
-    documento: '123456789',
-    nivelRiesgo: 'HIGH',
+    name: 'John Smith',
+    document: '123456789',
+    riskLevel: 'HIGH',
     matchField: 'NAME',
     algorithm: 'JARO_WINKLER_DOUBLE_METAPHONE',
   });
@@ -85,12 +85,12 @@ describe('OpenAmlAlert (integration, real Mongo transaction)', () => {
       auth: AUTH,
       customerId: oid('customer-1'),
       match: buildMatch(),
-      confianza: createMatchScore(82),
+      confidence: createMatchScore(82),
     });
 
     expect(result.opened).toBe(true);
-    expect(result.alert?.estado).toBe('OPEN');
-    expect(result.alert?.severidad).toBe('HIGH');
+    expect(result.alert?.status).toBe('OPEN');
+    expect(result.alert?.severity).toBe('HIGH');
 
     const alerts = await db.collection('aml_alerts').find({}).toArray();
     expect(alerts).toHaveLength(1);
@@ -116,7 +116,7 @@ describe('OpenAmlAlert (integration, real Mongo transaction)', () => {
       auth: AUTH,
       customerId: oid('customer-1'),
       match: buildMatch(),
-      confianza: createMatchScore(82),
+      confidence: createMatchScore(82),
     };
 
     await openAmlAlert(input);

@@ -1,7 +1,7 @@
 import {
   calculateAmlAlertSeverity,
   maxSeverity,
-  parseNivelRiesgo,
+  parseRiskLevel,
   severityFromConfidence,
 } from '../../../../src/modules/screening/domain/services/AmlAlertSeverityCalculator.js';
 import { DEFAULT_CONFIDENCE_THRESHOLDS } from '../../../../src/modules/screening/domain/services/ConfidenceTiering.js';
@@ -28,14 +28,14 @@ describe('severityFromConfidence', () => {
   });
 });
 
-describe('parseNivelRiesgo', () => {
+describe('parseRiskLevel', () => {
   it('returns a known severity', () => {
-    expect(parseNivelRiesgo('CRITICAL')).toBe('CRITICAL');
+    expect(parseRiskLevel('CRITICAL')).toBe('CRITICAL');
   });
 
   it('returns null for unknown or missing values', () => {
-    expect(parseNivelRiesgo(null)).toBeNull();
-    expect(parseNivelRiesgo('SANCTIONED')).toBeNull();
+    expect(parseRiskLevel(null)).toBeNull();
+    expect(parseRiskLevel('SANCTIONED')).toBeNull();
   });
 });
 

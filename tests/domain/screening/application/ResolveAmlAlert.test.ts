@@ -26,14 +26,14 @@ function buildAlert(organizationId = ORG_1): AmlAlert {
     id: createAmlAlertId(oid('alert-1')),
     organizationId,
     customerId: oid('customer-1'),
-    entidadSospechosa: 'John Smith',
-    confianza: createMatchScore(82),
-    fuenteDeteccion: 'index',
-    severidad: 'HIGH',
+    suspectedEntity: 'John Smith',
+    confidence: createMatchScore(82),
+    detectionSource: 'index',
+    severity: 'HIGH',
     matchedEntry: createScreeningMatch({
       entryId: createWatchlistEntryId(oid('entry-1')),
       watchlistId: createWatchlistId(oid('watchlist-1')),
-      nombre: 'John Smith',
+      name: 'John Smith',
       matchField: 'NAME',
       algorithm: 'JARO_WINKLER_DOUBLE_METAPHONE',
     }),
@@ -82,8 +82,8 @@ describe('createResolveAmlAlertUseCase', () => {
       justificacion: 'Matched government ID.',
     });
 
-    expect(alert.estado).toBe('RESOLVED');
-    expect(amlAlertRepository.all()[0]?.estado).toBe('RESOLVED');
+    expect(alert.status).toBe('RESOLVED');
+    expect(amlAlertRepository.all()[0]?.status).toBe('RESOLVED');
     expect(timelineRecorder.all()).toHaveLength(1);
     expect(timelineRecorder.all()[0]).toMatchObject({
       eventType: 'STATE_CHANGED',
@@ -114,7 +114,7 @@ describe('createResolveAmlAlertUseCase', () => {
       justificacion: 'Different date of birth.',
     });
 
-    expect(alert.estado).toBe('FALSE_POSITIVE');
+    expect(alert.status).toBe('FALSE_POSITIVE');
     expect(auditRecorder.events).toHaveLength(1);
     expect(auditRecorder.events[0]?.detail).toEqual({
       dictamen: 'FALSE_POSITIVE',
@@ -137,7 +137,7 @@ describe('createResolveAmlAlertUseCase', () => {
       }),
     ).rejects.toMatchObject({ code: 'INVARIANT_VIOLATION' });
 
-    expect(amlAlertRepository.all()[0]?.estado).toBe('INVESTIGATING');
+    expect(amlAlertRepository.all()[0]?.status).toBe('INVESTIGATING');
     expect(auditRecorder.events).toHaveLength(0);
   });
 
@@ -155,7 +155,7 @@ describe('createResolveAmlAlertUseCase', () => {
       }),
     ).rejects.toMatchObject({ code: 'INVARIANT_VIOLATION' });
 
-    expect(amlAlertRepository.all()[0]?.estado).toBe('INVESTIGATING');
+    expect(amlAlertRepository.all()[0]?.status).toBe('INVESTIGATING');
     expect(auditRecorder.events).toHaveLength(0);
   });
 
@@ -175,7 +175,7 @@ describe('createResolveAmlAlertUseCase', () => {
       }),
     ).rejects.toMatchObject({ code: 'INVALID_TRANSITION' });
 
-    expect(amlAlertRepository.all()[0]?.estado).toBe('RESOLVED');
+    expect(amlAlertRepository.all()[0]?.status).toBe('RESOLVED');
     expect(auditRecorder.events).toHaveLength(0);
   });
 
