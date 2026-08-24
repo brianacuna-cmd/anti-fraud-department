@@ -175,7 +175,7 @@ describe('AML alert triage', () => {
 
     const resolved = await request(app)
       .patch(`/api/v1/aml-alerts/${oid('fp-alert')}/resolve`)
-      .send({ dictamen: 'FALSE_POSITIVE', justificacion: 'Different date of birth.' });
+      .send({ verdict: 'FALSE_POSITIVE', justification: 'Different date of birth.' });
     expect(resolved.status).toBe(200);
     expect(resolved.body.estado).toBe('FALSE_POSITIVE');
     expect(resolved.body.caseId).toBeNull();
@@ -184,7 +184,7 @@ describe('AML alert triage', () => {
       action: 'RESOLVE_AML_ALERT',
       resource: 'aml_alert',
       resourceId: oid('fp-alert'),
-      detail: { dictamen: 'FALSE_POSITIVE', justificacion: 'Different date of birth.' },
+      detail: { verdict: 'FALSE_POSITIVE', justification: 'Different date of birth.' },
     });
   });
 
@@ -194,39 +194,39 @@ describe('AML alert triage', () => {
 
     const resolved = await request(app)
       .patch(`/api/v1/aml-alerts/${oid('cm-alert')}/resolve`)
-      .send({ dictamen: 'CONFIRMED_MATCH', justificacion: 'Matched government ID.' });
+      .send({ verdict: 'CONFIRMED_MATCH', justification: 'Matched government ID.' });
 
     expect(resolved.status).toBe(200);
     expect(resolved.body.estado).toBe('RESOLVED');
     expect(auditRecorder.events).toHaveLength(1);
   });
 
-  it('returns 400 for an unknown dictamen value', async () => {
+  it('returns 400 for an unknown verdict value', async () => {
     const { app, amlAlertRepository, auditRecorder } = buildApp();
-    await amlAlertRepository.save(buildAlert(oid('bogus-dictamen')).transitionTo('INVESTIGATING', NOW));
+    await amlAlertRepository.save(buildAlert(oid('bogus-verdict')).transitionTo('INVESTIGATING', NOW));
 
     const response = await request(app)
-      .patch(`/api/v1/aml-alerts/${oid('bogus-dictamen')}/resolve`)
-      .send({ dictamen: 'BOGUS', justificacion: 'valid text' });
+      .patch(`/api/v1/aml-alerts/${oid('bogus-verdict')}/resolve`)
+      .send({ verdict: 'BOGUS', justification: 'valid text' });
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
     expect(auditRecorder.events).toHaveLength(0);
   });
 
-  it('returns 400 for a missing/empty justificacion', async () => {
+  it('returns 400 for a missing/empty justification', async () => {
     const { app, amlAlertRepository, auditRecorder } = buildApp();
-    await amlAlertRepository.save(buildAlert(oid('empty-justificacion')).transitionTo('INVESTIGATING', NOW));
+    await amlAlertRepository.save(buildAlert(oid('empty-justification')).transitionTo('INVESTIGATING', NOW));
 
     const missing = await request(app)
-      .patch(`/api/v1/aml-alerts/${oid('empty-justificacion')}/resolve`)
-      .send({ dictamen: 'CONFIRMED_MATCH' });
+      .patch(`/api/v1/aml-alerts/${oid('empty-justification')}/resolve`)
+      .send({ verdict: 'CONFIRMED_MATCH' });
     expect(missing.status).toBe(400);
     expect(missing.body.error.code).toBe('INVARIANT_VIOLATION');
 
     const empty = await request(app)
-      .patch(`/api/v1/aml-alerts/${oid('empty-justificacion')}/resolve`)
-      .send({ dictamen: 'CONFIRMED_MATCH', justificacion: '   ' });
+      .patch(`/api/v1/aml-alerts/${oid('empty-justification')}/resolve`)
+      .send({ verdict: 'CONFIRMED_MATCH', justification: '   ' });
     expect(empty.status).toBe(400);
     expect(empty.body.error.code).toBe('INVARIANT_VIOLATION');
     expect(auditRecorder.events).toHaveLength(0);
@@ -238,7 +238,7 @@ describe('AML alert triage', () => {
 
     const response = await request(app)
       .patch(`/api/v1/aml-alerts/${oid('still-open')}/resolve`)
-      .send({ dictamen: 'CONFIRMED_MATCH', justificacion: 'valid text' });
+      .send({ verdict: 'CONFIRMED_MATCH', justification: 'valid text' });
 
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe('INVALID_TRANSITION');
@@ -253,7 +253,7 @@ describe('AML alert triage', () => {
 
     const response = await request(app)
       .patch(`/api/v1/aml-alerts/${oid('terminal-alert')}/resolve`)
-      .send({ dictamen: 'FALSE_POSITIVE', justificacion: 'valid text' });
+      .send({ verdict: 'FALSE_POSITIVE', justification: 'valid text' });
 
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe('INVALID_TRANSITION');
@@ -266,7 +266,7 @@ describe('AML alert triage', () => {
 
     const response = await request(app)
       .patch(`/api/v1/aml-alerts/${oid('foreign-resolve')}/resolve`)
-      .send({ dictamen: 'CONFIRMED_MATCH', justificacion: 'valid text' });
+      .send({ verdict: 'CONFIRMED_MATCH', justification: 'valid text' });
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe('FORBIDDEN_CROSS_TENANT');

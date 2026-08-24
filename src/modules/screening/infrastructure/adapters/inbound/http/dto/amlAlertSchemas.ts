@@ -28,8 +28,8 @@ export type ListAmlAlertsQuery = z.infer<typeof listAmlAlertsQuerySchema>;
 
 /** PATCH /aml-alerts/:alertId/resolve body. */
 export const resolveAmlAlertSchema = z.object({
-  dictamen: z.enum(['CONFIRMED_MATCH', 'FALSE_POSITIVE']),
-  justificacion: z.string().trim().min(1),
+  verdict: z.enum(['CONFIRMED_MATCH', 'FALSE_POSITIVE']),
+  justification: z.string().trim().min(1),
 });
 
 export type ResolveAmlAlertBody = z.infer<typeof resolveAmlAlertSchema>;

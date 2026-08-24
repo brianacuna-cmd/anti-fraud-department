@@ -11,7 +11,7 @@ const EVENT: AuditEvent = {
   action: 'RESOLVE_AML_ALERT',
   resource: 'aml_alert',
   resourceId: oid('alert-1'),
-  detail: { dictamen: 'CONFIRMED_MATCH', justificacion: 'Matched government ID.' },
+  detail: { verdict: 'CONFIRMED_MATCH', justification: 'Matched government ID.' },
   ipAddress: '127.0.0.1',
 };
 
@@ -33,7 +33,7 @@ describe('createScreeningAuditRecorderAdapter', () => {
         action: 'RESOLVE_AML_ALERT',
         resource: 'aml_alert',
         resourceId: oid('alert-1'),
-        detail: { dictamen: 'CONFIRMED_MATCH', justificacion: 'Matched government ID.' },
+        detail: { verdict: 'CONFIRMED_MATCH', justification: 'Matched government ID.' },
         ipAddress: '127.0.0.1',
       },
     ]);
