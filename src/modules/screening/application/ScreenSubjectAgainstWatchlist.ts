@@ -15,8 +15,8 @@ import type { PhoneticEncoder } from '../domain/ports/PhoneticEncoder.js';
 import type { SimilarityCalculator } from '../domain/ports/SimilarityCalculator.js';
 import { normalizeName } from '../domain/ports/NameNormalizer.js';
 import { selectStrategy, scoreMatch } from '../domain/services/MatchingStrategySelector.js';
-import type { ConfianzaThresholds, ConfianzaTier } from '../domain/services/ConfianzaTiering.js';
-import { DEFAULT_CONFIANZA_THRESHOLDS, tierConfianza } from '../domain/services/ConfianzaTiering.js';
+import type { ConfidenceThresholds, ConfidenceTier } from '../domain/services/ConfidenceTiering.js';
+import { DEFAULT_CONFIDENCE_THRESHOLDS, tierConfidence } from '../domain/services/ConfidenceTiering.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 
 const DEFAULT_CANDIDATE_LIMIT = 25;
@@ -30,20 +30,20 @@ export interface ScreenSubjectAgainstWatchlistInput {
   readonly walletAddress?: string;
   readonly limit?: number;
   /**
-   * Request-scoped per-org confianza thresholds override (design D-8).
+   * Request-scoped per-org confidence thresholds override (design D-8).
    * Takes precedence over `ScreenSubjectAgainstWatchlistDeps.thresholds`,
-   * which itself falls back to `DEFAULT_CONFIANZA_THRESHOLDS`. This lets a
+   * which itself falls back to `DEFAULT_CONFIDENCE_THRESHOLDS`. This lets a
    * single bootstrap-built use case be reused across requests carrying
    * different `OrganizationScreeningConfig` values, without rebuilding it
    * per request.
    */
-  readonly thresholds?: ConfianzaThresholds;
+  readonly thresholds?: ConfidenceThresholds;
 }
 
 export interface ScreeningMatchResult {
   readonly match: ScreeningMatch;
-  readonly confianza: MatchScore;
-  readonly tier: ConfianzaTier;
+  readonly confidence: MatchScore;
+  readonly tier: ConfidenceTier;
   /**
    * Mutable by design (D-7): starts `null` at scoring time and is set in
    * place by `persistAlerts` to the real persisted `AmlAlertId` for every
@@ -67,9 +67,9 @@ export interface WatchlistRiskSignal {
 }
 
 export interface ScreenSubjectAgainstWatchlistResult {
-  /** All scored candidates across every screened field, ranked confianza descending. */
+  /** All scored candidates across every screened field, ranked confidence descending. */
   readonly matches: readonly ScreeningMatchResult[];
-  /** Non-null only when the top match qualifies for signal propagation (confianza >= signalThreshold). */
+  /** Non-null only when the top match qualifies for signal propagation (confidence >= signalThreshold). */
   readonly riskSignal: WatchlistRiskSignal | null;
 }
 
@@ -78,8 +78,8 @@ export interface ScreenSubjectAgainstWatchlistDeps {
   readonly openAmlAlert: (input: OpenAmlAlertInput) => Promise<OpenAmlAlertResult>;
   readonly phoneticEncoder: PhoneticEncoder;
   readonly similarityCalculator: SimilarityCalculator;
-  /** Org-configurable confianza cutoffs (D-1); defaults to 50/70 when omitted. */
-  readonly thresholds?: ConfianzaThresholds;
+  /** Org-configurable confidence cutoffs (D-1); defaults to 50/70 when omitted. */
+  readonly thresholds?: ConfidenceThresholds;
 }
 
 interface SubjectField {
@@ -149,7 +149,7 @@ async function scoreCandidatesForField(
   organizationId: string,
   input: ScreenSubjectAgainstWatchlistInput,
   subjectField: SubjectField,
-  thresholds: ConfianzaThresholds,
+  thresholds: ConfidenceThresholds,
 ): Promise<ScreeningMatchResult[]> {
   const query = buildQuery(organizationId, input, subjectField, deps.phoneticEncoder);
   const candidates = await deps.watchlistCandidateRepository.findCandidates(query);
@@ -160,7 +160,7 @@ async function scoreCandidatesForField(
     if (candidateValue === null) {
       continue;
     }
-    const confianza = scoreMatch(subjectField.field, subjectField.subjectValue, candidateValue, {
+    const confidence = scoreMatch(subjectField.field, subjectField.subjectValue, candidateValue, {
       phoneticEncoder: deps.phoneticEncoder,
       similarityCalculator: deps.similarityCalculator,
     });
@@ -175,8 +175,8 @@ async function scoreCandidatesForField(
     });
     results.push({
       match,
-      confianza,
-      tier: tierConfianza(confianza, thresholds),
+      confidence,
+      tier: tierConfidence(confidence, thresholds),
       alertId: null,
     });
   }
@@ -186,7 +186,7 @@ async function scoreCandidatesForField(
 async function persistAlerts(
   deps: ScreenSubjectAgainstWatchlistDeps,
   input: ScreenSubjectAgainstWatchlistInput,
-  thresholds: ConfianzaThresholds,
+  thresholds: ConfidenceThresholds,
   results: ScreeningMatchResult[],
 ): Promise<void> {
   for (const result of results) {
@@ -197,7 +197,7 @@ async function persistAlerts(
       auth: input.auth,
       customerId: input.customerId,
       match: result.match,
-      confianza: result.confianza,
+      confianza: result.confidence,
       thresholds,
     });
     result.alertId = opened.alert === null ? null : String(opened.alert.id);
@@ -211,7 +211,7 @@ function buildRiskSignal(sorted: readonly ScreeningMatchResult[]): WatchlistRisk
   }
   return {
     watchlistHit: true,
-    watchlistConfidence: top.confianza,
+    watchlistConfidence: top.confidence,
     watchlistSource: String(top.match.watchlistId),
     watchlistRiskLevel: top.match.nivelRiesgo,
   };
@@ -220,7 +220,7 @@ function buildRiskSignal(sorted: readonly ScreeningMatchResult[]): WatchlistRisk
 /**
  * Screens a subject's presented fields (nombre/documento/walletAddress,
  * whichever are populated) against the org-scoped watchlist: blocking layer
- * (RF-2/RF-5) then in-memory fine scoring (RF-1), confianza tiering (RF-4),
+ * (RF-2/RF-5) then in-memory fine scoring (RF-1), confidence tiering (RF-4),
  * idempotent alert persistence via `OpenAmlAlert` (RF-3/RF-6). NEVER blocks
  * autonomously (RF-7) — only returns matches/alerts and, when the top match
  * reaches the signal tier, a `riskSignal` for the caller to fold into a new
@@ -231,7 +231,7 @@ export function createScreenSubjectAgainstWatchlistUseCase(deps: ScreenSubjectAg
     input: ScreenSubjectAgainstWatchlistInput,
   ): Promise<ScreenSubjectAgainstWatchlistResult> {
     const organizationId = requireTenantContext(input.auth);
-    const thresholds = input.thresholds ?? deps.thresholds ?? DEFAULT_CONFIANZA_THRESHOLDS;
+    const thresholds = input.thresholds ?? deps.thresholds ?? DEFAULT_CONFIDENCE_THRESHOLDS;
 
     const fields = subjectFields(input);
     const perField = await Promise.all(
@@ -240,7 +240,7 @@ export function createScreenSubjectAgainstWatchlistUseCase(deps: ScreenSubjectAg
       ),
     );
     const allResults = perField.flat();
-    const sorted = [...allResults].sort((a, b) => b.confianza - a.confianza);
+    const sorted = [...allResults].sort((a, b) => b.confidence - a.confidence);
 
     await persistAlerts(deps, input, thresholds, sorted);
 

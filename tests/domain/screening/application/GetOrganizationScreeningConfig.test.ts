@@ -2,7 +2,7 @@ import { createGetOrganizationScreeningConfigUseCase } from '../../../../src/mod
 import type { OrganizationScreeningConfigRepository } from '../../../../src/modules/screening/domain/ports/OrganizationScreeningConfigRepository.js';
 import { OrganizationScreeningConfig } from '../../../../src/modules/screening/domain/model/aggregates/OrganizationScreeningConfig.js';
 import { createOrganizationScreeningConfigId } from '../../../../src/modules/screening/domain/model/value-objects/OrganizationScreeningConfigId.js';
-import { DEFAULT_CONFIANZA_THRESHOLDS } from '../../../../src/modules/screening/domain/services/ConfianzaTiering.js';
+import { DEFAULT_CONFIDENCE_THRESHOLDS } from '../../../../src/modules/screening/domain/services/ConfidenceTiering.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 
@@ -46,12 +46,12 @@ describe('createGetOrganizationScreeningConfigUseCase', () => {
     expect(result).toEqual({ alertThreshold: 40, signalThreshold: 80 });
   });
 
-  it('returns DEFAULT_CONFIANZA_THRESHOLDS (50/70) when no row exists, WITHOUT throwing', async () => {
+  it('returns DEFAULT_CONFIDENCE_THRESHOLDS (50/70) when no row exists, WITHOUT throwing', async () => {
     const getConfig = createGetOrganizationScreeningConfigUseCase({ repository: new StubRepository(null) });
 
     const result = await getConfig({ auth: tenantAuth() });
 
-    expect(result).toEqual(DEFAULT_CONFIANZA_THRESHOLDS);
+    expect(result).toEqual(DEFAULT_CONFIDENCE_THRESHOLDS);
   });
 
   it('rejects a missing tenant context before querying the repository', async () => {

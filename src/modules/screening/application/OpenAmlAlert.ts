@@ -9,8 +9,8 @@ import type { AmlExpedienteTimelineRecorder } from '../domain/ports/AmlExpedient
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import type { OutboxEventRepository } from '../../../shared/outbox/OutboxEventRepository.js';
 import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
-import type { ConfianzaThresholds } from '../domain/services/ConfianzaTiering.js';
-import { DEFAULT_CONFIANZA_THRESHOLDS } from '../domain/services/ConfianzaTiering.js';
+import type { ConfidenceThresholds } from '../domain/services/ConfidenceTiering.js';
+import { DEFAULT_CONFIDENCE_THRESHOLDS } from '../domain/services/ConfidenceTiering.js';
 import { calculateAmlAlertSeverity } from '../domain/services/AmlAlertSeverityCalculator.js';
 import { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
@@ -24,9 +24,9 @@ export interface OpenAmlAlertInput {
   readonly confianza: MatchScore;
   /**
    * Request-scoped per-org thresholds (D-8). Falls back to deps, then
-   * `DEFAULT_CONFIANZA_THRESHOLDS`.
+   * `DEFAULT_CONFIDENCE_THRESHOLDS`.
    */
-  readonly thresholds?: ConfianzaThresholds;
+  readonly thresholds?: ConfidenceThresholds;
 }
 
 export interface OpenAmlAlertResult {
@@ -44,7 +44,7 @@ export interface OpenAmlAlertDeps {
   readonly generateAmlAlertId: () => AmlAlertId;
   readonly generateTimelineEventId: () => string;
   readonly generateOutboxEventId: () => OutboxEventId;
-  readonly thresholds?: ConfianzaThresholds;
+  readonly thresholds?: ConfidenceThresholds;
 }
 
 /**
@@ -58,7 +58,7 @@ export interface OpenAmlAlertDeps {
 export function createOpenAmlAlertUseCase(deps: OpenAmlAlertDeps) {
   return async function openAmlAlert(input: OpenAmlAlertInput): Promise<OpenAmlAlertResult> {
     const organizationId = requireTenantContext(input.auth);
-    const thresholds = input.thresholds ?? deps.thresholds ?? DEFAULT_CONFIANZA_THRESHOLDS;
+    const thresholds = input.thresholds ?? deps.thresholds ?? DEFAULT_CONFIDENCE_THRESHOLDS;
     const severidad = calculateAmlAlertSeverity(input.confianza, thresholds, input.match.nivelRiesgo);
     if (severidad === null) {
       return { opened: false, duplicate: false, alert: null };
