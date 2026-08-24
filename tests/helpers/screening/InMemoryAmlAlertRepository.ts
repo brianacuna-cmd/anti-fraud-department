@@ -47,6 +47,21 @@ export class InMemoryAmlAlertRepository implements AmlAlertRepository {
     const filtered = [...this.byId.values()]
       .filter((alert) => alert.organizationId === query.organizationId)
       .filter((alert) => query.estado === undefined || query.estado.length === 0 || query.estado.includes(alert.estado))
+      .filter(
+        (alert) =>
+          query.severidad === undefined || query.severidad.length === 0 || query.severidad.includes(alert.severidad),
+      )
+      .filter(
+        (alert) => query.watchlistId === undefined || String(alert.matchedEntry.watchlistId) === query.watchlistId,
+      )
+      .filter(
+        (alert) =>
+          query.createdAfter === undefined || (alert.createdAt as string) >= (query.createdAfter as string),
+      )
+      .filter(
+        (alert) =>
+          query.createdBefore === undefined || (alert.createdAt as string) < (query.createdBefore as string),
+      )
       .sort((a, b) => (b.createdAt as string).localeCompare(a.createdAt as string));
     return {
       items: filtered.slice(query.offset, query.offset + query.limit),

@@ -10,6 +10,7 @@ import type {
 } from '../../../../domain/ports/AmlAlertRepository.js';
 import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
 import { isDuplicateKeyError } from '../../../../../../shared/persistence/mongo/duplicateKey.js';
+import { toDate } from '../../../../../../shared/time/Instant.js';
 import type { AmlAlertDocument } from './documents/AmlAlertDocument.js';
 import { toDocument, toDomain } from './mappers/AmlAlertDocumentMapper.js';
 
@@ -28,14 +29,43 @@ function naturalKeyQuery(key: AmlAlertNaturalKey): Filter<AmlAlertDocument> {
   };
 }
 
-function listFilter(query: AmlAlertListQuery): Filter<AmlAlertDocument> {
-  const filter: Filter<AmlAlertDocument> = {
-    organization_id: new ObjectId(query.organizationId),
-  };
-  if (query.estado !== undefined && query.estado.length > 0) {
-    return { ...filter, estado: { $in: [...query.estado] } };
+function estadoFilterFragment(query: AmlAlertListQuery): Record<string, unknown> {
+  return query.estado !== undefined && query.estado.length > 0 ? { estado: { $in: [...query.estado] } } : {};
+}
+
+function severidadFilterFragment(query: AmlAlertListQuery): Record<string, unknown> {
+  return query.severidad !== undefined && query.severidad.length > 0
+    ? { severidad: { $in: [...query.severidad] } }
+    : {};
+}
+
+function watchlistFilterFragment(query: AmlAlertListQuery): Record<string, unknown> {
+  return query.watchlistId !== undefined
+    ? { 'matched_entry.watchlist_id': new ObjectId(query.watchlistId) }
+    : {};
+}
+
+function createdAtFilterFragment(query: AmlAlertListQuery): Record<string, unknown> {
+  if (query.createdAfter === undefined && query.createdBefore === undefined) {
+    return {};
   }
-  return filter;
+  return {
+    created_at: {
+      ...(query.createdAfter !== undefined ? { $gte: toDate(query.createdAfter) } : {}),
+      ...(query.createdBefore !== undefined ? { $lt: toDate(query.createdBefore) } : {}),
+    },
+  };
+}
+
+function listFilter(query: AmlAlertListQuery): Filter<AmlAlertDocument> {
+  const filter: Record<string, unknown> = {
+    organization_id: new ObjectId(query.organizationId),
+    ...estadoFilterFragment(query),
+    ...severidadFilterFragment(query),
+    ...watchlistFilterFragment(query),
+    ...createdAtFilterFragment(query),
+  };
+  return filter as Filter<AmlAlertDocument>;
 }
 
 /**

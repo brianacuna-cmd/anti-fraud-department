@@ -1,4 +1,43 @@
-import { resolveAmlAlertSchema } from '../../../../src/modules/screening/infrastructure/adapters/inbound/http/dto/amlAlertSchemas.js';
+import {
+  listAmlAlertsQuerySchema,
+  resolveAmlAlertSchema,
+} from '../../../../src/modules/screening/infrastructure/adapters/inbound/http/dto/amlAlertSchemas.js';
+
+describe('listAmlAlertsQuerySchema', () => {
+  it('accepts an empty query (all filters optional)', () => {
+    const result = listAmlAlertsQuerySchema.safeParse({});
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.limit).toBe(20);
+      expect(result.data.offset).toBe(0);
+    }
+  });
+
+  it('accepts estado, severidad, watchlist_id, from, and to together', () => {
+    const result = listAmlAlertsQuerySchema.safeParse({
+      estado: 'OPEN',
+      severidad: 'HIGH',
+      watchlist_id: '507f1f77bcf86cd799439011',
+      from: '2026-01-01T00:00:00.000Z',
+      to: '2026-01-31T00:00:00.000Z',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an unknown severidad value', () => {
+    const result = listAmlAlertsQuerySchema.safeParse({ severidad: 'BOGUS' });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unknown estado value', () => {
+    const result = listAmlAlertsQuerySchema.safeParse({ estado: 'BOGUS' });
+
+    expect(result.success).toBe(false);
+  });
+});
 
 describe('resolveAmlAlertSchema', () => {
   it('accepts CONFIRMED_MATCH with a non-empty justificacion', () => {

@@ -70,6 +70,41 @@ describe('createListAmlAlertsUseCase (compliance inbox)', () => {
     expect(String(page.items[0]?.id)).toBe(oid('investigating'));
   });
 
+  it('filters by severidad, watchlist_id, and created_at range combined with AND', async () => {
+    const amlAlertRepository = new InMemoryAmlAlertRepository();
+    await amlAlertRepository.save(buildAlert(oid('older'), ORG_1, NOW));
+    await amlAlertRepository.save(buildAlert(oid('newer'), ORG_1, LATER));
+    const listAmlAlerts = createListAmlAlertsUseCase({ amlAlertRepository });
+
+    const page = await listAmlAlerts({
+      auth: ANALYST,
+      severidad: ['HIGH'],
+      watchlistId: oid('watchlist-1'),
+      createdAfter: LATER,
+      limit: 20,
+      offset: 0,
+    });
+
+    expect(page.total).toBe(1);
+    expect(String(page.items[0]?.id)).toBe(oid('newer'));
+  });
+
+  it('returns an empty page (not an error) when a filter combination matches nothing', async () => {
+    const amlAlertRepository = new InMemoryAmlAlertRepository();
+    await amlAlertRepository.save(buildAlert(oid('only'), ORG_1, NOW));
+    const listAmlAlerts = createListAmlAlertsUseCase({ amlAlertRepository });
+
+    const page = await listAmlAlerts({
+      auth: ANALYST,
+      severidad: ['LOW'],
+      limit: 20,
+      offset: 0,
+    });
+
+    expect(page.total).toBe(0);
+    expect(page.items).toEqual([]);
+  });
+
   it('rejects callers without an organization context', async () => {
     const listAmlAlerts = createListAmlAlertsUseCase({
       amlAlertRepository: new InMemoryAmlAlertRepository(),

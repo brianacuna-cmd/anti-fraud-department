@@ -206,12 +206,35 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .collection('watchlist_entries')
     .createIndex({ wallet_address: 1 }, { name: 'watchlist_entries_wallet_address_idx' });
 
-  // aml_alerts (screening): lookups by organization/status and
+  // aml_alerts (screening): lookups by organization/status/created_at,
+  // organization/severidad, organization/matched watchlist, and
   // organization/customer, plus the natural-key idempotency unique index
   // (RF-6) so outbox redelivery never creates a duplicate alert.
+  // (Slice 2, NF-3) The compound org+estado+created_at index supersedes the
+  // narrower org+estado index (estado-only queries still use its prefix),
+  // and also serves the newest-first sort + estado+date-range queries.
   await db
     .collection('aml_alerts')
-    .createIndex({ organization_id: 1, estado: 1 }, { name: 'aml_alert_org_estado_idx' });
+    .createIndex(
+      { organization_id: 1, estado: 1, created_at: -1 },
+      { name: 'aml_alert_org_estado_created_idx' },
+    );
+
+  const amlAlertIndexes = await db.collection('aml_alerts').indexes();
+  if (amlAlertIndexes.some((index) => index.name === 'aml_alert_org_estado_idx')) {
+    await db.collection('aml_alerts').dropIndex('aml_alert_org_estado_idx');
+  }
+
+  await db
+    .collection('aml_alerts')
+    .createIndex({ organization_id: 1, severidad: 1 }, { name: 'aml_alert_org_severidad_idx' });
+
+  await db
+    .collection('aml_alerts')
+    .createIndex(
+      { organization_id: 1, 'matched_entry.watchlist_id': 1 },
+      { name: 'aml_alert_org_watchlist_idx' },
+    );
 
   await db
     .collection('aml_alerts')
