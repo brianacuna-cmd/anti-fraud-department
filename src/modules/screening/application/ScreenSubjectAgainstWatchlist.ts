@@ -32,6 +32,15 @@ export interface ScreenSubjectAgainstWatchlistInput {
   readonly documento?: string;
   readonly walletAddress?: string;
   readonly limit?: number;
+  /**
+   * Request-scoped per-org confianza thresholds override (design D-8).
+   * Takes precedence over `ScreenSubjectAgainstWatchlistDeps.thresholds`,
+   * which itself falls back to `DEFAULT_CONFIANZA_THRESHOLDS`. This lets a
+   * single bootstrap-built use case be reused across requests carrying
+   * different `OrganizationScreeningConfig` values, without rebuilding it
+   * per request.
+   */
+  readonly thresholds?: ConfianzaThresholds;
 }
 
 export interface ScreeningMatchResult {
@@ -231,7 +240,7 @@ export function createScreenSubjectAgainstWatchlistUseCase(deps: ScreenSubjectAg
     input: ScreenSubjectAgainstWatchlistInput,
   ): Promise<ScreenSubjectAgainstWatchlistResult> {
     const organizationId = requireTenantContext(input.auth);
-    const thresholds = deps.thresholds ?? DEFAULT_CONFIANZA_THRESHOLDS;
+    const thresholds = input.thresholds ?? deps.thresholds ?? DEFAULT_CONFIANZA_THRESHOLDS;
 
     const fields = subjectFields(input);
     const perField = await Promise.all(

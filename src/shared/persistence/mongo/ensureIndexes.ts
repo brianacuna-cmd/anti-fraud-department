@@ -226,4 +226,10 @@ export async function ensureIndexes(db: Db): Promise<void> {
     },
     { unique: true, name: 'aml_alerts_natural_key_unique' },
   );
+
+  // organization_screening_config (screening, design D-6): per-tenant
+  // singleton of confianza thresholds — one document per organization.
+  await db
+    .collection('organization_screening_config')
+    .createIndex({ organization_id: 1 }, { unique: true, name: 'org_screening_config_unique' });
 }
