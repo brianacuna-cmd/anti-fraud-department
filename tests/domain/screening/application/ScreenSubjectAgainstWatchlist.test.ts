@@ -278,6 +278,75 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
     expect(watchlistCandidateRepository.calls[0]?.organizationId).toBe('org-A');
   });
 
+  it('sets the real persisted alertId on a SIGNAL-tier (>=70) match (RF-8)', async () => {
+    const candidate = buildCandidate({ nombre: 'John Smith' });
+    const { screenSubject, amlAlertRepository } = buildUseCase([candidate]);
+
+    const result = await screenSubject({
+      auth: tenantAuth(),
+      customerId: 'cust-1',
+      entryType: 'PERSON',
+      nombre: 'John Smith',
+    });
+
+    expect(result.matches[0]?.tier).toBe('ALERT_AND_SIGNAL');
+    const persisted = amlAlertRepository.all();
+    expect(persisted).toHaveLength(1);
+    expect(result.matches[0]?.alertId).not.toBeNull();
+    expect(result.matches[0]?.alertId).toBe(String(persisted[0]?.id));
+  });
+
+  it('sets a real persisted alertId on an ALERT-tier (50-69) match (RF-8)', async () => {
+    const candidate = buildCandidate({ nombre: 'Jonathan Smyth-Wilson' });
+    const { screenSubject, amlAlertRepository } = buildUseCase([candidate]);
+
+    const result = await screenSubject({
+      auth: tenantAuth(),
+      customerId: 'cust-1',
+      entryType: 'PERSON',
+      nombre: 'Jon Smith',
+    });
+
+    const tier = result.matches[0]?.tier;
+    if (tier === 'ALERT_ONLY') {
+      const persisted = amlAlertRepository.all();
+      expect(persisted).toHaveLength(1);
+      expect(result.matches[0]?.alertId).not.toBeNull();
+      expect(result.matches[0]?.alertId).toBe(String(persisted[0]?.id));
+    } else {
+      expect(['DISCARD', 'ALERT_ONLY', 'ALERT_AND_SIGNAL']).toContain(tier);
+    }
+  });
+
+  it('leaves alertId null for DISCARD-tier matches, without cross-assignment across positions (RF-8)', async () => {
+    const strong = buildCandidate({
+      id: createWatchlistEntryId('507f1f77bcf86cd799439013'),
+      nombre: 'John Smith',
+    });
+    const weak = buildCandidate({
+      id: createWatchlistEntryId('507f1f77bcf86cd799439014'),
+      nombre: 'Zzzzz Qqqqq',
+    });
+    const { screenSubject, amlAlertRepository } = buildUseCase([weak, strong]);
+
+    const result = await screenSubject({
+      auth: tenantAuth(),
+      customerId: 'cust-1',
+      entryType: 'PERSON',
+      nombre: 'John Smith',
+    });
+
+    expect(result.matches).toHaveLength(2);
+    const [top, bottom] = result.matches;
+    expect(top?.tier).toBe('ALERT_AND_SIGNAL');
+    expect(bottom?.tier).toBe('DISCARD');
+
+    expect(bottom?.alertId).toBeNull();
+    const persisted = amlAlertRepository.all();
+    expect(persisted).toHaveLength(1);
+    expect(top?.alertId).toBe(String(persisted[0]?.id));
+  });
+
   it('trims padded DOCUMENTO before blocking/exact matching so it still hits the stored entry', async () => {
     const candidate = buildCandidate({ documento: '12345', nombre: 'doc-entry' });
     const { screenSubject, watchlistCandidateRepository } = buildUseCase([candidate]);
