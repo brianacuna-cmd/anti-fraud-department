@@ -17,6 +17,7 @@ export interface CaseDocument {
   readonly stripe_customer_id: string | null;
   readonly finturu_reference: Record<string, unknown> | null;
   readonly finturu_cache_snapshot: Record<string, unknown> | null;
+  readonly idempotency_key: string | null;
   readonly risk_score: number;
   readonly status: string;
   readonly priority: string;

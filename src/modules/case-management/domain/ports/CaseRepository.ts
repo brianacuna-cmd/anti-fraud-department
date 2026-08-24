@@ -33,5 +33,11 @@ export interface CaseListResult {
 export interface CaseRepository {
   save(kase: Case, tx?: Transaction): Promise<void>;
   findById(id: CaseId, tx?: Transaction): Promise<Case | null>;
+  /**
+   * Idempotency lookup (RF-3/RF-5): org-scoped, matches ONLY a present
+   * non-null `idempotencyKey` — mirrors the Mongo unique partial index's
+   * null-exclusion semantics.
+   */
+  findByIdempotencyKey(organizationId: string, idempotencyKey: string, tx?: Transaction): Promise<Case | null>;
   list(query: CaseListQuery, tx?: Transaction): Promise<CaseListResult>;
 }

@@ -75,6 +75,19 @@ export async function ensureIndexes(db: Db): Promise<void> {
 
   await db.collection('cases').createIndex({ tags: 1 }, { name: 'case_tags_idx' });
 
+  // case-create-idempotency (Slice 1, RF-3/RF-4): unique PARTIAL index so a
+  // duplicate CreateCase call with the same (organization_id, idempotency_key)
+  // fails closed (E11000) — excludes the majority null-key Cases via
+  // $exists + $type:'string' (mirrors organization_email_unique).
+  await db.collection('cases').createIndex(
+    { organization_id: 1, idempotency_key: 1 },
+    {
+      unique: true,
+      name: 'case_org_idempotency_key_unique',
+      partialFilterExpression: { idempotency_key: { $exists: true, $type: 'string' } },
+    },
+  );
+
   await db
     .collection('organization_fraud_config')
     .createIndex({ organization_id: 1 }, { unique: true, name: 'org_fraud_config_unique' });

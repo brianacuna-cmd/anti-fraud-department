@@ -94,6 +94,7 @@ function buildResolvedCase(deleted = false): Case {
     stripeCustomerId: resolved.stripeCustomerId,
     finturuReference: resolved.finturuReference,
     finturuCacheSnapshot: resolved.finturuCacheSnapshot,
+    idempotencyKey: resolved.idempotencyKey,
     riskScore: resolved.riskScore,
     status: resolved.status,
     priority: resolved.priority,
