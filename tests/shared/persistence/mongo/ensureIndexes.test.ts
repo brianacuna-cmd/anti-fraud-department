@@ -136,6 +136,121 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     expect(matchingNames).toHaveLength(1);
   });
 
+  it('creates a unique PARTIAL idempotency-key index on Cases (case-create-idempotency, Slice 1) and stays idempotent on re-run', async () => {
+    await ensureIndexes(db);
+    await ensureIndexes(db);
+
+    const caseIndexes = await db.collection('cases').indexes();
+    const idempotencyIndex = caseIndexes.find((index) => index.name === 'case_org_idempotency_key_unique');
+
+    expect(idempotencyIndex).toBeDefined();
+    expect(idempotencyIndex?.key).toEqual({ organization_id: 1, idempotency_key: 1 });
+    expect(idempotencyIndex?.unique).toBe(true);
+    expect(idempotencyIndex?.sparse).not.toBe(true);
+    expect(idempotencyIndex?.partialFilterExpression).toEqual({
+      idempotency_key: { $exists: true, $type: 'string' },
+    });
+    expect(
+      caseIndexes.filter((index) => index.name === 'case_org_idempotency_key_unique'),
+    ).toHaveLength(1);
+  });
+
+  it('rejects a second Case with the same organization_id + idempotency_key with E11000', async () => {
+    await ensureIndexes(db);
+
+    const organizationId = new ObjectId();
+    const now = new Date('2026-01-01T00:00:00.000Z');
+    await db.collection('cases').insertOne({
+      _id: new ObjectId(),
+      organization_id: organizationId,
+      customer_id: 'customer-1',
+      idempotency_key: 'idem-dup',
+      status: 'OPEN',
+      priority: 'LOW',
+      risk_score: 1,
+      tags: [],
+      created_at: now,
+      updated_at: now,
+    });
+
+    await expect(
+      db.collection('cases').insertOne({
+        _id: new ObjectId(),
+        organization_id: organizationId,
+        customer_id: 'customer-2',
+        idempotency_key: 'idem-dup',
+        status: 'OPEN',
+        priority: 'LOW',
+        risk_score: 1,
+        tags: [],
+        created_at: now,
+        updated_at: now,
+      }),
+    ).rejects.toMatchObject({ code: 11000 });
+
+    await db.collection('cases').deleteMany({});
+  });
+
+  it('allows multiple Cases with a null/absent idempotency_key for the same organization', async () => {
+    await ensureIndexes(db);
+
+    const organizationId = new ObjectId();
+    const now = new Date('2026-01-01T00:00:00.000Z');
+    await db.collection('cases').insertOne({
+      _id: new ObjectId(),
+      organization_id: organizationId,
+      customer_id: 'customer-1',
+      idempotency_key: null,
+      status: 'OPEN',
+      priority: 'LOW',
+      risk_score: 1,
+      tags: [],
+      created_at: now,
+      updated_at: now,
+    });
+    await db.collection('cases').insertOne({
+      _id: new ObjectId(),
+      organization_id: organizationId,
+      customer_id: 'customer-2',
+      idempotency_key: null,
+      status: 'OPEN',
+      priority: 'LOW',
+      risk_score: 1,
+      tags: [],
+      created_at: now,
+      updated_at: now,
+    });
+
+    const count = await db.collection('cases').countDocuments({ organization_id: organizationId });
+    expect(count).toBe(2);
+
+    await db.collection('cases').deleteMany({});
+  });
+
+  it('creates the aml_alerts filter indexes (screening inbox triage Slice 2) and drops the old narrow estado index', async () => {
+    await ensureIndexes(db);
+    await ensureIndexes(db);
+
+    const alertIndexes = await db.collection('aml_alerts').indexes();
+
+    const orgEstadoCreatedIndex = alertIndexes.find(
+      (index) => index.name === 'aml_alert_org_estado_created_idx',
+    );
+    expect(orgEstadoCreatedIndex?.key).toEqual({ organization_id: 1, estado: 1, created_at: -1 });
+
+    const orgSeveridadIndex = alertIndexes.find((index) => index.name === 'aml_alert_org_severidad_idx');
+    expect(orgSeveridadIndex?.key).toEqual({ organization_id: 1, severidad: 1 });
+
+    const orgWatchlistIndex = alertIndexes.find((index) => index.name === 'aml_alert_org_watchlist_idx');
+    expect(orgWatchlistIndex?.key).toEqual({ organization_id: 1, 'matched_entry.watchlist_id': 1 });
+
+    expect(alertIndexes.find((index) => index.name === 'aml_alert_org_estado_idx')).toBeUndefined();
+
+    expect(
+      alertIndexes.filter((index) => index.name === 'aml_alert_org_estado_created_idx'),
+    ).toHaveLength(1);
+  });
+
   it('creates the OrganizationFraudConfig unique index (case-management Slice 2) and stays idempotent on re-run', async () => {
     await ensureIndexes(db);
     await ensureIndexes(db);
@@ -147,6 +262,20 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     expect(uniqueIndex?.unique).toBe(true);
 
     const matchingNames = configIndexes.filter((index) => index.name === 'org_fraud_config_unique');
+    expect(matchingNames).toHaveLength(1);
+  });
+
+  it('creates the OrganizationScreeningConfig unique index (screening producer activation Slice 3) and stays idempotent on re-run', async () => {
+    await ensureIndexes(db);
+    await ensureIndexes(db);
+
+    const configIndexes = await db.collection('organization_screening_config').indexes();
+    const uniqueIndex = configIndexes.find((index) => index.name === 'org_screening_config_unique');
+
+    expect(uniqueIndex?.key).toEqual({ organization_id: 1 });
+    expect(uniqueIndex?.unique).toBe(true);
+
+    const matchingNames = configIndexes.filter((index) => index.name === 'org_screening_config_unique');
     expect(matchingNames).toHaveLength(1);
   });
 

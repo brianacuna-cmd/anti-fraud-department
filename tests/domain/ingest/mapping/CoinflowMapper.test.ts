@@ -94,6 +94,37 @@ describe('mapCoinflowEnvelope', () => {
     expect(result.reason).toBe('unknown_event_type');
   });
 
+  it('populates subjectIdentity with entryType WALLET when walletAddress is present', () => {
+    const envelope = coinflowEvent('Card Payment Authorized', {
+      ...PAYMENT,
+      customerName: 'Maria Lopez',
+      documentId: 'DOC-9',
+      walletAddress: 'wallet-xyz',
+    });
+    const result = mapCoinflowEnvelope(envelope);
+
+    expect(result.status).toBe('mapped');
+    if (result.status !== 'mapped') {
+      throw new Error('expected mapped');
+    }
+    expect(result.event.subjectIdentity).toEqual({
+      nombre: 'Maria Lopez',
+      documento: 'DOC-9',
+      walletAddress: 'wallet-xyz',
+      entryType: 'WALLET',
+    });
+  });
+
+  it('leaves subjectIdentity undefined when no identity fields are present', () => {
+    const result = mapCoinflowEnvelope(coinflowEvent('Card Payment Authorized', PAYMENT));
+
+    expect(result.status).toBe('mapped');
+    if (result.status !== 'mapped') {
+      throw new Error('expected mapped');
+    }
+    expect(result.event.subjectIdentity).toBeUndefined();
+  });
+
   it('returns failed when customerId is missing', () => {
     const result = mapCoinflowEnvelope(
       coinflowEvent('Card Payment Authorized', { id: 'pay_x', subtotal: { cents: 10, currency: 'USD' } }),

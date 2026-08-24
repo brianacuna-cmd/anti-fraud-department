@@ -2,6 +2,16 @@ import { fromDate } from '../../../../../../shared/time/Instant.js';
 import { createIngestedPaymentEvent } from '../../../../domain/model/IngestedPaymentEvent.js';
 import type { EnvelopeMapResult } from './EnvelopeMapResult.js';
 import { isRecord } from './isRecord.js';
+import { inferSubjectEntryType, readOptionalStringPath } from './subjectIdentityPaths.js';
+
+/**
+ * SPIKE (RF-2/D-3, Slice 2b): exact Stripe JSON paths are UNVERIFIED against
+ * live payloads — confirm before relying on them in production reporting.
+ * Assumed: charge.billing_details.name for the cardholder name, and an
+ * optional charge.metadata.documento for a merchant-supplied document id
+ * (Stripe does not natively carry a national ID). Stripe is card-rails only,
+ * so no wallet address is ever extracted here.
+ */
 
 const CHARGE_TYPES = new Set(['charge.succeeded', 'charge.failed', 'charge.updated']);
 const EFW_CREATED = 'radar.early_fraud_warning.created';
@@ -88,6 +98,10 @@ function mappedStripe(
   const currency =
     typeof moneySource.currency === 'string' ? moneySource.currency.toUpperCase() : '';
 
+  const nombre = readOptionalStringPath(moneySource, ['billing_details', 'name']);
+  const documento = readOptionalStringPath(moneySource, ['metadata', 'documento']);
+  const entryType = inferSubjectEntryType(nombre, documento, undefined);
+
   return {
     status: 'mapped',
     event: createIngestedPaymentEvent({
@@ -101,6 +115,7 @@ function mappedStripe(
       eventId,
       providerEventId: eventId,
       rawPayload: payload,
+      subjectIdentity: { nombre, documento, entryType },
     }),
   };
 }

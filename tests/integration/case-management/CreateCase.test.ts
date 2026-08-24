@@ -262,6 +262,56 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
     });
   });
 
+  describe('idempotencyKey (RF-1..RF-4)', () => {
+    it('short-circuits a repeated idempotencyKey and returns the already-persisted Case', async () => {
+      await seedFraudConfig();
+      const createCase = buildUseCase(realAuditRecorder());
+
+      const first = await createCase({
+        auth: ANALYST,
+        customerId: 'customer-1',
+        riskScore: 42,
+        priority: 'HIGH',
+        idempotencyKey: 'retry-1',
+      });
+      const second = await createCase({
+        auth: ANALYST,
+        customerId: 'customer-1',
+        riskScore: 42,
+        priority: 'HIGH',
+        idempotencyKey: 'retry-1',
+      });
+
+      expect(second.id).toBe(first.id);
+      expect(await db.collection('cases').countDocuments({})).toBe(1);
+    });
+
+    it('CONCURRENCY: two concurrent creates with the same idempotencyKey persist exactly one Case, both resolve to the same winner, no error surfaces', async () => {
+      await seedFraudConfig();
+      const createCase = buildUseCase(realAuditRecorder());
+
+      const [first, second] = await Promise.all([
+        createCase({
+          auth: ANALYST,
+          customerId: 'customer-1',
+          riskScore: 42,
+          priority: 'HIGH',
+          idempotencyKey: 'concurrent-key',
+        }),
+        createCase({
+          auth: ANALYST,
+          customerId: 'customer-1',
+          riskScore: 42,
+          priority: 'HIGH',
+          idempotencyKey: 'concurrent-key',
+        }),
+      ]);
+
+      expect(first.id).toBe(second.id);
+      expect(await db.collection('cases').countDocuments({})).toBe(1);
+    });
+  });
+
   describe('T1 auto-routing', () => {
     it('assigns the case to the rule target and persists AssignedTo/AssignedToType split', async () => {
       await seedFraudConfig();

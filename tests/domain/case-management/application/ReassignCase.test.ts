@@ -53,6 +53,7 @@ function buildCase(overrides: { organizationId?: string; assignedTo?: AssignedTo
       stripeCustomerId: kase.stripeCustomerId,
       finturuReference: kase.finturuReference,
       finturuCacheSnapshot: kase.finturuCacheSnapshot,
+      idempotencyKey: kase.idempotencyKey,
       riskScore: kase.riskScore,
       status: kase.status,
       priority: kase.priority,

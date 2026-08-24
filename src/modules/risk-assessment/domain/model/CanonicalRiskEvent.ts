@@ -18,6 +18,14 @@ export interface CanonicalRiskEvent {
   readonly providerEventId?: string;
   readonly rail?: string;
   readonly rawPayload?: Readonly<Record<string, unknown>>;
+  readonly subjectIdentity?: SubjectIdentity;
+}
+
+export interface SubjectIdentity {
+  readonly nombre?: string;
+  readonly documento?: string;
+  readonly walletAddress?: string;
+  readonly entryType?: string;
 }
 
 export function createCanonicalRiskEvent(input: Readonly<Record<string, unknown>>): CanonicalRiskEvent {
@@ -26,6 +34,7 @@ export function createCanonicalRiskEvent(input: Readonly<Record<string, unknown>
   const providerEventId = pickOptionalString(input.providerEventId);
   const rail = pickOptionalString(input.rail);
   const rawPayload = isRecord(input.rawPayload) ? input.rawPayload : undefined;
+  const subjectIdentity = isRecord(input.subjectIdentity) ? pickSubjectIdentity(input.subjectIdentity) : undefined;
   return {
     provider: asNonEmptyString('provider', input.provider),
     providerEventType: asNonEmptyString('providerEventType', input.providerEventType),
@@ -38,6 +47,23 @@ export function createCanonicalRiskEvent(input: Readonly<Record<string, unknown>
     ...(providerEventId !== undefined ? { providerEventId } : {}),
     ...(rail !== undefined ? { rail } : {}),
     ...(rawPayload !== undefined ? { rawPayload } : {}),
+    ...(subjectIdentity !== undefined ? { subjectIdentity } : {}),
+  };
+}
+
+function pickSubjectIdentity(input: Readonly<Record<string, unknown>>): SubjectIdentity | undefined {
+  const nombre = pickOptionalString(input.nombre);
+  const documento = pickOptionalString(input.documento);
+  const walletAddress = pickOptionalString(input.walletAddress);
+  const entryType = pickOptionalString(input.entryType);
+  if (nombre === undefined && documento === undefined && walletAddress === undefined && entryType === undefined) {
+    return undefined;
+  }
+  return {
+    ...(nombre !== undefined ? { nombre } : {}),
+    ...(documento !== undefined ? { documento } : {}),
+    ...(walletAddress !== undefined ? { walletAddress } : {}),
+    ...(entryType !== undefined ? { entryType } : {}),
   };
 }
 

@@ -24,6 +24,21 @@ export class InMemoryCaseRepository implements CaseRepository {
     return this.byId.get(id) ?? null;
   }
 
+  async findByIdempotencyKey(
+    organizationId: string,
+    idempotencyKey: string,
+    _tx?: Transaction,
+  ): Promise<Case | null> {
+    return (
+      [...this.byId.values()].find(
+        (kase) =>
+          kase.organizationId === organizationId &&
+          kase.idempotencyKey !== null &&
+          kase.idempotencyKey === idempotencyKey,
+      ) ?? null
+    );
+  }
+
   async list(query: CaseListQuery, _tx?: Transaction): Promise<CaseListResult> {
     const filtered = [...this.byId.values()].filter((kase) => matchesListQuery(kase, query));
     filtered.sort(compareDueDateAscNullsLast);

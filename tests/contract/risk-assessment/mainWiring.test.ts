@@ -23,6 +23,29 @@ describe('src/main.ts risk-assessment wiring', () => {
     expect(MAIN).toContain('generateRiskScoringRuleId');
   });
 
+  it('deriveScreeningInput reads identity from event.subjectIdentity, not riskSignals', () => {
+    const fnStart = MAIN.indexOf('function deriveScreeningInput');
+    const fnBody = MAIN.slice(fnStart, MAIN.indexOf('\n}', fnStart) + 2);
+
+    expect(fnBody).toContain('event.subjectIdentity');
+    expect(fnBody).not.toContain('event.riskSignals');
+    expect(fnBody).not.toContain('riskSignals.entryType');
+    expect(fnBody).not.toContain('riskSignals.nombre');
+    expect(fnBody).not.toContain('riskSignals.documento');
+    expect(fnBody).not.toContain('riskSignals.walletAddress');
+  });
+
+  it('wires MongoOrganizationScreeningConfigRepository + GetOrganizationScreeningConfig and resolves per-org thresholds before screening (D-8)', () => {
+    expect(MAIN).toContain('MongoOrganizationScreeningConfigRepository');
+    expect(MAIN).toContain('createGetOrganizationScreeningConfigUseCase');
+    expect(MAIN).toContain('getOrganizationScreeningConfig');
+
+    const wrapperStart = MAIN.indexOf('const processRiskScoreToCaseWithScreening');
+    const wrapperBody = MAIN.slice(wrapperStart, MAIN.indexOf('\n\n', wrapperStart));
+    expect(wrapperBody).toContain('getOrganizationScreeningConfig');
+    expect(wrapperBody).toContain('thresholds');
+  });
+
   it('does not inject scoring into createCreateCaseUseCase', () => {
     const createCaseBlock = MAIN.slice(
       MAIN.indexOf('createCreateCaseUseCase({'),
@@ -32,5 +55,24 @@ describe('src/main.ts risk-assessment wiring', () => {
     expect(createCaseBlock).toContain('createCreateCaseUseCase');
     expect(createCaseBlock).not.toContain('calculateRiskScore');
     expect(createCaseBlock).not.toContain('ZenRiskScoringEngine');
+  });
+
+  it('wires OpenAmlAlert (aml_alerts + case_timeline + outbox_events) into screening', () => {
+    expect(MAIN).toContain('createOpenAmlAlertUseCase');
+    expect(MAIN).toContain('MongoAmlExpedienteTimelineRecorder');
+    expect(MAIN).toContain('ScreeningMongoUnitOfWork');
+    expect(MAIN).toContain('openAmlAlert');
+  });
+
+  it('wires the AML compliance inbox and escalate-to-Case bridge', () => {
+    expect(MAIN).toContain('createListAmlAlertsUseCase');
+    expect(MAIN).toContain('createGetAmlAlertUseCase');
+    expect(MAIN).toContain('createGetAmlAlertTimelineUseCase');
+    expect(MAIN).toContain('createTransitionAmlAlertUseCase');
+    expect(MAIN).toContain('createEscalateAmlAlertUseCase');
+    expect(MAIN).toContain('createAmlAlertCaseOpener');
+    expect(MAIN).toContain('amlAlertRouter');
+    expect(MAIN).toContain('screeningErrorStatus');
+    expect(MAIN).toContain('amlAlertsHttpRouter');
   });
 });

@@ -122,6 +122,60 @@ describe('webhookToScoreOrchestrator', () => {
     expect(events.current()?.status).toBe('PROCESSED');
   });
 
+  it('forwards subjectIdentity from IngestedPaymentEvent onto the CanonicalRiskEvent (S07-a)', async () => {
+    const events = new InMemoryEvents(receivedRow());
+    const calls: Array<{ auth: AuthContext; event: CanonicalRiskEvent }> = [];
+    const composer = createWebhookToScoreOrchestrator({
+      processRiskScoreToCase: async (input) => {
+        calls.push(input);
+        return { riskScore: 12, ruleId: 'rule-zen', conditionsVersion: 1, opened: false };
+      },
+      events,
+      clock: new FixedClock(NOW),
+    });
+
+    await composer.compose({
+      organizationId: ORG,
+      provider: 'stripe',
+      event: createIngestedPaymentEvent({
+        provider: 'stripe',
+        providerEventType: 'charge.succeeded',
+        caseCustomerId: 'cus_1',
+        amountCents: 2500,
+        currency: 'usd',
+        riskSignals: { stripeRiskScore: 68 },
+        createdAt: NOW,
+        providerEventId: 'evt_charge_succeeded',
+        subjectIdentity: { nombre: 'John Doe', documento: '123456789' },
+      }),
+      ingestEventId: INGEST_ID,
+    });
+
+    expect(calls[0]?.event.subjectIdentity).toEqual({ nombre: 'John Doe', documento: '123456789' });
+  });
+
+  it('omits subjectIdentity on the CanonicalRiskEvent when absent from the IngestedPaymentEvent', async () => {
+    const events = new InMemoryEvents(receivedRow());
+    const calls: Array<{ auth: AuthContext; event: CanonicalRiskEvent }> = [];
+    const composer = createWebhookToScoreOrchestrator({
+      processRiskScoreToCase: async (input) => {
+        calls.push(input);
+        return { riskScore: 12, ruleId: 'rule-zen', conditionsVersion: 1, opened: false };
+      },
+      events,
+      clock: new FixedClock(NOW),
+    });
+
+    await composer.compose({
+      organizationId: ORG,
+      provider: 'stripe',
+      event: ingestedCharge(),
+      ingestEventId: INGEST_ID,
+    });
+
+    expect(calls[0]?.event.subjectIdentity).toBeUndefined();
+  });
+
   it('uses system:ingest:{provider} for a non-stripe provider', async () => {
     const events = new InMemoryEvents(
       ProviderIngestEvent.create({

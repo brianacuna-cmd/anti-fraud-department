@@ -18,6 +18,7 @@ export interface CaseProps {
   readonly stripeCustomerId: string | null;
   readonly finturuReference: Record<string, unknown> | null;
   readonly finturuCacheSnapshot: Record<string, unknown> | null;
+  readonly idempotencyKey: string | null;
   readonly riskScore: RiskScore;
   readonly status: CaseStatus;
   readonly priority: CasePriority;
@@ -39,6 +40,7 @@ export interface CreateCaseInput {
   readonly stripeCustomerId?: string | null;
   readonly finturuReference?: Record<string, unknown> | null;
   readonly finturuCacheSnapshot?: Record<string, unknown> | null;
+  readonly idempotencyKey?: string | null;
   readonly riskScore: RiskScore;
   readonly priority: CasePriority;
   readonly assignedTo?: AssignedTo | null;
@@ -67,6 +69,7 @@ export class Case {
       stripeCustomerId: input.stripeCustomerId ?? null,
       finturuReference: input.finturuReference ?? null,
       finturuCacheSnapshot: input.finturuCacheSnapshot ?? null,
+      idempotencyKey: input.idempotencyKey ?? null,
       riskScore: input.riskScore,
       status: 'OPEN',
       priority: input.priority,
@@ -118,6 +121,10 @@ export class Case {
 
   get finturuCacheSnapshot(): Record<string, unknown> | null {
     return this.props.finturuCacheSnapshot;
+  }
+
+  get idempotencyKey(): string | null {
+    return this.props.idempotencyKey;
   }
 
   get riskScore(): RiskScore {

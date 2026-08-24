@@ -34,6 +34,35 @@ describe('toCanonicalRiskEvent', () => {
     });
   });
 
+  it('maps subjectIdentity through when present', () => {
+    const event = toCanonicalRiskEvent({
+      provider: 'stripe',
+      providerEventType: 'CHARGEBACK',
+      caseCustomerId: 'cust-1',
+      amountCents: 2500,
+      currency: 'USD',
+      riskSignals: {},
+      createdAt: CREATED_AT,
+      subjectIdentity: { nombre: 'John Smith', documento: '123456' },
+    });
+
+    expect(event.subjectIdentity).toEqual({ nombre: 'John Smith', documento: '123456' });
+  });
+
+  it('leaves subjectIdentity undefined when absent', () => {
+    const event = toCanonicalRiskEvent({
+      provider: 'stripe',
+      providerEventType: 'CHARGEBACK',
+      caseCustomerId: 'cust-1',
+      amountCents: 2500,
+      currency: 'USD',
+      riskSignals: {},
+      createdAt: CREATED_AT,
+    });
+
+    expect(event.subjectIdentity).toBeUndefined();
+  });
+
   it('rejects snake_case keys so they are not accepted as CanonicalRiskEvent', () => {
     expect(() =>
       toCanonicalRiskEvent({

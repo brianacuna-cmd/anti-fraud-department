@@ -80,6 +80,7 @@ function buildResolvedCase(overrides: { deletedAt?: typeof NOW | null } = {}): C
     stripeCustomerId: resolved.stripeCustomerId,
     finturuReference: resolved.finturuReference,
     finturuCacheSnapshot: resolved.finturuCacheSnapshot,
+    idempotencyKey: resolved.idempotencyKey,
     riskScore: resolved.riskScore,
     status: resolved.status,
     priority: resolved.priority,

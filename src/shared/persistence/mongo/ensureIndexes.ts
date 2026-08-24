@@ -115,6 +115,19 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .collection('resolutions')
     .createIndex({ organization_id: 1, created_at: 1 }, { name: 'resolutions_org_created_idx' });
 
+  // case-create-idempotency (Slice 1, RF-3/RF-4): unique PARTIAL index so a
+  // duplicate CreateCase call with the same (organization_id, idempotency_key)
+  // fails closed (E11000) — excludes the majority null-key Cases via
+  // $exists + $type:'string' (mirrors organization_email_unique).
+  await db.collection('cases').createIndex(
+    { organization_id: 1, idempotency_key: 1 },
+    {
+      unique: true,
+      name: 'case_org_idempotency_key_unique',
+      partialFilterExpression: { idempotency_key: { $exists: true, $type: 'string' } },
+    },
+  );
+
   await db
     .collection('organization_fraud_config')
     .createIndex({ organization_id: 1 }, { unique: true, name: 'org_fraud_config_unique' });
@@ -223,4 +236,76 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { published_at: 1 },
     { name: 'outbox_published_ttl_idx', expireAfterSeconds: 604800, partialFilterExpression: { status: 'PUBLISHED' } },
   );
+
+  // watchlist_entries (screening): blocking-layer lookups for the
+  // non-Atlas fallback candidate repository (RF-2) — compound status
+  // filter, exact documento/wallet lookups, and phonetic/normalized-name
+  // blocking.
+  await db
+    .collection('watchlist_entries')
+    .createIndex({ watchlist_id: 1, estado: 1 }, { name: 'watchlist_entries_watchlist_estado_idx' });
+
+  await db.collection('watchlist_entries').createIndex({ documento: 1 }, { name: 'watchlist_entries_documento_idx' });
+
+  await db
+    .collection('watchlist_entries')
+    .createIndex({ phonetic_keys: 1 }, { name: 'watchlist_entries_phonetic_keys_idx' });
+
+  await db
+    .collection('watchlist_entries')
+    .createIndex({ nombre_normalizado: 1 }, { name: 'watchlist_entries_nombre_normalizado_idx' });
+
+  await db
+    .collection('watchlist_entries')
+    .createIndex({ wallet_address: 1 }, { name: 'watchlist_entries_wallet_address_idx' });
+
+  // aml_alerts (screening): lookups by organization/status/created_at,
+  // organization/severidad, organization/matched watchlist, and
+  // organization/customer, plus the natural-key idempotency unique index
+  // (RF-6) so outbox redelivery never creates a duplicate alert.
+  // (Slice 2, NF-3) The compound org+estado+created_at index supersedes the
+  // narrower org+estado index (estado-only queries still use its prefix),
+  // and also serves the newest-first sort + estado+date-range queries.
+  await db
+    .collection('aml_alerts')
+    .createIndex(
+      { organization_id: 1, estado: 1, created_at: -1 },
+      { name: 'aml_alert_org_estado_created_idx' },
+    );
+
+  const amlAlertIndexes = await db.collection('aml_alerts').indexes();
+  if (amlAlertIndexes.some((index) => index.name === 'aml_alert_org_estado_idx')) {
+    await db.collection('aml_alerts').dropIndex('aml_alert_org_estado_idx');
+  }
+
+  await db
+    .collection('aml_alerts')
+    .createIndex({ organization_id: 1, severidad: 1 }, { name: 'aml_alert_org_severidad_idx' });
+
+  await db
+    .collection('aml_alerts')
+    .createIndex(
+      { organization_id: 1, 'matched_entry.watchlist_id': 1 },
+      { name: 'aml_alert_org_watchlist_idx' },
+    );
+
+  await db
+    .collection('aml_alerts')
+    .createIndex({ organization_id: 1, customer_id: 1 }, { name: 'aml_alert_org_customer_idx' });
+
+  await db.collection('aml_alerts').createIndex(
+    {
+      organization_id: 1,
+      customer_id: 1,
+      'matched_entry.entry_id': 1,
+      'matched_entry.match_field': 1,
+    },
+    { unique: true, name: 'aml_alerts_natural_key_unique' },
+  );
+
+  // organization_screening_config (screening, design D-6): per-tenant
+  // singleton of confianza thresholds — one document per organization.
+  await db
+    .collection('organization_screening_config')
+    .createIndex({ organization_id: 1 }, { unique: true, name: 'org_screening_config_unique' });
 }

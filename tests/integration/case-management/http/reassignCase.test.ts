@@ -248,6 +248,7 @@ describe('caseRouter POST /cases/:caseId/reassign', () => {
         stripeCustomerId: live.stripeCustomerId,
         finturuReference: live.finturuReference,
         finturuCacheSnapshot: live.finturuCacheSnapshot,
+        idempotencyKey: live.idempotencyKey,
         riskScore: live.riskScore,
         status: live.status,
         priority: live.priority,

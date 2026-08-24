@@ -126,6 +126,48 @@ describe('mapBridgeEnvelope', () => {
     expect(result.reason).toBe('missing_customer');
   });
 
+  it('populates subjectIdentity with entryType WALLET when a wallet_address is present', () => {
+    const result = mapBridgeEnvelope(
+      bridgeEvent('card_transaction.created', {
+        amount: '1500.00',
+        currency: 'usd',
+        customer_id: 'cust_bridge',
+        status: 'approved',
+        customer_name: 'Juan Rios',
+        customer_document_id: 'DOC-1',
+        wallet_address: '0xabc123',
+      }),
+    );
+
+    expect(result.status).toBe('mapped');
+    if (result.status !== 'mapped') {
+      throw new Error('expected mapped');
+    }
+    expect(result.event.subjectIdentity).toEqual({
+      nombre: 'Juan Rios',
+      documento: 'DOC-1',
+      walletAddress: '0xabc123',
+      entryType: 'WALLET',
+    });
+  });
+
+  it('leaves subjectIdentity undefined when no identity fields are present', () => {
+    const result = mapBridgeEnvelope(
+      bridgeEvent('card_transaction.created', {
+        amount: '1500.00',
+        currency: 'usd',
+        customer_id: 'cust_bridge',
+        status: 'approved',
+      }),
+    );
+
+    expect(result.status).toBe('mapped');
+    if (result.status !== 'mapped') {
+      throw new Error('expected mapped');
+    }
+    expect(result.event.subjectIdentity).toBeUndefined();
+  });
+
   it('prefers customer_id over on_behalf_of', () => {
     const result = mapBridgeEnvelope(
       bridgeEvent('transfer.updated', {

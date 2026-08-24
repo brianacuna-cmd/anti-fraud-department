@@ -28,6 +28,7 @@
     "pdfkit": "^0.19.1",
     "qrcode": "^1.5.4",
     "resend": "^6.18.1",
+    "talisman": "^1.1.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {

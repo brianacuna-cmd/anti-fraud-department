@@ -33,6 +33,26 @@ describe('Case.create', () => {
     expect(kase.deletedAt).toBeNull();
   });
 
+  it('defaults idempotencyKey to null when omitted', () => {
+    const kase = buildCase();
+
+    expect(kase.idempotencyKey).toBeNull();
+  });
+
+  it('stores a given idempotencyKey', () => {
+    const kase = Case.create({
+      id: createCaseId(oid('case-1')),
+      organizationId: oid('org-1'),
+      customerId: 'customer-1',
+      riskScore: createRiskScore(50),
+      priority: 'MEDIUM',
+      idempotencyKey: 'idem-1',
+      now: NOW,
+    });
+
+    expect(kase.idempotencyKey).toBe('idem-1');
+  });
+
   it('rejects an empty organizationId', () => {
     expect(() =>
       Case.create({
@@ -59,6 +79,7 @@ describe('Case.rehydrate', () => {
       stripeCustomerId: null,
       finturuReference: null,
       finturuCacheSnapshot: null,
+      idempotencyKey: 'idem-2',
       riskScore: createRiskScore(90),
       status: 'RESOLVED',
       priority: 'HIGH',
@@ -73,6 +94,7 @@ describe('Case.rehydrate', () => {
     expect(kase.status).toBe('RESOLVED');
     expect(kase.assignedTo).toEqual({ type: 'USER', id: oid('user-1') });
     expect(kase.dueDate).toBe(LATER);
+    expect(kase.idempotencyKey).toBe('idem-2');
   });
 });
 

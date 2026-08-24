@@ -147,6 +147,17 @@ export class MongoCaseRepository implements CaseRepository {
     return documents.map(toDomain);
   }
 
+  async findByIdempotencyKey(
+    organizationId: string,
+    idempotencyKey: string,
+    tx?: Transaction,
+  ): Promise<Case | null> {
+    const document = await this.collection.findOne(
+      { organization_id: new ObjectId(organizationId), idempotency_key: idempotencyKey },
+      { session: toSession(tx) },
+    );
+    return document ? toDomain(document) : null;
+  }
   async list(query: CaseListQuery, tx?: Transaction): Promise<CaseListResult> {
     const filter = buildListFilter(query);
     const session = toSession(tx);

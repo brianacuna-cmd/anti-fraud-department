@@ -92,6 +92,34 @@ describe('MongoCaseRepository (integration, real replica-set Mongo)', () => {
     expect(found?.priority).toBe('HIGH');
   });
 
+  it('round-trips idempotencyKey (present and null)', async () => {
+    const withKey = Case.rehydrate({ ...buildCase(oid('case-idem')).toProps(), idempotencyKey: 'idem-1' });
+    await repository.save(withKey);
+    await repository.save(buildCase(oid('case-no-idem')));
+
+    const foundWithKey = await repository.findById(createCaseId(oid('case-idem')));
+    const foundWithoutKey = await repository.findById(createCaseId(oid('case-no-idem')));
+
+    expect(foundWithKey?.idempotencyKey).toBe('idem-1');
+    expect(foundWithoutKey?.idempotencyKey).toBeNull();
+  });
+
+  it('findByIdempotencyKey returns the matching Case for (org, key), null for non-matching org/key/null-key', async () => {
+    const withKey = Case.rehydrate({ ...buildCase(oid('case-idem-2')).toProps(), idempotencyKey: 'idem-2' });
+    await repository.save(withKey);
+    await repository.save(buildCase(oid('case-no-idem-2')));
+
+    const found = await repository.findByIdempotencyKey(oid('org-1'), 'idem-2');
+    const wrongOrg = await repository.findByIdempotencyKey(oid('org-2'), 'idem-2');
+    const wrongKey = await repository.findByIdempotencyKey(oid('org-1'), 'other');
+    const nullKeyCase = await repository.findByIdempotencyKey(oid('org-1'), 'idem-2-missing');
+
+    expect(found?.id).toBe(oid('case-idem-2'));
+    expect(wrongOrg).toBeNull();
+    expect(wrongKey).toBeNull();
+    expect(nullKeyCase).toBeNull();
+  });
+
   it('returns null when no case matches the given id', async () => {
     const found = await repository.findById(createCaseId(oid('missing')));
 
