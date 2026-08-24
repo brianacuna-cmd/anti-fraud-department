@@ -212,6 +212,8 @@ import { MongoFallbackWatchlistCandidateRepository } from './modules/screening/i
 import { MongoAtlasWatchlistCandidateRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoAtlasWatchlistCandidateRepository.js';
 import { TalismanPhoneticEncoder } from './modules/screening/infrastructure/adapters/outbound/matching/TalismanPhoneticEncoder.js';
 import { TalismanSimilarityCalculator } from './modules/screening/infrastructure/adapters/outbound/matching/TalismanSimilarityCalculator.js';
+import { MongoOrganizationScreeningConfigRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoOrganizationScreeningConfigRepository.js';
+import { createGetOrganizationScreeningConfigUseCase } from './modules/screening/application/GetOrganizationScreeningConfig.js';
 import { createReceiveProviderWebhookUseCase } from './modules/ingest/application/ReceiveProviderWebhook.js';
 import { createUpsertInboundWebhookSecretUseCase } from './modules/ingest/application/UpsertInboundWebhookSecret.js';
 import { generateInboundWebhookSecretId } from './modules/ingest/domain/model/value-objects/InboundWebhookSecretId.js';
@@ -834,6 +836,17 @@ async function bootstrap(): Promise<void> {
     screenSubject: screenSubjectAgainstWatchlist,
     scoreToCaseOrchestrator: processRiskScoreToCase,
   });
+  // screening-producer-activation Slice 3 (design D-6/D-8): per-org confianza
+  // thresholds. `screenSubjectAgainstWatchlist` above is built ONCE at
+  // bootstrap without auth, so thresholds cannot be baked into its deps per
+  // organization; instead they are resolved per REQUEST (request-scoped
+  // override input — `ScreenSubjectAgainstWatchlistInput.thresholds`) and
+  // passed through `screening` below. Missing config rows default to
+  // `DEFAULT_CONFIANZA_THRESHOLDS` (50/70) — RF-6, never a not-found error.
+  const organizationScreeningConfig = new MongoOrganizationScreeningConfigRepository(db);
+  const getOrganizationScreeningConfig = createGetOrganizationScreeningConfigUseCase({
+    repository: organizationScreeningConfig,
+  });
   // Same `ScoreToCaseOrchestratorInput` shape as `processRiskScoreToCase` —
   // both the webhook (`webhookToScoreOrchestrator`) and HTTP
   // (`scoreToCaseProcessRouter`) seams keep calling `{ auth, event }`
@@ -842,12 +855,14 @@ async function bootstrap(): Promise<void> {
   // `entryType`, defaulting to `PERSON`) so neither seam needs edits.
   const processRiskScoreToCaseWithScreening = async (
     scoreInput: ScoreToCaseOrchestratorInput,
-  ): Promise<ScoreToCaseOrchestratorResult> =>
-    screenThenScoreToCase({
+  ): Promise<ScoreToCaseOrchestratorResult> => {
+    const thresholds = await getOrganizationScreeningConfig({ auth: scoreInput.auth });
+    return screenThenScoreToCase({
       auth: scoreInput.auth,
       event: scoreInput.event,
-      screening: deriveScreeningInput(scoreInput.event),
+      screening: { ...deriveScreeningInput(scoreInput.event), thresholds },
     });
+  };
 
   const riskScoreProcessRouter = scoreToCaseProcessRouter({
     processRiskScoreToCase: processRiskScoreToCaseWithScreening,

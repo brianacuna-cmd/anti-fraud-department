@@ -150,6 +150,20 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     expect(matchingNames).toHaveLength(1);
   });
 
+  it('creates the OrganizationScreeningConfig unique index (screening producer activation Slice 3) and stays idempotent on re-run', async () => {
+    await ensureIndexes(db);
+    await ensureIndexes(db);
+
+    const configIndexes = await db.collection('organization_screening_config').indexes();
+    const uniqueIndex = configIndexes.find((index) => index.name === 'org_screening_config_unique');
+
+    expect(uniqueIndex?.key).toEqual({ organization_id: 1 });
+    expect(uniqueIndex?.unique).toBe(true);
+
+    const matchingNames = configIndexes.filter((index) => index.name === 'org_screening_config_unique');
+    expect(matchingNames).toHaveLength(1);
+  });
+
   it('creates the CaseRoutingRules org+status index and stays idempotent on re-run', async () => {
     await ensureIndexes(db);
     await ensureIndexes(db);

@@ -35,6 +35,17 @@ describe('src/main.ts risk-assessment wiring', () => {
     expect(fnBody).not.toContain('riskSignals.walletAddress');
   });
 
+  it('wires MongoOrganizationScreeningConfigRepository + GetOrganizationScreeningConfig and resolves per-org thresholds before screening (D-8)', () => {
+    expect(MAIN).toContain('MongoOrganizationScreeningConfigRepository');
+    expect(MAIN).toContain('createGetOrganizationScreeningConfigUseCase');
+    expect(MAIN).toContain('getOrganizationScreeningConfig');
+
+    const wrapperStart = MAIN.indexOf('const processRiskScoreToCaseWithScreening');
+    const wrapperBody = MAIN.slice(wrapperStart, MAIN.indexOf('\n\n', wrapperStart));
+    expect(wrapperBody).toContain('getOrganizationScreeningConfig');
+    expect(wrapperBody).toContain('thresholds');
+  });
+
   it('does not inject scoring into createCreateCaseUseCase', () => {
     const createCaseBlock = MAIN.slice(
       MAIN.indexOf('createCreateCaseUseCase({'),

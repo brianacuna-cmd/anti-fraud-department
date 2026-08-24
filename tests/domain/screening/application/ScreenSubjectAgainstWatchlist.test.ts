@@ -364,4 +364,38 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
     expect(result.matches[0]?.match.matchField).toBe('DOCUMENTO');
     expect(result.matches[0]?.confianza).toBe(100);
   });
+
+  it('tiers using per-call thresholds override (D-8) instead of the deps-level default', async () => {
+    const candidate = buildCandidate({ nombre: 'Jonathan Smyth-Wilson' });
+    const { screenSubject } = buildUseCase([candidate]);
+
+    const result = await screenSubject({
+      auth: tenantAuth(),
+      customerId: 'cust-1',
+      entryType: 'PERSON',
+      nombre: 'Jon Smith',
+      thresholds: { alertThreshold: 0, signalThreshold: 0 },
+    });
+
+    // With both thresholds at 0, ANY confianza >= 0 must tier ALERT_AND_SIGNAL,
+    // regardless of how the fake similarity/phonetic stubs score this pair.
+    expect(result.matches[0]?.tier).toBe('ALERT_AND_SIGNAL');
+  });
+
+  it('per-call thresholds override takes precedence over the deps-level default in the other direction too', async () => {
+    const candidate = buildCandidate({ nombre: 'John Smith' });
+    const { screenSubject } = buildUseCase([candidate]);
+
+    const result = await screenSubject({
+      auth: tenantAuth(),
+      customerId: 'cust-1',
+      entryType: 'PERSON',
+      nombre: 'John Smith',
+      thresholds: { alertThreshold: 101, signalThreshold: 101 },
+    });
+
+    // An exact match (confianza 100) would default-tier ALERT_AND_SIGNAL,
+    // but an override above 100 must force DISCARD.
+    expect(result.matches[0]?.tier).toBe('DISCARD');
+  });
 });
