@@ -123,6 +123,44 @@ describe('createEscalateAmlAlertUseCase', () => {
     expect(amlAlertRepository.all()[0]?.caseId).toBeNull();
   });
 
+  it('persists the case link before the timeline step, so a retry after a timeline failure does not open a second Case', async () => {
+    let openCalls = 0;
+    const amlAlertRepository = new InMemoryAmlAlertRepository();
+    const throwingTimeline = {
+      record: async () => {
+        throw new Error('timeline write failed');
+      },
+      listByAlertId: async () => [],
+    };
+    const escalateAmlAlert = createEscalateAmlAlertUseCase({
+      amlAlertRepository,
+      caseOpener: {
+        open: async () => {
+          openCalls += 1;
+          return { caseId: CASE_ID };
+        },
+      },
+      timelineRecorder: throwingTimeline,
+      unitOfWork: new PassthroughUnitOfWork(),
+      clock: new FixedClock(NOW),
+      generateTimelineEventId: generateObjectIdHex,
+    });
+    await amlAlertRepository.save(buildAlert());
+
+    // First attempt: case is opened + linked, but the timeline step throws.
+    await expect(escalateAmlAlert({ auth: ANALYST, alertId: oid('alert-1') })).rejects.toThrow(
+      'timeline write failed',
+    );
+    // The caseId is already durable despite the failure.
+    expect(amlAlertRepository.all()[0]?.caseId).toBe(CASE_ID);
+
+    // Retry: must NOT open a second Case — it short-circuits on the saved caseId.
+    const retry = await escalateAmlAlert({ auth: ANALYST, alertId: oid('alert-1') });
+    expect(retry.alreadyEscalated).toBe(true);
+    expect(retry.caseId).toBe(CASE_ID);
+    expect(openCalls).toBe(1);
+  });
+
   it('leaves the alert OPEN when CreateCase fails', async () => {
     const { amlAlertRepository, escalateAmlAlert } = buildUseCase({
       open: async () => {

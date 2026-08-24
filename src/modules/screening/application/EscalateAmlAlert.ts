@@ -71,28 +71,45 @@ export function createEscalateAmlAlertUseCase(deps: EscalateAmlAlertDeps) {
       tags: ['AML', existing.tipoAlerta],
     });
 
-    return deps.unitOfWork.withTransaction(async (tx) => {
-      const now = deps.clock.now();
-      const previous = existing.estado;
-      const investigating =
-        previous === 'OPEN' ? existing.transitionTo('INVESTIGATING', now) : existing;
-      const linked = investigating.linkCase(opened.caseId, now);
-      await deps.amlAlertRepository.save(linked, tx);
-      if (previous === 'OPEN') {
-        await deps.timelineRecorder.record(
-          {
-            id: deps.generateTimelineEventId(),
-            caseId: String(linked.id),
-            eventType: 'STATE_CHANGED',
-            previousValue: previous,
-            newValue: linked.estado,
-            createdBy: input.auth.userId,
-            createdAt: now,
-          },
-          tx,
-        );
-      }
-      return { alert: linked, caseId: opened.caseId, alreadyEscalated: false };
+    // Persist the case link FIRST, in its own minimal transaction, so that a
+    // failure in the subsequent transition/timeline step cannot lose the
+    // caseId. Once linked, any retry short-circuits on `caseId !== null`
+    // (above) and returns `alreadyEscalated` instead of opening a SECOND case.
+    //
+    // Residual window: a failure of THIS single save immediately after
+    // `caseOpener.open()` can still orphan the created case and let a retry
+    // duplicate it. Fully closing it requires idempotent case creation keyed
+    // on the alert id (case-management follow-up) — out of scope here.
+    const linkedNow = deps.clock.now();
+    const linked = await deps.unitOfWork.withTransaction(async (tx) => {
+      const withCase = existing.linkCase(opened.caseId, linkedNow);
+      await deps.amlAlertRepository.save(withCase, tx);
+      return withCase;
     });
+
+    // The alert is now durably linked. Advance OPEN -> INVESTIGATING and append
+    // the timeline row in a second transaction; if this fails, the caseId is
+    // already safe, so a retry returns `alreadyEscalated` (no duplicate case).
+    if (existing.estado !== 'OPEN') {
+      return { alert: linked, caseId: opened.caseId, alreadyEscalated: false };
+    }
+    const investigating = await deps.unitOfWork.withTransaction(async (tx) => {
+      const advanced = linked.transitionTo('INVESTIGATING', linkedNow);
+      await deps.amlAlertRepository.save(advanced, tx);
+      await deps.timelineRecorder.record(
+        {
+          id: deps.generateTimelineEventId(),
+          caseId: String(advanced.id),
+          eventType: 'STATE_CHANGED',
+          previousValue: 'OPEN',
+          newValue: advanced.estado,
+          createdBy: input.auth.userId,
+          createdAt: linkedNow,
+        },
+        tx,
+      );
+      return advanced;
+    });
+    return { alert: investigating, caseId: opened.caseId, alreadyEscalated: false };
   };
 }
