@@ -21,9 +21,10 @@ export const listAmlAlertsQuerySchema = z.object({
 
 export type ListAmlAlertsQuery = z.infer<typeof listAmlAlertsQuerySchema>;
 
-/** POST /aml-alerts/:alertId/resolve body. */
+/** PATCH /aml-alerts/:alertId/resolve body. */
 export const resolveAmlAlertSchema = z.object({
-  outcome: z.enum(['RESOLVED', 'FALSE_POSITIVE']),
+  dictamen: z.enum(['CONFIRMED_MATCH', 'FALSE_POSITIVE']),
+  justificacion: z.string().trim().min(1),
 });
 
 export type ResolveAmlAlertBody = z.infer<typeof resolveAmlAlertSchema>;

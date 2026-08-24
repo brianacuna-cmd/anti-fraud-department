@@ -155,6 +155,7 @@ import { caseRouter } from './modules/case-management/infrastructure/adapters/in
 import { caseExportRouter } from './modules/case-management/infrastructure/adapters/inbound/http/caseExportRouter.js';
 import { caseManagementErrorStatus } from './modules/case-management/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createCaseManagementAuditRecorderAdapter } from './composition/caseManagementAuditRecorderAdapter.js';
+import { createScreeningAuditRecorderAdapter } from './composition/screeningAuditRecorderAdapter.js';
 import { createIdentityAssigneeDirectory } from './composition/identityAssigneeDirectory.js';
 import { generateCaseSlaTrackingId } from './modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
 import { createGetOrganizationFraudConfigUseCase } from './modules/case-management/application/GetOrganizationFraudConfig.js';
@@ -213,6 +214,7 @@ import { createGetAmlAlertUseCase } from './modules/screening/application/GetAml
 import { createGetAmlAlertTimelineUseCase } from './modules/screening/application/GetAmlAlertTimeline.js';
 import { createTransitionAmlAlertUseCase } from './modules/screening/application/TransitionAmlAlert.js';
 import { createEscalateAmlAlertUseCase } from './modules/screening/application/EscalateAmlAlert.js';
+import { createResolveAmlAlertUseCase } from './modules/screening/application/ResolveAmlAlert.js';
 import { amlAlertRouter } from './modules/screening/infrastructure/adapters/inbound/http/amlAlertRouter.js';
 import { screeningErrorStatus } from './modules/screening/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createAmlAlertCaseOpener } from './composition/amlAlertCaseOpener.js';
@@ -867,12 +869,26 @@ async function bootstrap(): Promise<void> {
     clock,
     generateTimelineEventId: generateObjectIdHex,
   });
+  // Screening's own AuditRecorder port, bridged at the composition root to
+  // the SAME `recordAuditLog` instance built above (design D6/D7) — the
+  // resolve disposition (RF-3) commits its audit row atomically with the
+  // alert transition inside `screeningUnitOfWork.withTransaction`.
+  const screeningAuditRecorder = createScreeningAuditRecorderAdapter(recordAuditLog);
+  const resolveAmlAlert = createResolveAmlAlertUseCase({
+    amlAlertRepository: amlAlerts,
+    timelineRecorder: amlExpedienteTimeline,
+    auditRecorder: screeningAuditRecorder,
+    unitOfWork: screeningUnitOfWork,
+    clock,
+    generateTimelineEventId: generateObjectIdHex,
+  });
   const amlAlertsHttpRouter = amlAlertRouter({
     listAmlAlerts,
     getAmlAlert,
     getAmlAlertTimeline,
     transitionAmlAlert,
     escalateAmlAlert,
+    resolveAmlAlert,
   });
   const watchlistCandidates =
     SCREENING_MATCH_BACKEND === 'atlas'
