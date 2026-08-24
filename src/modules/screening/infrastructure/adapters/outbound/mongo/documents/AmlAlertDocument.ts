@@ -1,7 +1,9 @@
 /**
  * Mongo document shape for `aml_alerts`. `_id` is the aggregate's branded
- * `AmlAlertId` stored as a native BSON `ObjectId`. `organization_id` and
- * `customer_id` are ObjectId FKs. `matched_entry` is an embedded snapshot of
+ * `AmlAlertId` stored as a native BSON `ObjectId`. `organization_id` is an
+ * ObjectId FK. `customer_id` is an OPAQUE EXTERNAL STRING (e.g. Stripe
+ * `cus_…`, Bridge ids) — never coerced to ObjectId, matching how
+ * case-management stores it. `matched_entry` is an embedded snapshot of
  * the watchlist entry as it existed at match time (design: "matched_entry
  * embedded"). Instant fields are BSON `Date`.
  */
@@ -21,7 +23,7 @@ export interface AmlAlertMatchedEntryDocument {
 export interface AmlAlertDocument {
   readonly _id: ObjectId;
   readonly organization_id: ObjectId;
-  readonly customer_id: ObjectId;
+  readonly customer_id: string;
   readonly tipo_alerta: string;
   readonly entidad_sospechosa: string;
   readonly confianza: number;

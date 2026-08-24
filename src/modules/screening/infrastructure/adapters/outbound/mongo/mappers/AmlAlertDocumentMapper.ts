@@ -15,7 +15,7 @@ export function toDomain(document: AmlAlertDocument): AmlAlert {
   return AmlAlert.rehydrate({
     id: createAmlAlertId(document._id.toString()),
     organizationId: document.organization_id.toString(),
-    customerId: document.customer_id.toString(),
+    customerId: document.customer_id,
     tipoAlerta: document.tipo_alerta as AlertType,
     entidadSospechosa: document.entidad_sospechosa,
     confianza: createMatchScore(document.confianza),
@@ -33,7 +33,7 @@ export function toDocument(alert: AmlAlert): AmlAlertDocument {
   return {
     _id: new ObjectId(alert.id),
     organization_id: new ObjectId(alert.organizationId),
-    customer_id: new ObjectId(alert.customerId),
+    customer_id: alert.customerId,
     tipo_alerta: alert.tipoAlerta,
     entidad_sospechosa: alert.entidadSospechosa,
     confianza: alert.confianza,

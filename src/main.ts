@@ -199,8 +199,19 @@ import { scoringRuleRouter } from './modules/risk-assessment/infrastructure/adap
 import { riskAssessmentErrorStatus } from './modules/risk-assessment/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createRiskAssessmentAuditRecorderAdapter } from './composition/riskAssessmentAuditRecorderAdapter.js';
 import { createScoreToCaseOrchestrator } from './composition/scoreToCaseOrchestrator.js';
+import type { ScoreToCaseOrchestratorInput, ScoreToCaseOrchestratorResult } from './composition/scoreToCaseOrchestrator.js';
 import { scoreToCaseProcessRouter } from './composition/scoreToCaseProcessRouter.js';
 import { createWebhookToScoreOrchestrator } from './composition/webhookToScoreOrchestrator.js';
+import { createScreenThenScoreToCaseOrchestrator } from './composition/screenThenScoreToCaseOrchestrator.js';
+import type { CanonicalRiskEvent } from './modules/risk-assessment/domain/model/CanonicalRiskEvent.js';
+import { createScreenSubjectAgainstWatchlistUseCase } from './modules/screening/application/ScreenSubjectAgainstWatchlist.js';
+import type { ScreenSubjectAgainstWatchlistInput } from './modules/screening/application/ScreenSubjectAgainstWatchlist.js';
+import { createEntryType, isEntryType } from './modules/screening/domain/model/value-objects/EntryType.js';
+import { MongoAmlAlertRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlAlertRepository.js';
+import { MongoFallbackWatchlistCandidateRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoFallbackWatchlistCandidateRepository.js';
+import { MongoAtlasWatchlistCandidateRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoAtlasWatchlistCandidateRepository.js';
+import { TalismanPhoneticEncoder } from './modules/screening/infrastructure/adapters/outbound/matching/TalismanPhoneticEncoder.js';
+import { TalismanSimilarityCalculator } from './modules/screening/infrastructure/adapters/outbound/matching/TalismanSimilarityCalculator.js';
 import { createReceiveProviderWebhookUseCase } from './modules/ingest/application/ReceiveProviderWebhook.js';
 import { createUpsertInboundWebhookSecretUseCase } from './modules/ingest/application/UpsertInboundWebhookSecret.js';
 import { generateInboundWebhookSecretId } from './modules/ingest/domain/model/value-objects/InboundWebhookSecretId.js';
@@ -280,6 +291,17 @@ const OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS = Number(
  * against the same due rows; `markNotified` idempotency is the only guard.
  */
 const SLA_SWEEP_INTERVAL_MS = Number(process.env.SLA_SWEEP_INTERVAL_MS ?? 60_000);
+/**
+ * screening-watchlist-matcher Slice 7 (design "KEY DECISION — Atlas Search
+ * testability"): selects the blocking-layer candidate adapter.
+ * `SCREENING_MATCH_BACKEND=atlas` wires the staging/prod
+ * `MongoAtlasWatchlistCandidateRepository` ($search); anything else
+ * (default, including unset — CI/test-safe) wires the
+ * `MongoFallbackWatchlistCandidateRepository` (plain compound/regex index,
+ * mongodb-memory-server-compatible). Feature-flagged/reversible per the
+ * design's migration plan — revert = leave this env unset.
+ */
+const SCREENING_MATCH_BACKEND = process.env.SCREENING_MATCH_BACKEND ?? 'index';
 
 async function bootstrap(): Promise<void> {
   // Fail-closed (design D4, D6): AUTH_MODE=trusted-header trusts client
@@ -790,14 +812,53 @@ async function bootstrap(): Promise<void> {
     getOrganizationFraudConfig,
     createCase,
   });
-  const riskScoreProcessRouter = scoreToCaseProcessRouter({ processRiskScoreToCase });
+
+  // screening-watchlist-matcher Slice 7: watchlist screening ports/adapters,
+  // wrapped around the SAME `processRiskScoreToCase` above so a revert is a
+  // one-line swap back to it. `MongoAmlAlertRepository`/candidate adapter
+  // stay standalone Mongo adapters (no shared UnitOfWork — RF-6 idempotency
+  // is enforced by the natural-key unique index, not a transaction).
+  const amlAlerts = new MongoAmlAlertRepository(db);
+  const watchlistCandidates =
+    SCREENING_MATCH_BACKEND === 'atlas'
+      ? new MongoAtlasWatchlistCandidateRepository(db)
+      : new MongoFallbackWatchlistCandidateRepository(db);
+  const screenSubjectAgainstWatchlist = createScreenSubjectAgainstWatchlistUseCase({
+    watchlistCandidateRepository: watchlistCandidates,
+    amlAlertRepository: amlAlerts,
+    phoneticEncoder: new TalismanPhoneticEncoder(),
+    similarityCalculator: new TalismanSimilarityCalculator(),
+    clock,
+  });
+  const screenThenScoreToCase = createScreenThenScoreToCaseOrchestrator({
+    screenSubject: screenSubjectAgainstWatchlist,
+    scoreToCaseOrchestrator: processRiskScoreToCase,
+  });
+  // Same `ScoreToCaseOrchestratorInput` shape as `processRiskScoreToCase` —
+  // both the webhook (`webhookToScoreOrchestrator`) and HTTP
+  // (`scoreToCaseProcessRouter`) seams keep calling `{ auth, event }`
+  // unchanged; this adapter derives the screening subject fields from the
+  // event's `riskSignals` (optional `nombre`/`documento`/`walletAddress`/
+  // `entryType`, defaulting to `PERSON`) so neither seam needs edits.
+  const processRiskScoreToCaseWithScreening = async (
+    scoreInput: ScoreToCaseOrchestratorInput,
+  ): Promise<ScoreToCaseOrchestratorResult> =>
+    screenThenScoreToCase({
+      auth: scoreInput.auth,
+      event: scoreInput.event,
+      screening: deriveScreeningInput(scoreInput.event),
+    });
+
+  const riskScoreProcessRouter = scoreToCaseProcessRouter({
+    processRiskScoreToCase: processRiskScoreToCaseWithScreening,
+  });
 
   // provider-risk-ingest PR5b: webhook mount is not JWT. Same AesGcmSecretCipher
   // instance as identity-access (injected — ingest must not import that module).
   const inboundWebhookSecrets = new MongoInboundWebhookSecretRepository(db);
   const providerIngestEvents = new MongoProviderIngestEventRepository(db);
   const webhookToScore = createWebhookToScoreOrchestrator({
-    processRiskScoreToCase,
+    processRiskScoreToCase: processRiskScoreToCaseWithScreening,
     events: providerIngestEvents,
     clock,
   });
@@ -1140,6 +1201,41 @@ async function bootstrap(): Promise<void> {
   app.listen(PORT, () => {
     console.log(`anti-fraud-department listening on port ${PORT}`);
   });
+}
+
+/**
+ * screening-watchlist-matcher Slice 7: derives the screening subject
+ * (nombre/documento/walletAddress + entryType) from an incoming
+ * `CanonicalRiskEvent.riskSignals`, since neither the webhook DTO nor the
+ * `/risk-scores/process` DTO carries a dedicated subject-identity shape yet.
+ * Only string values are honored; anything absent/malformed is simply
+ * omitted, so a payload with no identity fields screens zero fields and
+ * `screenSubject` returns `{ matches: [], riskSignal: null }` — a pure
+ * passthrough to `processRiskScoreToCase`, matching RF-7 (never blocks).
+ */
+function deriveScreeningInput(
+  event: CanonicalRiskEvent,
+): Omit<ScreenSubjectAgainstWatchlistInput, 'auth'> {
+  const riskSignals = event.riskSignals;
+  const entryTypeRaw = riskSignals.entryType;
+  // Untrusted free-form value: fall back to PERSON on anything invalid rather
+  // than throwing, which would abort the entire score-to-case path (and mark
+  // webhooks failed) even when screening would otherwise be a no-op.
+  const entryType = createEntryType(isEntryType(entryTypeRaw) ? entryTypeRaw : 'PERSON');
+  const nombre = optionalString(riskSignals.nombre);
+  const documento = optionalString(riskSignals.documento);
+  const walletAddress = optionalString(riskSignals.walletAddress);
+  return {
+    customerId: event.caseCustomerId,
+    entryType,
+    ...(nombre !== undefined ? { nombre } : {}),
+    ...(documento !== undefined ? { documento } : {}),
+    ...(walletAddress !== undefined ? { walletAddress } : {}),
+  };
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
 }
 
 bootstrap().catch((error: unknown) => {
