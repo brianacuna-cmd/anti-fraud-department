@@ -23,6 +23,18 @@ describe('src/main.ts risk-assessment wiring', () => {
     expect(MAIN).toContain('generateRiskScoringRuleId');
   });
 
+  it('deriveScreeningInput reads identity from event.subjectIdentity, not riskSignals', () => {
+    const fnStart = MAIN.indexOf('function deriveScreeningInput');
+    const fnBody = MAIN.slice(fnStart, MAIN.indexOf('\n}', fnStart) + 2);
+
+    expect(fnBody).toContain('event.subjectIdentity');
+    expect(fnBody).not.toContain('event.riskSignals');
+    expect(fnBody).not.toContain('riskSignals.entryType');
+    expect(fnBody).not.toContain('riskSignals.nombre');
+    expect(fnBody).not.toContain('riskSignals.documento');
+    expect(fnBody).not.toContain('riskSignals.walletAddress');
+  });
+
   it('does not inject scoring into createCreateCaseUseCase', () => {
     const createCaseBlock = MAIN.slice(
       MAIN.indexOf('createCreateCaseUseCase({'),
