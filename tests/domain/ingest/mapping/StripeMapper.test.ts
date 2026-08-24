@@ -135,6 +135,35 @@ describe('mapStripeEnvelope', () => {
     expect(result.reason).toBe('unknown_event_type');
   });
 
+  it('populates subjectIdentity from billing_details.name and metadata.documento when present', () => {
+    const withIdentity = {
+      ...CHARGE,
+      billing_details: { name: 'Ana Perez' },
+      metadata: { documento: '12345678' },
+    };
+    const result = mapStripeEnvelope(chargeEvent('charge.succeeded', withIdentity));
+
+    expect(result.status).toBe('mapped');
+    if (result.status !== 'mapped') {
+      throw new Error('expected mapped');
+    }
+    expect(result.event.subjectIdentity).toEqual({
+      nombre: 'Ana Perez',
+      documento: '12345678',
+      entryType: 'PERSON',
+    });
+  });
+
+  it('leaves subjectIdentity undefined when the charge has no billing/metadata identity fields', () => {
+    const result = mapStripeEnvelope(chargeEvent('charge.succeeded', CHARGE));
+
+    expect(result.status).toBe('mapped');
+    if (result.status !== 'mapped') {
+      throw new Error('expected mapped');
+    }
+    expect(result.event.subjectIdentity).toBeUndefined();
+  });
+
   it('returns failed when a charge has no customer', () => {
     const { customer: _customer, ...withoutCustomer } = CHARGE;
     const result = mapStripeEnvelope(chargeEvent('charge.succeeded', withoutCustomer));
