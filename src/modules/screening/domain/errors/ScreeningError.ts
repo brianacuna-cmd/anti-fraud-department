@@ -22,3 +22,11 @@ export function invariantViolation(
 ): ScreeningError {
   return new ScreeningError('INVARIANT_VIOLATION', message, metadata);
 }
+
+export function invalidTransition(current: string, next: string): ScreeningError {
+  return new ScreeningError(
+    'INVALID_TRANSITION',
+    `cannot transition AmlAlert from "${current}" to "${next}"`,
+    { current, next },
+  );
+}
