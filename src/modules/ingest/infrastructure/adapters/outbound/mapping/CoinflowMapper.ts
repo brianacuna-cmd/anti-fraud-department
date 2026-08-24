@@ -2,6 +2,15 @@ import { createIngestedPaymentEvent } from '../../../../domain/model/IngestedPay
 import type { EnvelopeMapResult } from './EnvelopeMapResult.js';
 import { instantFromIso } from './instantFromIso.js';
 import { isRecord } from './isRecord.js';
+import { inferSubjectEntryType, readOptionalStringPath } from './subjectIdentityPaths.js';
+
+/**
+ * SPIKE (RF-2/D-3, Slice 2b): exact Coinflow JSON paths are UNVERIFIED
+ * against live payloads — confirm before relying on them in production
+ * reporting. Assumed: data.customerName, data.documentId, and
+ * data.walletAddress (Coinflow supports crypto on/off-ramp, so a wallet
+ * address is plausible alongside customerId on the data object).
+ */
 
 const MVP_TYPES = new Set([
   'Card Payment Suspected Fraud',
@@ -44,6 +53,11 @@ export function mapCoinflowEnvelope(payload: unknown): EnvelopeMapResult {
     riskSignals.declineCode = data.declineCode;
   }
 
+  const nombre = readOptionalStringPath(data, ['customerName']);
+  const documento = readOptionalStringPath(data, ['documentId']);
+  const walletAddress = readOptionalStringPath(data, ['walletAddress']);
+  const entryType = inferSubjectEntryType(nombre, documento, walletAddress);
+
   return {
     status: 'mapped',
     event: createIngestedPaymentEvent({
@@ -56,6 +70,7 @@ export function mapCoinflowEnvelope(payload: unknown): EnvelopeMapResult {
       createdAt: instantFromIso(created),
       providerEventId,
       rawPayload: payload,
+      subjectIdentity: { nombre, documento, walletAddress, entryType },
     }),
   };
 }

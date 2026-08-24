@@ -2,6 +2,16 @@ import { createIngestedPaymentEvent } from '../../../../domain/model/IngestedPay
 import type { EnvelopeMapResult } from './EnvelopeMapResult.js';
 import { instantFromIso } from './instantFromIso.js';
 import { isRecord } from './isRecord.js';
+import { inferSubjectEntryType, readOptionalStringPath } from './subjectIdentityPaths.js';
+
+/**
+ * SPIKE (RF-2/D-3, Slice 2b): exact Bridge JSON paths are UNVERIFIED against
+ * live payloads — confirm before relying on them in production reporting.
+ * Assumed: event_object.customer_name, event_object.customer_document_id,
+ * and event_object.wallet_address (Bridge is a crypto/stablecoin rail, so a
+ * counterparty wallet address is plausible on card_transaction/transfer
+ * objects).
+ */
 
 const MVP_TYPES = new Set([
   'card_transaction.created',
@@ -39,6 +49,11 @@ export function mapBridgeEnvelope(payload: unknown): EnvelopeMapResult {
     riskSignals.status = object.status;
   }
 
+  const nombre = readOptionalStringPath(object, ['customer_name']);
+  const documento = readOptionalStringPath(object, ['customer_document_id']);
+  const walletAddress = readOptionalStringPath(object, ['wallet_address']);
+  const entryType = inferSubjectEntryType(nombre, documento, walletAddress);
+
   return {
     status: 'mapped',
     event: createIngestedPaymentEvent({
@@ -52,6 +67,7 @@ export function mapBridgeEnvelope(payload: unknown): EnvelopeMapResult {
       eventId,
       providerEventId: eventId,
       rawPayload: payload,
+      subjectIdentity: { nombre, documento, walletAddress, entryType },
     }),
   };
 }
