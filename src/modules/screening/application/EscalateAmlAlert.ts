@@ -15,6 +15,7 @@ export interface AmlAlertCaseOpener {
     readonly riskScore: number;
     readonly priority: string;
     readonly tags?: readonly string[];
+    readonly idempotencyKey?: string;
   }): Promise<{ readonly caseId: string }>;
 }
 
@@ -69,6 +70,7 @@ export function createEscalateAmlAlertUseCase(deps: EscalateAmlAlertDeps) {
       riskScore: existing.confianza,
       priority: existing.severidad,
       tags: ['AML', existing.tipoAlerta],
+      idempotencyKey: String(existing.id),
     });
 
     // Persist the case link FIRST, in its own minimal transaction, so that a
@@ -76,10 +78,11 @@ export function createEscalateAmlAlertUseCase(deps: EscalateAmlAlertDeps) {
     // caseId. Once linked, any retry short-circuits on `caseId !== null`
     // (above) and returns `alreadyEscalated` instead of opening a SECOND case.
     //
-    // Residual window: a failure of THIS single save immediately after
-    // `caseOpener.open()` can still orphan the created case and let a retry
-    // duplicate it. Fully closing it requires idempotent case creation keyed
-    // on the alert id (case-management follow-up) — out of scope here.
+    // Duplicate-Case window CLOSED: `caseOpener.open()` forwards the alert id
+    // as CreateCase's `idempotencyKey`, so even if THIS save (or anything
+    // after `caseOpener.open()`) fails and a retry re-opens a case, the
+    // idempotent short-circuit in `CreateCase` returns the SAME case instead
+    // of creating a second one.
     const linkedNow = deps.clock.now();
     const linked = await deps.unitOfWork.withTransaction(async (tx) => {
       const withCase = existing.linkCase(opened.caseId, linkedNow);

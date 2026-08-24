@@ -17,6 +17,7 @@ export function createAmlAlertCaseOpener(
         riskScore: input.riskScore,
         priority: input.priority,
         tags: input.tags,
+        idempotencyKey: input.idempotencyKey,
       });
       return { caseId: opened.id };
     },

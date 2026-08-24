@@ -79,6 +79,7 @@ describe('createEscalateAmlAlertUseCase', () => {
       riskScore: 82,
       priority: 'HIGH',
       tags: ['AML', 'WATCHLIST_MATCH'],
+      idempotencyKey: oid('alert-1'),
     });
     expect(timelineRecorder.all()[0]).toMatchObject({
       eventType: 'STATE_CHANGED',
@@ -159,6 +160,63 @@ describe('createEscalateAmlAlertUseCase', () => {
     expect(retry.alreadyEscalated).toBe(true);
     expect(retry.caseId).toBe(CASE_ID);
     expect(openCalls).toBe(1);
+  });
+
+  it('forwards the alert id as idempotencyKey so a retry after the case was created (but a later step failed) returns the SAME case instead of opening a second one', async () => {
+    // Fake opener that dedups by idempotencyKey, mirroring an idempotent
+    // CreateCase: same key across calls => same caseId, no new case opened.
+    const casesByKey = new Map<string, string>();
+    let distinctCasesOpened = 0;
+    const dedupingOpener: AmlAlertCaseOpener = {
+      open: async (input) => {
+        const key = input.idempotencyKey;
+        if (key !== undefined && casesByKey.has(key)) {
+          return { caseId: casesByKey.get(key)! };
+        }
+        distinctCasesOpened += 1;
+        const caseId = oid(`fraud-case-${distinctCasesOpened}`);
+        if (key !== undefined) {
+          casesByKey.set(key, caseId);
+        }
+        return { caseId };
+      },
+    };
+    const amlAlertRepository = new InMemoryAmlAlertRepository();
+    const throwingTimeline = {
+      record: async () => {
+        throw new Error('timeline write failed');
+      },
+      listByAlertId: async () => [],
+    };
+    const escalateAmlAlert = createEscalateAmlAlertUseCase({
+      amlAlertRepository,
+      caseOpener: dedupingOpener,
+      timelineRecorder: throwingTimeline,
+      unitOfWork: new PassthroughUnitOfWork(),
+      clock: new FixedClock(NOW),
+      generateTimelineEventId: generateObjectIdHex,
+    });
+    await amlAlertRepository.save(buildAlert());
+
+    await expect(escalateAmlAlert({ auth: ANALYST, alertId: oid('alert-1') })).rejects.toThrow(
+      'timeline write failed',
+    );
+    const firstCaseId = amlAlertRepository.all()[0]?.caseId;
+    expect(firstCaseId).not.toBeNull();
+
+    // Simulate a NEW alert instance re-attempting escalation from scratch
+    // (e.g. the caseId link save had also failed) — the opener is still
+    // called with the SAME idempotencyKey (the alert id), so it must dedup.
+    const opened = await dedupingOpener.open({
+      auth: ANALYST,
+      customerId: oid('customer-1'),
+      riskScore: 82,
+      priority: 'HIGH',
+      idempotencyKey: oid('alert-1'),
+    });
+
+    expect(opened.caseId).toBe(firstCaseId);
+    expect(distinctCasesOpened).toBe(1);
   });
 
   it('leaves the alert OPEN when CreateCase fails', async () => {
