@@ -2,6 +2,7 @@ import type { MongoMemoryReplSet } from 'mongodb-memory-server';
 import type { Db, MongoClient } from 'mongodb';
 import { oid } from '../../support/oid.js';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
+import { ensureIndexes } from '../../../src/shared/persistence/mongo/ensureIndexes.js';
 import { startReplicaSetMongo } from '../../helpers/mongoTestServer.js';
 import { MongoAmlAlertRepository } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlAlertRepository.js';
 import { AmlAlert } from '../../../src/modules/screening/domain/model/aggregates/AmlAlert.js';
@@ -10,30 +11,11 @@ import { createWatchlistEntryId } from '../../../src/modules/screening/domain/mo
 import { createWatchlistId } from '../../../src/modules/screening/domain/model/value-objects/WatchlistId.js';
 import { createMatchScore } from '../../../src/modules/screening/domain/model/value-objects/MatchScore.js';
 import { createScreeningMatch } from '../../../src/modules/screening/domain/model/entities/ScreeningMatch.js';
-import type { AmlAlertDocument } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/documents/AmlAlertDocument.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 
 jest.setTimeout(60_000);
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-
-/**
- * Local-only unique index proving the natural-key idempotency contract
- * (design task 3.4 note). NOT yet in `ensureIndexes.ts` — Slice 6 promotes
- * this exact index shape into the shared index-bootstrap file so this
- * slice stays self-contained and independently mergeable.
- */
-async function ensureLocalIdempotencyIndex(db: Db): Promise<void> {
-  await db.collection<AmlAlertDocument>('aml_alerts').createIndex(
-    {
-      organization_id: 1,
-      customer_id: 1,
-      'matched_entry.entry_id': 1,
-      'matched_entry.match_field': 1,
-    },
-    { unique: true, name: 'aml_alerts_natural_key_unique' },
-  );
-}
 
 function buildAlert(overrides: { matchField?: 'NAME' | 'DOCUMENTO' | 'WALLET'; customerId?: string } = {}): AmlAlert {
   return AmlAlert.create({
@@ -67,7 +49,10 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
     const connection = await connectMongo(replicaSet.getUri(), 'anti_fraud_test');
     client = connection.client;
     db = connection.db;
-    await ensureLocalIdempotencyIndex(db);
+    // Slice 6: idempotency index now lives in the shared ensureIndexes.ts
+    // as the single source of truth (regression coverage for the same
+    // natural-key uniqueness contract this test proved locally in Slice 3).
+    await ensureIndexes(db);
   });
 
   afterAll(async () => {
@@ -103,6 +88,19 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
 
     await repository.save(alert);
     await repository.save(alert);
+
+    const count = await db.collection('aml_alerts').countDocuments({});
+    expect(count).toBe(1);
+  });
+
+  it('treats a concurrent duplicate-key race as an idempotent no-op instead of throwing', async () => {
+    // Two distinct alert instances (different _id) with the SAME natural key.
+    // Under find-then-insert both may find nothing and race to insert; the
+    // unique index rejects the loser with E11000, which save() must swallow.
+    const a = buildAlert();
+    const b = buildAlert();
+
+    await expect(Promise.all([repository.save(a), repository.save(b)])).resolves.not.toThrow();
 
     const count = await db.collection('aml_alerts').countDocuments({});
     expect(count).toBe(1);

@@ -183,4 +183,47 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { published_at: 1 },
     { name: 'outbox_published_ttl_idx', expireAfterSeconds: 604800, partialFilterExpression: { status: 'PUBLISHED' } },
   );
+
+  // watchlist_entries (screening): blocking-layer lookups for the
+  // non-Atlas fallback candidate repository (RF-2) — compound status
+  // filter, exact documento/wallet lookups, and phonetic/normalized-name
+  // blocking.
+  await db
+    .collection('watchlist_entries')
+    .createIndex({ watchlist_id: 1, estado: 1 }, { name: 'watchlist_entries_watchlist_estado_idx' });
+
+  await db.collection('watchlist_entries').createIndex({ documento: 1 }, { name: 'watchlist_entries_documento_idx' });
+
+  await db
+    .collection('watchlist_entries')
+    .createIndex({ phonetic_keys: 1 }, { name: 'watchlist_entries_phonetic_keys_idx' });
+
+  await db
+    .collection('watchlist_entries')
+    .createIndex({ nombre_normalizado: 1 }, { name: 'watchlist_entries_nombre_normalizado_idx' });
+
+  await db
+    .collection('watchlist_entries')
+    .createIndex({ wallet_address: 1 }, { name: 'watchlist_entries_wallet_address_idx' });
+
+  // aml_alerts (screening): lookups by organization/status and
+  // organization/customer, plus the natural-key idempotency unique index
+  // (RF-6) so outbox redelivery never creates a duplicate alert.
+  await db
+    .collection('aml_alerts')
+    .createIndex({ organization_id: 1, estado: 1 }, { name: 'aml_alert_org_estado_idx' });
+
+  await db
+    .collection('aml_alerts')
+    .createIndex({ organization_id: 1, customer_id: 1 }, { name: 'aml_alert_org_customer_idx' });
+
+  await db.collection('aml_alerts').createIndex(
+    {
+      organization_id: 1,
+      customer_id: 1,
+      'matched_entry.entry_id': 1,
+      'matched_entry.match_field': 1,
+    },
+    { unique: true, name: 'aml_alerts_natural_key_unique' },
+  );
 }
