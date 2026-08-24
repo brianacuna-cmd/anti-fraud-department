@@ -37,6 +37,40 @@ describe('createCanonicalRiskEvent', () => {
     expect(event.rawPayload).toEqual({ secret: true });
   });
 
+  it('leaves subjectIdentity undefined when absent', () => {
+    const event = createCanonicalRiskEvent({ ...VALID });
+
+    expect(event.subjectIdentity).toBeUndefined();
+  });
+
+  it('accepts a nested camelCase subjectIdentity without tripping the top-level snake_case guard', () => {
+    const event = createCanonicalRiskEvent({
+      ...VALID,
+      subjectIdentity: {
+        nombre: 'John Doe',
+        documento: '123456789',
+        walletAddress: '0xabc',
+        entryType: 'PERSON',
+      },
+    });
+
+    expect(event.subjectIdentity).toEqual({
+      nombre: 'John Doe',
+      documento: '123456789',
+      walletAddress: '0xabc',
+      entryType: 'PERSON',
+    });
+  });
+
+  it('accepts a partial subjectIdentity (only some sub-fields populated)', () => {
+    const event = createCanonicalRiskEvent({
+      ...VALID,
+      subjectIdentity: { documento: '123456789' },
+    });
+
+    expect(event.subjectIdentity).toEqual({ documento: '123456789' });
+  });
+
   it('rejects snake_case amount_cents as scoring input', () => {
     const input = {
       provider: 'stripe',
