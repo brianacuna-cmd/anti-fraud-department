@@ -25,6 +25,7 @@ function buildAlert(overrides: { matchField?: 'NAME' | 'DOCUMENTO' | 'WALLET'; c
     entidadSospechosa: 'John Smith',
     confianza: createMatchScore(82),
     fuenteDeteccion: 'index',
+    severidad: 'HIGH',
     matchedEntry: createScreeningMatch({
       entryId: createWatchlistEntryId(oid('entry-1')),
       watchlistId: createWatchlistId(oid('watchlist-1')),
@@ -76,6 +77,7 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
 
     expect(found?.id).toBe(alert.id);
     expect(found?.confianza).toBe(82);
+    expect(found?.severidad).toBe('HIGH');
   });
 
   it('returns null when no alert exists for the given id', async () => {
@@ -83,14 +85,70 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
     expect(found).toBeNull();
   });
 
-  it('is idempotent on the natural key: reprocessing the same alert creates only one record', async () => {
+  it('upserts by _id so a status transition persists as updated, not a second row', async () => {
     const alert = buildAlert();
 
-    await repository.save(alert);
-    await repository.save(alert);
+    await expect(repository.save(alert)).resolves.toBe('inserted');
+    await expect(repository.save(alert.transitionTo('INVESTIGATING', NOW))).resolves.toBe('updated');
 
     const count = await db.collection('aml_alerts').countDocuments({});
     expect(count).toBe(1);
+    const found = await repository.findById(alert.id);
+    expect(found?.estado).toBe('INVESTIGATING');
+  });
+
+  it('treats a different _id with the same natural key as duplicate', async () => {
+    const first = buildAlert();
+    const second = buildAlert();
+
+    await expect(repository.save(first)).resolves.toBe('inserted');
+    await expect(repository.save(second)).resolves.toBe('duplicate');
+
+    const count = await db.collection('aml_alerts').countDocuments({});
+    expect(count).toBe(1);
+  });
+
+  it('lists tenant alerts newest first and filters by estado', async () => {
+    const older = buildAlert({ customerId: oid('customer-older') });
+    const newer = AmlAlert.create({
+      id: generateAmlAlertId(),
+      organizationId: oid('org-1'),
+      customerId: oid('customer-newer'),
+      entidadSospechosa: 'Jane Doe',
+      confianza: createMatchScore(82),
+      fuenteDeteccion: 'index',
+      severidad: 'HIGH',
+      matchedEntry: createScreeningMatch({
+        entryId: createWatchlistEntryId(oid('entry-2')),
+        watchlistId: createWatchlistId(oid('watchlist-1')),
+        nombre: 'Jane Doe',
+        documento: '987654321',
+        nivelRiesgo: 'HIGH',
+        matchField: 'NAME',
+        algorithm: 'JARO_WINKLER_DOUBLE_METAPHONE',
+      }),
+      now: fromDate(new Date('2026-01-02T00:00:00.000Z')),
+    });
+    await repository.save(older);
+    await repository.save(newer);
+    await repository.save(newer.transitionTo('INVESTIGATING', fromDate(new Date('2026-01-03T00:00:00.000Z'))));
+
+    const all = await repository.list({
+      organizationId: oid('org-1'),
+      limit: 20,
+      offset: 0,
+    });
+    expect(all.total).toBe(2);
+    expect(all.items[0]?.customerId).toBe(oid('customer-newer'));
+
+    const investigating = await repository.list({
+      organizationId: oid('org-1'),
+      estado: ['INVESTIGATING'],
+      limit: 20,
+      offset: 0,
+    });
+    expect(investigating.total).toBe(1);
+    expect(investigating.items[0]?.customerId).toBe(oid('customer-newer'));
   });
 
   it('persists an opaque non-hex customer_id (e.g. Stripe cus_...) as a plain string', async () => {
@@ -126,5 +184,20 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
 
     const count = await db.collection('aml_alerts').countDocuments({});
     expect(count).toBe(2);
+  });
+
+  it('findByNaturalKey returns the stored alert', async () => {
+    const alert = buildAlert();
+    await repository.save(alert);
+
+    const found = await repository.findByNaturalKey({
+      organizationId: alert.organizationId,
+      customerId: alert.customerId,
+      entryId: String(alert.matchedEntry.entryId),
+      matchField: alert.matchedEntry.matchField,
+    });
+
+    expect(found?.id).toBe(alert.id);
+    expect(found?.severidad).toBe('HIGH');
   });
 });

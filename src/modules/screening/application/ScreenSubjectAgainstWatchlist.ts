@@ -1,14 +1,11 @@
 import type { AuthContext } from '../../../shared/kernel/AuthContext.js';
-import type { Clock } from '../../../shared/time/Clock.js';
 import type { EntryType } from '../domain/model/value-objects/EntryType.js';
 import type { MatchField } from '../domain/model/value-objects/MatchField.js';
 import { createMatchField } from '../domain/model/value-objects/MatchField.js';
 import type { MatchScore } from '../domain/model/value-objects/MatchScore.js';
-import { AmlAlert } from '../domain/model/aggregates/AmlAlert.js';
-import { generateAmlAlertId } from '../domain/model/value-objects/AmlAlertId.js';
 import type { ScreeningMatch } from '../domain/model/entities/ScreeningMatch.js';
 import { createScreeningMatch } from '../domain/model/entities/ScreeningMatch.js';
-import type { AmlAlertRepository } from '../domain/ports/AmlAlertRepository.js';
+import type { OpenAmlAlertInput, OpenAmlAlertResult } from './OpenAmlAlert.js';
 import type {
   WatchlistCandidate,
   WatchlistCandidateQuery,
@@ -78,10 +75,9 @@ export interface ScreenSubjectAgainstWatchlistResult {
 
 export interface ScreenSubjectAgainstWatchlistDeps {
   readonly watchlistCandidateRepository: WatchlistCandidateRepository;
-  readonly amlAlertRepository: AmlAlertRepository;
+  readonly openAmlAlert: (input: OpenAmlAlertInput) => Promise<OpenAmlAlertResult>;
   readonly phoneticEncoder: PhoneticEncoder;
   readonly similarityCalculator: SimilarityCalculator;
-  readonly clock: Clock;
   /** Org-configurable confianza cutoffs (D-1); defaults to 50/70 when omitted. */
   readonly thresholds?: ConfianzaThresholds;
 }
@@ -189,27 +185,22 @@ async function scoreCandidatesForField(
 
 async function persistAlerts(
   deps: ScreenSubjectAgainstWatchlistDeps,
-  organizationId: string,
-  customerId: string,
+  input: ScreenSubjectAgainstWatchlistInput,
+  thresholds: ConfianzaThresholds,
   results: ScreeningMatchResult[],
 ): Promise<void> {
-  const now = deps.clock.now();
   for (const result of results) {
     if (result.tier === 'DISCARD') {
       continue;
     }
-    const alert = AmlAlert.create({
-      id: generateAmlAlertId(),
-      organizationId,
-      customerId,
-      entidadSospechosa: result.match.nombre,
+    const opened = await deps.openAmlAlert({
+      auth: input.auth,
+      customerId: input.customerId,
+      match: result.match,
       confianza: result.confianza,
-      fuenteDeteccion: String(result.match.watchlistId),
-      matchedEntry: result.match,
-      now,
+      thresholds,
     });
-    await deps.amlAlertRepository.save(alert);
-    result.alertId = String(alert.id);
+    result.alertId = opened.alert === null ? null : String(opened.alert.id);
   }
 }
 
@@ -230,9 +221,9 @@ function buildRiskSignal(sorted: readonly ScreeningMatchResult[]): WatchlistRisk
  * Screens a subject's presented fields (nombre/documento/walletAddress,
  * whichever are populated) against the org-scoped watchlist: blocking layer
  * (RF-2/RF-5) then in-memory fine scoring (RF-1), confianza tiering (RF-4),
- * idempotent alert persistence (RF-3/RF-6). NEVER blocks autonomously
- * (RF-7) — only returns matches/alerts and, when the top match reaches the
- * signal tier, a `riskSignal` for the caller to fold into a new
+ * idempotent alert persistence via `OpenAmlAlert` (RF-3/RF-6). NEVER blocks
+ * autonomously (RF-7) — only returns matches/alerts and, when the top match
+ * reaches the signal tier, a `riskSignal` for the caller to fold into a new
  * `CanonicalRiskEvent`.
  */
 export function createScreenSubjectAgainstWatchlistUseCase(deps: ScreenSubjectAgainstWatchlistDeps) {
@@ -251,7 +242,7 @@ export function createScreenSubjectAgainstWatchlistUseCase(deps: ScreenSubjectAg
     const allResults = perField.flat();
     const sorted = [...allResults].sort((a, b) => b.confianza - a.confianza);
 
-    await persistAlerts(deps, organizationId, input.customerId, sorted);
+    await persistAlerts(deps, input, thresholds, sorted);
 
     return {
       matches: sorted,

@@ -1,5 +1,6 @@
 import { oid } from '../../../support/oid.js';
 import type { AmlAlertRepository } from '../../../../src/modules/screening/domain/ports/AmlAlertRepository.js';
+import { InMemoryAmlAlertRepository } from '../../../helpers/screening/InMemoryAmlAlertRepository.js';
 import { AmlAlert } from '../../../../src/modules/screening/domain/model/aggregates/AmlAlert.js';
 import { generateAmlAlertId } from '../../../../src/modules/screening/domain/model/value-objects/AmlAlertId.js';
 import { createWatchlistEntryId } from '../../../../src/modules/screening/domain/model/value-objects/WatchlistEntryId.js';
@@ -18,6 +19,7 @@ function buildAlert(): AmlAlert {
     entidadSospechosa: 'John Smith',
     confianza: createMatchScore(82),
     fuenteDeteccion: 'index',
+    severidad: 'HIGH',
     matchedEntry: createScreeningMatch({
       entryId: createWatchlistEntryId(oid('entry-1')),
       watchlistId: createWatchlistId(oid('watchlist-1')),
@@ -29,46 +31,41 @@ function buildAlert(): AmlAlert {
   });
 }
 
-/** In-memory fake proving the port's shape is implementable and idempotent-by-natural-key by contract, ahead of the Mongo adapter. */
-class InMemoryAmlAlertRepository implements AmlAlertRepository {
-  private readonly byId = new Map<string, AmlAlert>();
-
-  async save(alert: AmlAlert): Promise<void> {
-    const key = naturalKey(alert);
-    const existing = [...this.byId.values()].find((a) => naturalKey(a) === key);
-    if (existing) {
-      return;
-    }
-    this.byId.set(alert.id, alert);
-  }
-
-  async findById(id: string): Promise<AmlAlert | null> {
-    return this.byId.get(id) ?? null;
-  }
-}
-
-function naturalKey(alert: AmlAlert): string {
-  return [alert.organizationId, alert.customerId, alert.matchedEntry.entryId, alert.matchedEntry.matchField].join('|');
-}
-
 describe('AmlAlertRepository (port contract shape)', () => {
   it('an implementation can save and re-fetch an alert by id', async () => {
     const repository: AmlAlertRepository = new InMemoryAmlAlertRepository();
     const alert = buildAlert();
 
-    await repository.save(alert);
+    await expect(repository.save(alert)).resolves.toBe('inserted');
     const found = await repository.findById(alert.id);
 
     expect(found?.id).toBe(alert.id);
   });
 
-  it('a natural-key-idempotent implementation does not duplicate on repeated save', async () => {
+  it('upserts the same _id and treats a colliding natural key on a new id as duplicate', async () => {
     const repository = new InMemoryAmlAlertRepository();
     const alert = buildAlert();
 
-    await repository.save(alert);
+    await expect(repository.save(alert)).resolves.toBe('inserted');
+    await expect(repository.save(alert.transitionTo('INVESTIGATING', NOW))).resolves.toBe('updated');
+    await expect(repository.save(buildAlert())).resolves.toBe('duplicate');
+
+    expect(repository.all()).toHaveLength(1);
+    expect(repository.all()[0]?.estado).toBe('INVESTIGATING');
+  });
+
+  it('findByNaturalKey returns the stored alert for the RF-6 key', async () => {
+    const repository = new InMemoryAmlAlertRepository();
+    const alert = buildAlert();
     await repository.save(alert);
 
-    expect((repository as unknown as { byId: Map<string, AmlAlert> }).byId.size).toBe(1);
+    const found = await repository.findByNaturalKey({
+      organizationId: alert.organizationId,
+      customerId: alert.customerId,
+      entryId: String(alert.matchedEntry.entryId),
+      matchField: alert.matchedEntry.matchField,
+    });
+
+    expect(found?.id).toBe(alert.id);
   });
 });

@@ -31,6 +31,7 @@ function buildAlert(): AmlAlert {
     entidadSospechosa: 'John Smith',
     confianza: createMatchScore(82),
     fuenteDeteccion: 'index',
+    severidad: 'HIGH',
     matchedEntry: buildMatchedEntry(),
     now: NOW,
   });
@@ -41,6 +42,7 @@ describe('AmlAlert.create', () => {
     const alert = buildAlert();
 
     expect(alert.estado).toBe('OPEN');
+    expect(alert.severidad).toBe('HIGH');
     expect(alert.tipoAlerta).toBe('WATCHLIST_MATCH');
     expect(alert.caseId).toBeNull();
     expect(alert.createdAt).toBe(NOW);
@@ -58,6 +60,7 @@ describe('AmlAlert.create', () => {
         entidadSospechosa: 'John Smith',
         confianza: createMatchScore(82),
         fuenteDeteccion: 'index',
+        severidad: 'HIGH',
         matchedEntry: buildMatchedEntry(),
         now: NOW,
       }),
@@ -76,6 +79,7 @@ describe('AmlAlert.rehydrate', () => {
       confianza: createMatchScore(95),
       fuenteDeteccion: 'index',
       estado: 'INVESTIGATING',
+      severidad: 'CRITICAL',
       matchedEntry: buildMatchedEntry(),
       caseId: oid('case-1'),
       createdAt: NOW,
@@ -83,6 +87,7 @@ describe('AmlAlert.rehydrate', () => {
     });
 
     expect(alert.estado).toBe('INVESTIGATING');
+    expect(alert.severidad).toBe('CRITICAL');
     expect(alert.caseId).toBe(oid('case-1'));
     expect(alert.updatedAt).toBe(LATER);
   });

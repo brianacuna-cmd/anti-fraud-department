@@ -29,6 +29,7 @@ export interface AmlAlertDocument {
   readonly confianza: number;
   readonly fuente_deteccion: string;
   readonly estado: string;
+  readonly severidad: string;
   readonly matched_entry: AmlAlertMatchedEntryDocument;
   readonly case_id: ObjectId | null;
   readonly created_at: Date;

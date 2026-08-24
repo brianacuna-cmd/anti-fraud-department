@@ -25,6 +25,7 @@ function buildAlert(): AmlAlert {
     entidadSospechosa: 'John Smith',
     confianza: createMatchScore(82),
     fuenteDeteccion: 'index',
+    severidad: 'HIGH',
     matchedEntry: createScreeningMatch({
       entryId: createWatchlistEntryId(oid('entry-1')),
       watchlistId: createWatchlistId(oid('watchlist-1')),
@@ -76,6 +77,7 @@ describe('AmlAlertDocument mapper (integration, real Mongo)', () => {
     expect(rehydrated.confianza).toBe(82);
     expect(rehydrated.fuenteDeteccion).toBe('index');
     expect(rehydrated.estado).toBe('OPEN');
+    expect(rehydrated.severidad).toBe('HIGH');
     expect(rehydrated.caseId).toBeNull();
     expect(rehydrated.matchedEntry).toEqual(alert.matchedEntry);
     expect(rehydrated.createdAt).toBe(alert.createdAt);
@@ -96,6 +98,7 @@ describe('AmlAlertDocument mapper (integration, real Mongo)', () => {
       confianza: 82,
       fuente_deteccion: 'index',
       estado: 'OPEN',
+      severidad: 'HIGH',
       case_id: null,
       matched_entry: {
         entry_id: expect.anything(),

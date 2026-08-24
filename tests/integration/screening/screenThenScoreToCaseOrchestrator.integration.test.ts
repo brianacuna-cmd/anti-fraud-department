@@ -9,10 +9,17 @@ import { createAuthContext } from '../../../src/shared/kernel/AuthContext.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
 import { MongoAmlAlertRepository } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlAlertRepository.js';
+import { MongoAmlExpedienteTimelineRecorder } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlExpedienteTimelineRecorder.js';
+import { MongoUnitOfWork as ScreeningMongoUnitOfWork } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
+import { MongoOutboxEventRepository } from '../../../src/shared/outbox/mongo/MongoOutboxEventRepository.js';
 import { MongoFallbackWatchlistCandidateRepository } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoFallbackWatchlistCandidateRepository.js';
 import { TalismanPhoneticEncoder } from '../../../src/modules/screening/infrastructure/adapters/outbound/matching/TalismanPhoneticEncoder.js';
 import { TalismanSimilarityCalculator } from '../../../src/modules/screening/infrastructure/adapters/outbound/matching/TalismanSimilarityCalculator.js';
 import { createScreenSubjectAgainstWatchlistUseCase } from '../../../src/modules/screening/application/ScreenSubjectAgainstWatchlist.js';
+import { createOpenAmlAlertUseCase } from '../../../src/modules/screening/application/OpenAmlAlert.js';
+import { generateAmlAlertId } from '../../../src/modules/screening/domain/model/value-objects/AmlAlertId.js';
+import { generateOutboxEventId } from '../../../src/shared/outbox/OutboxEventId.js';
+import { generateObjectIdHex } from '../../../src/shared/kernel/ObjectIdHex.js';
 import { createScreenThenScoreToCaseOrchestrator } from '../../../src/composition/screenThenScoreToCaseOrchestrator.js';
 import type { ScoreToCaseOrchestratorInput, ScoreToCaseOrchestratorResult } from '../../../src/composition/scoreToCaseOrchestrator.js';
 import type { CanonicalRiskEvent } from '../../../src/modules/risk-assessment/domain/model/CanonicalRiskEvent.js';
@@ -86,15 +93,26 @@ describe('screenThenScoreToCaseOrchestrator (integration, real Mongo, fallback c
   afterEach(async () => {
     await db.collection('watchlist_entries').deleteMany({});
     await db.collection('aml_alerts').deleteMany({});
+    await db.collection('case_timeline').deleteMany({});
+    await db.collection('outbox_events').deleteMany({});
   });
 
   function buildOrchestrator(scoreToCaseOrchestrator: (input: ScoreToCaseOrchestratorInput) => Promise<ScoreToCaseOrchestratorResult>) {
+    const openAmlAlert = createOpenAmlAlertUseCase({
+      amlAlertRepository: new MongoAmlAlertRepository(db),
+      timelineRecorder: new MongoAmlExpedienteTimelineRecorder(db),
+      outbox: new MongoOutboxEventRepository(db),
+      unitOfWork: new ScreeningMongoUnitOfWork(client),
+      clock: new SystemClock(),
+      generateAmlAlertId,
+      generateTimelineEventId: generateObjectIdHex,
+      generateOutboxEventId,
+    });
     const screenSubject = createScreenSubjectAgainstWatchlistUseCase({
       watchlistCandidateRepository: new MongoFallbackWatchlistCandidateRepository(db),
-      amlAlertRepository: new MongoAmlAlertRepository(db),
+      openAmlAlert,
       phoneticEncoder: new TalismanPhoneticEncoder(),
       similarityCalculator: new TalismanSimilarityCalculator(),
-      clock: new SystemClock(),
     });
     return createScreenThenScoreToCaseOrchestrator({ screenSubject, scoreToCaseOrchestrator });
   }
@@ -123,6 +141,17 @@ describe('screenThenScoreToCaseOrchestrator (integration, real Mongo, fallback c
 
     const alerts = await db.collection('aml_alerts').find({ customer_id: oid('customer-1') }).toArray();
     expect(alerts).toHaveLength(1);
+    expect(alerts[0]?.estado).toBe('OPEN');
+    expect(alerts[0]?.severidad).toBe('HIGH');
+
+    const timeline = await db.collection('case_timeline').find({ case_id: alerts[0]?._id }).toArray();
+    expect(timeline).toHaveLength(1);
+    expect(timeline[0]?.event_type).toBe('CASE_CREATED');
+    expect(timeline[0]?.new_value).toBe('OPEN');
+
+    const events = await db.collection('outbox_events').find({ aggregate_id: alerts[0]?._id.toString() }).toArray();
+    expect(events).toHaveLength(1);
+    expect(events[0]?.event_type).toBe('AML_ALERT_CREATED');
   });
 
   it('confianza in [50,70): writes an AmlAlert but does NOT enrich riskSignals', async () => {
