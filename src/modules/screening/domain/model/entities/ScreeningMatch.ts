@@ -12,9 +12,9 @@ import type { MatchField } from '../value-objects/MatchField.js';
 export interface ScreeningMatch {
   readonly entryId: WatchlistEntryId;
   readonly watchlistId: WatchlistId;
-  readonly nombre: string;
-  readonly documento: string | null;
-  readonly nivelRiesgo: string | null;
+  readonly name: string;
+  readonly document: string | null;
+  readonly riskLevel: string | null;
   readonly matchField: MatchField;
   readonly algorithm: string;
 }
@@ -22,16 +22,16 @@ export interface ScreeningMatch {
 export interface CreateScreeningMatchInput {
   readonly entryId: WatchlistEntryId;
   readonly watchlistId: WatchlistId;
-  readonly nombre: string;
-  readonly documento?: string | null;
-  readonly nivelRiesgo?: string | null;
+  readonly name: string;
+  readonly document?: string | null;
+  readonly riskLevel?: string | null;
   readonly matchField: MatchField;
   readonly algorithm: string;
 }
 
 export function createScreeningMatch(input: CreateScreeningMatchInput): ScreeningMatch {
-  if (input.nombre.trim().length === 0) {
-    throw invariantViolation('ScreeningMatch nombre must be a non-empty string', { input });
+  if (input.name.trim().length === 0) {
+    throw invariantViolation('ScreeningMatch name must be a non-empty string', { input });
   }
   if (input.algorithm.trim().length === 0) {
     throw invariantViolation('ScreeningMatch algorithm must be a non-empty string', { input });
@@ -39,9 +39,9 @@ export function createScreeningMatch(input: CreateScreeningMatchInput): Screenin
   return {
     entryId: input.entryId,
     watchlistId: input.watchlistId,
-    nombre: input.nombre,
-    documento: input.documento ?? null,
-    nivelRiesgo: input.nivelRiesgo ?? null,
+    name: input.name,
+    document: input.document ?? null,
+    riskLevel: input.riskLevel ?? null,
     matchField: input.matchField,
     algorithm: input.algorithm,
   };

@@ -27,14 +27,14 @@ function buildAlert(): AmlAlert {
     id: createAmlAlertId(oid('alert-1')),
     organizationId: ORG_1,
     customerId: oid('customer-1'),
-    entidadSospechosa: 'John Smith',
-    confianza: createMatchScore(82),
-    fuenteDeteccion: 'index',
-    severidad: 'HIGH',
+    suspectedEntity: 'John Smith',
+    confidence: createMatchScore(82),
+    detectionSource: 'index',
+    severity: 'HIGH',
     matchedEntry: createScreeningMatch({
       entryId: createWatchlistEntryId(oid('entry-1')),
       watchlistId: createWatchlistId(oid('watchlist-1')),
-      nombre: 'John Smith',
+      name: 'John Smith',
       matchField: 'NAME',
       algorithm: 'JARO_WINKLER_DOUBLE_METAPHONE',
     }),
@@ -71,7 +71,7 @@ describe('createEscalateAmlAlertUseCase', () => {
 
     expect(result.alreadyEscalated).toBe(false);
     expect(result.caseId).toBe(CASE_ID);
-    expect(result.alert.estado).toBe('INVESTIGATING');
+    expect(result.alert.status).toBe('INVESTIGATING');
     expect(result.alert.caseId).toBe(CASE_ID);
     expect(opened).toHaveLength(1);
     expect(opened[0]).toMatchObject({
@@ -230,7 +230,7 @@ describe('createEscalateAmlAlertUseCase', () => {
     await expect(escalateAmlAlert({ auth: ANALYST, alertId: oid('alert-1') })).rejects.toThrow(
       'no fraud config',
     );
-    expect(amlAlertRepository.all()[0]?.estado).toBe('OPEN');
+    expect(amlAlertRepository.all()[0]?.status).toBe('OPEN');
     expect(amlAlertRepository.all()[0]?.caseId).toBeNull();
   });
 });

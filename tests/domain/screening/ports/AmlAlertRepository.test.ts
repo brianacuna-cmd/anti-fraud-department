@@ -16,14 +16,14 @@ function buildAlert(): AmlAlert {
     id: generateAmlAlertId(),
     organizationId: oid('org-1'),
     customerId: oid('customer-1'),
-    entidadSospechosa: 'John Smith',
-    confianza: createMatchScore(82),
-    fuenteDeteccion: 'index',
-    severidad: 'HIGH',
+    suspectedEntity: 'John Smith',
+    confidence: createMatchScore(82),
+    detectionSource: 'index',
+    severity: 'HIGH',
     matchedEntry: createScreeningMatch({
       entryId: createWatchlistEntryId(oid('entry-1')),
       watchlistId: createWatchlistId(oid('watchlist-1')),
-      nombre: 'John Smith',
+      name: 'John Smith',
       matchField: 'NAME',
       algorithm: 'JARO_WINKLER_DOUBLE_METAPHONE',
     }),
@@ -51,7 +51,7 @@ describe('AmlAlertRepository (port contract shape)', () => {
     await expect(repository.save(buildAlert())).resolves.toBe('duplicate');
 
     expect(repository.all()).toHaveLength(1);
-    expect(repository.all()[0]?.estado).toBe('INVESTIGATING');
+    expect(repository.all()[0]?.status).toBe('INVESTIGATING');
   });
 
   it('findByNaturalKey returns the stored alert for the RF-6 key', async () => {

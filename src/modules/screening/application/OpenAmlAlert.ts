@@ -21,7 +21,7 @@ export interface OpenAmlAlertInput {
   readonly auth: AuthContext;
   readonly customerId: string;
   readonly match: ScreeningMatch;
-  readonly confianza: MatchScore;
+  readonly confidence: MatchScore;
   /**
    * Request-scoped per-org thresholds (D-8). Falls back to deps, then
    * `DEFAULT_CONFIDENCE_THRESHOLDS`.
@@ -48,7 +48,7 @@ export interface OpenAmlAlertDeps {
 }
 
 /**
- * Opens an AML expediente when similarity (`confianza`) meets the org's
+ * Opens an AML expediente when similarity (`confidence`) meets the org's
  * configured alert threshold. Within ONE `unitOfWork.withTransaction`:
  * inserts `aml_alerts` (estado OPEN, calculated `severidad`), appends a
  * `CASE_CREATED` `case_timeline` row keyed by the alert id, and emits an
@@ -59,8 +59,8 @@ export function createOpenAmlAlertUseCase(deps: OpenAmlAlertDeps) {
   return async function openAmlAlert(input: OpenAmlAlertInput): Promise<OpenAmlAlertResult> {
     const organizationId = requireTenantContext(input.auth);
     const thresholds = input.thresholds ?? deps.thresholds ?? DEFAULT_CONFIDENCE_THRESHOLDS;
-    const severidad = calculateAmlAlertSeverity(input.confianza, thresholds, input.match.nivelRiesgo);
-    if (severidad === null) {
+    const severity = calculateAmlAlertSeverity(input.confidence, thresholds, input.match.riskLevel);
+    if (severity === null) {
       return { opened: false, duplicate: false, alert: null };
     }
 
@@ -69,10 +69,10 @@ export function createOpenAmlAlertUseCase(deps: OpenAmlAlertDeps) {
       id: deps.generateAmlAlertId(),
       organizationId,
       customerId: input.customerId,
-      entidadSospechosa: input.match.nombre,
-      confianza: input.confianza,
-      fuenteDeteccion: String(input.match.watchlistId),
-      severidad,
+      suspectedEntity: input.match.name,
+      confidence: input.confidence,
+      detectionSource: String(input.match.watchlistId),
+      severity,
       matchedEntry: input.match,
       now,
     });
@@ -116,10 +116,10 @@ export function createOpenAmlAlertUseCase(deps: OpenAmlAlertDeps) {
             alert_id: String(alert.id),
             organization_id: organizationId,
             customer_id: alert.customerId,
-            estado: alert.estado,
-            severidad: alert.severidad,
-            confianza: alert.confianza,
-            tipo_alerta: alert.tipoAlerta,
+            estado: alert.status,
+            severidad: alert.severity,
+            confianza: alert.confidence,
+            tipo_alerta: alert.alertType,
           },
           now,
         }),

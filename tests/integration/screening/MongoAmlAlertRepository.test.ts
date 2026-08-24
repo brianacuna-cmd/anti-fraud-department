@@ -22,16 +22,16 @@ function buildAlert(overrides: { matchField?: 'NAME' | 'DOCUMENTO' | 'WALLET'; c
     id: generateAmlAlertId(),
     organizationId: oid('org-1'),
     customerId: overrides.customerId ?? oid('customer-1'),
-    entidadSospechosa: 'John Smith',
-    confianza: createMatchScore(82),
-    fuenteDeteccion: 'index',
-    severidad: 'HIGH',
+    suspectedEntity: 'John Smith',
+    confidence: createMatchScore(82),
+    detectionSource: 'index',
+    severity: 'HIGH',
     matchedEntry: createScreeningMatch({
       entryId: createWatchlistEntryId(oid('entry-1')),
       watchlistId: createWatchlistId(oid('watchlist-1')),
-      nombre: 'John Smith',
-      documento: '123456789',
-      nivelRiesgo: 'HIGH',
+      name: 'John Smith',
+      document: '123456789',
+      riskLevel: 'HIGH',
       matchField: overrides.matchField ?? 'NAME',
       algorithm: 'JARO_WINKLER_DOUBLE_METAPHONE',
     }),
@@ -76,8 +76,8 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
     const found = await repository.findById(alert.id);
 
     expect(found?.id).toBe(alert.id);
-    expect(found?.confianza).toBe(82);
-    expect(found?.severidad).toBe('HIGH');
+    expect(found?.confidence).toBe(82);
+    expect(found?.severity).toBe('HIGH');
   });
 
   it('returns null when no alert exists for the given id', async () => {
@@ -94,7 +94,7 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
     const count = await db.collection('aml_alerts').countDocuments({});
     expect(count).toBe(1);
     const found = await repository.findById(alert.id);
-    expect(found?.estado).toBe('INVESTIGATING');
+    expect(found?.status).toBe('INVESTIGATING');
   });
 
   it('treats a different _id with the same natural key as duplicate', async () => {
@@ -114,16 +114,16 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
       id: generateAmlAlertId(),
       organizationId: oid('org-1'),
       customerId: oid('customer-newer'),
-      entidadSospechosa: 'Jane Doe',
-      confianza: createMatchScore(82),
-      fuenteDeteccion: 'index',
-      severidad: 'HIGH',
+      suspectedEntity: 'Jane Doe',
+      confidence: createMatchScore(82),
+      detectionSource: 'index',
+      severity: 'HIGH',
       matchedEntry: createScreeningMatch({
         entryId: createWatchlistEntryId(oid('entry-2')),
         watchlistId: createWatchlistId(oid('watchlist-1')),
-        nombre: 'Jane Doe',
-        documento: '987654321',
-        nivelRiesgo: 'HIGH',
+        name: 'Jane Doe',
+        document: '987654321',
+        riskLevel: 'HIGH',
         matchField: 'NAME',
         algorithm: 'JARO_WINKLER_DOUBLE_METAPHONE',
       }),
@@ -193,14 +193,14 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
       id: generateAmlAlertId(),
       organizationId: oid('org-1'),
       customerId: oid('customer-low'),
-      entidadSospechosa: 'Low Sev',
-      confianza: createMatchScore(60),
-      fuenteDeteccion: 'index',
-      severidad: 'LOW',
+      suspectedEntity: 'Low Sev',
+      confidence: createMatchScore(60),
+      detectionSource: 'index',
+      severity: 'LOW',
       matchedEntry: createScreeningMatch({
         entryId: createWatchlistEntryId(oid('entry-low')),
         watchlistId: createWatchlistId(watchlistA),
-        nombre: 'Low Sev',
+        name: 'Low Sev',
         matchField: 'NAME',
         algorithm: 'JARO_WINKLER_DOUBLE_METAPHONE',
       }),
@@ -210,14 +210,14 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
       id: generateAmlAlertId(),
       organizationId: oid('org-1'),
       customerId: oid('customer-high-old'),
-      entidadSospechosa: 'High Old',
-      confianza: createMatchScore(90),
-      fuenteDeteccion: 'index',
-      severidad: 'HIGH',
+      suspectedEntity: 'High Old',
+      confidence: createMatchScore(90),
+      detectionSource: 'index',
+      severity: 'HIGH',
       matchedEntry: createScreeningMatch({
         entryId: createWatchlistEntryId(oid('entry-high-old')),
         watchlistId: createWatchlistId(watchlistB),
-        nombre: 'High Old',
+        name: 'High Old',
         matchField: 'NAME',
         algorithm: 'JARO_WINKLER_DOUBLE_METAPHONE',
       }),
@@ -227,14 +227,14 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
       id: generateAmlAlertId(),
       organizationId: oid('org-1'),
       customerId: oid('customer-high-match'),
-      entidadSospechosa: 'High Match',
-      confianza: createMatchScore(95),
-      fuenteDeteccion: 'index',
-      severidad: 'HIGH',
+      suspectedEntity: 'High Match',
+      confidence: createMatchScore(95),
+      detectionSource: 'index',
+      severity: 'HIGH',
       matchedEntry: createScreeningMatch({
         entryId: createWatchlistEntryId(oid('entry-high-match')),
         watchlistId: createWatchlistId(watchlistA),
-        nombre: 'High Match',
+        name: 'High Match',
         matchField: 'NAME',
         algorithm: 'JARO_WINKLER_DOUBLE_METAPHONE',
       }),
@@ -303,6 +303,6 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
     });
 
     expect(found?.id).toBe(alert.id);
-    expect(found?.severidad).toBe('HIGH');
+    expect(found?.severity).toBe('HIGH');
   });
 });

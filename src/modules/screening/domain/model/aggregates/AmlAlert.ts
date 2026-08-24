@@ -15,12 +15,12 @@ export interface AmlAlertProps {
   readonly id: AmlAlertId;
   readonly organizationId: string;
   readonly customerId: string;
-  readonly tipoAlerta: AlertType;
-  readonly entidadSospechosa: string;
-  readonly confianza: MatchScore;
-  readonly fuenteDeteccion: string;
-  readonly estado: AmlAlertStatus;
-  readonly severidad: AmlAlertSeverity;
+  readonly alertType: AlertType;
+  readonly suspectedEntity: string;
+  readonly confidence: MatchScore;
+  readonly detectionSource: string;
+  readonly status: AmlAlertStatus;
+  readonly severity: AmlAlertSeverity;
   readonly matchedEntry: ScreeningMatch;
   readonly caseId: string | null;
   readonly createdAt: Instant;
@@ -31,11 +31,11 @@ export interface CreateAmlAlertInput {
   readonly id: AmlAlertId;
   readonly organizationId: string;
   readonly customerId: string;
-  readonly tipoAlerta?: AlertType;
-  readonly entidadSospechosa: string;
-  readonly confianza: MatchScore;
-  readonly fuenteDeteccion: string;
-  readonly severidad: AmlAlertSeverity;
+  readonly alertType?: AlertType;
+  readonly suspectedEntity: string;
+  readonly confidence: MatchScore;
+  readonly detectionSource: string;
+  readonly severity: AmlAlertSeverity;
   readonly matchedEntry: ScreeningMatch;
   readonly now: Instant;
 }
@@ -54,18 +54,18 @@ export class AmlAlert {
   static create(input: CreateAmlAlertInput): AmlAlert {
     assertNonEmpty('organizationId', input.organizationId);
     assertNonEmpty('customerId', input.customerId);
-    assertNonEmpty('entidadSospechosa', input.entidadSospechosa);
-    assertNonEmpty('fuenteDeteccion', input.fuenteDeteccion);
+    assertNonEmpty('suspectedEntity', input.suspectedEntity);
+    assertNonEmpty('detectionSource', input.detectionSource);
     return new AmlAlert({
       id: input.id,
       organizationId: input.organizationId,
       customerId: input.customerId,
-      tipoAlerta: input.tipoAlerta ?? 'WATCHLIST_MATCH',
-      entidadSospechosa: input.entidadSospechosa,
-      confianza: input.confianza,
-      fuenteDeteccion: input.fuenteDeteccion,
-      estado: 'OPEN',
-      severidad: input.severidad,
+      alertType: input.alertType ?? 'WATCHLIST_MATCH',
+      suspectedEntity: input.suspectedEntity,
+      confidence: input.confidence,
+      detectionSource: input.detectionSource,
+      status: 'OPEN',
+      severity: input.severity,
       matchedEntry: input.matchedEntry,
       caseId: null,
       createdAt: input.now,
@@ -90,28 +90,28 @@ export class AmlAlert {
     return this.props.customerId;
   }
 
-  get tipoAlerta(): AlertType {
-    return this.props.tipoAlerta;
+  get alertType(): AlertType {
+    return this.props.alertType;
   }
 
-  get entidadSospechosa(): string {
-    return this.props.entidadSospechosa;
+  get suspectedEntity(): string {
+    return this.props.suspectedEntity;
   }
 
-  get confianza(): MatchScore {
-    return this.props.confianza;
+  get confidence(): MatchScore {
+    return this.props.confidence;
   }
 
-  get fuenteDeteccion(): string {
-    return this.props.fuenteDeteccion;
+  get detectionSource(): string {
+    return this.props.detectionSource;
   }
 
-  get estado(): AmlAlertStatus {
-    return this.props.estado;
+  get status(): AmlAlertStatus {
+    return this.props.status;
   }
 
-  get severidad(): AmlAlertSeverity {
-    return this.props.severidad;
+  get severity(): AmlAlertSeverity {
+    return this.props.severity;
   }
 
   get matchedEntry(): ScreeningMatch {
@@ -136,8 +136,8 @@ export class AmlAlert {
 
   /** Forward-path transition (OPEN -> INVESTIGATING -> RESOLVED|FALSE_POSITIVE). Table-driven. */
   transitionTo(next: AmlAlertStatus, now: Instant): AmlAlert {
-    assertTransitionAllowed(amlAlertStatusTransitions, this.props.estado, next);
-    return new AmlAlert({ ...this.props, estado: next, updatedAt: now });
+    assertTransitionAllowed(amlAlertStatusTransitions, this.props.status, next);
+    return new AmlAlert({ ...this.props, status: next, updatedAt: now });
   }
 
   /** Links (or relinks) the alert to a Case, independent of the alert's own lifecycle status. */
@@ -147,7 +147,7 @@ export class AmlAlert {
 }
 
 function assertNonEmpty(
-  field: 'organizationId' | 'customerId' | 'entidadSospechosa' | 'fuenteDeteccion',
+  field: 'organizationId' | 'customerId' | 'suspectedEntity' | 'detectionSource',
   value: string,
 ): void {
   if (value.trim().length === 0) {

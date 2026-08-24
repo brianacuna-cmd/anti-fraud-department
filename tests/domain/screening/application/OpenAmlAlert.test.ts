@@ -22,13 +22,13 @@ const AUTH = createAuthContext({
   actorType: 'USER',
 });
 
-function buildMatch(overrides: { nombre?: string; nivelRiesgo?: string | null; entryId?: string } = {}) {
+function buildMatch(overrides: { name?: string; riskLevel?: string | null; entryId?: string } = {}) {
   return createScreeningMatch({
     entryId: createWatchlistEntryId(overrides.entryId ?? oid('entry-1')),
     watchlistId: createWatchlistId(oid('watchlist-1')),
-    nombre: overrides.nombre ?? 'John Smith',
-    documento: '123456789',
-    nivelRiesgo: overrides.nivelRiesgo === undefined ? 'HIGH' : overrides.nivelRiesgo,
+    name: overrides.name ?? 'John Smith',
+    document: '123456789',
+    riskLevel: overrides.riskLevel === undefined ? 'HIGH' : overrides.riskLevel,
     matchField: 'NAME',
     algorithm: 'JARO_WINKLER_DOUBLE_METAPHONE',
   });
@@ -59,7 +59,7 @@ describe('createOpenAmlAlertUseCase', () => {
       auth: AUTH,
       customerId: oid('customer-1'),
       match: buildMatch(),
-      confianza: createMatchScore(40),
+      confidence: createMatchScore(40),
     });
 
     expect(result).toEqual({ opened: false, duplicate: false, alert: null });
@@ -74,14 +74,14 @@ describe('createOpenAmlAlertUseCase', () => {
     const result = await openAmlAlert({
       auth: AUTH,
       customerId: oid('customer-1'),
-      match: buildMatch({ nivelRiesgo: 'HIGH' }),
-      confianza: createMatchScore(82),
+      match: buildMatch({ riskLevel: 'HIGH' }),
+      confidence: createMatchScore(82),
     });
 
     expect(result.opened).toBe(true);
     expect(result.duplicate).toBe(false);
-    expect(result.alert?.estado).toBe('OPEN');
-    expect(result.alert?.severidad).toBe('HIGH');
+    expect(result.alert?.status).toBe('OPEN');
+    expect(result.alert?.severity).toBe('HIGH');
     expect(amlAlertRepository.all()).toHaveLength(1);
 
     const timeline = timelineRecorder.all();
@@ -109,12 +109,12 @@ describe('createOpenAmlAlertUseCase', () => {
     const result = await openAmlAlert({
       auth: AUTH,
       customerId: oid('customer-1'),
-      match: buildMatch({ nivelRiesgo: null }),
-      confianza: createMatchScore(55),
+      match: buildMatch({ riskLevel: null }),
+      confidence: createMatchScore(55),
     });
 
     expect(result.opened).toBe(true);
-    expect(result.alert?.severidad).toBe('MEDIUM');
+    expect(result.alert?.severity).toBe('MEDIUM');
   });
 
   it('is idempotent on the natural key: duplicate save skips timeline and outbox', async () => {
@@ -123,7 +123,7 @@ describe('createOpenAmlAlertUseCase', () => {
       auth: AUTH,
       customerId: oid('customer-1'),
       match: buildMatch(),
-      confianza: createMatchScore(82),
+      confidence: createMatchScore(82),
     };
 
     const first = await openAmlAlert(input);
@@ -144,13 +144,13 @@ describe('createOpenAmlAlertUseCase', () => {
     const result = await openAmlAlert({
       auth: AUTH,
       customerId: oid('customer-1'),
-      match: buildMatch({ nivelRiesgo: null }),
-      confianza: createMatchScore(40),
+      match: buildMatch({ riskLevel: null }),
+      confidence: createMatchScore(40),
       thresholds: { alertThreshold: 30, signalThreshold: 80 },
     });
 
     expect(result.opened).toBe(true);
-    expect(result.alert?.severidad).toBe('MEDIUM');
+    expect(result.alert?.severity).toBe('MEDIUM');
   });
 
   it('rejects a missing tenant context', async () => {
@@ -161,7 +161,7 @@ describe('createOpenAmlAlertUseCase', () => {
         auth: createAuthContext({ userId: oid('admin-1'), organizationId: null, actorType: 'PLATFORM_ADMIN' }),
         customerId: oid('customer-1'),
         match: buildMatch(),
-        confianza: createMatchScore(82),
+        confidence: createMatchScore(82),
       }),
     ).rejects.toMatchObject({ code: 'FORBIDDEN_CROSS_TENANT' });
   });

@@ -22,16 +22,16 @@ function buildAlert(): AmlAlert {
     id: generateAmlAlertId(),
     organizationId: oid('org-1'),
     customerId: oid('customer-1'),
-    entidadSospechosa: 'John Smith',
-    confianza: createMatchScore(82),
-    fuenteDeteccion: 'index',
-    severidad: 'HIGH',
+    suspectedEntity: 'John Smith',
+    confidence: createMatchScore(82),
+    detectionSource: 'index',
+    severity: 'HIGH',
     matchedEntry: createScreeningMatch({
       entryId: createWatchlistEntryId(oid('entry-1')),
       watchlistId: createWatchlistId(oid('watchlist-1')),
-      nombre: 'John Smith',
-      documento: '123456789',
-      nivelRiesgo: 'HIGH',
+      name: 'John Smith',
+      document: '123456789',
+      riskLevel: 'HIGH',
       matchField: 'NAME',
       algorithm: 'JARO_WINKLER_DOUBLE_METAPHONE',
     }),
@@ -72,12 +72,12 @@ describe('AmlAlertDocument mapper (integration, real Mongo)', () => {
     expect(rehydrated.id).toBe(alert.id);
     expect(rehydrated.organizationId).toBe(alert.organizationId);
     expect(rehydrated.customerId).toBe(alert.customerId);
-    expect(rehydrated.tipoAlerta).toBe('WATCHLIST_MATCH');
-    expect(rehydrated.entidadSospechosa).toBe('John Smith');
-    expect(rehydrated.confianza).toBe(82);
-    expect(rehydrated.fuenteDeteccion).toBe('index');
-    expect(rehydrated.estado).toBe('OPEN');
-    expect(rehydrated.severidad).toBe('HIGH');
+    expect(rehydrated.alertType).toBe('WATCHLIST_MATCH');
+    expect(rehydrated.suspectedEntity).toBe('John Smith');
+    expect(rehydrated.confidence).toBe(82);
+    expect(rehydrated.detectionSource).toBe('index');
+    expect(rehydrated.status).toBe('OPEN');
+    expect(rehydrated.severity).toBe('HIGH');
     expect(rehydrated.caseId).toBeNull();
     expect(rehydrated.matchedEntry).toEqual(alert.matchedEntry);
     expect(rehydrated.createdAt).toBe(alert.createdAt);

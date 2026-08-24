@@ -15,9 +15,9 @@ function buildMatchedEntry() {
   return createScreeningMatch({
     entryId: createWatchlistEntryId(oid('entry-1')),
     watchlistId: createWatchlistId(oid('watchlist-1')),
-    nombre: 'John Smith',
-    documento: '123456789',
-    nivelRiesgo: 'HIGH',
+    name: 'John Smith',
+    document: '123456789',
+    riskLevel: 'HIGH',
     matchField: 'NAME',
     algorithm: 'JARO_WINKLER_DOUBLE_METAPHONE',
   });
@@ -28,10 +28,10 @@ function buildAlert(): AmlAlert {
     id: generateAmlAlertId(),
     organizationId: oid('org-1'),
     customerId: oid('customer-1'),
-    entidadSospechosa: 'John Smith',
-    confianza: createMatchScore(82),
-    fuenteDeteccion: 'index',
-    severidad: 'HIGH',
+    suspectedEntity: 'John Smith',
+    confidence: createMatchScore(82),
+    detectionSource: 'index',
+    severity: 'HIGH',
     matchedEntry: buildMatchedEntry(),
     now: NOW,
   });
@@ -41,13 +41,13 @@ describe('AmlAlert.create', () => {
   it('starts a new alert OPEN, WATCHLIST_MATCH, with no linked case', () => {
     const alert = buildAlert();
 
-    expect(alert.estado).toBe('OPEN');
-    expect(alert.severidad).toBe('HIGH');
-    expect(alert.tipoAlerta).toBe('WATCHLIST_MATCH');
+    expect(alert.status).toBe('OPEN');
+    expect(alert.severity).toBe('HIGH');
+    expect(alert.alertType).toBe('WATCHLIST_MATCH');
     expect(alert.caseId).toBeNull();
     expect(alert.createdAt).toBe(NOW);
     expect(alert.updatedAt).toBe(NOW);
-    expect(alert.confianza).toBe(82);
+    expect(alert.confidence).toBe(82);
     expect(alert.matchedEntry.matchField).toBe('NAME');
   });
 
@@ -57,10 +57,10 @@ describe('AmlAlert.create', () => {
         id: generateAmlAlertId(),
         organizationId: '   ',
         customerId: oid('customer-1'),
-        entidadSospechosa: 'John Smith',
-        confianza: createMatchScore(82),
-        fuenteDeteccion: 'index',
-        severidad: 'HIGH',
+        suspectedEntity: 'John Smith',
+        confidence: createMatchScore(82),
+        detectionSource: 'index',
+        severity: 'HIGH',
         matchedEntry: buildMatchedEntry(),
         now: NOW,
       }),
@@ -74,20 +74,20 @@ describe('AmlAlert.rehydrate', () => {
       id: generateAmlAlertId(),
       organizationId: oid('org-1'),
       customerId: oid('customer-1'),
-      tipoAlerta: 'WATCHLIST_MATCH',
-      entidadSospechosa: 'John Smith',
-      confianza: createMatchScore(95),
-      fuenteDeteccion: 'index',
-      estado: 'INVESTIGATING',
-      severidad: 'CRITICAL',
+      alertType: 'WATCHLIST_MATCH',
+      suspectedEntity: 'John Smith',
+      confidence: createMatchScore(95),
+      detectionSource: 'index',
+      status: 'INVESTIGATING',
+      severity: 'CRITICAL',
       matchedEntry: buildMatchedEntry(),
       caseId: oid('case-1'),
       createdAt: NOW,
       updatedAt: LATER,
     });
 
-    expect(alert.estado).toBe('INVESTIGATING');
-    expect(alert.severidad).toBe('CRITICAL');
+    expect(alert.status).toBe('INVESTIGATING');
+    expect(alert.severity).toBe('CRITICAL');
     expect(alert.caseId).toBe(oid('case-1'));
     expect(alert.updatedAt).toBe(LATER);
   });
@@ -100,9 +100,9 @@ describe('AmlAlert#transitionTo', () => {
     const transitioned = alert.transitionTo('INVESTIGATING', LATER);
 
     expect(transitioned).not.toBe(alert);
-    expect(transitioned.estado).toBe('INVESTIGATING');
+    expect(transitioned.status).toBe('INVESTIGATING');
     expect(transitioned.updatedAt).toBe(LATER);
-    expect(alert.estado).toBe('OPEN');
+    expect(alert.status).toBe('OPEN');
   });
 
   it('allows INVESTIGATING -> RESOLVED', () => {
@@ -110,7 +110,7 @@ describe('AmlAlert#transitionTo', () => {
 
     const resolved = alert.transitionTo('RESOLVED', LATER);
 
-    expect(resolved.estado).toBe('RESOLVED');
+    expect(resolved.status).toBe('RESOLVED');
   });
 
   it('allows INVESTIGATING -> FALSE_POSITIVE', () => {
@@ -118,14 +118,14 @@ describe('AmlAlert#transitionTo', () => {
 
     const falsePositive = alert.transitionTo('FALSE_POSITIVE', LATER);
 
-    expect(falsePositive.estado).toBe('FALSE_POSITIVE');
+    expect(falsePositive.status).toBe('FALSE_POSITIVE');
   });
 
   it('rejects OPEN -> RESOLVED (must pass through INVESTIGATING) and leaves original untouched', () => {
     const alert = buildAlert();
 
     expect(() => alert.transitionTo('RESOLVED', LATER)).toThrow(ScreeningError);
-    expect(alert.estado).toBe('OPEN');
+    expect(alert.status).toBe('OPEN');
   });
 
   it('rejects transitioning out of a terminal RESOLVED state', () => {
@@ -143,7 +143,7 @@ describe('AmlAlert#linkCase', () => {
 
     expect(linked).not.toBe(alert);
     expect(linked.caseId).toBe(oid('case-1'));
-    expect(linked.estado).toBe('OPEN');
+    expect(linked.status).toBe('OPEN');
     expect(alert.caseId).toBeNull();
   });
 });

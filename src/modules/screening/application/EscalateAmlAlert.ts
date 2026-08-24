@@ -60,16 +60,16 @@ export function createEscalateAmlAlertUseCase(deps: EscalateAmlAlertDeps) {
     if (existing.caseId !== null) {
       return { alert: existing, caseId: existing.caseId, alreadyEscalated: true };
     }
-    if (existing.estado === 'RESOLVED' || existing.estado === 'FALSE_POSITIVE') {
-      throw invalidTransition(existing.estado, 'ESCALATED');
+    if (existing.status === 'RESOLVED' || existing.status === 'FALSE_POSITIVE') {
+      throw invalidTransition(existing.status, 'ESCALATED');
     }
 
     const opened = await deps.caseOpener.open({
       auth: input.auth,
       customerId: existing.customerId,
-      riskScore: existing.confianza,
-      priority: existing.severidad,
-      tags: ['AML', existing.tipoAlerta],
+      riskScore: existing.confidence,
+      priority: existing.severity,
+      tags: ['AML', existing.alertType],
       idempotencyKey: String(existing.id),
     });
 
@@ -93,7 +93,7 @@ export function createEscalateAmlAlertUseCase(deps: EscalateAmlAlertDeps) {
     // The alert is now durably linked. Advance OPEN -> INVESTIGATING and append
     // the timeline row in a second transaction; if this fails, the caseId is
     // already safe, so a retry returns `alreadyEscalated` (no duplicate case).
-    if (existing.estado !== 'OPEN') {
+    if (existing.status !== 'OPEN') {
       return { alert: linked, caseId: opened.caseId, alreadyEscalated: false };
     }
     const investigating = await deps.unitOfWork.withTransaction(async (tx) => {
@@ -105,7 +105,7 @@ export function createEscalateAmlAlertUseCase(deps: EscalateAmlAlertDeps) {
           caseId: String(advanced.id),
           eventType: 'STATE_CHANGED',
           previousValue: 'OPEN',
-          newValue: advanced.estado,
+          newValue: advanced.status,
           createdBy: input.auth.userId,
           createdAt: linkedNow,
         },

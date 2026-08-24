@@ -3,7 +3,7 @@ import type { AmlAlertSeverity } from '../model/value-objects/AmlAlertSeverity.j
 import type { ConfidenceThresholds } from './ConfidenceTiering.js';
 import { DEFAULT_CONFIDENCE_THRESHOLDS } from './ConfidenceTiering.js';
 
-const KNOWN_NIVEL_RIESGO: ReadonlySet<string> = new Set<AmlAlertSeverity>([
+const KNOWN_RISK_LEVEL: ReadonlySet<string> = new Set<AmlAlertSeverity>([
   'LOW',
   'MEDIUM',
   'HIGH',
@@ -35,12 +35,12 @@ export function severityFromConfidence(
   return 'MEDIUM';
 }
 
-/** Parses a watchlist `nivel_riesgo` when it already is an AmlAlertSeverity. */
-export function parseNivelRiesgo(value: string | null): AmlAlertSeverity | null {
+/** Parses a watchlist `nivel_riesgo` column when it already is an AmlAlertSeverity. */
+export function parseRiskLevel(value: string | null): AmlAlertSeverity | null {
   if (value === null) {
     return null;
   }
-  if (!KNOWN_NIVEL_RIESGO.has(value)) {
+  if (!KNOWN_RISK_LEVEL.has(value)) {
     return null;
   }
   return value as AmlAlertSeverity;
@@ -58,17 +58,17 @@ export function maxSeverity(a: AmlAlertSeverity, b: AmlAlertSeverity | null): Am
 
 /**
  * Calculated expediente severity: the higher of the confidence band and the
- * matched entry's `nivelRiesgo` (when that value is a known severity).
+ * matched entry's `riskLevel` (when that value is a known severity).
  * `null` means similarity is below the configured alert threshold.
  */
 export function calculateAmlAlertSeverity(
   score: MatchScore,
   thresholds: ConfidenceThresholds,
-  nivelRiesgo: string | null,
+  riskLevel: string | null,
 ): AmlAlertSeverity | null {
   const fromScore = severityFromConfidence(score, thresholds);
   if (fromScore === null) {
     return null;
   }
-  return maxSeverity(fromScore, parseNivelRiesgo(nivelRiesgo));
+  return maxSeverity(fromScore, parseRiskLevel(riskLevel));
 }
