@@ -260,27 +260,33 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .createIndex({ wallet_address: 1 }, { name: 'watchlist_entries_wallet_address_idx' });
 
   // aml_alerts (screening): lookups by organization/status/created_at,
-  // organization/severidad, organization/matched watchlist, and
+  // organization/severity, organization/matched watchlist, and
   // organization/customer, plus the natural-key idempotency unique index
   // (RF-6) so outbox redelivery never creates a duplicate alert.
-  // (Slice 2, NF-3) The compound org+estado+created_at index supersedes the
-  // narrower org+estado index (estado-only queries still use its prefix),
-  // and also serves the newest-first sort + estado+date-range queries.
+  // (Slice 2, NF-3) The compound org+status+created_at index supersedes the
+  // narrower org+status index (status-only queries still use its prefix),
+  // and also serves the newest-first sort + status+date-range queries.
   await db
     .collection('aml_alerts')
     .createIndex(
-      { organization_id: 1, estado: 1, created_at: -1 },
-      { name: 'aml_alert_org_estado_created_idx' },
+      { organization_id: 1, status: 1, created_at: -1 },
+      { name: 'aml_alert_org_status_created_idx' },
     );
-
-  const amlAlertIndexes = await db.collection('aml_alerts').indexes();
-  if (amlAlertIndexes.some((index) => index.name === 'aml_alert_org_estado_idx')) {
-    await db.collection('aml_alerts').dropIndex('aml_alert_org_estado_idx');
-  }
 
   await db
     .collection('aml_alerts')
-    .createIndex({ organization_id: 1, severidad: 1 }, { name: 'aml_alert_org_severidad_idx' });
+    .createIndex({ organization_id: 1, severity: 1 }, { name: 'aml_alert_org_severity_idx' });
+
+  const amlAlertIndexes = await db.collection('aml_alerts').indexes();
+  for (const obsolete of [
+    'aml_alert_org_estado_idx',
+    'aml_alert_org_estado_created_idx',
+    'aml_alert_org_severidad_idx',
+  ]) {
+    if (amlAlertIndexes.some((index) => index.name === obsolete)) {
+      await db.collection('aml_alerts').dropIndex(obsolete);
+    }
+  }
 
   await db
     .collection('aml_alerts')

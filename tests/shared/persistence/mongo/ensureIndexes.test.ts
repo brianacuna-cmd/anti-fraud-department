@@ -227,27 +227,29 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     await db.collection('cases').deleteMany({});
   });
 
-  it('creates the aml_alerts filter indexes (screening inbox triage Slice 2) and drops the old narrow estado index', async () => {
+  it('creates the aml_alerts filter indexes (screening inbox triage Slice 2) and drops obsolete Spanish-named indexes', async () => {
     await ensureIndexes(db);
     await ensureIndexes(db);
 
     const alertIndexes = await db.collection('aml_alerts').indexes();
 
-    const orgEstadoCreatedIndex = alertIndexes.find(
-      (index) => index.name === 'aml_alert_org_estado_created_idx',
+    const orgStatusCreatedIndex = alertIndexes.find(
+      (index) => index.name === 'aml_alert_org_status_created_idx',
     );
-    expect(orgEstadoCreatedIndex?.key).toEqual({ organization_id: 1, estado: 1, created_at: -1 });
+    expect(orgStatusCreatedIndex?.key).toEqual({ organization_id: 1, status: 1, created_at: -1 });
 
-    const orgSeveridadIndex = alertIndexes.find((index) => index.name === 'aml_alert_org_severidad_idx');
-    expect(orgSeveridadIndex?.key).toEqual({ organization_id: 1, severidad: 1 });
+    const orgSeverityIndex = alertIndexes.find((index) => index.name === 'aml_alert_org_severity_idx');
+    expect(orgSeverityIndex?.key).toEqual({ organization_id: 1, severity: 1 });
 
     const orgWatchlistIndex = alertIndexes.find((index) => index.name === 'aml_alert_org_watchlist_idx');
     expect(orgWatchlistIndex?.key).toEqual({ organization_id: 1, 'matched_entry.watchlist_id': 1 });
 
     expect(alertIndexes.find((index) => index.name === 'aml_alert_org_estado_idx')).toBeUndefined();
+    expect(alertIndexes.find((index) => index.name === 'aml_alert_org_estado_created_idx')).toBeUndefined();
+    expect(alertIndexes.find((index) => index.name === 'aml_alert_org_severidad_idx')).toBeUndefined();
 
     expect(
-      alertIndexes.filter((index) => index.name === 'aml_alert_org_estado_created_idx'),
+      alertIndexes.filter((index) => index.name === 'aml_alert_org_status_created_idx'),
     ).toHaveLength(1);
   });
 

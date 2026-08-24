@@ -46,10 +46,10 @@ export class InMemoryAmlAlertRepository implements AmlAlertRepository {
   async list(query: AmlAlertListQuery): Promise<AmlAlertListResult> {
     const filtered = [...this.byId.values()]
       .filter((alert) => alert.organizationId === query.organizationId)
-      .filter((alert) => query.estado === undefined || query.estado.length === 0 || query.estado.includes(alert.status))
+      .filter((alert) => query.status === undefined || query.status.length === 0 || query.status.includes(alert.status))
       .filter(
         (alert) =>
-          query.severidad === undefined || query.severidad.length === 0 || query.severidad.includes(alert.severity),
+          query.severity === undefined || query.severity.length === 0 || query.severity.includes(alert.severity),
       )
       .filter(
         (alert) => query.watchlistId === undefined || String(alert.matchedEntry.watchlistId) === query.watchlistId,

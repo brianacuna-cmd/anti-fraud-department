@@ -108,7 +108,7 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
     expect(count).toBe(1);
   });
 
-  it('lists tenant alerts newest first and filters by estado', async () => {
+  it('lists tenant alerts newest first and filters by status', async () => {
     const older = buildAlert({ customerId: oid('customer-older') });
     const newer = AmlAlert.create({
       id: generateAmlAlertId(),
@@ -143,7 +143,7 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
 
     const investigating = await repository.list({
       organizationId: oid('org-1'),
-      estado: ['INVESTIGATING'],
+      status: ['INVESTIGATING'],
       limit: 20,
       offset: 0,
     });
@@ -186,7 +186,7 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
     expect(count).toBe(2);
   });
 
-  it('filters by severidad, watchlist_id, and created_at range, combined with AND', async () => {
+  it('filters by severity, watchlist_id, and created_at range, combined with AND', async () => {
     const watchlistA = oid('watchlist-a');
     const watchlistB = oid('watchlist-b');
     const low = AmlAlert.create({
@@ -244,13 +244,13 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
     await repository.save(highOldWatchlist);
     await repository.save(highMatch);
 
-    const bySeveridad = await repository.list({
+    const bySeverity = await repository.list({
       organizationId: oid('org-1'),
-      severidad: ['HIGH'],
+      severity: ['HIGH'],
       limit: 20,
       offset: 0,
     });
-    expect(bySeveridad.total).toBe(2);
+    expect(bySeverity.total).toBe(2);
 
     const byWatchlist = await repository.list({
       organizationId: oid('org-1'),
@@ -272,7 +272,7 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
 
     const combined = await repository.list({
       organizationId: oid('org-1'),
-      severidad: ['HIGH'],
+      severity: ['HIGH'],
       watchlistId: watchlistA,
       limit: 20,
       offset: 0,
@@ -282,7 +282,7 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
 
     const noMatch = await repository.list({
       organizationId: oid('org-1'),
-      severidad: ['LOW'],
+      severity: ['LOW'],
       watchlistId: watchlistB,
       limit: 20,
       offset: 0,

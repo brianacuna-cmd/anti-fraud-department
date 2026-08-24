@@ -141,8 +141,8 @@ describe('screenThenScoreToCaseOrchestrator (integration, real Mongo, fallback c
 
     const alerts = await db.collection('aml_alerts').find({ customer_id: oid('customer-1') }).toArray();
     expect(alerts).toHaveLength(1);
-    expect(alerts[0]?.estado).toBe('OPEN');
-    expect(alerts[0]?.severidad).toBe('HIGH');
+    expect(alerts[0]?.status).toBe('OPEN');
+    expect(alerts[0]?.severity).toBe('HIGH');
 
     const timeline = await db.collection('case_timeline').find({ case_id: alerts[0]?._id }).toArray();
     expect(timeline).toHaveLength(1);

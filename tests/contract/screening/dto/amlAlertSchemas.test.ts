@@ -14,10 +14,10 @@ describe('listAmlAlertsQuerySchema', () => {
     }
   });
 
-  it('accepts estado, severidad, watchlist_id, from, and to together', () => {
+  it('accepts status, severity, watchlist_id, from, and to together', () => {
     const result = listAmlAlertsQuerySchema.safeParse({
-      estado: 'OPEN',
-      severidad: 'HIGH',
+      status: 'OPEN',
+      severity: 'HIGH',
       watchlist_id: '507f1f77bcf86cd799439011',
       from: '2026-01-01T00:00:00.000Z',
       to: '2026-01-31T00:00:00.000Z',
@@ -26,14 +26,14 @@ describe('listAmlAlertsQuerySchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects an unknown severidad value', () => {
-    const result = listAmlAlertsQuerySchema.safeParse({ severidad: 'BOGUS' });
+  it('rejects an unknown severity value', () => {
+    const result = listAmlAlertsQuerySchema.safeParse({ severity: 'BOGUS' });
 
     expect(result.success).toBe(false);
   });
 
-  it('rejects an unknown estado value', () => {
-    const result = listAmlAlertsQuerySchema.safeParse({ estado: 'BOGUS' });
+  it('rejects an unknown status value', () => {
+    const result = listAmlAlertsQuerySchema.safeParse({ status: 'BOGUS' });
 
     expect(result.success).toBe(false);
   });

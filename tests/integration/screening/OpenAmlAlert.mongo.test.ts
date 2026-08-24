@@ -94,8 +94,8 @@ describe('OpenAmlAlert (integration, real Mongo transaction)', () => {
 
     const alerts = await db.collection('aml_alerts').find({}).toArray();
     expect(alerts).toHaveLength(1);
-    expect(alerts[0]?.estado).toBe('OPEN');
-    expect(alerts[0]?.severidad).toBe('HIGH');
+    expect(alerts[0]?.status).toBe('OPEN');
+    expect(alerts[0]?.severity).toBe('HIGH');
 
     const timeline = await db.collection('case_timeline').find({}).toArray();
     expect(timeline).toHaveLength(1);
