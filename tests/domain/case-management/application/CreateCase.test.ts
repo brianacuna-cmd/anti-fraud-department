@@ -157,6 +157,151 @@ describe('createCreateCaseUseCase (T2 SLA after RouteCase)', () => {
   });
 });
 
+describe('createCreateCaseUseCase idempotencyKey passthrough', () => {
+  it('accepts an idempotencyKey and persists it on the created Case', async () => {
+    const { createCase, cases } = buildCreateCase();
+
+    const kase = await createCase({
+      auth: ANALYST,
+      customerId: 'customer-1',
+      riskScore: 42,
+      priority: 'MEDIUM',
+      idempotencyKey: 'idem-key-1',
+    });
+
+    expect(kase.idempotencyKey).toBe('idem-key-1');
+    expect(cases.all()[0]?.idempotencyKey).toBe('idem-key-1');
+  });
+});
+
+describe('createCreateCaseUseCase idempotent short-circuit (D2/D3)', () => {
+  it('short-circuits on a repeated idempotencyKey: no new Case, no re-run of routeCase/calculateSla/timeline/audit', async () => {
+    const { createCase, cases, timelineRecorder, auditRecorder } = buildCreateCase();
+
+    const first = await createCase({
+      auth: ANALYST,
+      customerId: 'customer-1',
+      riskScore: 90,
+      priority: 'HIGH',
+      idempotencyKey: 'retry-key',
+    });
+    expect(cases.all()).toHaveLength(1);
+    const timelineCountAfterFirst = timelineRecorder.all().length;
+    const auditCountAfterFirst = auditRecorder.all().length;
+
+    const second = await createCase({
+      auth: ANALYST,
+      customerId: 'customer-1',
+      riskScore: 90,
+      priority: 'HIGH',
+      idempotencyKey: 'retry-key',
+    });
+
+    expect(second.id).toBe(first.id);
+    expect(cases.all()).toHaveLength(1);
+    expect(timelineRecorder.all()).toHaveLength(timelineCountAfterFirst);
+    expect(auditRecorder.all()).toHaveLength(auditCountAfterFirst);
+  });
+
+  it('treats a whitespace-only idempotencyKey as absent (stored as null, no short-circuit)', async () => {
+    const { createCase, cases } = buildCreateCase();
+
+    await createCase({
+      auth: ANALYST,
+      customerId: 'customer-1',
+      riskScore: 42,
+      priority: 'MEDIUM',
+      idempotencyKey: '   ',
+    });
+    const second = await createCase({
+      auth: ANALYST,
+      customerId: 'customer-2',
+      riskScore: 42,
+      priority: 'MEDIUM',
+      idempotencyKey: '   ',
+    });
+
+    expect(cases.all()).toHaveLength(2);
+    expect(second.idempotencyKey).toBeNull();
+  });
+
+  it('creates two independent Cases with the same idempotencyKey across different orgs', async () => {
+    const cases = new InMemoryCaseRepository();
+    const timelineRecorder = new InMemoryTimelineRecorder();
+    const auditRecorder = new InMemoryCaseManagementAuditRecorder();
+    const routingRules = new InMemoryCaseRoutingRuleRepository();
+    const fraudConfig = new InMemoryOrganizationFraudConfigRepository();
+    const slaTracking = new InMemoryCaseSlaTrackingRepository();
+    const clock = new FixedClock(NOW);
+    seedFraudConfig(fraudConfig);
+    fraudConfig.seed(
+      OrganizationFraudConfig.create({
+        id: generateOrganizationFraudConfigId(),
+        organizationId: oid('org-2'),
+        slaLowMinutes: 240,
+        slaMediumMinutes: 120,
+        slaHighMinutes: 60,
+        slaCriticalMinutes: 30,
+        riskThresholdLow: 25,
+        riskThresholdMedium: 50,
+        riskThresholdHigh: 75,
+        riskThresholdCritical: 90,
+        featureFlags: {},
+        now: NOW,
+      }),
+    );
+    const routeCase = createRouteCaseUseCase({
+      cases,
+      routingRules,
+      routingEngine: new NoMatchRoutingEngine(),
+      timelineRecorder,
+      auditRecorder,
+      fraudConfig,
+      clock,
+      generateTimelineEventId,
+    });
+    const calculateSla = createCalculateSlaUseCase({
+      cases,
+      slaTracking,
+      fraudConfig,
+      clock,
+      generateCaseSlaTrackingId,
+    });
+    const createCase = createCreateCaseUseCase({
+      cases,
+      timelineRecorder,
+      unitOfWork: new PassthroughUnitOfWork(),
+      clock,
+      generateCaseId,
+      generateTimelineEventId,
+      auditRecorder,
+      routeCase,
+      calculateSla,
+    });
+
+    const orgOneAuth = ANALYST;
+    const orgTwoAuth = createAuthContext({ userId: oid('analyst-2'), organizationId: oid('org-2'), actorType: 'USER' });
+
+    const first = await createCase({
+      auth: orgOneAuth,
+      customerId: 'customer-1',
+      riskScore: 42,
+      priority: 'MEDIUM',
+      idempotencyKey: 'shared-key',
+    });
+    const second = await createCase({
+      auth: orgTwoAuth,
+      customerId: 'customer-1',
+      riskScore: 42,
+      priority: 'MEDIUM',
+      idempotencyKey: 'shared-key',
+    });
+
+    expect(first.id).not.toBe(second.id);
+    expect(cases.all()).toHaveLength(2);
+  });
+});
+
 describe('createCreateCaseUseCase optional finturuCacheSnapshot', () => {
   it('persists finturuCacheSnapshot and caller-supplied priority when provided (automated path)', async () => {
     const { createCase, cases } = buildCreateCase();
