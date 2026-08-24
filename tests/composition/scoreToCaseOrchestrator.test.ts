@@ -214,6 +214,44 @@ describe('createScoreToCaseOrchestrator', () => {
     expect(createCase).not.toHaveBeenCalled();
   });
 
+  it('strips subjectIdentity PII from finturuCacheSnapshot while keeping other event fields', async () => {
+    const event = buildEvent({
+      subjectIdentity: {
+        nombre: 'John Doe',
+        documento: '123456789',
+        walletAddress: '0xabc',
+        entryType: 'PERSON',
+      },
+    });
+    const scoreResult: CalculateRiskScoreResult = {
+      riskScore: 88 as CalculateRiskScoreResult['riskScore'],
+      ruleId: oid('rule-1') as CalculateRiskScoreResult['ruleId'],
+      name: 'active-rule',
+      conditionsVersion: 2,
+      hits: [],
+    };
+    const createCaseCalls: unknown[] = [];
+    const process = createScoreToCaseOrchestrator({
+      calculateRiskScore: async () => scoreResult,
+      getOrganizationFraudConfig: async () => buildConfig(),
+      createCase: async (input) => {
+        createCaseCalls.push(input);
+        return stubCase('HIGH', (input.finturuCacheSnapshot as Record<string, unknown>) ?? null);
+      },
+    });
+
+    await process({ auth: AUTH, event });
+
+    const call = createCaseCalls[0] as { finturuCacheSnapshot: Record<string, unknown> };
+    const persistedEvent = call.finturuCacheSnapshot.event as Record<string, unknown>;
+    expect(persistedEvent).not.toHaveProperty('subjectIdentity');
+    expect(persistedEvent).not.toHaveProperty('nombre');
+    expect(persistedEvent).not.toHaveProperty('documento');
+    expect(persistedEvent).not.toHaveProperty('walletAddress');
+    expect(persistedEvent.provider).toBe('stripe');
+    expect(persistedEvent.caseCustomerId).toBe('cust-1');
+  });
+
   it('freezes hits as [] when engine omitted hits evidence', async () => {
     const createCaseCalls: Array<{
       priority?: string;

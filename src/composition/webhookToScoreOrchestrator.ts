@@ -54,6 +54,7 @@ function toCanonicalRiskEvent(event: IngestedPaymentEvent) {
     ...(event.providerEventId !== undefined ? { providerEventId: event.providerEventId } : {}),
     ...(event.rail !== undefined ? { rail: event.rail } : {}),
     ...(event.rawPayload !== undefined ? { rawPayload: event.rawPayload } : {}),
+    ...(event.subjectIdentity !== undefined ? { subjectIdentity: event.subjectIdentity } : {}),
   });
 }
 

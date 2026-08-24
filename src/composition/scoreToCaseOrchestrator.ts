@@ -86,6 +86,7 @@ function buildFinturuCacheSnapshot(
 ): Record<string, unknown> {
   const eventSansRaw: Record<string, unknown> = { ...event };
   delete eventSansRaw.rawPayload;
+  delete eventSansRaw.subjectIdentity;
   return {
     event: eventSansRaw,
     ruleId: scoreResult.ruleId,

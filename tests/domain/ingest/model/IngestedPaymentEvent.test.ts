@@ -83,6 +83,31 @@ describe('createIngestedPaymentEvent', () => {
     expect(() => createIngestedPaymentEvent(withoutAmount)).toThrow(IngestError);
   });
 
+  it('leaves subjectIdentity undefined when absent', () => {
+    const event = createIngestedPaymentEvent({ ...VALID });
+
+    expect(event.subjectIdentity).toBeUndefined();
+  });
+
+  it('preserves a populated subjectIdentity', () => {
+    const event = createIngestedPaymentEvent({
+      ...VALID,
+      subjectIdentity: {
+        nombre: 'John Doe',
+        documento: '123456789',
+        walletAddress: '0xabc',
+        entryType: 'PERSON',
+      },
+    });
+
+    expect(event.subjectIdentity).toEqual({
+      nombre: 'John Doe',
+      documento: '123456789',
+      walletAddress: '0xabc',
+      entryType: 'PERSON',
+    });
+  });
+
   it('does not copy Stripe risk score onto a department riskScore field', () => {
     const event = createIngestedPaymentEvent(VALID);
 
