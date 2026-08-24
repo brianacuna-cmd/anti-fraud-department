@@ -78,8 +78,8 @@ describe('createResolveAmlAlertUseCase', () => {
     const alert = await resolveAmlAlert({
       auth: ANALYST,
       alertId: oid('alert-1'),
-      dictamen: 'CONFIRMED_MATCH',
-      justificacion: 'Matched government ID.',
+      verdict: 'CONFIRMED_MATCH',
+      justification: 'Matched government ID.',
     });
 
     expect(alert.status).toBe('RESOLVED');
@@ -98,7 +98,7 @@ describe('createResolveAmlAlertUseCase', () => {
       action: 'RESOLVE_AML_ALERT',
       resource: 'aml_alert',
       resourceId: oid('alert-1'),
-      detail: { dictamen: 'CONFIRMED_MATCH', justificacion: 'Matched government ID.' },
+      detail: { verdict: 'CONFIRMED_MATCH', justification: 'Matched government ID.' },
     });
   });
 
@@ -110,19 +110,19 @@ describe('createResolveAmlAlertUseCase', () => {
     const alert = await resolveAmlAlert({
       auth: ANALYST,
       alertId: oid('alert-1'),
-      dictamen: 'FALSE_POSITIVE',
-      justificacion: 'Different date of birth.',
+      verdict: 'FALSE_POSITIVE',
+      justification: 'Different date of birth.',
     });
 
     expect(alert.status).toBe('FALSE_POSITIVE');
     expect(auditRecorder.events).toHaveLength(1);
     expect(auditRecorder.events[0]?.detail).toEqual({
-      dictamen: 'FALSE_POSITIVE',
-      justificacion: 'Different date of birth.',
+      verdict: 'FALSE_POSITIVE',
+      justification: 'Different date of birth.',
     });
   });
 
-  it('rejects an unknown dictamen value with no state change and no audit call', async () => {
+  it('rejects an unknown verdict value with no state change and no audit call', async () => {
     const auditRecorder = new RecordingAuditRecorder();
     const { amlAlertRepository, resolveAmlAlert } = buildUseCase(auditRecorder);
     await amlAlertRepository.save(buildAlert().transitionTo('INVESTIGATING', NOW));
@@ -132,8 +132,8 @@ describe('createResolveAmlAlertUseCase', () => {
         auth: ANALYST,
         alertId: oid('alert-1'),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        dictamen: 'BOGUS' as any,
-        justificacion: 'valid text',
+        verdict: 'BOGUS' as any,
+        justification: 'valid text',
       }),
     ).rejects.toMatchObject({ code: 'INVARIANT_VIOLATION' });
 
@@ -141,7 +141,7 @@ describe('createResolveAmlAlertUseCase', () => {
     expect(auditRecorder.events).toHaveLength(0);
   });
 
-  it('rejects an empty/whitespace justificacion at the domain layer', async () => {
+  it('rejects an empty/whitespace justification at the domain layer', async () => {
     const auditRecorder = new RecordingAuditRecorder();
     const { amlAlertRepository, resolveAmlAlert } = buildUseCase(auditRecorder);
     await amlAlertRepository.save(buildAlert().transitionTo('INVESTIGATING', NOW));
@@ -150,8 +150,8 @@ describe('createResolveAmlAlertUseCase', () => {
       resolveAmlAlert({
         auth: ANALYST,
         alertId: oid('alert-1'),
-        dictamen: 'CONFIRMED_MATCH',
-        justificacion: '   ',
+        verdict: 'CONFIRMED_MATCH',
+        justification: '   ',
       }),
     ).rejects.toMatchObject({ code: 'INVARIANT_VIOLATION' });
 
@@ -170,8 +170,8 @@ describe('createResolveAmlAlertUseCase', () => {
       resolveAmlAlert({
         auth: ANALYST,
         alertId: oid('alert-1'),
-        dictamen: 'FALSE_POSITIVE',
-        justificacion: 'valid text',
+        verdict: 'FALSE_POSITIVE',
+        justification: 'valid text',
       }),
     ).rejects.toMatchObject({ code: 'INVALID_TRANSITION' });
 
@@ -190,8 +190,8 @@ describe('createResolveAmlAlertUseCase', () => {
       resolveAmlAlert({
         auth: ANALYST,
         alertId: oid('alert-1'),
-        dictamen: 'CONFIRMED_MATCH',
-        justificacion: 'valid text',
+        verdict: 'CONFIRMED_MATCH',
+        justification: 'valid text',
       }),
     ).rejects.toMatchObject({ code: 'INVALID_TRANSITION' });
 
@@ -207,8 +207,8 @@ describe('createResolveAmlAlertUseCase', () => {
       resolveAmlAlert({
         auth: ANALYST,
         alertId: oid('alert-1'),
-        dictamen: 'CONFIRMED_MATCH',
-        justificacion: 'valid text',
+        verdict: 'CONFIRMED_MATCH',
+        justification: 'valid text',
       }),
     ).rejects.toMatchObject({ code: 'FORBIDDEN_CROSS_TENANT' });
 
@@ -223,8 +223,8 @@ describe('createResolveAmlAlertUseCase', () => {
       resolveAmlAlert({
         auth: ANALYST,
         alertId: oid('alert-1'),
-        dictamen: 'CONFIRMED_MATCH',
-        justificacion: 'valid text',
+        verdict: 'CONFIRMED_MATCH',
+        justification: 'valid text',
       }),
     ).rejects.toThrow('audit write failed');
   });

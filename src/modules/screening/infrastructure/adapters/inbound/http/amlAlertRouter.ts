@@ -75,8 +75,8 @@ export function amlAlertRouter(deps: AmlAlertRouterDeps): Router {
     const alert = await deps.resolveAmlAlert({
       auth,
       alertId: req.params.alertId!,
-      dictamen: body.dictamen,
-      justificacion: body.justificacion,
+      verdict: body.verdict,
+      justification: body.justification,
     });
     res.status(200).json(toAmlAlertResponse(alert));
   });
