@@ -18,6 +18,15 @@ export const calculateRiskScoreSchema = z
     providerEventId: z.string().min(1).optional(),
     rail: z.string().min(1).optional(),
     rawPayload: z.record(z.string(), z.unknown()).optional(),
+    subjectIdentity: z
+      .object({
+        nombre: z.string().optional(),
+        documento: z.string().optional(),
+        walletAddress: z.string().optional(),
+        entryType: z.string().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
