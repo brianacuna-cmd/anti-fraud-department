@@ -910,7 +910,7 @@ async function bootstrap(): Promise<void> {
   // organization; instead they are resolved per REQUEST (request-scoped
   // override input — `ScreenSubjectAgainstWatchlistInput.thresholds`) and
   // passed through `screening` below. Missing config rows default to
-  // `DEFAULT_CONFIANZA_THRESHOLDS` (50/70) — RF-6, never a not-found error.
+  // `DEFAULT_CONFIDENCE_THRESHOLDS` (50/70) — RF-6, never a not-found error.
   const organizationScreeningConfig = new MongoOrganizationScreeningConfigRepository(db);
   const getOrganizationScreeningConfig = createGetOrganizationScreeningConfigUseCase({
     repository: organizationScreeningConfig,

@@ -26,7 +26,7 @@ export interface CreateOrganizationScreeningConfigInput {
  * NOT here — mirrors `OrganizationFraudConfig`'s private-ctor +
  * create/rehydrate immutable-props shape. Unlike `OrganizationFraudConfig`,
  * a MISSING row is not an error (RF-6): `GetOrganizationScreeningConfig`
- * falls back to `DEFAULT_CONFIANZA_THRESHOLDS` instead of throwing.
+ * falls back to `DEFAULT_CONFIDENCE_THRESHOLDS` instead of throwing.
  */
 export class OrganizationScreeningConfig {
   private constructor(private readonly props: OrganizationScreeningConfigProps) {}

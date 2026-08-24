@@ -1,7 +1,7 @@
 import type { MatchScore } from '../model/value-objects/MatchScore.js';
 import type { AmlAlertSeverity } from '../model/value-objects/AmlAlertSeverity.js';
-import type { ConfianzaThresholds } from './ConfianzaTiering.js';
-import { DEFAULT_CONFIANZA_THRESHOLDS } from './ConfianzaTiering.js';
+import type { ConfidenceThresholds } from './ConfidenceTiering.js';
+import { DEFAULT_CONFIDENCE_THRESHOLDS } from './ConfidenceTiering.js';
 
 const KNOWN_NIVEL_RIESGO: ReadonlySet<string> = new Set<AmlAlertSeverity>([
   'LOW',
@@ -18,13 +18,13 @@ const RANK: Readonly<Record<AmlAlertSeverity, number>> = {
 };
 
 /**
- * Severity band from confianza vs the org's alert/signal thresholds.
+ * Severity band from confidence vs the org's alert/signal thresholds.
  * Returns `null` below `alertThreshold` (caller must not open an expediente).
  * ALERT_ONLY → MEDIUM; ALERT_AND_SIGNAL → HIGH. Never hardcodes 50/70.
  */
-export function severityFromConfianza(
+export function severityFromConfidence(
   score: MatchScore,
-  thresholds: ConfianzaThresholds = DEFAULT_CONFIANZA_THRESHOLDS,
+  thresholds: ConfidenceThresholds = DEFAULT_CONFIDENCE_THRESHOLDS,
 ): AmlAlertSeverity | null {
   if (score < thresholds.alertThreshold) {
     return null;
@@ -57,16 +57,16 @@ export function maxSeverity(a: AmlAlertSeverity, b: AmlAlertSeverity | null): Am
 }
 
 /**
- * Calculated expediente severity: the higher of the confianza band and the
+ * Calculated expediente severity: the higher of the confidence band and the
  * matched entry's `nivelRiesgo` (when that value is a known severity).
  * `null` means similarity is below the configured alert threshold.
  */
 export function calculateAmlAlertSeverity(
   score: MatchScore,
-  thresholds: ConfianzaThresholds,
+  thresholds: ConfidenceThresholds,
   nivelRiesgo: string | null,
 ): AmlAlertSeverity | null {
-  const fromScore = severityFromConfianza(score, thresholds);
+  const fromScore = severityFromConfidence(score, thresholds);
   if (fromScore === null) {
     return null;
   }

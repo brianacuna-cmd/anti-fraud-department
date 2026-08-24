@@ -147,7 +147,7 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
     expect(result.matches[0]?.tier).toBe('ALERT_AND_SIGNAL');
     expect(result.riskSignal).not.toBeNull();
     expect(result.riskSignal?.watchlistHit).toBe(true);
-    expect(result.riskSignal?.watchlistConfidence).toBe(result.matches[0]?.confianza);
+    expect(result.riskSignal?.watchlistConfidence).toBe(result.matches[0]?.confidence);
     expect(result.riskSignal?.watchlistRiskLevel).toBe('HIGH');
     expect(amlAlertRepository.all()).toHaveLength(1);
   });
@@ -209,7 +209,7 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
     });
 
     expect(result.matches).toHaveLength(2);
-    expect(result.matches[0]?.confianza).toBeGreaterThanOrEqual(result.matches[1]?.confianza ?? 0);
+    expect(result.matches[0]?.confidence).toBeGreaterThanOrEqual(result.matches[1]?.confidence ?? 0);
     expect(result.matches[0]?.match.entryId).toBe(strong.id);
   });
 
@@ -246,7 +246,7 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
 
     expect(encodeSpy).not.toHaveBeenCalled();
     expect(result.matches[0]?.match.matchField).toBe('WALLET');
-    expect(result.matches[0]?.confianza).toBe(100);
+    expect(result.matches[0]?.confidence).toBe(100);
   });
 
   it('rejects a missing tenant context before querying candidates', async () => {
@@ -361,7 +361,7 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
     expect(watchlistCandidateRepository.calls[0]?.documento).toBe('12345');
     // And exact matching (levenshtein 0) must succeed against the stored entry.
     expect(result.matches[0]?.match.matchField).toBe('DOCUMENTO');
-    expect(result.matches[0]?.confianza).toBe(100);
+    expect(result.matches[0]?.confidence).toBe(100);
   });
 
   it('tiers using per-call thresholds override (D-8) instead of the deps-level default', async () => {
