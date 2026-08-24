@@ -128,23 +128,6 @@ describe('un expediente cerrado no se instruye', () => {
 
 function toProps(kase: Case) {
   return {
-    id: kase.id,
-    organizationId: kase.organizationId,
-    customerId: kase.customerId,
-    customerEmail: kase.customerEmail,
-    bridgeUserId: kase.bridgeUserId,
-    bridgeWallet: kase.bridgeWallet,
-    stripeCustomerId: kase.stripeCustomerId,
-    finturuReference: kase.finturuReference,
-    finturuCacheSnapshot: kase.finturuCacheSnapshot,
-    riskScore: kase.riskScore,
-    status: kase.status,
-    priority: kase.priority,
-    assignedTo: kase.assignedTo,
-    dueDate: kase.dueDate,
-    tags: kase.tags,
-    createdAt: kase.createdAt,
-    updatedAt: kase.updatedAt,
-    deletedAt: kase.deletedAt,
+    ...kase.toProps(),
   };
 }
