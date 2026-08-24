@@ -5,6 +5,7 @@ import type { createGetAmlAlertUseCase } from '../../../../application/GetAmlAle
 import type { createGetAmlAlertTimelineUseCase } from '../../../../application/GetAmlAlertTimeline.js';
 import type { createTransitionAmlAlertUseCase } from '../../../../application/TransitionAmlAlert.js';
 import type { createEscalateAmlAlertUseCase } from '../../../../application/EscalateAmlAlert.js';
+import type { createResolveAmlAlertUseCase } from '../../../../application/ResolveAmlAlert.js';
 import { listAmlAlertsQuerySchema, resolveAmlAlertSchema } from './dto/amlAlertSchemas.js';
 import { toAmlAlertResponse, toAmlAlertTimelineEventResponse } from './mappers/AmlAlertHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
@@ -15,6 +16,7 @@ export interface AmlAlertRouterDeps {
   readonly getAmlAlertTimeline: ReturnType<typeof createGetAmlAlertTimelineUseCase>;
   readonly transitionAmlAlert: ReturnType<typeof createTransitionAmlAlertUseCase>;
   readonly escalateAmlAlert: ReturnType<typeof createEscalateAmlAlertUseCase>;
+  readonly resolveAmlAlert: ReturnType<typeof createResolveAmlAlertUseCase>;
 }
 
 /**
@@ -62,13 +64,14 @@ export function amlAlertRouter(deps: AmlAlertRouterDeps): Router {
     res.status(200).json(toAmlAlertResponse(alert));
   });
 
-  router.post('/aml-alerts/:alertId/resolve', async (req, res) => {
+  router.patch('/aml-alerts/:alertId/resolve', async (req, res) => {
     const auth = requireAuthContext(req);
     const body = parseRequest(resolveAmlAlertSchema, req.body);
-    const alert = await deps.transitionAmlAlert({
+    const alert = await deps.resolveAmlAlert({
       auth,
       alertId: req.params.alertId!,
-      next: body.outcome,
+      dictamen: body.dictamen,
+      justificacion: body.justificacion,
     });
     res.status(200).json(toAmlAlertResponse(alert));
   });

@@ -15,6 +15,8 @@ import { createGetAmlAlertUseCase } from '../../../../src/modules/screening/appl
 import { createGetAmlAlertTimelineUseCase } from '../../../../src/modules/screening/application/GetAmlAlertTimeline.js';
 import { createTransitionAmlAlertUseCase } from '../../../../src/modules/screening/application/TransitionAmlAlert.js';
 import { createEscalateAmlAlertUseCase } from '../../../../src/modules/screening/application/EscalateAmlAlert.js';
+import { createResolveAmlAlertUseCase } from '../../../../src/modules/screening/application/ResolveAmlAlert.js';
+import type { AuditEvent, AuditRecorder } from '../../../../src/modules/screening/domain/ports/AuditRecorder.js';
 import { AmlAlert } from '../../../../src/modules/screening/domain/model/aggregates/AmlAlert.js';
 import { createAmlAlertId } from '../../../../src/modules/screening/domain/model/value-objects/AmlAlertId.js';
 import { createWatchlistEntryId } from '../../../../src/modules/screening/domain/model/value-objects/WatchlistEntryId.js';
@@ -55,9 +57,18 @@ function buildAlert(id: string, organizationId = ORG_1): AmlAlert {
   });
 }
 
+class RecordingAuditRecorder implements AuditRecorder {
+  readonly events: AuditEvent[] = [];
+
+  async record(event: AuditEvent): Promise<void> {
+    this.events.push(event);
+  }
+}
+
 function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
   const amlAlertRepository = new InMemoryAmlAlertRepository();
   const timelineRecorder = new InMemoryAmlExpedienteTimelineRecorder();
+  const auditRecorder = new RecordingAuditRecorder();
   const getAmlAlert = createGetAmlAlertUseCase({ amlAlertRepository });
   const router = amlAlertRouter({
     listAmlAlerts: createListAmlAlertsUseCase({ amlAlertRepository }),
@@ -78,6 +89,14 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
       clock: new FixedClock(NOW),
       generateTimelineEventId: generateObjectIdHex,
     }),
+    resolveAmlAlert: createResolveAmlAlertUseCase({
+      amlAlertRepository,
+      timelineRecorder,
+      auditRecorder,
+      unitOfWork: new PassthroughUnitOfWork(),
+      clock: new FixedClock(NOW),
+      generateTimelineEventId: generateObjectIdHex,
+    }),
   });
 
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {
@@ -94,7 +113,7 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
     errorHandler: createErrorHandler(screeningErrorStatus),
   });
 
-  return { app, amlAlertRepository, timelineRecorder };
+  return { app, amlAlertRepository, timelineRecorder, auditRecorder };
 }
 
 describe('GET /api/v1/aml-alerts (compliance inbox)', () => {
@@ -138,8 +157,8 @@ describe('GET /api/v1/aml-alerts/:alertId', () => {
 });
 
 describe('AML alert triage', () => {
-  it('investigates, then resolves as FALSE_POSITIVE without a Case', async () => {
-    const { app, amlAlertRepository } = buildApp();
+  it('investigates, then resolves as FALSE_POSITIVE without a Case, writing an audit row', async () => {
+    const { app, amlAlertRepository, auditRecorder } = buildApp();
     await amlAlertRepository.save(buildAlert(oid('fp-alert')));
 
     const investigating = await request(app).post(`/api/v1/aml-alerts/${oid('fp-alert')}/investigate`);
@@ -155,23 +174,114 @@ describe('AML alert triage', () => {
     );
 
     const resolved = await request(app)
-      .post(`/api/v1/aml-alerts/${oid('fp-alert')}/resolve`)
-      .send({ outcome: 'FALSE_POSITIVE' });
+      .patch(`/api/v1/aml-alerts/${oid('fp-alert')}/resolve`)
+      .send({ dictamen: 'FALSE_POSITIVE', justificacion: 'Different date of birth.' });
     expect(resolved.status).toBe(200);
     expect(resolved.body.estado).toBe('FALSE_POSITIVE');
     expect(resolved.body.caseId).toBeNull();
+    expect(auditRecorder.events).toHaveLength(1);
+    expect(auditRecorder.events[0]).toMatchObject({
+      action: 'RESOLVE_AML_ALERT',
+      resource: 'aml_alert',
+      resourceId: oid('fp-alert'),
+      detail: { dictamen: 'FALSE_POSITIVE', justificacion: 'Different date of birth.' },
+    });
   });
 
-  it('returns 422 when resolving an OPEN alert', async () => {
-    const { app, amlAlertRepository } = buildApp();
+  it('resolves CONFIRMED_MATCH to RESOLVED, writing an audit row', async () => {
+    const { app, amlAlertRepository, auditRecorder } = buildApp();
+    await amlAlertRepository.save(buildAlert(oid('cm-alert')).transitionTo('INVESTIGATING', NOW));
+
+    const resolved = await request(app)
+      .patch(`/api/v1/aml-alerts/${oid('cm-alert')}/resolve`)
+      .send({ dictamen: 'CONFIRMED_MATCH', justificacion: 'Matched government ID.' });
+
+    expect(resolved.status).toBe(200);
+    expect(resolved.body.estado).toBe('RESOLVED');
+    expect(auditRecorder.events).toHaveLength(1);
+  });
+
+  it('returns 400 for an unknown dictamen value', async () => {
+    const { app, amlAlertRepository, auditRecorder } = buildApp();
+    await amlAlertRepository.save(buildAlert(oid('bogus-dictamen')).transitionTo('INVESTIGATING', NOW));
+
+    const response = await request(app)
+      .patch(`/api/v1/aml-alerts/${oid('bogus-dictamen')}/resolve`)
+      .send({ dictamen: 'BOGUS', justificacion: 'valid text' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
+    expect(auditRecorder.events).toHaveLength(0);
+  });
+
+  it('returns 400 for a missing/empty justificacion', async () => {
+    const { app, amlAlertRepository, auditRecorder } = buildApp();
+    await amlAlertRepository.save(buildAlert(oid('empty-justificacion')).transitionTo('INVESTIGATING', NOW));
+
+    const missing = await request(app)
+      .patch(`/api/v1/aml-alerts/${oid('empty-justificacion')}/resolve`)
+      .send({ dictamen: 'CONFIRMED_MATCH' });
+    expect(missing.status).toBe(400);
+    expect(missing.body.error.code).toBe('INVARIANT_VIOLATION');
+
+    const empty = await request(app)
+      .patch(`/api/v1/aml-alerts/${oid('empty-justificacion')}/resolve`)
+      .send({ dictamen: 'CONFIRMED_MATCH', justificacion: '   ' });
+    expect(empty.status).toBe(400);
+    expect(empty.body.error.code).toBe('INVARIANT_VIOLATION');
+    expect(auditRecorder.events).toHaveLength(0);
+  });
+
+  it('returns 422 when resolving an OPEN alert (must investigate first)', async () => {
+    const { app, amlAlertRepository, auditRecorder } = buildApp();
     await amlAlertRepository.save(buildAlert(oid('still-open')));
 
     const response = await request(app)
-      .post(`/api/v1/aml-alerts/${oid('still-open')}/resolve`)
-      .send({ outcome: 'RESOLVED' });
+      .patch(`/api/v1/aml-alerts/${oid('still-open')}/resolve`)
+      .send({ dictamen: 'CONFIRMED_MATCH', justificacion: 'valid text' });
 
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe('INVALID_TRANSITION');
+    expect(auditRecorder.events).toHaveLength(0);
+  });
+
+  it('returns 422 when resolving an already-terminal alert, with no new audit row', async () => {
+    const { app, amlAlertRepository, auditRecorder } = buildApp();
+    await amlAlertRepository.save(
+      buildAlert(oid('terminal-alert')).transitionTo('INVESTIGATING', NOW).transitionTo('RESOLVED', NOW),
+    );
+
+    const response = await request(app)
+      .patch(`/api/v1/aml-alerts/${oid('terminal-alert')}/resolve`)
+      .send({ dictamen: 'FALSE_POSITIVE', justificacion: 'valid text' });
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe('INVALID_TRANSITION');
+    expect(auditRecorder.events).toHaveLength(0);
+  });
+
+  it('returns 403 when resolving another tenant\'s alert', async () => {
+    const { app, amlAlertRepository, auditRecorder } = buildApp();
+    await amlAlertRepository.save(buildAlert(oid('foreign-resolve'), ORG_2).transitionTo('INVESTIGATING', NOW));
+
+    const response = await request(app)
+      .patch(`/api/v1/aml-alerts/${oid('foreign-resolve')}/resolve`)
+      .send({ dictamen: 'CONFIRMED_MATCH', justificacion: 'valid text' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN_CROSS_TENANT');
+    expect(auditRecorder.events).toHaveLength(0);
+  });
+
+  it('the old POST /aml-alerts/:id/resolve route no longer exists', async () => {
+    const { app, amlAlertRepository } = buildApp();
+    await amlAlertRepository.save(buildAlert(oid('old-route')).transitionTo('INVESTIGATING', NOW));
+
+    const response = await request(app)
+      .post(`/api/v1/aml-alerts/${oid('old-route')}/resolve`)
+      .send({ outcome: 'RESOLVED' });
+
+    expect([404, 405]).toContain(response.status);
   });
 
   it('escalates an OPEN alert to a fraud Case and keeps the AML lifecycle independent', async () => {
