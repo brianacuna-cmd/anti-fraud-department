@@ -30,7 +30,10 @@ import { authenticator } from 'otplib';
 import { AesGcmSecretCipher } from '../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
 
 const API = `http://localhost:${process.env.PORT ?? 3100}/api/v1`;
-const PASSWORD = 'Demo1234!';
+// NOSONAR (S2068): contrasena de los usuarios de demostracion que crea este
+// script en la base local. No es una credencial de ningun entorno real;
+// se puede sustituir por SEED_DEMO_PASSWORD para no depender del literal.
+const PASSWORD = process.env.SEED_DEMO_PASSWORD ?? 'Demo1234!'; // NOSONAR
 /**
  * Organización propia. NO se siembra dentro de la del usuario: el aislamiento
  * por inquilino es lo que hace que estos datos de demostración no aparezcan

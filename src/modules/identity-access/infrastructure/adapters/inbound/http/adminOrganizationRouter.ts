@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
+import { generateOtp } from './auth/generateOtp.js';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
 import { ObjectId, type Db } from 'mongodb';
@@ -135,7 +136,7 @@ export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Rout
     const email = result.email;
     const adminOrgId = result.adminOrganizationId;
 
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const otp = generateOtp();
     const challengeToken = 'admin_chal_' + randomUUID();
 
     pendingAdminLogins.set(challengeToken, {

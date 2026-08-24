@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
+import { generateOtp } from './auth/generateOtp.js';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
 import type { Db } from 'mongodb';
@@ -156,7 +157,7 @@ export function authRouter(deps: AuthRouterDeps): Router {
     });
 
     // Step 1: Generate OTP for email step
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const otp = generateOtp();
     const challengeToken = 'org_chal_' + randomUUID();
 
     pendingOrgLogins.set(body.email.toLowerCase(), {

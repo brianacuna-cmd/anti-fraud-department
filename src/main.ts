@@ -299,7 +299,11 @@ const PLATFORM_ADMIN_AUTH = process.env.PLATFORM_ADMIN_AUTH ?? 'disabled';
 // wire) so a future key rotation only needs to bump this and start a new
 // AesGcmSecretCipher instance; old tokens under the old version simply fail
 // to decrypt (`decrypt` returns null, never throws).
-const TOKEN_SECRET = process.env.TOKEN_SECRET ?? DEV_TOKEN_SECRET;
+// NOSONAR (S2068): `DEV_TOKEN_SECRET` no es una credencial, es el valor
+// por defecto de desarrollo. `assertAuthConfigSafeForProduction` aborta el
+// arranque si sigue puesto con NODE_ENV=production, asi que no puede llegar
+// a un despliegue real.
+const TOKEN_SECRET = process.env.TOKEN_SECRET ?? DEV_TOKEN_SECRET; // NOSONAR
 const TOKEN_KEY_VERSION = Number(process.env.TOKEN_KEY_VERSION ?? 1);
 // Fail-safe default `false` (design D-A7/§4a): a production deployment
 // behind a real reverse proxy MUST set TRUST_PROXY explicitly, or `req.ip`
