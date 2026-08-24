@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 const amlAlertStatusEnum = z.enum(['OPEN', 'INVESTIGATING', 'RESOLVED', 'FALSE_POSITIVE']);
+const amlAlertSeverityEnum = z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
 
 /** Coerces Express query `string | string[]` into a string array. */
 function asStringArray(value: unknown): string[] | undefined {
@@ -15,6 +16,10 @@ function asStringArray(value: unknown): string[] | undefined {
  */
 export const listAmlAlertsQuerySchema = z.object({
   estado: z.preprocess(asStringArray, z.array(amlAlertStatusEnum).optional()),
+  severidad: z.preprocess(asStringArray, z.array(amlAlertSeverityEnum).optional()),
+  watchlist_id: z.string().min(1).optional(),
+  from: z.iso.datetime().optional(),
+  to: z.iso.datetime().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),
 });

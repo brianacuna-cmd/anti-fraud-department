@@ -1,7 +1,9 @@
 import type { AmlAlert } from '../model/aggregates/AmlAlert.js';
 import type { AmlAlertId } from '../model/value-objects/AmlAlertId.js';
 import type { AmlAlertStatus } from '../model/value-objects/AmlAlertStatus.js';
+import type { AmlAlertSeverity } from '../model/value-objects/AmlAlertSeverity.js';
 import type { MatchField } from '../model/value-objects/MatchField.js';
+import type { Instant } from '../../../../shared/time/Instant.js';
 import type { Transaction } from './UnitOfWork.js';
 
 export interface AmlAlertNaturalKey {
@@ -14,6 +16,10 @@ export interface AmlAlertNaturalKey {
 export interface AmlAlertListQuery {
   readonly organizationId: string;
   readonly estado?: readonly AmlAlertStatus[];
+  readonly severidad?: readonly AmlAlertSeverity[];
+  readonly watchlistId?: string;
+  readonly createdAfter?: Instant;
+  readonly createdBefore?: Instant;
   readonly limit: number;
   readonly offset: number;
 }

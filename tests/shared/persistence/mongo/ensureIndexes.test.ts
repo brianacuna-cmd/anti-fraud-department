@@ -136,6 +136,30 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     expect(matchingNames).toHaveLength(1);
   });
 
+  it('creates the aml_alerts filter indexes (screening inbox triage Slice 2) and drops the old narrow estado index', async () => {
+    await ensureIndexes(db);
+    await ensureIndexes(db);
+
+    const alertIndexes = await db.collection('aml_alerts').indexes();
+
+    const orgEstadoCreatedIndex = alertIndexes.find(
+      (index) => index.name === 'aml_alert_org_estado_created_idx',
+    );
+    expect(orgEstadoCreatedIndex?.key).toEqual({ organization_id: 1, estado: 1, created_at: -1 });
+
+    const orgSeveridadIndex = alertIndexes.find((index) => index.name === 'aml_alert_org_severidad_idx');
+    expect(orgSeveridadIndex?.key).toEqual({ organization_id: 1, severidad: 1 });
+
+    const orgWatchlistIndex = alertIndexes.find((index) => index.name === 'aml_alert_org_watchlist_idx');
+    expect(orgWatchlistIndex?.key).toEqual({ organization_id: 1, 'matched_entry.watchlist_id': 1 });
+
+    expect(alertIndexes.find((index) => index.name === 'aml_alert_org_estado_idx')).toBeUndefined();
+
+    expect(
+      alertIndexes.filter((index) => index.name === 'aml_alert_org_estado_created_idx'),
+    ).toHaveLength(1);
+  });
+
   it('creates the OrganizationFraudConfig unique index (case-management Slice 2) and stays idempotent on re-run', async () => {
     await ensureIndexes(db);
     await ensureIndexes(db);

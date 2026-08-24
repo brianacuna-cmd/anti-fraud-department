@@ -9,6 +9,7 @@ import type { createResolveAmlAlertUseCase } from '../../../../application/Resol
 import { listAmlAlertsQuerySchema, resolveAmlAlertSchema } from './dto/amlAlertSchemas.js';
 import { toAmlAlertResponse, toAmlAlertTimelineEventResponse } from './mappers/AmlAlertHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
+import { fromDate } from '../../../../../../shared/time/Instant.js';
 
 export interface AmlAlertRouterDeps {
   readonly listAmlAlerts: ReturnType<typeof createListAmlAlertsUseCase>;
@@ -33,6 +34,10 @@ export function amlAlertRouter(deps: AmlAlertRouterDeps): Router {
     const page = await deps.listAmlAlerts({
       auth,
       estado: query.estado,
+      severidad: query.severidad,
+      watchlistId: query.watchlist_id,
+      createdAfter: query.from !== undefined ? fromDate(new Date(query.from)) : undefined,
+      createdBefore: query.to !== undefined ? fromDate(new Date(query.to)) : undefined,
       limit: query.limit,
       offset: query.offset,
     });

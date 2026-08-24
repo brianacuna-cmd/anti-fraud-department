@@ -186,6 +186,111 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
     expect(count).toBe(2);
   });
 
+  it('filters by severidad, watchlist_id, and created_at range, combined with AND', async () => {
+    const watchlistA = oid('watchlist-a');
+    const watchlistB = oid('watchlist-b');
+    const low = AmlAlert.create({
+      id: generateAmlAlertId(),
+      organizationId: oid('org-1'),
+      customerId: oid('customer-low'),
+      entidadSospechosa: 'Low Sev',
+      confianza: createMatchScore(60),
+      fuenteDeteccion: 'index',
+      severidad: 'LOW',
+      matchedEntry: createScreeningMatch({
+        entryId: createWatchlistEntryId(oid('entry-low')),
+        watchlistId: createWatchlistId(watchlistA),
+        nombre: 'Low Sev',
+        matchField: 'NAME',
+        algorithm: 'JARO_WINKLER_DOUBLE_METAPHONE',
+      }),
+      now: fromDate(new Date('2026-01-01T00:00:00.000Z')),
+    });
+    const highOldWatchlist = AmlAlert.create({
+      id: generateAmlAlertId(),
+      organizationId: oid('org-1'),
+      customerId: oid('customer-high-old'),
+      entidadSospechosa: 'High Old',
+      confianza: createMatchScore(90),
+      fuenteDeteccion: 'index',
+      severidad: 'HIGH',
+      matchedEntry: createScreeningMatch({
+        entryId: createWatchlistEntryId(oid('entry-high-old')),
+        watchlistId: createWatchlistId(watchlistB),
+        nombre: 'High Old',
+        matchField: 'NAME',
+        algorithm: 'JARO_WINKLER_DOUBLE_METAPHONE',
+      }),
+      now: fromDate(new Date('2026-01-02T00:00:00.000Z')),
+    });
+    const highMatch = AmlAlert.create({
+      id: generateAmlAlertId(),
+      organizationId: oid('org-1'),
+      customerId: oid('customer-high-match'),
+      entidadSospechosa: 'High Match',
+      confianza: createMatchScore(95),
+      fuenteDeteccion: 'index',
+      severidad: 'HIGH',
+      matchedEntry: createScreeningMatch({
+        entryId: createWatchlistEntryId(oid('entry-high-match')),
+        watchlistId: createWatchlistId(watchlistA),
+        nombre: 'High Match',
+        matchField: 'NAME',
+        algorithm: 'JARO_WINKLER_DOUBLE_METAPHONE',
+      }),
+      now: fromDate(new Date('2026-01-05T00:00:00.000Z')),
+    });
+    await repository.save(low);
+    await repository.save(highOldWatchlist);
+    await repository.save(highMatch);
+
+    const bySeveridad = await repository.list({
+      organizationId: oid('org-1'),
+      severidad: ['HIGH'],
+      limit: 20,
+      offset: 0,
+    });
+    expect(bySeveridad.total).toBe(2);
+
+    const byWatchlist = await repository.list({
+      organizationId: oid('org-1'),
+      watchlistId: watchlistA,
+      limit: 20,
+      offset: 0,
+    });
+    expect(byWatchlist.total).toBe(2);
+
+    const byRange = await repository.list({
+      organizationId: oid('org-1'),
+      createdAfter: fromDate(new Date('2026-01-02T00:00:00.000Z')),
+      createdBefore: fromDate(new Date('2026-01-03T00:00:00.000Z')),
+      limit: 20,
+      offset: 0,
+    });
+    expect(byRange.total).toBe(1);
+    expect(byRange.items[0]?.customerId).toBe(oid('customer-high-old'));
+
+    const combined = await repository.list({
+      organizationId: oid('org-1'),
+      severidad: ['HIGH'],
+      watchlistId: watchlistA,
+      limit: 20,
+      offset: 0,
+    });
+    expect(combined.total).toBe(1);
+    expect(combined.items[0]?.customerId).toBe(oid('customer-high-match'));
+
+    const noMatch = await repository.list({
+      organizationId: oid('org-1'),
+      severidad: ['LOW'],
+      watchlistId: watchlistB,
+      limit: 20,
+      offset: 0,
+    });
+    expect(noMatch.total).toBe(0);
+    expect(noMatch.items).toEqual([]);
+  });
+
   it('findByNaturalKey returns the stored alert', async () => {
     const alert = buildAlert();
     await repository.save(alert);
