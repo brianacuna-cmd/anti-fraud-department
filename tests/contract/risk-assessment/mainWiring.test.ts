@@ -56,4 +56,23 @@ describe('src/main.ts risk-assessment wiring', () => {
     expect(createCaseBlock).not.toContain('calculateRiskScore');
     expect(createCaseBlock).not.toContain('ZenRiskScoringEngine');
   });
+
+  it('wires OpenAmlAlert (aml_alerts + case_timeline + outbox_events) into screening', () => {
+    expect(MAIN).toContain('createOpenAmlAlertUseCase');
+    expect(MAIN).toContain('MongoAmlExpedienteTimelineRecorder');
+    expect(MAIN).toContain('ScreeningMongoUnitOfWork');
+    expect(MAIN).toContain('openAmlAlert');
+  });
+
+  it('wires the AML compliance inbox and escalate-to-Case bridge', () => {
+    expect(MAIN).toContain('createListAmlAlertsUseCase');
+    expect(MAIN).toContain('createGetAmlAlertUseCase');
+    expect(MAIN).toContain('createGetAmlAlertTimelineUseCase');
+    expect(MAIN).toContain('createTransitionAmlAlertUseCase');
+    expect(MAIN).toContain('createEscalateAmlAlertUseCase');
+    expect(MAIN).toContain('createAmlAlertCaseOpener');
+    expect(MAIN).toContain('amlAlertRouter');
+    expect(MAIN).toContain('screeningErrorStatus');
+    expect(MAIN).toContain('amlAlertsHttpRouter');
+  });
 });

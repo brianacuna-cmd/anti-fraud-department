@@ -3,6 +3,7 @@ import { fromDate, toDate } from '../../../../../../../shared/time/Instant.js';
 import { AmlAlert, type AlertType } from '../../../../../domain/model/aggregates/AmlAlert.js';
 import { createAmlAlertId } from '../../../../../domain/model/value-objects/AmlAlertId.js';
 import { createAmlAlertStatus } from '../../../../../domain/model/value-objects/AmlAlertStatus.js';
+import { createAmlAlertSeverity } from '../../../../../domain/model/value-objects/AmlAlertSeverity.js';
 import { createMatchScore } from '../../../../../domain/model/value-objects/MatchScore.js';
 import { createMatchField } from '../../../../../domain/model/value-objects/MatchField.js';
 import { createWatchlistEntryId } from '../../../../../domain/model/value-objects/WatchlistEntryId.js';
@@ -21,6 +22,7 @@ export function toDomain(document: AmlAlertDocument): AmlAlert {
     confianza: createMatchScore(document.confianza),
     fuenteDeteccion: document.fuente_deteccion,
     estado: createAmlAlertStatus(document.estado),
+    severidad: createAmlAlertSeverity(document.severidad),
     matchedEntry: matchedEntryToDomain(document.matched_entry),
     caseId: document.case_id ? document.case_id.toString() : null,
     createdAt: fromDate(document.created_at),
@@ -39,6 +41,7 @@ export function toDocument(alert: AmlAlert): AmlAlertDocument {
     confianza: alert.confianza,
     fuente_deteccion: alert.fuenteDeteccion,
     estado: alert.estado,
+    severidad: alert.severidad,
     matched_entry: matchedEntryToDocument(alert.matchedEntry),
     case_id: alert.caseId ? new ObjectId(alert.caseId) : null,
     created_at: toDate(alert.createdAt),

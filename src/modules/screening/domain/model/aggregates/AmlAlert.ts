@@ -1,6 +1,7 @@
 import type { Instant } from '../../../../../shared/time/Instant.js';
 import type { AmlAlertId } from '../value-objects/AmlAlertId.js';
 import type { AmlAlertStatus } from '../value-objects/AmlAlertStatus.js';
+import type { AmlAlertSeverity } from '../value-objects/AmlAlertSeverity.js';
 import type { MatchScore } from '../value-objects/MatchScore.js';
 import type { ScreeningMatch } from '../entities/ScreeningMatch.js';
 import { amlAlertStatusTransitions } from '../../services/transitions.js';
@@ -19,6 +20,7 @@ export interface AmlAlertProps {
   readonly confianza: MatchScore;
   readonly fuenteDeteccion: string;
   readonly estado: AmlAlertStatus;
+  readonly severidad: AmlAlertSeverity;
   readonly matchedEntry: ScreeningMatch;
   readonly caseId: string | null;
   readonly createdAt: Instant;
@@ -33,6 +35,7 @@ export interface CreateAmlAlertInput {
   readonly entidadSospechosa: string;
   readonly confianza: MatchScore;
   readonly fuenteDeteccion: string;
+  readonly severidad: AmlAlertSeverity;
   readonly matchedEntry: ScreeningMatch;
   readonly now: Instant;
 }
@@ -62,6 +65,7 @@ export class AmlAlert {
       confianza: input.confianza,
       fuenteDeteccion: input.fuenteDeteccion,
       estado: 'OPEN',
+      severidad: input.severidad,
       matchedEntry: input.matchedEntry,
       caseId: null,
       createdAt: input.now,
@@ -104,6 +108,10 @@ export class AmlAlert {
 
   get estado(): AmlAlertStatus {
     return this.props.estado;
+  }
+
+  get severidad(): AmlAlertSeverity {
+    return this.props.severidad;
   }
 
   get matchedEntry(): ScreeningMatch {

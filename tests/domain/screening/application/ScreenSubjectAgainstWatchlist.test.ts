@@ -1,27 +1,27 @@
 import { createScreenSubjectAgainstWatchlistUseCase } from '../../../../src/modules/screening/application/ScreenSubjectAgainstWatchlist.js';
+import { createOpenAmlAlertUseCase } from '../../../../src/modules/screening/application/OpenAmlAlert.js';
 import type {
   WatchlistCandidate,
   WatchlistCandidateQuery,
   WatchlistCandidateRepository,
 } from '../../../../src/modules/screening/domain/ports/WatchlistCandidateRepository.js';
-import type { AmlAlertRepository } from '../../../../src/modules/screening/domain/ports/AmlAlertRepository.js';
 import type { PhoneticEncoder } from '../../../../src/modules/screening/domain/ports/PhoneticEncoder.js';
 import type { SimilarityCalculator } from '../../../../src/modules/screening/domain/ports/SimilarityCalculator.js';
-import type { Clock } from '../../../../src/shared/time/Clock.js';
-import { AmlAlert } from '../../../../src/modules/screening/domain/model/aggregates/AmlAlert.js';
+import { generateAmlAlertId } from '../../../../src/modules/screening/domain/model/value-objects/AmlAlertId.js';
 import { createWatchlistEntryId } from '../../../../src/modules/screening/domain/model/value-objects/WatchlistEntryId.js';
 import { createWatchlistId } from '../../../../src/modules/screening/domain/model/value-objects/WatchlistId.js';
+import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
+import { generateObjectIdHex } from '../../../../src/shared/kernel/ObjectIdHex.js';
+import { PassthroughUnitOfWork } from '../../../../src/modules/screening/infrastructure/PassthroughUnitOfWork.js';
+import { InMemoryAmlAlertRepository } from '../../../helpers/screening/InMemoryAmlAlertRepository.js';
+import { InMemoryAmlExpedienteTimelineRecorder } from '../../../helpers/screening/InMemoryAmlExpedienteTimelineRecorder.js';
+import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
+import { FixedClock } from '../../../helpers/FixedClock.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 
 const ORG = 'org-1';
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-
-class FakeClock implements Clock {
-  now(): ReturnType<Clock['now']> {
-    return NOW;
-  }
-}
 
 class FakePhoneticEncoder implements PhoneticEncoder {
   encode(token: string): string[] {
@@ -56,23 +56,6 @@ class ScriptedWatchlistCandidateRepository implements WatchlistCandidateReposito
   }
 }
 
-class InMemoryAmlAlertRepository implements AmlAlertRepository {
-  private readonly byNaturalKey = new Map<string, AmlAlert>();
-
-  async save(alert: AmlAlert): Promise<void> {
-    const key = `${alert.organizationId}:${alert.customerId}:${alert.matchedEntry.entryId}:${alert.matchedEntry.matchField}`;
-    this.byNaturalKey.set(key, alert);
-  }
-
-  async findById(): Promise<AmlAlert | null> {
-    return null;
-  }
-
-  all(): AmlAlert[] {
-    return [...this.byNaturalKey.values()];
-  }
-}
-
 function buildCandidate(overrides: Partial<WatchlistCandidate> = {}): WatchlistCandidate {
   return {
     id: createWatchlistEntryId('507f1f77bcf86cd799439011'),
@@ -100,12 +83,21 @@ function tenantAuth(organizationId: string | null = ORG) {
 function buildUseCase(candidates: WatchlistCandidate[]) {
   const watchlistCandidateRepository = new ScriptedWatchlistCandidateRepository(candidates);
   const amlAlertRepository = new InMemoryAmlAlertRepository();
+  const openAmlAlert = createOpenAmlAlertUseCase({
+    amlAlertRepository,
+    timelineRecorder: new InMemoryAmlExpedienteTimelineRecorder(),
+    outbox: new InMemoryOutboxEventRepository(),
+    unitOfWork: new PassthroughUnitOfWork(),
+    clock: new FixedClock(NOW),
+    generateAmlAlertId,
+    generateTimelineEventId: generateObjectIdHex,
+    generateOutboxEventId,
+  });
   const screenSubject = createScreenSubjectAgainstWatchlistUseCase({
     watchlistCandidateRepository,
-    amlAlertRepository,
+    openAmlAlert,
     phoneticEncoder: new FakePhoneticEncoder(),
     similarityCalculator: new FakeSimilarityCalculator(),
-    clock: new FakeClock(),
   });
   return { screenSubject, watchlistCandidateRepository, amlAlertRepository };
 }
@@ -229,13 +221,20 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
       nombre: 'wallet-entry',
     });
     const watchlistCandidateRepository = new ScriptedWatchlistCandidateRepository([candidate]);
-    const amlAlertRepository = new InMemoryAmlAlertRepository();
     const screenSubject = createScreenSubjectAgainstWatchlistUseCase({
       watchlistCandidateRepository,
-      amlAlertRepository,
+      openAmlAlert: createOpenAmlAlertUseCase({
+        amlAlertRepository: new InMemoryAmlAlertRepository(),
+        timelineRecorder: new InMemoryAmlExpedienteTimelineRecorder(),
+        outbox: new InMemoryOutboxEventRepository(),
+        unitOfWork: new PassthroughUnitOfWork(),
+        clock: new FixedClock(NOW),
+        generateAmlAlertId,
+        generateTimelineEventId: generateObjectIdHex,
+        generateOutboxEventId,
+      }),
       phoneticEncoder: encoder,
       similarityCalculator: new FakeSimilarityCalculator(),
-      clock: new FakeClock(),
     });
 
     const result = await screenSubject({

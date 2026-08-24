@@ -34,3 +34,9 @@ export function invalidTransition(current: string, next: string): ScreeningError
 export function forbiddenCrossTenant(message: string): ScreeningError {
   return new ScreeningError('FORBIDDEN_CROSS_TENANT', message, {});
 }
+
+export function amlAlertNotFound(alertId: string): ScreeningError {
+  return new ScreeningError('AML_ALERT_NOT_FOUND', `AmlAlert "${alertId}" was not found`, {
+    alertId,
+  });
+}

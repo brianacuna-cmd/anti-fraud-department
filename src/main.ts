@@ -6,6 +6,7 @@ import { connectMongo } from './shared/persistence/mongo/connect.js';
 import { ensureIndexes } from './shared/persistence/mongo/ensureIndexes.js';
 import { ensureRoles } from './shared/persistence/mongo/ensureRoles.js';
 import { SystemClock } from './shared/time/SystemClock.js';
+import { generateObjectIdHex } from './shared/kernel/ObjectIdHex.js';
 import { identityAccessErrorStatus } from './modules/identity-access/infrastructure/adapters/inbound/http/errorStatus.js';
 import { organizationRouter } from './modules/identity-access/infrastructure/adapters/inbound/http/organizationRouter.js';
 import { userRouter } from './modules/identity-access/infrastructure/adapters/inbound/http/userRouter.js';
@@ -206,8 +207,20 @@ import { createScreenThenScoreToCaseOrchestrator } from './composition/screenThe
 import type { CanonicalRiskEvent } from './modules/risk-assessment/domain/model/CanonicalRiskEvent.js';
 import { createScreenSubjectAgainstWatchlistUseCase } from './modules/screening/application/ScreenSubjectAgainstWatchlist.js';
 import type { ScreenSubjectAgainstWatchlistInput } from './modules/screening/application/ScreenSubjectAgainstWatchlist.js';
+import { createOpenAmlAlertUseCase } from './modules/screening/application/OpenAmlAlert.js';
+import { createListAmlAlertsUseCase } from './modules/screening/application/ListAmlAlerts.js';
+import { createGetAmlAlertUseCase } from './modules/screening/application/GetAmlAlert.js';
+import { createGetAmlAlertTimelineUseCase } from './modules/screening/application/GetAmlAlertTimeline.js';
+import { createTransitionAmlAlertUseCase } from './modules/screening/application/TransitionAmlAlert.js';
+import { createEscalateAmlAlertUseCase } from './modules/screening/application/EscalateAmlAlert.js';
+import { amlAlertRouter } from './modules/screening/infrastructure/adapters/inbound/http/amlAlertRouter.js';
+import { screeningErrorStatus } from './modules/screening/infrastructure/adapters/inbound/http/errorStatus.js';
+import { createAmlAlertCaseOpener } from './composition/amlAlertCaseOpener.js';
+import { generateAmlAlertId } from './modules/screening/domain/model/value-objects/AmlAlertId.js';
 import { createEntryType, isEntryType } from './modules/screening/domain/model/value-objects/EntryType.js';
 import { MongoAmlAlertRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlAlertRepository.js';
+import { MongoAmlExpedienteTimelineRecorder } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlExpedienteTimelineRecorder.js';
+import { MongoUnitOfWork as ScreeningMongoUnitOfWork } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { MongoFallbackWatchlistCandidateRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoFallbackWatchlistCandidateRepository.js';
 import { MongoAtlasWatchlistCandidateRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoAtlasWatchlistCandidateRepository.js';
 import { TalismanPhoneticEncoder } from './modules/screening/infrastructure/adapters/outbound/matching/TalismanPhoneticEncoder.js';
@@ -817,20 +830,59 @@ async function bootstrap(): Promise<void> {
 
   // screening-watchlist-matcher Slice 7: watchlist screening ports/adapters,
   // wrapped around the SAME `processRiskScoreToCase` above so a revert is a
-  // one-line swap back to it. `MongoAmlAlertRepository`/candidate adapter
-  // stay standalone Mongo adapters (no shared UnitOfWork — RF-6 idempotency
-  // is enforced by the natural-key unique index, not a transaction).
+  // one-line swap back to it. `OpenAmlAlert` owns the transactional
+  // aml_alerts + case_timeline + outbox_events write (natural-key unique
+  // index still backs RF-6 idempotency against races).
   const amlAlerts = new MongoAmlAlertRepository(db);
+  const amlExpedienteTimeline = new MongoAmlExpedienteTimelineRecorder(db);
+  const screeningUnitOfWork = new ScreeningMongoUnitOfWork(client);
+  const openAmlAlert = createOpenAmlAlertUseCase({
+    amlAlertRepository: amlAlerts,
+    timelineRecorder: amlExpedienteTimeline,
+    outbox: outboxEvents,
+    unitOfWork: screeningUnitOfWork,
+    clock,
+    generateAmlAlertId,
+    generateTimelineEventId: generateObjectIdHex,
+    generateOutboxEventId,
+  });
+  const getAmlAlert = createGetAmlAlertUseCase({ amlAlertRepository: amlAlerts });
+  const listAmlAlerts = createListAmlAlertsUseCase({ amlAlertRepository: amlAlerts });
+  const getAmlAlertTimeline = createGetAmlAlertTimelineUseCase({
+    getAmlAlert,
+    timelineRecorder: amlExpedienteTimeline,
+  });
+  const transitionAmlAlert = createTransitionAmlAlertUseCase({
+    amlAlertRepository: amlAlerts,
+    timelineRecorder: amlExpedienteTimeline,
+    unitOfWork: screeningUnitOfWork,
+    clock,
+    generateTimelineEventId: generateObjectIdHex,
+  });
+  const escalateAmlAlert = createEscalateAmlAlertUseCase({
+    amlAlertRepository: amlAlerts,
+    caseOpener: createAmlAlertCaseOpener(createCase),
+    timelineRecorder: amlExpedienteTimeline,
+    unitOfWork: screeningUnitOfWork,
+    clock,
+    generateTimelineEventId: generateObjectIdHex,
+  });
+  const amlAlertsHttpRouter = amlAlertRouter({
+    listAmlAlerts,
+    getAmlAlert,
+    getAmlAlertTimeline,
+    transitionAmlAlert,
+    escalateAmlAlert,
+  });
   const watchlistCandidates =
     SCREENING_MATCH_BACKEND === 'atlas'
       ? new MongoAtlasWatchlistCandidateRepository(db)
       : new MongoFallbackWatchlistCandidateRepository(db);
   const screenSubjectAgainstWatchlist = createScreenSubjectAgainstWatchlistUseCase({
     watchlistCandidateRepository: watchlistCandidates,
-    amlAlertRepository: amlAlerts,
+    openAmlAlert,
     phoneticEncoder: new TalismanPhoneticEncoder(),
     similarityCalculator: new TalismanSimilarityCalculator(),
-    clock,
   });
   const screenThenScoreToCase = createScreenThenScoreToCaseOrchestrator({
     screenSubject: screenSubjectAgainstWatchlist,
@@ -1167,20 +1219,22 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(riskScoresRouter);
   identityAccessRouter.use(riskScoreProcessRouter);
   identityAccessRouter.use(riskScoringRulesRouter);
+  identityAccessRouter.use(amlAlertsHttpRouter);
   identityAccessRouter.use(inboundWebhookSecretHttpRouter);
 
   const app = createApp({
     routers: [{ path: '/api/v1', router: identityAccessRouter }],
     webhookRouters: [{ path: '/webhooks', router: ingestWebhookRouter }],
     // Merged status maps: identity-access + notifications + case-management
-    // + risk-assessment + ingest closed error codes. Overlapping keys
-    // (INVARIANT_VIOLATION=400, FORBIDDEN_CROSS_TENANT=403) agree, so the
-    // spread is order-independent.
+    // + risk-assessment + screening + ingest closed error codes. Overlapping
+    // keys (INVARIANT_VIOLATION=400, FORBIDDEN_CROSS_TENANT=403) agree, so
+    // the spread is order-independent.
     errorHandler: createErrorHandler({
       ...identityAccessErrorStatus,
       ...notificationsErrorStatus,
       ...caseManagementErrorStatus,
       ...riskAssessmentErrorStatus,
+      ...screeningErrorStatus,
       ...ingestErrorStatus,
     }),
     trustProxy: TRUST_PROXY,

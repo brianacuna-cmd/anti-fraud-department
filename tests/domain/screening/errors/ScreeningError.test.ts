@@ -1,5 +1,6 @@
 import {
   ScreeningError,
+  amlAlertNotFound,
   invariantViolation,
 } from '../../../../src/modules/screening/domain/errors/ScreeningError.js';
 
@@ -17,5 +18,13 @@ describe('ScreeningError factories', () => {
     const error = invariantViolation('bad input');
 
     expect(error.metadata).toEqual({});
+  });
+
+  it('amlAlertNotFound produces AML_ALERT_NOT_FOUND', () => {
+    const error = amlAlertNotFound('abc');
+
+    expect(error).toBeInstanceOf(ScreeningError);
+    expect(error.code).toBe('AML_ALERT_NOT_FOUND');
+    expect(error.metadata).toEqual({ alertId: 'abc' });
   });
 });
