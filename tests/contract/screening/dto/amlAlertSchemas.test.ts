@@ -40,66 +40,66 @@ describe('listAmlAlertsQuerySchema', () => {
 });
 
 describe('resolveAmlAlertSchema', () => {
-  it('accepts CONFIRMED_MATCH with a non-empty justificacion', () => {
+  it('accepts CONFIRMED_MATCH with a non-empty justification', () => {
     const result = resolveAmlAlertSchema.safeParse({
-      dictamen: 'CONFIRMED_MATCH',
-      justificacion: 'Matched government ID.',
+      verdict: 'CONFIRMED_MATCH',
+      justification: 'Matched government ID.',
     });
 
     expect(result.success).toBe(true);
   });
 
-  it('accepts FALSE_POSITIVE with a non-empty justificacion', () => {
+  it('accepts FALSE_POSITIVE with a non-empty justification', () => {
     const result = resolveAmlAlertSchema.safeParse({
-      dictamen: 'FALSE_POSITIVE',
-      justificacion: 'Different date of birth.',
+      verdict: 'FALSE_POSITIVE',
+      justification: 'Different date of birth.',
     });
 
     expect(result.success).toBe(true);
   });
 
-  it('accepts a justificacion that is a single non-whitespace character after trim', () => {
+  it('accepts a justification that is a single non-whitespace character after trim', () => {
     const result = resolveAmlAlertSchema.safeParse({
-      dictamen: 'FALSE_POSITIVE',
-      justificacion: '  x  ',
+      verdict: 'FALSE_POSITIVE',
+      justification: '  x  ',
     });
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.justificacion).toBe('x');
+      expect(result.data.justification).toBe('x');
     }
   });
 
-  it('rejects an unknown dictamen value', () => {
+  it('rejects an unknown verdict value', () => {
     const result = resolveAmlAlertSchema.safeParse({
-      dictamen: 'BOGUS',
-      justificacion: 'valid text',
+      verdict: 'BOGUS',
+      justification: 'valid text',
     });
 
     expect(result.success).toBe(false);
   });
 
-  it('rejects a missing justificacion', () => {
+  it('rejects a missing justification', () => {
     const result = resolveAmlAlertSchema.safeParse({
-      dictamen: 'CONFIRMED_MATCH',
+      verdict: 'CONFIRMED_MATCH',
     });
 
     expect(result.success).toBe(false);
   });
 
-  it('rejects an empty justificacion', () => {
+  it('rejects an empty justification', () => {
     const result = resolveAmlAlertSchema.safeParse({
-      dictamen: 'CONFIRMED_MATCH',
-      justificacion: '',
+      verdict: 'CONFIRMED_MATCH',
+      justification: '',
     });
 
     expect(result.success).toBe(false);
   });
 
-  it('rejects a whitespace-only justificacion', () => {
+  it('rejects a whitespace-only justification', () => {
     const result = resolveAmlAlertSchema.safeParse({
-      dictamen: 'CONFIRMED_MATCH',
-      justificacion: '   ',
+      verdict: 'CONFIRMED_MATCH',
+      justification: '   ',
     });
 
     expect(result.success).toBe(false);

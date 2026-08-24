@@ -11,9 +11,9 @@ import { amlAlertNotFound, forbiddenCrossTenant, invariantViolation } from '../d
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 
 /** Compliance verdict on a triaged alert (RF-1). */
-export type AmlAlertDictamen = 'CONFIRMED_MATCH' | 'FALSE_POSITIVE';
+export type AmlAlertVerdict = 'CONFIRMED_MATCH' | 'FALSE_POSITIVE';
 
-const DICTAMEN_TO_STATUS: Record<AmlAlertDictamen, AmlAlertStatus> = {
+const VERDICT_TO_STATUS: Record<AmlAlertVerdict, AmlAlertStatus> = {
   CONFIRMED_MATCH: 'RESOLVED',
   FALSE_POSITIVE: 'FALSE_POSITIVE',
 };
@@ -21,8 +21,8 @@ const DICTAMEN_TO_STATUS: Record<AmlAlertDictamen, AmlAlertStatus> = {
 export interface ResolveAmlAlertInput {
   readonly auth: AuthContext;
   readonly alertId: string;
-  readonly dictamen: AmlAlertDictamen;
-  readonly justificacion: string;
+  readonly verdict: AmlAlertVerdict;
+  readonly justification: string;
 }
 
 export interface ResolveAmlAlertDeps {
@@ -34,17 +34,17 @@ export interface ResolveAmlAlertDeps {
   readonly generateTimelineEventId: () => string;
 }
 
-function nextStatusFor(dictamen: AmlAlertDictamen): AmlAlertStatus {
-  const next = DICTAMEN_TO_STATUS[dictamen];
+function nextStatusFor(verdict: AmlAlertVerdict): AmlAlertStatus {
+  const next = VERDICT_TO_STATUS[verdict];
   if (next === undefined) {
-    throw invariantViolation('dictamen must be one of CONFIRMED_MATCH, FALSE_POSITIVE', { dictamen });
+    throw invariantViolation('verdict must be one of CONFIRMED_MATCH, FALSE_POSITIVE', { verdict });
   }
   return next;
 }
 
 /**
- * Disposition path: an analyst records a compliance verdict (`dictamen`)
- * with a mandatory `justificacion`. Within ONE `unitOfWork.withTransaction`:
+ * Disposition path: an analyst records a compliance verdict
+ * with a mandatory justification. Within ONE `unitOfWork.withTransaction`:
  * transitions the alert (RF-1/RF-4), appends the STATE_CHANGED expediente
  * timeline row (parity with `TransitionAmlAlert`), and writes exactly one
  * audit row (RF-3) — both-or-neither via the shared transaction handle.
@@ -53,11 +53,11 @@ export function createResolveAmlAlertUseCase(deps: ResolveAmlAlertDeps) {
   return async function resolveAmlAlert(input: ResolveAmlAlertInput): Promise<AmlAlert> {
     const organizationId = requireTenantContext(input.auth);
     const alertId = createAmlAlertId(input.alertId);
-    const justificacion = input.justificacion.trim();
-    if (justificacion.length === 0) {
-      throw invariantViolation('justificacion must be a non-empty string', { justificacion: input.justificacion });
+    const justification = input.justification.trim();
+    if (justification.length === 0) {
+      throw invariantViolation('justification must be a non-empty string', { justification: input.justification });
     }
-    const next = nextStatusFor(input.dictamen);
+    const next = nextStatusFor(input.verdict);
 
     return deps.unitOfWork.withTransaction(async (tx) => {
       const existing = await deps.amlAlertRepository.findById(alertId, tx);
@@ -94,7 +94,7 @@ export function createResolveAmlAlertUseCase(deps: ResolveAmlAlertDeps) {
           action: 'RESOLVE_AML_ALERT',
           resource: 'aml_alert',
           resourceId: String(alertId),
-          detail: { dictamen: input.dictamen, justificacion },
+          detail: { verdict: input.verdict, justification },
           ipAddress: input.auth.ipAddress,
         },
         tx,
