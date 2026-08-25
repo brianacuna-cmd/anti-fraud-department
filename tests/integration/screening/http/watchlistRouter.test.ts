@@ -10,6 +10,7 @@ import { FixedClock } from '../../../helpers/FixedClock.js';
 import { screeningErrorStatus } from '../../../../src/modules/screening/infrastructure/adapters/inbound/http/errorStatus.js';
 import { watchlistRouter } from '../../../../src/modules/screening/infrastructure/adapters/inbound/http/watchlistRouter.js';
 import { generateWatchlistId, createWatchlistId } from '../../../../src/modules/screening/domain/model/value-objects/WatchlistId.js';
+import { generateWatchlistEntryId } from '../../../../src/modules/screening/domain/model/value-objects/WatchlistEntryId.js';
 import { Watchlist } from '../../../../src/modules/screening/domain/model/aggregates/Watchlist.js';
 import { InMemoryWatchlistRepository } from '../../../helpers/screening/InMemoryWatchlistRepository.js';
 import { InMemoryWatchlistEntryRepository } from '../../../helpers/screening/InMemoryWatchlistEntryRepository.js';
@@ -19,6 +20,10 @@ import { createListWatchlistsUseCase } from '../../../../src/modules/screening/a
 import { createGetWatchlistUseCase } from '../../../../src/modules/screening/application/GetWatchlist.js';
 import { createUpdateWatchlistUseCase } from '../../../../src/modules/screening/application/UpdateWatchlist.js';
 import { createDeleteWatchlistUseCase } from '../../../../src/modules/screening/application/DeleteWatchlist.js';
+import { createCreateWatchlistEntryUseCase } from '../../../../src/modules/screening/application/CreateWatchlistEntry.js';
+import { createListWatchlistEntriesUseCase } from '../../../../src/modules/screening/application/ListWatchlistEntries.js';
+import { createUpdateWatchlistEntryUseCase } from '../../../../src/modules/screening/application/UpdateWatchlistEntry.js';
+import { createDeleteWatchlistEntryUseCase } from '../../../../src/modules/screening/application/DeleteWatchlistEntry.js';
 import type { AuditEvent, AuditRecorder } from '../../../../src/modules/screening/domain/ports/AuditRecorder.js';
 import type { Transaction } from '../../../../src/modules/screening/domain/ports/UnitOfWork.js';
 
@@ -40,6 +45,7 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
   const auditRecorder = new RecordingAuditRecorder();
   const unitOfWork = new PassthroughUnitOfWork();
   const clock = new FixedClock(NOW);
+  const indexWatchlistEntry = async (): Promise<void> => {};
 
   const router = watchlistRouter({
     createWatchlist: createCreateWatchlistUseCase({
@@ -59,6 +65,29 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
     }),
     deleteWatchlist: createDeleteWatchlistUseCase({
       watchlistRepository,
+      watchlistEntryRepository,
+      auditRecorder,
+      unitOfWork,
+      clock,
+    }),
+    createWatchlistEntry: createCreateWatchlistEntryUseCase({
+      watchlistRepository,
+      watchlistEntryRepository,
+      auditRecorder,
+      unitOfWork,
+      clock,
+      generateWatchlistEntryId,
+      indexWatchlistEntry,
+    }),
+    listWatchlistEntries: createListWatchlistEntriesUseCase({ watchlistRepository, watchlistEntryRepository }),
+    updateWatchlistEntry: createUpdateWatchlistEntryUseCase({
+      watchlistEntryRepository,
+      auditRecorder,
+      unitOfWork,
+      clock,
+      indexWatchlistEntry,
+    }),
+    deleteWatchlistEntry: createDeleteWatchlistEntryUseCase({
       watchlistEntryRepository,
       auditRecorder,
       unitOfWork,

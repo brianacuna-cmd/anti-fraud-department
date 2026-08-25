@@ -268,6 +268,13 @@ import { createListWatchlistsUseCase } from './modules/screening/application/Lis
 import { createGetWatchlistUseCase } from './modules/screening/application/GetWatchlist.js';
 import { createUpdateWatchlistUseCase } from './modules/screening/application/UpdateWatchlist.js';
 import { createDeleteWatchlistUseCase } from './modules/screening/application/DeleteWatchlist.js';
+import { createCreateWatchlistEntryUseCase } from './modules/screening/application/CreateWatchlistEntry.js';
+import { createListWatchlistEntriesUseCase } from './modules/screening/application/ListWatchlistEntries.js';
+import { createUpdateWatchlistEntryUseCase } from './modules/screening/application/UpdateWatchlistEntry.js';
+import { createDeleteWatchlistEntryUseCase } from './modules/screening/application/DeleteWatchlistEntry.js';
+import { createIndexWatchlistEntryUseCase } from './modules/screening/application/IndexWatchlistEntry.js';
+import { generateWatchlistEntryId } from './modules/screening/domain/model/value-objects/WatchlistEntryId.js';
+import { referenceNameNormalizer } from './modules/screening/domain/ports/NameNormalizer.js';
 import { createEntryType, isEntryType } from './modules/screening/domain/model/value-objects/EntryType.js';
 import { MongoAmlAlertRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlAlertRepository.js';
 import { MongoAmlAlertTimelineRecorder } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlAlertTimelineRecorder.js';
@@ -1235,6 +1242,40 @@ async function bootstrap(): Promise<void> {
     }),
     deleteWatchlist: createDeleteWatchlistUseCase({
       watchlistRepository: watchlists,
+      watchlistEntryRepository: watchlistEntries,
+      auditRecorder: screeningAuditRecorder,
+      unitOfWork: screeningUnitOfWork,
+      clock,
+    }),
+    createWatchlistEntry: createCreateWatchlistEntryUseCase({
+      watchlistRepository: watchlists,
+      watchlistEntryRepository: watchlistEntries,
+      auditRecorder: screeningAuditRecorder,
+      unitOfWork: screeningUnitOfWork,
+      clock,
+      generateWatchlistEntryId,
+      indexWatchlistEntry: createIndexWatchlistEntryUseCase({
+        watchlistEntryRepository: watchlistEntries,
+        nameNormalizer: referenceNameNormalizer,
+        phoneticEncoder: new TalismanPhoneticEncoder(),
+      }),
+    }),
+    listWatchlistEntries: createListWatchlistEntriesUseCase({
+      watchlistRepository: watchlists,
+      watchlistEntryRepository: watchlistEntries,
+    }),
+    updateWatchlistEntry: createUpdateWatchlistEntryUseCase({
+      watchlistEntryRepository: watchlistEntries,
+      auditRecorder: screeningAuditRecorder,
+      unitOfWork: screeningUnitOfWork,
+      clock,
+      indexWatchlistEntry: createIndexWatchlistEntryUseCase({
+        watchlistEntryRepository: watchlistEntries,
+        nameNormalizer: referenceNameNormalizer,
+        phoneticEncoder: new TalismanPhoneticEncoder(),
+      }),
+    }),
+    deleteWatchlistEntry: createDeleteWatchlistEntryUseCase({
       watchlistEntryRepository: watchlistEntries,
       auditRecorder: screeningAuditRecorder,
       unitOfWork: screeningUnitOfWork,

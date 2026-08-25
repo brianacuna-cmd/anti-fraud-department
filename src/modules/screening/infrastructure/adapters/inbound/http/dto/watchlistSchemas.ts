@@ -45,3 +45,48 @@ export const updateWatchlistSchema = z
 export type CreateWatchlistBody = z.infer<typeof createWatchlistSchema>;
 export type ListWatchlistsQuery = z.infer<typeof listWatchlistsQuerySchema>;
 export type UpdateWatchlistBody = z.infer<typeof updateWatchlistSchema>;
+
+// ── WatchlistEntry DTOs ──────────────────────────────────────────────────────
+
+const entryTypeEnum = z.enum(['PERSON', 'ORGANIZATION', 'WALLET']);
+const riskLevelEnum = z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
+const watchlistEntryStatusEnum = z.enum(['ACTIVE', 'INACTIVE', 'REMOVED']);
+
+/** POST /watchlists/:id/entries request body. */
+export const createWatchlistEntrySchema = z.object({
+  name: z.string().trim().min(1),
+  entryType: entryTypeEnum,
+  document: z.string().nullable().optional(),
+  walletAddress: z.string().nullable().optional(),
+  riskLevel: riskLevelEnum.nullable().optional(),
+  country: z.string().nullable().optional(),
+});
+
+/** GET /watchlists/:id/entries query. */
+export const listWatchlistEntriesQuerySchema = z.object({
+  status: z.preprocess(asStringArray, z.array(watchlistEntryStatusEnum).optional()),
+  entryType: z.preprocess(asStringArray, z.array(entryTypeEnum).optional()),
+  riskLevel: z.preprocess(asStringArray, z.array(riskLevelEnum).optional()),
+  country: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+/**
+ * PATCH /watchlists/:id/entries/:entryId request body (all fields optional).
+ * `status` is not patchable: deactivation is DELETE (soft-delete to REMOVED).
+ */
+export const updateWatchlistEntrySchema = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    entryType: entryTypeEnum.optional(),
+    document: z.string().nullable().optional(),
+    walletAddress: z.string().nullable().optional(),
+    riskLevel: riskLevelEnum.nullable().optional(),
+    country: z.string().nullable().optional(),
+  })
+  .strict();
+
+export type CreateWatchlistEntryBody = z.infer<typeof createWatchlistEntrySchema>;
+export type ListWatchlistEntriesQuery = z.infer<typeof listWatchlistEntriesQuerySchema>;
+export type UpdateWatchlistEntryBody = z.infer<typeof updateWatchlistEntrySchema>;

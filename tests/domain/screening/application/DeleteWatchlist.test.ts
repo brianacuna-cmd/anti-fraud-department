@@ -1,8 +1,9 @@
 import { oid } from '../../../support/oid.js';
 import { createDeleteWatchlistUseCase } from '../../../../src/modules/screening/application/DeleteWatchlist.js';
 import { Watchlist } from '../../../../src/modules/screening/domain/model/aggregates/Watchlist.js';
+import { WatchlistEntry } from '../../../../src/modules/screening/domain/model/aggregates/WatchlistEntry.js';
 import { createWatchlistId } from '../../../../src/modules/screening/domain/model/value-objects/WatchlistId.js';
-import { createWatchlistEntryId } from '../../../../src/modules/screening/domain/model/value-objects/WatchlistEntryId.js';
+import { createWatchlistEntryId, generateWatchlistEntryId } from '../../../../src/modules/screening/domain/model/value-objects/WatchlistEntryId.js';
 import type { AuditEvent, AuditRecorder } from '../../../../src/modules/screening/domain/ports/AuditRecorder.js';
 import type { Transaction } from '../../../../src/modules/screening/domain/ports/UnitOfWork.js';
 import { InMemoryWatchlistRepository } from '../../../helpers/screening/InMemoryWatchlistRepository.js';
@@ -140,6 +141,57 @@ describe('createDeleteWatchlistUseCase', () => {
     expect(retried.status).toBe('INACTIVE');
     expect(watchlistEntryRepository.all().every((e) => e.status === 'REMOVED')).toBe(true);
     expect(watchlistEntryRepository.all()[0]?.deletedAt).toBe(NOW);
+    expect(auditRecorder.events).toHaveLength(1);
+  });
+
+  it('cascade via real WatchlistEntry aggregates (create()) soft-deletes all to REMOVED', async () => {
+    const { watchlistRepository, watchlistEntryRepository, deleteWatchlist } = buildUseCase();
+    const watchlistId = createWatchlistId(oid('watchlist-real-1'));
+    await watchlistRepository.create(
+      Watchlist.create({ id: watchlistId, organizationId: ORG_1, name: 'Real List', source: 'OFAC', type: 'BLACKLIST', now: NOW }),
+    );
+    for (let i = 0; i < 3; i += 1) {
+      await watchlistEntryRepository.create(
+        WatchlistEntry.create({
+          id: generateWatchlistEntryId(),
+          watchlistId,
+          organizationId: ORG_1,
+          entryType: 'PERSON',
+          name: `Person ${i}`,
+          now: NOW,
+        }),
+      );
+    }
+
+    await deleteWatchlist({ auth: ANALYST, watchlistId: oid('watchlist-real-1') });
+
+    expect(watchlistEntryRepository.all()).toHaveLength(3);
+    expect(watchlistEntryRepository.all().every((e) => e.status === 'REMOVED')).toBe(true);
+  });
+
+  it('retry with leftover ACTIVE real aggregate cascades and marks REMOVED', async () => {
+    const { watchlistRepository, watchlistEntryRepository, auditRecorder, deleteWatchlist } = buildUseCase();
+    const watchlistId = createWatchlistId(oid('watchlist-real-2'));
+    await watchlistRepository.create(
+      Watchlist.create({ id: watchlistId, organizationId: ORG_1, name: 'Retry List', source: 'OFAC', type: 'BLACKLIST', now: NOW }),
+    );
+
+    await deleteWatchlist({ auth: ANALYST, watchlistId: oid('watchlist-real-2') });
+    await watchlistEntryRepository.create(
+      WatchlistEntry.create({
+        id: generateWatchlistEntryId(),
+        watchlistId,
+        organizationId: ORG_1,
+        entryType: 'PERSON',
+        name: 'Leftover Person',
+        now: NOW,
+      }),
+    );
+
+    const retried = await deleteWatchlist({ auth: ANALYST, watchlistId: oid('watchlist-real-2') });
+
+    expect(retried.status).toBe('INACTIVE');
+    expect(watchlistEntryRepository.all().every((e) => e.status === 'REMOVED')).toBe(true);
     expect(auditRecorder.events).toHaveLength(1);
   });
 });
