@@ -28,12 +28,13 @@ export interface DeleteWatchlistDeps {
  * helper — full entry CRUD is Slice B). Exactly one audit row per ADR-4.
  *
  * Design decision (spec's open assumption, resolved): deleting an
- * already-deleted watchlist is IDEMPOTENT — returns the existing
- * (already-INACTIVE) watchlist with no further cascade/audit, rather than
- * 404. Rationale: a repeated delete call is not an error condition for a
- * soft-delete-as-status-transition model (mirrors `DeleteUser`/
- * `TransitionUserStatus`'s tolerance of re-issuing the same terminal
- * status), and avoids a race where two concurrent deletes both 404.
+ * already-deleted watchlist is IDEMPOTENT for the watchlist row and audit
+ * (return the existing INACTIVE watchlist, no extra audit) rather than 404.
+ * The entry cascade ALWAYS re-runs: `softDeleteAllByWatchlist` is itself
+ * idempotent (only non-REMOVED rows), so a retry heals a partial delete
+ * when Mongo UoW ran without a real transaction. Mirrors `DeleteUser` /
+ * `TransitionUserStatus` tolerance of re-issuing the same terminal status,
+ * without leaving live matches on a list operators believe was removed.
  */
 export function createDeleteWatchlistUseCase(deps: DeleteWatchlistDeps) {
   return async function deleteWatchlist(input: DeleteWatchlistInput): Promise<Watchlist> {
@@ -46,28 +47,31 @@ export function createDeleteWatchlistUseCase(deps: DeleteWatchlistDeps) {
         throw watchlistNotFound(input.watchlistId);
       }
 
-      if (existing.status === 'INACTIVE' && existing.deletedAt !== null) {
-        return existing;
+      const now = deps.clock.now();
+      const alreadyDeleted = existing.status === 'INACTIVE' && existing.deletedAt !== null;
+      const deleted = alreadyDeleted ? existing : existing.softDelete(now);
+
+      if (!alreadyDeleted) {
+        await deps.watchlistRepository.save(deleted, tx);
       }
 
-      const now = deps.clock.now();
-      const deleted = existing.softDelete(now);
-      await deps.watchlistRepository.save(deleted, tx);
       await deps.watchlistEntryRepository.softDeleteAllByWatchlist(watchlistId, now, tx);
 
-      await deps.auditRecorder.record(
-        {
-          organizationId,
-          actorType: input.auth.actorType,
-          actorId: input.auth.userId,
-          action: 'DELETE_WATCHLIST',
-          resource: 'watchlist',
-          resourceId: String(deleted.id),
-          detail: { name: deleted.name },
-          ipAddress: input.auth.ipAddress,
-        },
-        tx,
-      );
+      if (!alreadyDeleted) {
+        await deps.auditRecorder.record(
+          {
+            organizationId,
+            actorType: input.auth.actorType,
+            actorId: input.auth.userId,
+            action: 'DELETE_WATCHLIST',
+            resource: 'watchlist',
+            resourceId: String(deleted.id),
+            detail: { name: deleted.name },
+            ipAddress: input.auth.ipAddress,
+          },
+          tx,
+        );
+      }
 
       return deleted;
     });

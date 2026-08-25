@@ -90,7 +90,7 @@ describe('createDeleteWatchlistUseCase', () => {
     ).rejects.toMatchObject({ code: 'WATCHLIST_NOT_FOUND' });
   });
 
-  it('is idempotent for an already-deleted watchlist (no-op, no extra audit row)', async () => {
+  it('is idempotent for an already-deleted watchlist (no extra audit row)', async () => {
     const { watchlistRepository, auditRecorder, deleteWatchlist } = buildUseCase();
     await watchlistRepository.create(
       Watchlist.create({
@@ -108,6 +108,38 @@ describe('createDeleteWatchlistUseCase', () => {
 
     expect(first.status).toBe('INACTIVE');
     expect(second.status).toBe('INACTIVE');
+    expect(auditRecorder.events).toHaveLength(1);
+  });
+
+  it('re-applies the entry cascade on retry when leftover entries remain ACTIVE', async () => {
+    const { watchlistRepository, watchlistEntryRepository, auditRecorder, deleteWatchlist } =
+      buildUseCase();
+    const watchlistId = createWatchlistId(oid('watchlist-1'));
+    await watchlistRepository.create(
+      Watchlist.create({
+        id: watchlistId,
+        organizationId: ORG_1,
+        name: 'OFAC List',
+        source: 'OFAC',
+        type: 'BLACKLIST',
+        now: NOW,
+      }),
+    );
+
+    await deleteWatchlist({ auth: ANALYST, watchlistId: oid('watchlist-1') });
+    watchlistEntryRepository.seed({
+      id: createWatchlistEntryId(oid('leftover-entry')),
+      watchlistId,
+      name: 'Leftover',
+      status: 'ACTIVE',
+      deletedAt: null,
+    });
+
+    const retried = await deleteWatchlist({ auth: ANALYST, watchlistId: oid('watchlist-1') });
+
+    expect(retried.status).toBe('INACTIVE');
+    expect(watchlistEntryRepository.all().every((e) => e.status === 'REMOVED')).toBe(true);
+    expect(watchlistEntryRepository.all()[0]?.deletedAt).toBe(NOW);
     expect(auditRecorder.events).toHaveLength(1);
   });
 });
