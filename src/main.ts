@@ -283,6 +283,13 @@ import { MongoFallbackWatchlistCandidateRepository } from './modules/screening/i
 import { MongoAtlasWatchlistCandidateRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoAtlasWatchlistCandidateRepository.js';
 import { TalismanPhoneticEncoder } from './modules/screening/infrastructure/adapters/outbound/matching/TalismanPhoneticEncoder.js';
 import { TalismanSimilarityCalculator } from './modules/screening/infrastructure/adapters/outbound/matching/TalismanSimilarityCalculator.js';
+import { bulkScreeningRouter } from './modules/screening/infrastructure/adapters/inbound/http/bulkScreeningRouter.js';
+import { MongoBulkScreeningJobRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoBulkScreeningJobRepository.js';
+import { CsvParseBulkCsvReader } from './modules/screening/infrastructure/adapters/outbound/csv/CsvParseBulkCsvReader.js';
+import { generateBulkScreeningJobId } from './modules/screening/domain/model/value-objects/BulkScreeningJobId.js';
+import { createSubmitBulkScreeningJobUseCase } from './modules/screening/application/SubmitBulkScreeningJob.js';
+import { createGetBulkScreeningJobUseCase } from './modules/screening/application/GetBulkScreeningJob.js';
+import { createRunBulkScreeningJobUseCase } from './modules/screening/application/RunBulkScreeningJob.js';
 import { MongoOrganizationScreeningConfigRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoOrganizationScreeningConfigRepository.js';
 import { createGetOrganizationScreeningConfigUseCase } from './modules/screening/application/GetOrganizationScreeningConfig.js';
 import { createReceiveProviderWebhookUseCase } from './modules/ingest/application/ReceiveProviderWebhook.js';
@@ -1290,6 +1297,30 @@ async function bootstrap(): Promise<void> {
     phoneticEncoder: new TalismanPhoneticEncoder(),
     similarityCalculator: new TalismanSimilarityCalculator(),
   });
+
+  // Bulk screening HTTP layer (Slice C) — wired after screenSubjectAgainstWatchlist.
+  const bulkScreeningJobs = new MongoBulkScreeningJobRepository(db);
+  const csvParseBulkCsvReader = new CsvParseBulkCsvReader();
+  const runBulkScreeningJob = createRunBulkScreeningJobUseCase({
+    bulkScreeningJobRepository: bulkScreeningJobs,
+    bulkCsvSource: csvParseBulkCsvReader,
+    screenSubject: screenSubjectAgainstWatchlist,
+    auditRecorder: screeningAuditRecorder,
+    clock,
+  });
+  const bulkScreeningHttpRouter = bulkScreeningRouter({
+    submitBulkScreeningJob: createSubmitBulkScreeningJobUseCase({
+      bulkScreeningJobRepository: bulkScreeningJobs,
+      auditRecorder: screeningAuditRecorder,
+      unitOfWork: screeningUnitOfWork,
+      clock,
+      generateJobId: generateBulkScreeningJobId,
+      createRunJob: (auth, jobId) => () => runBulkScreeningJob({ auth, jobId }),
+    }),
+    getBulkScreeningJob: createGetBulkScreeningJobUseCase({
+      bulkScreeningJobRepository: bulkScreeningJobs,
+    }),
+  });
   const screenThenScoreToCase = createScreenThenScoreToCaseOrchestrator({
     screenSubject: screenSubjectAgainstWatchlist,
     scoreToCaseOrchestrator: processRiskScoreToCase,
@@ -1651,6 +1682,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(riskScoringRulesRouter);
   identityAccessRouter.use(amlAlertsHttpRouter);
   identityAccessRouter.use(watchlistsHttpRouter);
+  identityAccessRouter.use(bulkScreeningHttpRouter);
   identityAccessRouter.use(inboundWebhookSecretHttpRouter);
 
   const app = createApp({
