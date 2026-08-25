@@ -243,6 +243,28 @@ describe('PATCH /api/v1/watchlists/:id', () => {
 
     expect(response.status).toBe(404);
   });
+
+  it('rejects PATCH that tries to deactivate via status (DELETE is the cascade path)', async () => {
+    const { app, watchlistRepository } = buildApp();
+    const watchlist = Watchlist.create({
+      id: createWatchlistId(oid('watchlist-1')),
+      organizationId: ORG_1,
+      name: 'OFAC List',
+      source: 'OFAC',
+      type: 'BLACKLIST',
+      now: NOW,
+    });
+    await watchlistRepository.create(watchlist);
+
+    const response = await request(app)
+      .patch(`/api/v1/watchlists/${oid('watchlist-1')}`)
+      .send({ status: 'INACTIVE' });
+
+    expect(response.status).toBe(400);
+    const stored = await watchlistRepository.findById(createWatchlistId(oid('watchlist-1')));
+    expect(stored?.status).toBe('ACTIVE');
+    expect(stored?.deletedAt).toBeNull();
+  });
 });
 
 describe('DELETE /api/v1/watchlists/:id', () => {

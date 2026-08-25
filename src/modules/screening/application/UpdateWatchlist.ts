@@ -1,7 +1,6 @@
 import type { AuthContext } from '../../../shared/kernel/AuthContext.js';
 import type { Clock } from '../../../shared/time/Clock.js';
 import type { Watchlist } from '../domain/model/aggregates/Watchlist.js';
-import type { WatchlistStatus } from '../domain/model/value-objects/WatchlistStatus.js';
 import type { WatchlistRepository } from '../domain/ports/WatchlistRepository.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
@@ -15,7 +14,6 @@ export interface UpdateWatchlistInput {
   readonly name?: string;
   readonly source?: string;
   readonly description?: string | null;
-  readonly status?: WatchlistStatus;
 }
 
 export interface UpdateWatchlistDeps {
@@ -53,7 +51,6 @@ export function createUpdateWatchlistUseCase(deps: UpdateWatchlistDeps) {
           name: input.name,
           source: input.source,
           description: input.description,
-          status: input.status,
         },
         now,
       );

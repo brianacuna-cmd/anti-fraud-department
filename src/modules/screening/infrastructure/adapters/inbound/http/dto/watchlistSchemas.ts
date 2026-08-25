@@ -29,13 +29,18 @@ export const listWatchlistsQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
-/** PATCH /watchlists/:id request body (all fields optional). */
-export const updateWatchlistSchema = z.object({
-  name: z.string().trim().min(1).optional(),
-  source: z.string().trim().min(1).optional(),
-  description: z.string().nullable().optional(),
-  status: watchlistStatusEnum.optional(),
-});
+/**
+ * PATCH /watchlists/:id request body (all fields optional).
+ * `status` is not patchable: deactivation is DELETE so the entry cascade
+ * and `deleted_at` stay on one path (RF-5).
+ */
+export const updateWatchlistSchema = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    source: z.string().trim().min(1).optional(),
+    description: z.string().nullable().optional(),
+  })
+  .strict();
 
 export type CreateWatchlistBody = z.infer<typeof createWatchlistSchema>;
 export type ListWatchlistsQuery = z.infer<typeof listWatchlistsQuerySchema>;

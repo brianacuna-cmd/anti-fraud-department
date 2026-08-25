@@ -69,7 +69,6 @@ export function watchlistRouter(deps: WatchlistRouterDeps): Router {
       name: body.name,
       source: body.source,
       description: body.description,
-      status: body.status,
     });
     res.status(200).json(toWatchlistResponse(watchlist));
   });
