@@ -136,7 +136,7 @@ describe('IngestFinturuCase deduplication (integration)', () => {
     const ingest = buildIngest();
 
     const first = await ingest({ rawPayload: payload(), organizationId: ORG_A });
-    // El expediente se cierra; el cliente reincide más tarde.
+    // The case is closed; the customer reoffends later.
     await db.collection('cases').updateOne({ customer_id: 'usr_dedup_1' }, { $set: { status: 'RESOLVED' } });
 
     const second = await ingest({ rawPayload: payload({ risk_score: 95 }), organizationId: ORG_A });

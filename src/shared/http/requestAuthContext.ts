@@ -31,9 +31,9 @@ export function attachAuthContext(req: Request, auth: AuthContext): void {
  */
 export function requireAuthContextAnyScope(req: Request): AuthContext {
   if (!req.authContext) {
-    // Un token ausente/expirado/revocado hace que el resolver no adjunte
-    // nada — es un 401 de request, no un bug de wiring (el middleware
-    // siempre corre; simplemente no resolvió nada).
+    // A missing/expired/revoked token makes the resolver attach nothing —
+    // that is a request 401, not a wiring bug (the middleware always runs;
+    // it simply resolved nothing).
     throw new UnauthenticatedError();
   }
   return req.authContext;

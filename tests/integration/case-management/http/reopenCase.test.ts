@@ -77,8 +77,8 @@ function buildResolvedCase(deleted = false): Case {
     customerId: 'customer-1',
     riskScore: createRiskScore(40),
     priority: 'MEDIUM',
-    // La regla de asignacion congela los expedientes huerfanos:
-    // sin responsable no se pueden trabajar.
+    // Assignment rule freezes orphan cases:
+    // without an owner they cannot be worked.
     assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   })
@@ -327,8 +327,8 @@ describe('caseRouter PATCH /cases/:caseId/priority-tags', () => {
       riskScore: createRiskScore(40),
       priority: 'MEDIUM',
       tags: ['fraud'],
-      // La regla de asignacion congela los expedientes huerfanos:
-      // sin responsable no se pueden trabajar.
+      // Assignment rule freezes orphan cases:
+      // without an owner they cannot be worked.
       assignedTo: createAssignedTo('USER', oid('analyst-1')),
       now: NOW,
     }).withDueDate(OLD_DUE, NOW);
@@ -404,8 +404,8 @@ describe('caseRouter POST /cases/bulk-action', () => {
       riskScore: createRiskScore(40),
       priority,
       tags: ['fraud'],
-      // La regla de asignacion congela los expedientes huerfanos:
-      // sin responsable no se pueden trabajar.
+      // Assignment rule freezes orphan cases:
+      // without an owner they cannot be worked.
       assignedTo: createAssignedTo('USER', oid('analyst-1')),
       now: NOW,
     });

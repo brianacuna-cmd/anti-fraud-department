@@ -40,9 +40,9 @@ export function createIdentityAssigneeDirectory(
       organizationId: string,
       assignees: readonly AssignedTo[],
     ): Promise<ReadonlyMap<string, string>> {
-      // Son como mucho ocho (el tope de `workload`), asi que una lectura por
-      // asignatario es barata y evita un metodo `findManyByIds` en el puerto
-      // de identity-access solo para esto.
+      // At most eight (the `workload` cap), so one read per assignee is cheap
+      // and avoids a `findManyByIds` method on the identity-access port just
+      // for this.
       const users = userRepositoryFactory.forTenant(createOrganizationId(organizationId));
       const resolved = new Map<string, string>();
 
@@ -59,9 +59,9 @@ export function createIdentityAssigneeDirectory(
 }
 
 /**
- * Nombre completo del usuario, o su correo si no tiene nombre cargado.
- * `null` cuando el id no resuelve —usuario borrado o id con forma invalida—:
- * el panel prefiere una barra sin nombre a un nombre inventado.
+ * The user's full name, or their email if no name is loaded.
+ * `null` when the id does not resolve — deleted user or invalid id shape —:
+ * the dashboard prefers a nameless bar to a made-up name.
  */
 async function userDisplayName(
   users: ReturnType<UserRepositoryFactory['forTenant']>,

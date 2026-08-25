@@ -45,8 +45,8 @@ export interface TransitionUserStatusDeps {
  */
 export function createTransitionUserStatusUseCase(deps: TransitionUserStatusDeps) {
   return async function transitionUserStatus(input: TransitionUserStatusInput): Promise<User> {
-    // role-authorization: cubre también DELETE /users/:id (delega aquí con
-    // next=DISABLED). Solo ORGANIZATION o rol ADMIN cambian estados de usuarios.
+    // role-authorization: also covers DELETE /users/:id (delegates here with
+    // next=DISABLED). Only ORGANIZATION or ADMIN role change user statuses.
     await requireUserRole(input.auth, deps.userRepositoryFactory, USER_MANAGE_ROLES, 'transition user status');
     const organizationId = createOrganizationId(requireTenantContext(input.auth));
     const repository = deps.userRepositoryFactory.forTenant(organizationId);

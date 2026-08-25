@@ -30,9 +30,9 @@ export function toDocument(event: OutboxEvent): OutboxEventDocument {
 /**
  * snake_case (Mongo) -> camelCase (domain).
  *
- * OJO al tocarlo: parece codigo muerto si solo se mira `save`. Lo usa
- * `findPending`, que es como el publicador saca los eventos de la cola —
- * borrarlo deja el outbox escribiendose pero sin nadie que lo vacie.
+ * WARNING if you touch this: it looks like dead code if you only look at
+ * `save`. `findPending` uses it — that is how the publisher drains the
+ * queue. Deleting it leaves the outbox writing with nobody emptying it.
  */
 export function toDomain(document: OutboxEventDocument): OutboxEvent {
   return OutboxEvent.rehydrate({

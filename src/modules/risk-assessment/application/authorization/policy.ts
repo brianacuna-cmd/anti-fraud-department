@@ -8,14 +8,14 @@ import {
 import { forbiddenReadOnly, forbiddenRole } from '../../domain/errors/RiskAssessmentError.js';
 
 /**
- * Política de acceso de risk-assessment. Espejo de
- * `case-management/application/authorization/policy.ts`: la escritura es
- * operativa, la lectura es de gobierno.
+ * Risk-assessment access policy. Mirror of
+ * `case-management/application/authorization/policy.ts`: writes are
+ * operational, reads are governance.
  *
- * Una regla de scoring decide qué clientes acaban en la bandeja de fraude —
- * es una palanca operativa, no una preferencia de configuración. Por eso la
- * redacta y la activa el SUPERVISOR, y el ADMIN, que administra a las
- * personas, solo la lee.
+ * A scoring rule decides which customers land in the fraud inbox — it is
+ * an operational lever, not a configuration preference. That is why the
+ * SUPERVISOR drafts and activates it, and ADMIN, who administers people,
+ * only reads it.
  */
 export const SCORING_RULE_WRITE_ROLES: readonly string[] = [ROLE_SUPERVISOR];
 export const SCORING_RULE_READ_ROLES: readonly string[] = [
@@ -33,7 +33,7 @@ export function requireOperationalRole(auth: AuthContext, allowed: readonly stri
   }
 }
 
-/** El actor ORGANIZATION es dueño del inquilino: lee todo lo que sus usuarios leen. */
+/** The ORGANIZATION actor owns the tenant: they read everything their users read. */
 export function requireReadRole(auth: AuthContext, allowed: readonly string[]): void {
   if (auth.actorType === 'ORGANIZATION') {
     return;

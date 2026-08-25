@@ -52,8 +52,8 @@ function buildCase(organizationId = ORG_1, id = CASE_ID): Case {
     customerId: 'customer-1',
     riskScore: createRiskScore(80),
     priority: 'HIGH',
-    // La regla de asignacion congela los expedientes huerfanos:
-    // sin responsable no se pueden trabajar.
+    // Assignment rule freezes orphan cases:
+    // without an owner they cannot be worked.
     assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   });
@@ -172,8 +172,8 @@ describe('RequestEnforcementAction (ENF-001)', () => {
 
     await requestEnforcement({ auth: ANALYST, caseId: CASE_ID, ...VALID });
 
-    // Los cuatro ojos le van a negar su propia revisión: avisarle sería
-    // ofrecerle algo que no puede hacer.
+    // Dual control will deny their own review: notifying them would offer
+    // something they cannot do.
     expect(notificationSender.all().map((n) => n.recipientUserId)).toEqual([SUPERVISOR_ID]);
   });
 
@@ -205,7 +205,7 @@ describe('RequestEnforcementAction (ENF-001)', () => {
     await cases.save(buildCase());
     await decisions.save(buildDecision());
 
-    // Segregación de funciones: quien concede permisos no sanciona.
+    // Segregation of duties: whoever grants permissions does not enforce.
     await expect(
       requestEnforcement({ auth: ADMIN, caseId: CASE_ID, ...VALID }),
     ).rejects.toThrow(CaseManagementError);
@@ -224,8 +224,8 @@ describe('RequestEnforcementAction (ENF-001)', () => {
     const { cases, requestEnforcement } = setup();
     await cases.save(buildCase());
 
-    // Sin veredicto registrado no hay sanción: es el invariante que sostiene
-    // el expediente ante un regulador.
+    // Without a recorded verdict there is no sanction: that is the invariant
+    // that holds the case up to a regulator.
     await expect(
       requestEnforcement({ auth: ANALYST, caseId: CASE_ID, ...VALID }),
     ).rejects.toThrow(CaseManagementError);

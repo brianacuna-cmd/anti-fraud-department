@@ -50,7 +50,7 @@ describe('entityIdentifiersOf', () => {
 
     expect(entityIdentifiersOf(kase)).toEqual([
       { type: 'CUSTOMER', value: 'cus-1' },
-      // El email baja a minúsculas; la wallet conserva el checksum-case EIP-55.
+      // Email is lowercased; the wallet keeps the EIP-55 checksum case.
       { type: 'EMAIL', value: 'fraude@example.com' },
       { type: 'WALLET', value: '0xAbC' },
       { type: 'BRIDGE_USER', value: 'bru-1' },
@@ -61,7 +61,7 @@ describe('entityIdentifiersOf', () => {
   it('descarta los identificadores ausentes y los que solo traen espacios', () => {
     const kase = buildCase({ customerId: 'cus-1', customerEmail: '   ', bridgeWallet: null });
 
-    // Un email en blanco agruparía bajo un mismo nodo a todo expediente sin email.
+    // A blank email would group every caseless-email case under one node.
     expect(entityIdentifiersOf(kase)).toEqual([{ type: 'CUSTOMER', value: 'cus-1' }]);
   });
 });
@@ -102,8 +102,8 @@ describe('EntityNetworkGraphBuilder', () => {
     const next = builder.absorb([a, b], 1);
     const graph = builder.build(next);
 
-    // La wallet es el puente: cada caso cuelga de ella, y el camino
-    // caso A → wallet → caso B queda explícito sin arista caso-caso.
+    // The wallet is the bridge: each case hangs off it, and the path
+    // case A → wallet → case B is explicit with no case-to-case edge.
     expect(graph.edges).toContainEqual({
       from: `CASE:${a.id}`,
       to: `WALLET:${shared}`,
@@ -118,7 +118,7 @@ describe('EntityNetworkGraphBuilder', () => {
       false,
     );
 
-    // Los customerId propios de cada caso entran como frente siguiente.
+    // Each case's own customerId enters as the next frontier.
     expect(next).toEqual([
       { type: 'CUSTOMER', value: 'cus-a' },
       { type: 'CUSTOMER', value: 'cus-b' },
@@ -132,8 +132,8 @@ describe('EntityNetworkGraphBuilder', () => {
     const builder = new EntityNetworkGraphBuilder({ type: 'WALLET', value: shared }, 3);
     const next = builder.absorb([a], 1);
 
-    // La raíz ya estaba visitada: si volviera al frente, la ronda siguiente
-    // repetiría la misma consulta y el recorrido no terminaría nunca.
+    // The root was already visited: if it returned to the frontier, the next
+    // round would repeat the same query and the walk would never finish.
     expect(next).not.toContainEqual({ type: 'WALLET', value: shared });
   });
 
@@ -146,7 +146,7 @@ describe('EntityNetworkGraphBuilder', () => {
     const graph = builder.build([]);
 
     expect(graph.nodes.filter((node) => node.id === `CASE:${kase.id}`)).toHaveLength(1);
-    expect(graph.edges).toHaveLength(2); // wallet + customer, una vez cada una
+    expect(graph.edges).toHaveLength(2); // wallet + customer, once each
   });
 
   it('conserva la profundidad del primer descubrimiento', () => {
@@ -176,8 +176,8 @@ describe('EntityNetworkGraphBuilder', () => {
     const builder = new EntityNetworkGraphBuilder({ type: 'WALLET', value: '0xabc' }, 1);
     const next = builder.absorb([kase], 1);
 
-    // Se acabaron las rondas pero `cus-a` seguía sin explorar: el grafo es un
-    // recorte, y leerlo como red completa sería una conclusión falsa.
+    // Rounds ran out but `cus-a` was still unexplored: the graph is a
+    // cut, and reading it as a complete network would be a false conclusion.
     expect(next.length).toBeGreaterThan(0);
     expect(builder.build(next).truncated).toBe(true);
   });
@@ -191,8 +191,8 @@ describe('EntityNetworkGraphBuilder', () => {
   });
 
   it('corta en el techo de nodos y lo marca como truncado', () => {
-    // Cada caso aporta 2 nodos (el caso y su customerId), así que con holgura
-    // sobre el techo la expansión tiene que frenar sola.
+    // Each case contributes 2 nodes (the case and its customerId), so with
+    // slack over the ceiling the expansion has to stop itself.
     const many = Array.from({ length: MAX_GRAPH_NODES }, (_, i) =>
       buildCase({ customerId: `cus-${i}`, bridgeWallet: '0xabc' }),
     );

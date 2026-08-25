@@ -26,8 +26,8 @@ export const USER_READ_ROLES: readonly string[] = ['ADMIN', 'SUPERVISOR', 'ANALY
  *
  * Throws `FORBIDDEN_ROLE` (403) when the acting USER's role is not
  * allow-listed. ORGANIZATION and PLATFORM_ADMIN pass without a role check —
- * la organización es dueña del tenant y el platform admin es el operador
- * global (la reactivación DISABLED->ACTIVE lo exige a nivel de dominio).
+ * the organization owns the tenant and the platform admin is the global
+ * operator (DISABLED->ACTIVE reactivation requires it at the domain level).
  */
 export async function requireUserRole(
   auth: AuthContext,
@@ -35,9 +35,9 @@ export async function requireUserRole(
   allowedRoles: readonly string[],
   operation: string,
 ): Promise<void> {
-  // ORGANIZATION es dueña del tenant; PLATFORM_ADMIN es el operador global
-  // (p. ej. la reactivación DISABLED->ACTIVE exige platform admin a nivel de
-  // dominio). Solo el actor USER se somete al chequeo de rol.
+  // ORGANIZATION owns the tenant; PLATFORM_ADMIN is the global operator
+  // (e.g. DISABLED->ACTIVE reactivation requires platform admin at the
+  // domain level). Only the USER actor is subjected to the role check.
   if (auth.actorType !== 'USER') {
     return;
   }

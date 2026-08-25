@@ -23,8 +23,8 @@ export interface GetUserDeps {
  */
 export function createGetUserUseCase(deps: GetUserDeps) {
   return async function getUser(input: GetUserInput): Promise<User> {
-    // role-authorization: /users/me (self-read) es libre para todo rol;
-    // leer a terceros exige ORGANIZATION o rol ADMIN/SUPERVISOR/AUDITOR.
+    // role-authorization: /users/me (self-read) is free for every role;
+    // reading others requires ORGANIZATION or ADMIN/SUPERVISOR/AUDITOR.
     const isSelf = input.auth.actorType === 'USER' && input.auth.userId === input.userId;
     if (!isSelf) {
       await requireUserRole(input.auth, deps.userRepositoryFactory, USER_READ_ROLES, 'read other users');

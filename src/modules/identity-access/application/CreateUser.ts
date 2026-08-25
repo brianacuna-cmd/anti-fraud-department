@@ -55,7 +55,7 @@ export interface CreateUserDeps {
  */
 export function createCreateUserUseCase(deps: CreateUserDeps) {
   return async function createUser(input: CreateUserInput): Promise<User> {
-    // role-authorization: ORGANIZATION o USER con rol ADMIN pueden crear usuarios.
+    // role-authorization: ORGANIZATION or USER with ADMIN role may create users.
     await requireUserRole(input.auth, deps.userRepositoryFactory, USER_MANAGE_ROLES, 'create users');
     assertPasswordPolicy(input.password);
     const organizationId = createOrganizationId(requireTenantContext(input.auth));

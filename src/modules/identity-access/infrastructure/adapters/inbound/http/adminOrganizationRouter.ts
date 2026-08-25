@@ -24,10 +24,10 @@ import { parseRequest } from './parseRequest.js';
 
 export interface AdminOrganizationRouterDeps {
   /**
-   * OBLIGATORIA. Mientras fue opcional, `main.ts` dejo de inyectarla sin que
-   * nada lo advirtiera y el login de super admin se degrado en silencio: el
-   * OTP salia hacia el correo por defecto en vez del admin real, y el secreto
-   * TOTP no se persistia, de modo que cada intento volvia a pedir el QR.
+   * REQUIRED. While it was optional, `main.ts` stopped injecting it with
+   * nothing warning and super-admin login degraded silently: the OTP went
+   * to the default address instead of the real admin, and the TOTP secret
+   * was not persisted, so every attempt asked for the QR again.
    */
   readonly db: Db;
   readonly provisionAdminOrganization: ReturnType<typeof createProvisionAdminOrganizationUseCase>;
@@ -41,11 +41,11 @@ export interface AdminOrganizationRouterDeps {
   readonly rotateAdminKey: ReturnType<typeof createRotateAdminKeyUseCase>;
   /** super-admin-auth PR2 — `requirePlatformAdmin`-gated. */
   readonly revokeAdminKey: ReturnType<typeof createRevokeAdminKeyUseCase>;
-  /** Envia el OTP del paso 2. Sin el, el correo se omite y el flujo sigue igual. */
+  /** Sends the step-2 OTP. Without it, the email is skipped and the flow continues the same. */
   readonly emailSender?: EmailSender;
 }
 
-/** Proyeccion minima de `admin_organizations` que necesita el flujo de MFA. */
+/** Minimal `admin_organizations` projection the MFA flow needs. */
 interface AdminOrganizationMfaDocument {
   readonly _id: ObjectId;
   readonly email?: string;
@@ -55,9 +55,9 @@ interface AdminOrganizationMfaDocument {
 export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Router {
   const router = Router();
 
-  // Logins de super admin a medio completar, entre el paso 1 (firma Ed25519)
-  // y el paso 3 (TOTP). La sesion ya esta emitida por `verifyAdminChallenge`
-  // pero NO se entrega hasta superar los otros dos factores.
+  // Super-admin logins in progress, between step 1 (Ed25519 signature)
+  // and step 3 (TOTP). The session is already minted by `verifyAdminChallenge`
+  // but is NOT delivered until the other two factors are passed.
   const pendingAdminLogins = new Map<
     string,
     {
@@ -118,9 +118,9 @@ export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Rout
     res.status(201).json(result);
   });
 
-  // Paso 1 de 3: verifica la firma Ed25519 y manda el OTP por correo. La
-  // sesion queda retenida en `pendingAdminLogins` hasta el paso 3 — devolverla
-  // aqui convertiria los otros dos factores en decorado.
+  // Step 1 of 3: verify the Ed25519 signature and send the OTP by email. The
+  // session stays held in `pendingAdminLogins` until step 3 — returning it
+  // here would turn the other two factors into decoration.
   router.post('/admin-organizations/sessions', async (req, res) => {
     const body = parseRequest(verifyAdminChallengeSchema, req.body);
     const result = await deps.verifyAdminChallenge({
@@ -129,10 +129,10 @@ export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Rout
       ipAddress: req.ip ?? null,
     });
 
-    // El admin viene del propio caso de uso, que ya cargo el agregado al
-    // verificar la firma. La version anterior lo buscaba en Mongo tomando "el
-    // primero con una llave ACTIVA", asi que con mas de un super admin el OTP
-    // de uno podia acabar en el correo de otro.
+    // The admin comes from the use case itself, which already loaded the
+    // aggregate when verifying the signature. The previous version looked
+    // it up in Mongo taking "the first with an ACTIVE key", so with more
+    // than one super admin one person's OTP could land in another's inbox.
     const email = result.email;
     const adminOrgId = result.adminOrganizationId;
 
@@ -166,7 +166,7 @@ export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Rout
     });
   });
 
-  // Paso 2 de 3: valida el OTP del correo y decide enrolamiento (QR) o reto TOTP.
+  // Step 2 of 3: validate the email OTP and choose enrollment (QR) or TOTP challenge.
   router.post('/admin-organizations/otp/verify', async (req, res) => {
     const body = parseRequest(adminOtpVerifySchema, req.body);
     const pending = pendingAdminLogins.get(body.challengeToken);
@@ -208,7 +208,7 @@ export function adminOrganizationRouter(deps: AdminOrganizationRouterDeps): Rout
     });
   });
 
-  // Paso 3 de 3: valida el TOTP y recien entonces entrega la sesion retenida.
+  // Step 3 of 3: validate TOTP and only then deliver the held session.
   router.post('/admin-organizations/mfa', async (req, res) => {
     const body = parseRequest(adminMfaSchema, req.body);
     const pending = pendingAdminLogins.get(body.challengeToken);

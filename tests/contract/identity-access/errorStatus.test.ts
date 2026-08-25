@@ -3,12 +3,12 @@ import { identityAccessErrorStatus } from '../../../src/modules/identity-access/
 describe('identityAccessErrorStatus', () => {
   it('maps every closed identity-access error code to its HTTP status (design errorStatus map)', () => {
     expect(identityAccessErrorStatus).toEqual({
-      // requireAuthContext sin AuthContext resuelto (token ausente/inválido).
+      // requireAuthContext with no resolved AuthContext (missing/invalid token).
       UNAUTHENTICATED: 401,
       INVALID_TRANSITION: 422,
       FORBIDDEN_REACTIVATION: 403,
       FORBIDDEN_CROSS_TENANT: 403,
-      // role-authorization: el rol del actor USER no permite la operación.
+      // role-authorization: the USER actor's role does not allow the operation.
       FORBIDDEN_ROLE: 403,
       ORGANIZATION_SLUG_TAKEN: 409,
       USER_EMAIL_TAKEN: 409,

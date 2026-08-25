@@ -172,8 +172,8 @@ import { caseRouter } from './modules/case-management/infrastructure/adapters/in
 import { caseExportRouter } from './modules/case-management/infrastructure/adapters/inbound/http/caseExportRouter.js';
 import { metricsRouter } from './modules/case-management/infrastructure/adapters/inbound/http/metricsRouter.js';
 import { MongoFraudMetricsReader } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoFraudMetricsReader.js';
-// Integracion Finturu (propia de este fork): ingesta por webhook, padron de
-// clientes y consultas en vivo a los proveedores.
+// Finturu integration (this fork's own): webhook ingest, customer
+// directory, and live queries to providers.
 import { createIngestFinturuCaseUseCase } from './modules/case-management/application/IngestFinturuCase.js';
 import { createInitializeCaseSlaService } from './modules/case-management/application/InitializeCaseSla.js';
 import { createSyncFinturuDataUseCase } from './modules/case-management/application/SyncFinturuData.js';
@@ -299,10 +299,10 @@ const PLATFORM_ADMIN_AUTH = process.env.PLATFORM_ADMIN_AUTH ?? 'disabled';
 // wire) so a future key rotation only needs to bump this and start a new
 // AesGcmSecretCipher instance; old tokens under the old version simply fail
 // to decrypt (`decrypt` returns null, never throws).
-// NOSONAR (S2068): `DEV_TOKEN_SECRET` no es una credencial, es el valor
-// por defecto de desarrollo. `assertAuthConfigSafeForProduction` aborta el
-// arranque si sigue puesto con NODE_ENV=production, asi que no puede llegar
-// a un despliegue real.
+// NOSONAR (S2068): `DEV_TOKEN_SECRET` is not a credential, it is the
+// development default. `assertAuthConfigSafeForProduction` aborts startup
+// if it is still set with NODE_ENV=production, so it cannot reach a real
+// deployment.
 const TOKEN_SECRET = process.env.TOKEN_SECRET ?? DEV_TOKEN_SECRET; // NOSONAR
 const TOKEN_KEY_VERSION = Number(process.env.TOKEN_KEY_VERSION ?? 1);
 // Fail-safe default `false` (design D-A7/§4a): a production deployment
@@ -340,19 +340,19 @@ const PASSWORD_RESET_EMAIL_FROM = process.env.PASSWORD_RESET_EMAIL_FROM ?? 'frau
 const NOTIFICATION_EMAIL_FROM = process.env.NOTIFICATION_EMAIL_FROM ?? PASSWORD_RESET_EMAIL_FROM;
 const EVIDENCE_STORAGE_DIR = process.env.EVIDENCE_STORAGE_DIR ?? './.evidence';
 /**
- * Almacen de evidencias. `EVIDENCE_S3_BUCKET` presente = S3 (INV-002/004);
- * ausente = filesystem local, que sirve en desarrollo pero NO sabe emitir URLs
- * prefirmadas. Las credenciales no se leen aqui: las resuelve la cadena por
- * defecto del SDK (rol de la instancia, perfil, entorno).
+ * Evidence store. `EVIDENCE_S3_BUCKET` present = S3 (INV-002/004);
+ * absent = local filesystem, which works in development but CANNOT issue
+ * presigned URLs. Credentials are not read here: the SDK default chain
+ * resolves them (instance role, profile, environment).
  */
 /**
- * Variable opcional que ACTIVA una función cuando está presente.
+ * Optional variable that TURNS A FUNCTION ON when it is present.
  *
- * Trata la cadena vacía como ausente. `TSA_URL=` en un `.env` produce `''`,
- * que no es `undefined`, así que un simple `process.env.X` encendía la función
- * con una URL vacía y fallaba en tiempo de ejecución en vez de quedarse
- * apagada. Quien deja la variable en blanco está diciendo «esto no», no
- * «esto, con el valor vacío».
+ * Treats the empty string as absent. `TSA_URL=` in a `.env` produces `''`,
+ * which is not `undefined`, so a bare `process.env.X` used to turn the
+ * function on with an empty URL and fail at runtime instead of staying
+ * off. Whoever leaves the variable blank is saying "not this", not
+ * "this, with the empty value".
  */
 function optionalEnv(name: string): string | undefined {
   const raw = process.env[name];
@@ -364,14 +364,15 @@ const EVIDENCE_S3_REGION = process.env.EVIDENCE_S3_REGION ?? 'us-east-1';
 const EVIDENCE_S3_PREFIX = optionalEnv('EVIDENCE_S3_PREFIX');
 const EVIDENCE_S3_ENDPOINT = optionalEnv('EVIDENCE_S3_ENDPOINT');
 /**
- * TSA RFC 3161 (INV-003). Sin `TSA_URL` no se sella: la evidencia se registra
- * igual con su SHA-256, pero sin sello de tiempo oponible a un tercero.
+ * RFC 3161 TSA (INV-003). Without `TSA_URL` nothing is stamped: evidence is
+ * still registered with its SHA-256, but without a timestamp opposable to a
+ * third party.
  */
 const TSA_URL = optionalEnv('TSA_URL');
 const TSA_AUTHORITY_NAME = optionalEnv('TSA_AUTHORITY_NAME') ?? TSA_URL ?? 'unknown';
 /**
- * Antivirus (INV-015). Sin `CLAMAV_HOST` los ficheros se marcan SKIPPED — que
- * es lo que de verdad ocurrio— en vez de CLEAN.
+ * Antivirus (INV-015). Without `CLAMAV_HOST` files are marked SKIPPED —
+ * which is what actually happened — instead of CLEAN.
  */
 const CLAMAV_HOST = optionalEnv('CLAMAV_HOST');
 const CLAMAV_PORT = Number(process.env.CLAMAV_PORT ?? 3310);
@@ -535,9 +536,9 @@ async function bootstrap(): Promise<void> {
   const organizationFraudConfig = new MongoOrganizationFraudConfigRepository(db);
   const caseSlaTracking = new MongoCaseSlaTrackingRepository(db);
   const caseReports = new MongoCaseReportRepository(db);
-  // Suben aqui, con el resto de repositorios: `GenerateCaseReport` los
-  // necesita para congelar la evidencia y las aprobaciones, y se cablea
-  // antes que los routers que los usaban originalmente.
+  // Lifted here with the rest of the repositories: `GenerateCaseReport`
+  // needs them to freeze evidence and approvals, and they are wired before
+  // the routers that originally used them.
   const evidence = new MongoEvidenceRepository(db);
   const approvalRequests = new MongoApprovalRequestRepository(db);
   const analystDecisions = new MongoAnalystDecisionRepository(db);
@@ -572,13 +573,13 @@ async function bootstrap(): Promise<void> {
     calculateSla,
   });
   // ---------------------------------------------------------------------
-  // Integracion Finturu (propia de este fork).
+  // Finturu integration (this fork's own).
   //
-  // `initializeCaseSla` es el gemelo de `calculateSla` para las vias que
-  // necesitan la fecha limite ANTES de construir el agregado (la ingesta crea
-  // el caso ya con `dueDate` en un solo `save`). Escribe el mismo
-  // `CaseSlaTracking` sobre el mismo repositorio, asi que ambas vias dejan los
-  // mismos datos.
+  // `initializeCaseSla` is the twin of `calculateSla` for paths that need
+  // the due date BEFORE building the aggregate (ingest creates the case
+  // already with `dueDate` in a single `save`). It writes the same
+  // `CaseSlaTracking` on the same repository, so both paths leave the same
+  // data.
   // ---------------------------------------------------------------------
   const initializeCaseSla = createInitializeCaseSlaService({
     slaTracking: caseSlaTracking,
@@ -612,9 +613,9 @@ async function bootstrap(): Promise<void> {
     defaultOrganizationId: process.env.DEFAULT_ORGANIZATION_ID ?? '019d7e58aed0777318d11d4d',
   });
 
-  // El directorio se sirve desde una copia local: recorrer Bridge en vivo
-  // cuesta minutos. `syncFinturuDirectory` la refresca, `getFinturuDirectory`
-  // solo lee.
+  // The directory is served from a local copy: walking Bridge live takes
+  // minutes. `syncFinturuDirectory` refreshes it, `getFinturuDirectory`
+  // only reads.
   const finturuDirectory = new MongoFinturuDirectoryRepository(db);
 
   const getFinturuDirectory = createGetFinturuDirectoryUseCase({
@@ -623,10 +624,10 @@ async function bootstrap(): Promise<void> {
     defaultOrganizationId: process.env.DEFAULT_ORGANIZATION_ID ?? '019d7e58aed0777318d11d4d',
   });
 
-  // Cliente aparte para el sync. `finturuApiClient` corta a los 10 s porque
-  // sirve peticiones interactivas, donde rendirse rapido es lo correcto; los
-  // listados completos que recorre el sync tardan minutos y necesitan
-  // paciencia, no reintentos.
+  // Separate client for the sync. `finturuApiClient` cuts at 10 s because
+  // it serves interactive requests, where failing fast is correct; the
+  // full listings the sync walks take minutes and need patience, not
+  // retries.
   const finturuSyncClient = new FinturuApiClient({
     baseUrl: process.env.FINTURU_API_URL ?? 'http://localhost:3001',
     encryptionKey: process.env.FRAUD_DEPARTMENT_KEY,
@@ -657,9 +658,9 @@ async function bootstrap(): Promise<void> {
     initializeCaseSla,
   });
 
-  // El otro extremo del outbox: los eventos entran en la misma transaccion que
-  // el caso —la parte dificil, la que garantiza que no se pierdan— pero sin un
-  // relay se quedaban en PENDING indefinidamente.
+  // The other end of the outbox: events enter in the same transaction as
+  // the case — the hard part, the one that guarantees they are not lost —
+  // but without a relay they sat in PENDING indefinitely.
   const publishOutboxEvents = createPublishOutboxEventsUseCase({
     outbox: outboxEvents,
     publisher: createLogOutboxPublisher(),
@@ -696,9 +697,9 @@ async function bootstrap(): Promise<void> {
     repository: organizationFraudConfig,
   });
   /*
-   * Compartido: lo usa el router de informes (generacion manual) y el
-   * orquestador que lo dispara solo al resolver. Una sola instancia para que
-   * no puedan divergir.
+   * Shared: used by the reports router (manual generation) and the
+   * orchestrator that fires it automatically on resolve. A single instance
+   * so they cannot diverge.
    */
   const generateCaseReport = createGenerateCaseReportUseCase({
     cases,
@@ -720,9 +721,9 @@ async function bootstrap(): Promise<void> {
   });
 
   /**
-   * Compartido: lo sirve `/investigations/:id/summary` en vivo y lo consume
-   * `ExportInvestigation` para congelarlo. Una sola instancia para que la
-   * vista y el documento entregado no puedan divergir.
+   * Shared: served live by `/investigations/:id/summary` and consumed by
+   * `ExportInvestigation` to freeze it. A single instance so the view and
+   * the delivered document cannot diverge.
    */
   const exportInvestigationSummary = createExportInvestigationSummaryUseCase({
     cases,
@@ -792,7 +793,7 @@ async function bootstrap(): Promise<void> {
       generateTimelineEventId,
     }),
     listCaseNotes: createListCaseNotesUseCase({ cases, notes: caseNotes }),
-    // Al resolver, el informe se congela solo. Ver `resolveToReportOrchestrator`.
+    // On resolve, the report freezes automatically. See `resolveToReportOrchestrator`.
     resolveCase: createResolveToReportOrchestrator({
       resolveCase: createResolveCaseUseCase({
         cases,
@@ -1380,11 +1381,11 @@ async function bootstrap(): Promise<void> {
   // lifecycle") adds the three `requirePlatformAdmin`-gated key-lifecycle
   // routes on this same router — one-time download, rotation, revocation.
   const identityAccessAdminOrganizationsRouter = adminOrganizationRouter({
-    // Sin `db` el paso 1 no puede resolver a que super admin pertenece el
-    // reto: cae al correo por defecto, manda el OTP a una direccion que nadie
-    // controla y nunca persiste el secreto TOTP.
+    // Without `db` step 1 cannot resolve which super admin the challenge
+    // belongs to: it falls back to the default email, sends the OTP to an
+    // address nobody controls, and never persists the TOTP secret.
     db,
-    // Paso 2 del login de super admin: el OTP viaja por este remitente.
+    // Step 2 of super-admin login: the OTP travels through this sender.
     emailSender,
     provisionAdminOrganization: createProvisionAdminOrganizationUseCase({
       admins,
@@ -1445,9 +1446,9 @@ async function bootstrap(): Promise<void> {
   // may only depend on its own module's `domain` (eslint `boundaries`).
   const dummyCredential = createPasswordCredential(DUMMY_PASSWORD_HASH);
 
-  // Se comparte entre el paso 1 y el paso 3 del login de organizacion: el paso
-  // 1 lo usa para rechazar credenciales invalidas ANTES de enviar el OTP, y el
-  // paso 3 vuelve a verificarlas antes de emitir la sesion.
+  // Shared between step 1 and step 3 of organization login: step 1 uses it
+  // to reject invalid credentials BEFORE sending the OTP, and step 3
+  // verifies them again before minting the session.
   const organizationAuthenticator = createAuthenticateActorUseCase({
     gateway: new OrganizationActorGateway(organizations),
     passwordHasher,
@@ -1474,12 +1475,12 @@ async function bootstrap(): Promise<void> {
       challengeTtlSeconds: AUTH_MFA_CHALLENGE_TTL_SECONDS,
       enrollmentTtlSeconds: AUTH_MFA_ENROLLMENT_TTL_SECONDS,
     }),
-    // Sin esto el paso 1 acepta cualquier email: responde OTP_REQUIRED y
-    // dispara un correo a esa direccion, dejando la verificacion de
-    // credenciales para el paso 3.
+    // Without this, step 1 accepts any email: it answers OTP_REQUIRED and
+    // fires mail to that address, leaving credential verification for
+    // step 3.
     authenticateOrganization: organizationAuthenticator,
-    // Sin estas dos, el login de organizacion se degrada en silencio: el paso 1
-    // no manda el OTP y los pasos 2-3 no leen ni guardan el secreto TOTP.
+    // Without these two, organization login degrades silently: step 1 does
+    // not send the OTP and steps 2-3 neither read nor save the TOTP secret.
     emailSender,
     db,
     issueOrganizationSession: createIssueOrganizationSessionUseCase({
@@ -1577,9 +1578,9 @@ async function bootstrap(): Promise<void> {
   const app = createApp({
     routers: [
       { path: '/api/v1', router: identityAccessRouter },
-      // Finturu llama sin sesion, asi que el webhook se expone tambien fuera
-      // de `/api/v1`. Va en `routers` y no en `webhookRouters` porque su
-      // payload se descifra ya deserializado, no sobre los bytes crudos.
+      // Finturu calls without a session, so the webhook is also exposed
+      // outside `/api/v1`. It lives in `routers` not `webhookRouters` because
+      // its payload is decrypted already deserialized, not over raw bytes.
       { path: '/', router: finturuWebhook },
     ],
     webhookRouters: [{ path: '/webhooks', router: ingestWebhookRouter }],

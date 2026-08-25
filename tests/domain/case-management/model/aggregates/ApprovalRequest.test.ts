@@ -89,9 +89,9 @@ describe('ApprovalRequest dual control', () => {
   });
 
   /**
-   * Y tambien rechazar. Dejar que el solicitante retire lo suyo parece
-   * inofensivo, pero convierte la cola de revision en algo que una sola
-   * persona puede vaciar sin que nadie mire.
+   * And reject too. Letting the requester withdraw their own request looks
+   * harmless, but it turns the review queue into something one person can
+   * empty without anyone looking.
    */
   it('refuses to let the requester reject their own request', () => {
     const request = build({ requesterId: REQUESTER });

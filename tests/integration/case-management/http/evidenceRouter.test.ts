@@ -43,8 +43,8 @@ async function buildApp() {
       customerId: 'customer-1',
       riskScore: createRiskScore(50),
       priority: 'MEDIUM',
-      // La regla de asignacion congela los expedientes huerfanos:
-      // sin responsable no se pueden trabajar.
+      // Assignment rule freezes orphan cases:
+      // without an owner they cannot be worked.
       assignedTo: createAssignedTo('USER', oid('analyst-1')),
       now: NOW,
     }),

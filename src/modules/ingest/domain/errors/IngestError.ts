@@ -38,8 +38,8 @@ export function forbiddenRole(roleId: string | null, allowed: readonly string[])
 }
 
 /**
- * El actor pertenece al plano de gobierno (`ORGANIZATION`, `ADMIN`,
- * `AUDITOR`): observa el inquilino entero y no opera sobre el. Ver
+ * The actor belongs to the governance plane (`ORGANIZATION`, `ADMIN`,
+ * `AUDITOR`): they observe the whole tenant and do not operate on it. See
  * `shared/kernel/AccessTier.ts`.
  */
 export function forbiddenReadOnly(
