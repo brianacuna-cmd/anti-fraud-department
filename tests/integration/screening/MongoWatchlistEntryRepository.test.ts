@@ -134,6 +134,27 @@ describe('MongoWatchlistEntryRepository (integration, real Mongo)', () => {
     expect(found?.riskLevel).toBe('CRITICAL');
   });
 
+  it('save preserves indexed fields and created_at', async () => {
+    const entry = buildEntry();
+    await repository.create(entry);
+    await repository.updateIndexedFields(entry.id, {
+      normalizedName: 'jane doe',
+      phoneticKeys: ['JN', 'T'],
+    });
+
+    await repository.save(entry.update({ riskLevel: 'HIGH' }, LATER));
+
+    const stored = await db
+      .collection<WatchlistEntryDocument>('watchlist_entries')
+      .findOne({ _id: new ObjectId(entry.id) });
+
+    expect(stored?.normalized_name).toBe('jane doe');
+    expect(stored?.phonetic_keys).toEqual(['JN', 'T']);
+    expect(stored?.created_at).toEqual(new Date(NOW));
+    expect(stored?.updated_at).toEqual(new Date(LATER));
+    expect(stored?.risk_level).toBe('HIGH');
+  });
+
   it('list scopes by watchlistId, paginates, and returns correct total', async () => {
     const watchlistId = generateWatchlistId();
     const a = buildEntry({ watchlistId });

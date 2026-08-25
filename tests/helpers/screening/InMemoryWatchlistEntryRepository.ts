@@ -93,7 +93,7 @@ export class InMemoryWatchlistEntryRepository implements WatchlistEntryRepositor
   async list(query: WatchlistEntryListQuery, _tx?: Transaction): Promise<WatchlistEntryListResult> {
     const filtered = [...this.byId.values()]
       .filter((e) => e.watchlistId === query.watchlistId)
-      .filter((e) => e.aggregate?.organizationId === query.organizationId)
+      .filter((e) => e.aggregate !== undefined && e.aggregate.organizationId === query.organizationId)
       .filter(
         (e) =>
           query.status === undefined || query.status.length === 0 || query.status.includes(e.status as 'ACTIVE' | 'INACTIVE' | 'REMOVED'),

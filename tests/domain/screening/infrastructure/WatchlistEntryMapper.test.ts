@@ -101,5 +101,18 @@ describe('WatchlistEntryMapper.toDocument', () => {
     expect(backToDoc.risk_level).toBe('HIGH');
     expect(backToDoc.status).toBe('ACTIVE');
     expect(backToDoc.deleted_at).toBeNull();
+    expect(backToDoc.created_at).toEqual(new Date(NOW));
+    expect(backToDoc.updated_at).toEqual(new Date(NOW));
+  });
+});
+
+describe('WatchlistEntryMapper.toDomain pre-B documents', () => {
+  it('falls back to the ObjectId timestamp when created_at/updated_at are absent', () => {
+    const doc = buildDocument({ created_at: undefined, updated_at: undefined });
+    const entry = toDomain(doc);
+    const objectIdTime = fromDate(doc._id.getTimestamp());
+
+    expect(entry.createdAt).toBe(objectIdTime);
+    expect(entry.updatedAt).toBe(objectIdTime);
   });
 });

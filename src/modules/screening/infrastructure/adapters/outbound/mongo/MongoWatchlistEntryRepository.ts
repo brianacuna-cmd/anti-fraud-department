@@ -105,10 +105,23 @@ export class MongoWatchlistEntryRepository implements WatchlistEntryRepository {
   }
 
   async save(entry: WatchlistEntry, tx?: Transaction): Promise<void> {
-    const doc = toDocument(entry);
-    await this.collection.replaceOne(
-      { _id: doc._id },
-      doc,
+    await this.collection.updateOne(
+      { _id: new ObjectId(entry.id) },
+      {
+        $set: {
+          watchlist_id: new ObjectId(entry.watchlistId),
+          organization_id: new ObjectId(entry.organizationId),
+          entry_type: entry.entryType,
+          name: entry.name,
+          document: entry.document,
+          wallet_address: entry.walletAddress,
+          risk_level: entry.riskLevel,
+          country: entry.country,
+          status: entry.status,
+          deleted_at: entry.deletedAt ? toDate(entry.deletedAt) : null,
+          updated_at: toDate(entry.updatedAt),
+        },
+      },
       { session: toSession(tx) },
     );
   }

@@ -14,12 +14,9 @@ import type { WatchlistEntryDocument } from '../documents/WatchlistEntryDocument
  * `WatchlistEntryDocumentMapper.ts` is left untouched (RNF-5).
  */
 export function toDomain(document: WatchlistEntryDocument): WatchlistEntry {
-  const createdAt = document.created_at
-    ? fromDate(document.created_at)
-    : fromDate(new Date(0));
-  const updatedAt = document.updated_at
-    ? fromDate(document.updated_at)
-    : fromDate(new Date(0));
+  const objectIdTime = fromDate(document._id.getTimestamp());
+  const createdAt = document.created_at ? fromDate(document.created_at) : objectIdTime;
+  const updatedAt = document.updated_at ? fromDate(document.updated_at) : objectIdTime;
 
   return WatchlistEntry.rehydrate({
     id: createWatchlistEntryId(document._id.toString()),
@@ -38,7 +35,12 @@ export function toDomain(document: WatchlistEntryDocument): WatchlistEntry {
   });
 }
 
-/** camelCase (domain) -> snake_case (Mongo). Always sets created_at/updated_at. */
+/**
+ * camelCase (domain) -> snake_case (Mongo) for `create` inserts.
+ * Index fields start empty; `IndexWatchlistEntry` fills them in the same tx.
+ * `save` must NOT use this for a full-document replace — that would wipe
+ * `normalized_name`/`phonetic_keys` and rewrite `created_at`.
+ */
 export function toDocument(entry: WatchlistEntry): WatchlistEntryDocument {
   return {
     _id: new ObjectId(entry.id),
