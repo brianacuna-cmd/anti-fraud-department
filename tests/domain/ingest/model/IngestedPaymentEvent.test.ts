@@ -93,16 +93,16 @@ describe('createIngestedPaymentEvent', () => {
     const event = createIngestedPaymentEvent({
       ...VALID,
       subjectIdentity: {
-        nombre: 'John Doe',
-        documento: '123456789',
+        name: 'John Doe',
+        document: '123456789',
         walletAddress: '0xabc',
         entryType: 'PERSON',
       },
     });
 
     expect(event.subjectIdentity).toEqual({
-      nombre: 'John Doe',
-      documento: '123456789',
+      name: 'John Doe',
+      document: '123456789',
       walletAddress: '0xabc',
       entryType: 'PERSON',
     });

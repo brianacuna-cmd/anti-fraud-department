@@ -24,8 +24,8 @@ describe('selectStrategy', () => {
     expect(selectStrategy('NAME')).toBe('PHONETIC_SIMILARITY');
   });
 
-  it('selects EXACT_LEVENSHTEIN for DOCUMENTO', () => {
-    expect(selectStrategy('DOCUMENTO')).toBe('EXACT_LEVENSHTEIN');
+  it('selects EXACT_LEVENSHTEIN for DOCUMENT', () => {
+    expect(selectStrategy('DOCUMENT')).toBe('EXACT_LEVENSHTEIN');
   });
 
   it('selects EXACT_LEVENSHTEIN for WALLET (no phonetics)', () => {
@@ -59,12 +59,12 @@ describe('scoreMatch — NAME', () => {
   });
 });
 
-describe('scoreMatch — DOCUMENTO', () => {
+describe('scoreMatch — DOCUMENT', () => {
   it('scores 100 on an exact match without calling the similarity calculator', () => {
     const similarityCalculator = fixedSimilarityCalculator(0, 0);
     const phoneticEncoder = firstLetterEncoder();
 
-    const score = scoreMatch('DOCUMENTO', '12345678', '12345678', { phoneticEncoder, similarityCalculator });
+    const score = scoreMatch('DOCUMENT', '12345678', '12345678', { phoneticEncoder, similarityCalculator });
 
     expect(score).toBe(100);
     expect(similarityCalculator.levenshtein).not.toHaveBeenCalled();
@@ -74,7 +74,7 @@ describe('scoreMatch — DOCUMENTO', () => {
     const similarityCalculator = fixedSimilarityCalculator(0, 1);
     const phoneticEncoder = firstLetterEncoder();
 
-    const score = scoreMatch('DOCUMENTO', '12345678', '12345679', { phoneticEncoder, similarityCalculator });
+    const score = scoreMatch('DOCUMENT', '12345678', '12345679', { phoneticEncoder, similarityCalculator });
 
     // round(100*(1 - 1/8)) = 88
     expect(score).toBe(88);
@@ -84,7 +84,7 @@ describe('scoreMatch — DOCUMENTO', () => {
     const similarityCalculator = fixedSimilarityCalculator(0, 3);
     const phoneticEncoder = firstLetterEncoder();
 
-    const score = scoreMatch('DOCUMENTO', '12345678', '99999999', { phoneticEncoder, similarityCalculator });
+    const score = scoreMatch('DOCUMENT', '12345678', '99999999', { phoneticEncoder, similarityCalculator });
 
     expect(score).toBe(0);
   });

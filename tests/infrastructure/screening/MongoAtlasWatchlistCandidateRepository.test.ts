@@ -11,7 +11,7 @@ import { oid } from '../../support/oid.js';
  * Search testability" and tasks Slice 4 Task 4.3.
  */
 describe('MongoAtlasWatchlistCandidateRepository (unit, pipeline shape only — staging-only adapter)', () => {
-  it('builds a $search compound pipeline with phonetic terms + fuzzy text + $limit, scoped to org/estado/tipo', async () => {
+  it('builds a $search compound pipeline with phonetic terms + fuzzy text + $limit, scoped to org/status/entryType', async () => {
     const toArray = jest.fn().mockResolvedValue([]);
     const aggregate = jest.fn().mockReturnValue({ toArray });
     const collection = jest.fn().mockReturnValue({ aggregate });

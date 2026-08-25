@@ -58,14 +58,14 @@ function buildPipeline(query: WatchlistCandidateQuery): Record<string, unknown>[
     should.push({
       text: {
         query: query.normalizedName,
-        path: 'nombre_normalizado',
+        path: 'normalized_name',
         fuzzy: { maxEdits: FUZZY_MAX_EDITS },
       },
     });
   }
 
-  if (query.documento) {
-    should.push({ text: { query: query.documento, path: 'documento' } });
+  if (query.document) {
+    should.push({ text: { query: query.document, path: 'document' } });
   }
 
   if (query.walletAddress) {
@@ -86,8 +86,8 @@ function buildPipeline(query: WatchlistCandidateQuery): Record<string, unknown>[
     {
       $match: {
         organization_id: new ObjectId(query.organizationId),
-        tipo_entrada: query.entryType,
-        estado: 'ACTIVE',
+        entry_type: query.entryType,
+        status: 'ACTIVE',
         deleted_at: null,
       },
     },

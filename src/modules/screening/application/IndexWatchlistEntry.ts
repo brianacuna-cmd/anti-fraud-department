@@ -16,7 +16,7 @@ export interface IndexWatchlistEntryInput {
 /**
  * Write-path use case (spec NFI: single shared normalizer used at
  * write+read; deferred task 5.2, promoted into Slice 6). Runs whenever a
- * watchlist entry is created/updated: normalizes `nombre` with the SAME
+ * watchlist entry is created/updated: normalizes `name` with the SAME
  * `NameNormalizer` the query path (`ScreenSubjectAgainstWatchlist`) uses,
  * and precomputes `phonetic_keys` per normalized token via the injected
  * `PhoneticEncoder`. Persists both onto the entry document so the
@@ -34,12 +34,12 @@ export function createIndexWatchlistEntryUseCase(deps: IndexWatchlistEntryDeps) 
       return;
     }
 
-    const nombreNormalizado = nameNormalizer.normalize(entry.nombre);
-    const tokens = nombreNormalizado.length > 0 ? nombreNormalizado.split(' ') : [];
+    const normalizedName = nameNormalizer.normalize(entry.name);
+    const tokens = normalizedName.length > 0 ? normalizedName.split(' ') : [];
     const phoneticKeys = Array.from(new Set(tokens.flatMap((token) => phoneticEncoder.encode(token))));
 
     await watchlistEntryRepository.updateIndexedFields(entry.id, {
-      nombreNormalizado,
+      normalizedName,
       phoneticKeys,
     });
   };

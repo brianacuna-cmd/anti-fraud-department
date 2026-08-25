@@ -28,7 +28,7 @@ export interface ScreenThenScoreToCaseOrchestratorDeps {
  * Composition-root orchestrator (eslint boundaries): screen subject against
  * the watchlist first (RF-2/RF-4, alerts already persisted inside
  * `screenSubject`), then — only when the top match reaches the signal tier
- * (confianza >= 70) — builds a NEW immutable `CanonicalRiskEvent` with
+ * (confidence >= 70) — builds a NEW immutable `CanonicalRiskEvent` with
  * `riskSignals` enriched by the four camelCase watchlist keys, and
  * delegates to the EXISTING `scoreToCaseOrchestrator` unchanged (RF-7: this
  * module never blocks/approves on its own). When `riskSignal` is null, the

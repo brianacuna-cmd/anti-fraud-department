@@ -14,15 +14,15 @@ function buildEntry(overrides: Partial<WatchlistEntryDocument> = {}): WatchlistE
     _id: new ObjectId(oid(`entry-${Math.random()}`)),
     watchlist_id: new ObjectId(oid('watchlist-1')),
     organization_id: new ObjectId(oid('org-1')),
-    tipo_entrada: 'PERSON',
-    nombre: 'John Smith',
-    nombre_normalizado: 'john smith',
+    entry_type: 'PERSON',
+    name: 'John Smith',
+    normalized_name: 'john smith',
     phonetic_keys: ['JN', 'SM0'],
-    documento: '123456789',
+    document: '123456789',
     wallet_address: null,
-    nivel_riesgo: 'HIGH',
-    pais: 'US',
-    estado: 'ACTIVE',
+    risk_level: 'HIGH',
+    country: 'US',
+    status: 'ACTIVE',
     deleted_at: null,
     ...overrides,
   };
@@ -66,7 +66,7 @@ describe('MongoFallbackWatchlistCandidateRepository (integration, real Mongo)', 
     });
 
     expect(candidates).toHaveLength(1);
-    expect(candidates[0]?.nombre).toBe('John Smith');
+    expect(candidates[0]?.name).toBe('John Smith');
   });
 
   it('enforces org-tenant isolation: org A entry never returned for org B screening', async () => {
@@ -85,9 +85,9 @@ describe('MongoFallbackWatchlistCandidateRepository (integration, real Mongo)', 
     expect(candidates).toHaveLength(0);
   });
 
-  it('excludes estado=REMOVED entries', async () => {
+  it('excludes status=REMOVED entries', async () => {
     await db.collection<WatchlistEntryDocument>('watchlist_entries').insertOne(
-      buildEntry({ estado: 'REMOVED' }),
+      buildEntry({ status: 'REMOVED' }),
     );
 
     const candidates = await repository.findCandidates({
@@ -131,7 +131,7 @@ describe('MongoFallbackWatchlistCandidateRepository (integration, real Mongo)', 
 
   it('returns empty when no blocking fields are provided instead of dumping all active entries', async () => {
     await db.collection<WatchlistEntryDocument>('watchlist_entries').insertOne(
-      buildEntry({ nombre: 'Some Active Entry' }),
+      buildEntry({ name: 'Some Active Entry' }),
     );
 
     const candidates = await repository.findCandidates({
@@ -143,14 +143,14 @@ describe('MongoFallbackWatchlistCandidateRepository (integration, real Mongo)', 
     expect(candidates).toEqual([]);
   });
 
-  it('matches by exact documento even when phonetic keys diverge', async () => {
+  it('matches by exact document even when phonetic keys diverge', async () => {
     await db.collection<WatchlistEntryDocument>('watchlist_entries').insertOne(
-      buildEntry({ nombre: 'Different Name', nombre_normalizado: 'different name', phonetic_keys: ['XX'] }),
+      buildEntry({ name: 'Different Name', normalized_name: 'different name', phonetic_keys: ['XX'] }),
     );
 
     const candidates = await repository.findCandidates({
       organizationId: oid('org-1'),
-      documento: '123456789',
+      document: '123456789',
       entryType: 'PERSON',
       limit: 15,
     });

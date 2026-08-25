@@ -108,8 +108,8 @@ describe('mapCoinflowEnvelope', () => {
       throw new Error('expected mapped');
     }
     expect(result.event.subjectIdentity).toEqual({
-      nombre: 'Maria Lopez',
-      documento: 'DOC-9',
+      name: 'Maria Lopez',
+      document: 'DOC-9',
       walletAddress: 'wallet-xyz',
       entryType: 'WALLET',
     });

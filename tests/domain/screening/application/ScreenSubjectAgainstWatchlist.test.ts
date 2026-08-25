@@ -60,13 +60,13 @@ function buildCandidate(overrides: Partial<WatchlistCandidate> = {}): WatchlistC
   return {
     id: createWatchlistEntryId('507f1f77bcf86cd799439011'),
     watchlistId: createWatchlistId('507f1f77bcf86cd799439012'),
-    nombre: 'John Smith',
-    documento: null,
+    name: 'John Smith',
+    document: null,
     walletAddress: null,
-    nivelRiesgo: 'HIGH',
-    nombreNormalizado: 'john smith',
+    riskLevel: 'HIGH',
+    normalizedName: 'john smith',
     phoneticKeys: ['jon', 'smi'],
-    pais: 'US',
+    country: 'US',
     ...overrides,
   };
 }
@@ -110,7 +110,7 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
       auth: tenantAuth(),
       customerId: 'cust-1',
       entryType: 'PERSON',
-      nombre: 'John Smith',
+      name: 'John Smith',
     });
 
     expect(watchlistCandidateRepository.calls).toHaveLength(1);
@@ -124,7 +124,7 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
       auth: tenantAuth(),
       customerId: 'cust-1',
       entryType: 'PERSON',
-      nombre: 'John Smith',
+      name: 'John Smith',
     });
 
     expect(result.matches).toHaveLength(0);
@@ -132,15 +132,15 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
     expect(amlAlertRepository.all()).toHaveLength(0);
   });
 
-  it('persists an alert AND propagates a risk signal when confianza >= 70', async () => {
-    const candidate = buildCandidate({ nombre: 'John Smith' });
+  it('persists an alert AND propagates a risk signal when confidence >= 70', async () => {
+    const candidate = buildCandidate({ name: 'John Smith' });
     const { screenSubject, amlAlertRepository } = buildUseCase([candidate]);
 
     const result = await screenSubject({
       auth: tenantAuth(),
       customerId: 'cust-1',
       entryType: 'PERSON',
-      nombre: 'John Smith',
+      name: 'John Smith',
     });
 
     expect(result.matches).toHaveLength(1);
@@ -152,15 +152,15 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
     expect(amlAlertRepository.all()).toHaveLength(1);
   });
 
-  it('persists an alert but does NOT propagate a signal when 50 <= confianza < 70', async () => {
-    const candidate = buildCandidate({ nombre: 'Jonathan Smyth-Wilson' });
+  it('persists an alert but does NOT propagate a signal when 50 <= confidence < 70', async () => {
+    const candidate = buildCandidate({ name: 'Jonathan Smyth-Wilson' });
     const { screenSubject, amlAlertRepository } = buildUseCase([candidate]);
 
     const result = await screenSubject({
       auth: tenantAuth(),
       customerId: 'cust-1',
       entryType: 'PERSON',
-      nombre: 'Jon Smith',
+      name: 'Jon Smith',
     });
 
     const tier = result.matches[0]?.tier;
@@ -175,14 +175,14 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
   });
 
   it('discards low-confidence matches: no alert, no signal', async () => {
-    const candidate = buildCandidate({ nombre: 'Zzzzz Qqqqq' });
+    const candidate = buildCandidate({ name: 'Zzzzz Qqqqq' });
     const { screenSubject, amlAlertRepository } = buildUseCase([candidate]);
 
     const result = await screenSubject({
       auth: tenantAuth(),
       customerId: 'cust-1',
       entryType: 'PERSON',
-      nombre: 'John Smith',
+      name: 'John Smith',
     });
 
     expect(result.matches[0]?.tier).toBe('DISCARD');
@@ -190,14 +190,14 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
     expect(amlAlertRepository.all()).toHaveLength(0);
   });
 
-  it('ranks multiple candidates by confianza descending, deterministically', async () => {
+  it('ranks multiple candidates by confidence descending, deterministically', async () => {
     const strong = buildCandidate({
       id: createWatchlistEntryId('507f1f77bcf86cd799439013'),
-      nombre: 'John Smith',
+      name: 'John Smith',
     });
     const weak = buildCandidate({
       id: createWatchlistEntryId('507f1f77bcf86cd799439014'),
-      nombre: 'Zzzzz Qqqqq',
+      name: 'Zzzzz Qqqqq',
     });
     const { screenSubject } = buildUseCase([weak, strong]);
 
@@ -205,7 +205,7 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
       auth: tenantAuth(),
       customerId: 'cust-1',
       entryType: 'PERSON',
-      nombre: 'John Smith',
+      name: 'John Smith',
     });
 
     expect(result.matches).toHaveLength(2);
@@ -218,7 +218,7 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
     const encodeSpy = jest.spyOn(encoder, 'encode');
     const candidate = buildCandidate({
       walletAddress: '0xABCDEF1234567890',
-      nombre: 'wallet-entry',
+      name: 'wallet-entry',
     });
     const watchlistCandidateRepository = new ScriptedWatchlistCandidateRepository([candidate]);
     const screenSubject = createScreenSubjectAgainstWatchlistUseCase({
@@ -257,7 +257,7 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
         auth: tenantAuth(null),
         customerId: 'cust-1',
         entryType: 'PERSON',
-        nombre: 'John Smith',
+        name: 'John Smith',
       }),
     ).rejects.toMatchObject({ code: 'FORBIDDEN_CROSS_TENANT' });
     expect(watchlistCandidateRepository.calls).toHaveLength(0);
@@ -271,21 +271,21 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
       auth: orgAAuth,
       customerId: 'cust-1',
       entryType: 'PERSON',
-      nombre: 'John Smith',
+      name: 'John Smith',
     });
 
     expect(watchlistCandidateRepository.calls[0]?.organizationId).toBe('org-A');
   });
 
   it('sets the real persisted alertId on a SIGNAL-tier (>=70) match (RF-8)', async () => {
-    const candidate = buildCandidate({ nombre: 'John Smith' });
+    const candidate = buildCandidate({ name: 'John Smith' });
     const { screenSubject, amlAlertRepository } = buildUseCase([candidate]);
 
     const result = await screenSubject({
       auth: tenantAuth(),
       customerId: 'cust-1',
       entryType: 'PERSON',
-      nombre: 'John Smith',
+      name: 'John Smith',
     });
 
     expect(result.matches[0]?.tier).toBe('ALERT_AND_SIGNAL');
@@ -296,14 +296,14 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
   });
 
   it('sets a real persisted alertId on an ALERT-tier (50-69) match (RF-8)', async () => {
-    const candidate = buildCandidate({ nombre: 'Jonathan Smyth-Wilson' });
+    const candidate = buildCandidate({ name: 'Jonathan Smyth-Wilson' });
     const { screenSubject, amlAlertRepository } = buildUseCase([candidate]);
 
     const result = await screenSubject({
       auth: tenantAuth(),
       customerId: 'cust-1',
       entryType: 'PERSON',
-      nombre: 'Jon Smith',
+      name: 'Jon Smith',
     });
 
     const tier = result.matches[0]?.tier;
@@ -320,11 +320,11 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
   it('leaves alertId null for DISCARD-tier matches, without cross-assignment across positions (RF-8)', async () => {
     const strong = buildCandidate({
       id: createWatchlistEntryId('507f1f77bcf86cd799439013'),
-      nombre: 'John Smith',
+      name: 'John Smith',
     });
     const weak = buildCandidate({
       id: createWatchlistEntryId('507f1f77bcf86cd799439014'),
-      nombre: 'Zzzzz Qqqqq',
+      name: 'Zzzzz Qqqqq',
     });
     const { screenSubject, amlAlertRepository } = buildUseCase([weak, strong]);
 
@@ -332,7 +332,7 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
       auth: tenantAuth(),
       customerId: 'cust-1',
       entryType: 'PERSON',
-      nombre: 'John Smith',
+      name: 'John Smith',
     });
 
     expect(result.matches).toHaveLength(2);
@@ -346,54 +346,54 @@ describe('createScreenSubjectAgainstWatchlistUseCase', () => {
     expect(top?.alertId).toBe(String(persisted[0]?.id));
   });
 
-  it('trims padded DOCUMENTO before blocking/exact matching so it still hits the stored entry', async () => {
-    const candidate = buildCandidate({ documento: '12345', nombre: 'doc-entry' });
+  it('trims padded DOCUMENT before blocking/exact matching so it still hits the stored entry', async () => {
+    const candidate = buildCandidate({ document: '12345', name: 'doc-entry' });
     const { screenSubject, watchlistCandidateRepository } = buildUseCase([candidate]);
 
     const result = await screenSubject({
       auth: tenantAuth(),
       customerId: 'cust-1',
       entryType: 'PERSON',
-      documento: '   12345   ',
+      document: '   12345   ',
     });
 
     // The blocking query must carry the trimmed value, not the padded original.
-    expect(watchlistCandidateRepository.calls[0]?.documento).toBe('12345');
+    expect(watchlistCandidateRepository.calls[0]?.document).toBe('12345');
     // And exact matching (levenshtein 0) must succeed against the stored entry.
-    expect(result.matches[0]?.match.matchField).toBe('DOCUMENTO');
+    expect(result.matches[0]?.match.matchField).toBe('DOCUMENT');
     expect(result.matches[0]?.confidence).toBe(100);
   });
 
   it('tiers using per-call thresholds override (D-8) instead of the deps-level default', async () => {
-    const candidate = buildCandidate({ nombre: 'Jonathan Smyth-Wilson' });
+    const candidate = buildCandidate({ name: 'Jonathan Smyth-Wilson' });
     const { screenSubject } = buildUseCase([candidate]);
 
     const result = await screenSubject({
       auth: tenantAuth(),
       customerId: 'cust-1',
       entryType: 'PERSON',
-      nombre: 'Jon Smith',
+      name: 'Jon Smith',
       thresholds: { alertThreshold: 0, signalThreshold: 0 },
     });
 
-    // With both thresholds at 0, ANY confianza >= 0 must tier ALERT_AND_SIGNAL,
+    // With both thresholds at 0, ANY confidence >= 0 must tier ALERT_AND_SIGNAL,
     // regardless of how the fake similarity/phonetic stubs score this pair.
     expect(result.matches[0]?.tier).toBe('ALERT_AND_SIGNAL');
   });
 
   it('per-call thresholds override takes precedence over the deps-level default in the other direction too', async () => {
-    const candidate = buildCandidate({ nombre: 'John Smith' });
+    const candidate = buildCandidate({ name: 'John Smith' });
     const { screenSubject } = buildUseCase([candidate]);
 
     const result = await screenSubject({
       auth: tenantAuth(),
       customerId: 'cust-1',
       entryType: 'PERSON',
-      nombre: 'John Smith',
+      name: 'John Smith',
       thresholds: { alertThreshold: 101, signalThreshold: 101 },
     });
 
-    // An exact match (confianza 100) would default-tier ALERT_AND_SIGNAL,
+    // An exact match (confidence 100) would default-tier ALERT_AND_SIGNAL,
     // but an override above 100 must force DISCARD.
     expect(result.matches[0]?.tier).toBe('DISCARD');
   });

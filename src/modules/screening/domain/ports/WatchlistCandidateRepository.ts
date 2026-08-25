@@ -9,20 +9,20 @@ import type { WatchlistId } from '../model/value-objects/WatchlistId.js';
 export interface WatchlistCandidate {
   readonly id: WatchlistEntryId;
   readonly watchlistId: WatchlistId;
-  readonly nombre: string;
-  readonly documento: string | null;
+  readonly name: string;
+  readonly document: string | null;
   readonly walletAddress: string | null;
-  readonly nivelRiesgo: string | null;
-  readonly nombreNormalizado: string;
+  readonly riskLevel: string | null;
+  readonly normalizedName: string;
   readonly phoneticKeys: readonly string[];
-  readonly pais: string | null;
+  readonly country: string | null;
 }
 
 export interface WatchlistCandidateQuery {
   readonly organizationId: string;
   readonly normalizedName?: string;
   readonly phoneticKeys?: readonly string[];
-  readonly documento?: string;
+  readonly document?: string;
   readonly walletAddress?: string;
   readonly entryType: EntryType;
   readonly limit: number;
@@ -30,7 +30,7 @@ export interface WatchlistCandidateQuery {
 
 /**
  * Blocking-layer port (spec RF-2, RF-5). Implementations MUST filter by
- * `organizationId` and MUST exclude `estado != "ACTIVE"` and soft-deleted
+ * `organizationId` and MUST exclude `status != "ACTIVE"` and soft-deleted
  * (`deleted_at != null`) entries at query time, not post-hoc. Two adapters
  * implement this port identically: `MongoIndexWatchlistCandidateRepository`
  * (CI/test, mongodb-memory-server-compatible) and

@@ -47,16 +47,16 @@ describe('createCanonicalRiskEvent', () => {
     const event = createCanonicalRiskEvent({
       ...VALID,
       subjectIdentity: {
-        nombre: 'John Doe',
-        documento: '123456789',
+        name: 'John Doe',
+        document: '123456789',
         walletAddress: '0xabc',
         entryType: 'PERSON',
       },
     });
 
     expect(event.subjectIdentity).toEqual({
-      nombre: 'John Doe',
-      documento: '123456789',
+      name: 'John Doe',
+      document: '123456789',
       walletAddress: '0xabc',
       entryType: 'PERSON',
     });
@@ -65,10 +65,10 @@ describe('createCanonicalRiskEvent', () => {
   it('accepts a partial subjectIdentity (only some sub-fields populated)', () => {
     const event = createCanonicalRiskEvent({
       ...VALID,
-      subjectIdentity: { documento: '123456789' },
+      subjectIdentity: { document: '123456789' },
     });
 
-    expect(event.subjectIdentity).toEqual({ documento: '123456789' });
+    expect(event.subjectIdentity).toEqual({ document: '123456789' });
   });
 
   it('rejects snake_case amount_cents as scoring input', () => {
