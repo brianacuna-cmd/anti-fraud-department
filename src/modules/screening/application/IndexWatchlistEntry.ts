@@ -2,6 +2,7 @@ import type { WatchlistEntryId } from '../domain/model/value-objects/WatchlistEn
 import type { NameNormalizer } from '../domain/ports/NameNormalizer.js';
 import type { PhoneticEncoder } from '../domain/ports/PhoneticEncoder.js';
 import type { WatchlistEntryRepository } from '../domain/ports/WatchlistEntryRepository.js';
+import type { Transaction } from '../domain/ports/UnitOfWork.js';
 
 export interface IndexWatchlistEntryDeps {
   readonly watchlistEntryRepository: WatchlistEntryRepository;
@@ -11,6 +12,8 @@ export interface IndexWatchlistEntryDeps {
 
 export interface IndexWatchlistEntryInput {
   readonly entryId: WatchlistEntryId;
+  /** Optional transaction — pass when called inside a `withTransaction` block (ADR-3). */
+  readonly tx?: Transaction;
 }
 
 /**
@@ -24,12 +27,16 @@ export interface IndexWatchlistEntryInput {
  *
  * No-op when the entry does not exist (e.g. already deleted by the time an
  * async/outbox-driven indexing job runs) rather than throwing.
+ *
+ * ADR-3: `tx` is threaded through to `findToIndex`/`updateIndexedFields` so
+ * normalization commits atomically with the entry write when called from a
+ * `CreateWatchlistEntry`/`UpdateWatchlistEntry` use case.
  */
 export function createIndexWatchlistEntryUseCase(deps: IndexWatchlistEntryDeps) {
   const { watchlistEntryRepository, nameNormalizer, phoneticEncoder } = deps;
 
   return async function indexWatchlistEntry(input: IndexWatchlistEntryInput): Promise<void> {
-    const entry = await watchlistEntryRepository.findToIndex(input.entryId);
+    const entry = await watchlistEntryRepository.findToIndex(input.entryId, input.tx);
     if (!entry) {
       return;
     }
@@ -38,9 +45,6 @@ export function createIndexWatchlistEntryUseCase(deps: IndexWatchlistEntryDeps) 
     const tokens = normalizedName.length > 0 ? normalizedName.split(' ') : [];
     const phoneticKeys = Array.from(new Set(tokens.flatMap((token) => phoneticEncoder.encode(token))));
 
-    await watchlistEntryRepository.updateIndexedFields(entry.id, {
-      normalizedName,
-      phoneticKeys,
-    });
+    await watchlistEntryRepository.updateIndexedFields(entry.id, { normalizedName, phoneticKeys }, input.tx);
   };
 }
