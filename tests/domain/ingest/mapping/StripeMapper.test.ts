@@ -148,8 +148,8 @@ describe('mapStripeEnvelope', () => {
       throw new Error('expected mapped');
     }
     expect(result.event.subjectIdentity).toEqual({
-      nombre: 'Ana Perez',
-      documento: '12345678',
+      name: 'Ana Perez',
+      document: '12345678',
       entryType: 'PERSON',
     });
   });

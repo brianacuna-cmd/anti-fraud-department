@@ -144,8 +144,8 @@ describe('mapBridgeEnvelope', () => {
       throw new Error('expected mapped');
     }
     expect(result.event.subjectIdentity).toEqual({
-      nombre: 'Juan Rios',
-      documento: 'DOC-1',
+      name: 'Juan Rios',
+      document: 'DOC-1',
       walletAddress: '0xabc123',
       entryType: 'WALLET',
     });

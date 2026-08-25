@@ -239,13 +239,13 @@ export async function ensureIndexes(db: Db): Promise<void> {
 
   // watchlist_entries (screening): blocking-layer lookups for the
   // non-Atlas fallback candidate repository (RF-2) — compound status
-  // filter, exact documento/wallet lookups, and phonetic/normalized-name
+  // filter, exact document/wallet lookups, and phonetic/normalized-name
   // blocking.
   await db
     .collection('watchlist_entries')
-    .createIndex({ watchlist_id: 1, estado: 1 }, { name: 'watchlist_entries_watchlist_estado_idx' });
+    .createIndex({ watchlist_id: 1, status: 1 }, { name: 'watchlist_entries_watchlist_status_idx' });
 
-  await db.collection('watchlist_entries').createIndex({ documento: 1 }, { name: 'watchlist_entries_documento_idx' });
+  await db.collection('watchlist_entries').createIndex({ document: 1 }, { name: 'watchlist_entries_document_idx' });
 
   await db
     .collection('watchlist_entries')
@@ -253,7 +253,18 @@ export async function ensureIndexes(db: Db): Promise<void> {
 
   await db
     .collection('watchlist_entries')
-    .createIndex({ nombre_normalizado: 1 }, { name: 'watchlist_entries_nombre_normalizado_idx' });
+    .createIndex({ normalized_name: 1 }, { name: 'watchlist_entries_normalized_name_idx' });
+
+  const watchlistIndexes = await db.collection('watchlist_entries').indexes();
+  for (const obsolete of [
+    'watchlist_entries_watchlist_estado_idx',
+    'watchlist_entries_documento_idx',
+    'watchlist_entries_nombre_normalizado_idx',
+  ]) {
+    if (watchlistIndexes.some((index) => index.name === obsolete)) {
+      await db.collection('watchlist_entries').dropIndex(obsolete);
+    }
+  }
 
   await db
     .collection('watchlist_entries')
@@ -310,7 +321,7 @@ export async function ensureIndexes(db: Db): Promise<void> {
   );
 
   // organization_screening_config (screening, design D-6): per-tenant
-  // singleton of confianza thresholds — one document per organization.
+  // singleton of confidence thresholds — one document per organization.
   await db
     .collection('organization_screening_config')
     .createIndex({ organization_id: 1 }, { unique: true, name: 'org_screening_config_unique' });

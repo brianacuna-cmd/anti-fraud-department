@@ -22,8 +22,8 @@ export interface CanonicalRiskEvent {
 }
 
 export interface SubjectIdentity {
-  readonly nombre?: string;
-  readonly documento?: string;
+  readonly name?: string;
+  readonly document?: string;
   readonly walletAddress?: string;
   readonly entryType?: string;
 }
@@ -52,16 +52,16 @@ export function createCanonicalRiskEvent(input: Readonly<Record<string, unknown>
 }
 
 function pickSubjectIdentity(input: Readonly<Record<string, unknown>>): SubjectIdentity | undefined {
-  const nombre = pickOptionalString(input.nombre);
-  const documento = pickOptionalString(input.documento);
+  const name = pickOptionalString(input.name);
+  const document = pickOptionalString(input.document);
   const walletAddress = pickOptionalString(input.walletAddress);
   const entryType = pickOptionalString(input.entryType);
-  if (nombre === undefined && documento === undefined && walletAddress === undefined && entryType === undefined) {
+  if (name === undefined && document === undefined && walletAddress === undefined && entryType === undefined) {
     return undefined;
   }
   return {
-    ...(nombre !== undefined ? { nombre } : {}),
-    ...(documento !== undefined ? { documento } : {}),
+    ...(name !== undefined ? { name } : {}),
+    ...(document !== undefined ? { document } : {}),
     ...(walletAddress !== undefined ? { walletAddress } : {}),
     ...(entryType !== undefined ? { entryType } : {}),
   };

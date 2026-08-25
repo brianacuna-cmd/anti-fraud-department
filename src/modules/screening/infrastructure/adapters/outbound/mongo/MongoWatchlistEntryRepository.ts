@@ -27,18 +27,18 @@ export class MongoWatchlistEntryRepository implements WatchlistEntryRepository {
   async findToIndex(id: WatchlistEntryId): Promise<WatchlistEntryToIndex | null> {
     const document = await this.collection.findOne(
       { _id: new ObjectId(id) },
-      { projection: { nombre: 1 } },
+      { projection: { name: 1 } },
     );
     if (!document) {
       return null;
     }
-    return { id: createWatchlistEntryId(document._id.toString()), nombre: document.nombre };
+    return { id: createWatchlistEntryId(document._id.toString()), name: document.name };
   }
 
   async updateIndexedFields(id: WatchlistEntryId, fields: WatchlistEntryIndexedFields): Promise<void> {
     await this.collection.updateOne(
       { _id: new ObjectId(id) },
-      { $set: { nombre_normalizado: fields.nombreNormalizado, phonetic_keys: [...fields.phoneticKeys] } },
+      { $set: { normalized_name: fields.normalizedName, phonetic_keys: [...fields.phoneticKeys] } },
     );
   }
 }

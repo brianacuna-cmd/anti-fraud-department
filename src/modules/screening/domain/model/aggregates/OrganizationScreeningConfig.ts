@@ -20,7 +20,7 @@ export interface CreateOrganizationScreeningConfigInput {
 }
 
 /**
- * Per-tenant singleton (design D-6): per-org confianza thresholds used by
+ * Per-tenant singleton (design D-6): per-org confidence thresholds used by
  * screening's watchlist tiering. Uniqueness (one document per organization)
  * is enforced at the repository/index layer (`org_screening_config_unique`),
  * NOT here — mirrors `OrganizationFraudConfig`'s private-ctor +

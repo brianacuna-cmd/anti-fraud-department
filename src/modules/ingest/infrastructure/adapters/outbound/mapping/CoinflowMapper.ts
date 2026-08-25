@@ -53,10 +53,10 @@ export function mapCoinflowEnvelope(payload: unknown): EnvelopeMapResult {
     riskSignals.declineCode = data.declineCode;
   }
 
-  const nombre = readOptionalStringPath(data, ['customerName']);
-  const documento = readOptionalStringPath(data, ['documentId']);
+  const name = readOptionalStringPath(data, ['customerName']);
+  const document = readOptionalStringPath(data, ['documentId']);
   const walletAddress = readOptionalStringPath(data, ['walletAddress']);
-  const entryType = inferSubjectEntryType(nombre, documento, walletAddress);
+  const entryType = inferSubjectEntryType(name, document, walletAddress);
 
   return {
     status: 'mapped',
@@ -70,7 +70,7 @@ export function mapCoinflowEnvelope(payload: unknown): EnvelopeMapResult {
       createdAt: instantFromIso(created),
       providerEventId,
       rawPayload: payload,
-      subjectIdentity: { nombre, documento, walletAddress, entryType },
+      subjectIdentity: { name, document, walletAddress, entryType },
     }),
   };
 }

@@ -1216,7 +1216,7 @@ async function bootstrap(): Promise<void> {
     screenSubject: screenSubjectAgainstWatchlist,
     scoreToCaseOrchestrator: processRiskScoreToCase,
   });
-  // screening-producer-activation Slice 3 (design D-6/D-8): per-org confianza
+  // screening-producer-activation Slice 3 (design D-6/D-8): per-org confidence
   // thresholds. `screenSubjectAgainstWatchlist` above is built ONCE at
   // bootstrap without auth, so thresholds cannot be baked into its deps per
   // organization; instead they are resolved per REQUEST (request-scoped
@@ -1231,7 +1231,7 @@ async function bootstrap(): Promise<void> {
   // both the webhook (`webhookToScoreOrchestrator`) and HTTP
   // (`scoreToCaseProcessRouter`) seams keep calling `{ auth, event }`
   // unchanged; this adapter derives the screening subject fields from the
-  // event's `subjectIdentity` (optional `nombre`/`documento`/`walletAddress`/
+  // event's `subjectIdentity` (optional `name`/`document`/`walletAddress`/
   // `entryType`, defaulting to `PERSON`) so neither seam needs edits.
   const processRiskScoreToCaseWithScreening = async (
     scoreInput: ScoreToCaseOrchestratorInput,
@@ -1638,7 +1638,7 @@ async function bootstrap(): Promise<void> {
 
 /**
  * screening-producer-activation Slice 2c (RF-4/D-5): derives the screening
- * subject (nombre/documento/walletAddress + entryType) from an incoming
+ * subject (name/document/walletAddress + entryType) from an incoming
  * `CanonicalRiskEvent.subjectIdentity`, now that both the webhook mappers
  * (Slice 2b) and the `/risk-scores/process` DTO (Slice 2c) populate it.
  * Only string values are honored; anything absent/malformed is simply
@@ -1655,14 +1655,14 @@ function deriveScreeningInput(
   // than throwing, which would abort the entire score-to-case path (and mark
   // webhooks failed) even when screening would otherwise be a no-op.
   const entryType = createEntryType(isEntryType(entryTypeRaw) ? entryTypeRaw : 'PERSON');
-  const nombre = optionalString(subjectIdentity?.nombre);
-  const documento = optionalString(subjectIdentity?.documento);
+  const name = optionalString(subjectIdentity?.name);
+  const document = optionalString(subjectIdentity?.document);
   const walletAddress = optionalString(subjectIdentity?.walletAddress);
   return {
     customerId: event.caseCustomerId,
     entryType,
-    ...(nombre !== undefined ? { nombre } : {}),
-    ...(documento !== undefined ? { documento } : {}),
+    ...(name !== undefined ? { name } : {}),
+    ...(document !== undefined ? { document } : {}),
     ...(walletAddress !== undefined ? { walletAddress } : {}),
   };
 }

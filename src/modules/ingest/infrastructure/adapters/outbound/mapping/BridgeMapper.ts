@@ -49,10 +49,10 @@ export function mapBridgeEnvelope(payload: unknown): EnvelopeMapResult {
     riskSignals.status = object.status;
   }
 
-  const nombre = readOptionalStringPath(object, ['customer_name']);
-  const documento = readOptionalStringPath(object, ['customer_document_id']);
+  const name = readOptionalStringPath(object, ['customer_name']);
+  const document = readOptionalStringPath(object, ['customer_document_id']);
   const walletAddress = readOptionalStringPath(object, ['wallet_address']);
-  const entryType = inferSubjectEntryType(nombre, documento, walletAddress);
+  const entryType = inferSubjectEntryType(name, document, walletAddress);
 
   return {
     status: 'mapped',
@@ -67,7 +67,7 @@ export function mapBridgeEnvelope(payload: unknown): EnvelopeMapResult {
       eventId,
       providerEventId: eventId,
       rawPayload: payload,
-      subjectIdentity: { nombre, documento, walletAddress, entryType },
+      subjectIdentity: { name, document, walletAddress, entryType },
     }),
   };
 }

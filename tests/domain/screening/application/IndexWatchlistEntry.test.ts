@@ -38,10 +38,10 @@ class InMemoryWatchlistEntryRepository implements WatchlistEntryRepository {
 }
 
 describe('IndexWatchlistEntry (application use case)', () => {
-  it('computes nombre_normalizado via the shared NameNormalizer and persists it', async () => {
+  it('computes normalized_name via the shared NameNormalizer and persists it', async () => {
     const id = generateWatchlistEntryId();
     const repository = new InMemoryWatchlistEntryRepository();
-    repository.seed({ id, nombre: 'JOHN  Smith-O\'Brien' });
+    repository.seed({ id, name: 'JOHN  Smith-O\'Brien' });
     const phoneticEncoder = new FakePhoneticEncoder();
 
     const indexWatchlistEntry = createIndexWatchlistEntryUseCase({
@@ -53,13 +53,13 @@ describe('IndexWatchlistEntry (application use case)', () => {
     await indexWatchlistEntry({ entryId: id });
 
     const persisted = repository.updates.get(id);
-    expect(persisted?.nombreNormalizado).toBe(normalizeName('JOHN  Smith-O\'Brien'));
+    expect(persisted?.normalizedName).toBe(normalizeName('JOHN  Smith-O\'Brien'));
   });
 
   it('computes phonetic_keys per token via the injected PhoneticEncoder, deduped', async () => {
     const id = generateWatchlistEntryId();
     const repository = new InMemoryWatchlistEntryRepository();
-    repository.seed({ id, nombre: 'John Johnson' });
+    repository.seed({ id, name: 'John Johnson' });
     const phoneticEncoder = new FakePhoneticEncoder();
 
     const indexWatchlistEntry = createIndexWatchlistEntryUseCase({

@@ -17,7 +17,7 @@ jest.setTimeout(60_000);
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 
-function buildAlert(overrides: { matchField?: 'NAME' | 'DOCUMENTO' | 'WALLET'; customerId?: string } = {}): AmlAlert {
+function buildAlert(overrides: { matchField?: 'NAME' | 'DOCUMENT' | 'WALLET'; customerId?: string } = {}): AmlAlert {
   return AmlAlert.create({
     id: generateAmlAlertId(),
     organizationId: oid('org-1'),
@@ -177,10 +177,10 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
 
   it('persists distinct records when match_field differs for the same subject/entry (not a duplicate)', async () => {
     const nameMatch = buildAlert({ matchField: 'NAME' });
-    const documentoMatch = buildAlert({ matchField: 'DOCUMENTO' });
+    const documentMatch = buildAlert({ matchField: 'DOCUMENT' });
 
     await repository.save(nameMatch);
-    await repository.save(documentoMatch);
+    await repository.save(documentMatch);
 
     const count = await db.collection('aml_alerts').countDocuments({});
     expect(count).toBe(2);

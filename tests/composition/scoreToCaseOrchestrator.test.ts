@@ -217,8 +217,8 @@ describe('createScoreToCaseOrchestrator', () => {
   it('strips subjectIdentity PII from finturuCacheSnapshot while keeping other event fields', async () => {
     const event = buildEvent({
       subjectIdentity: {
-        nombre: 'John Doe',
-        documento: '123456789',
+        name: 'John Doe',
+        document: '123456789',
         walletAddress: '0xabc',
         entryType: 'PERSON',
       },
@@ -247,6 +247,8 @@ describe('createScoreToCaseOrchestrator', () => {
     expect(persistedEvent).not.toHaveProperty('subjectIdentity');
     expect(persistedEvent).not.toHaveProperty('nombre');
     expect(persistedEvent).not.toHaveProperty('documento');
+    expect(persistedEvent).not.toHaveProperty('name');
+    expect(persistedEvent).not.toHaveProperty('document');
     expect(persistedEvent).not.toHaveProperty('walletAddress');
     expect(persistedEvent.provider).toBe('stripe');
     expect(persistedEvent.caseCustomerId).toBe('cust-1');

@@ -15,15 +15,15 @@ function buildDocument(overrides: Partial<WatchlistEntryDocument> = {}): Watchli
     _id: new ObjectId(oid('entry-1')),
     watchlist_id: new ObjectId(oid('watchlist-1')),
     organization_id: new ObjectId(oid('org-1')),
-    tipo_entrada: 'PERSON',
-    nombre: 'John Smith',
-    nombre_normalizado: '',
+    entry_type: 'PERSON',
+    name: 'John Smith',
+    normalized_name: '',
     phonetic_keys: [],
-    documento: '123456789',
+    document: '123456789',
     wallet_address: null,
-    nivel_riesgo: 'HIGH',
-    pais: 'US',
-    estado: 'ACTIVE',
+    risk_level: 'HIGH',
+    country: 'US',
+    status: 'ACTIVE',
     deleted_at: null,
     ...overrides,
   };
@@ -55,12 +55,12 @@ describe('MongoWatchlistEntryRepository (integration, real Mongo)', () => {
     await db.collection('watchlist_entries').deleteMany({});
   });
 
-  it('findToIndex returns id + raw nombre for an existing entry', async () => {
+  it('findToIndex returns id + raw name for an existing entry', async () => {
     await db.collection<WatchlistEntryDocument>('watchlist_entries').insertOne(buildDocument());
 
     const result = await repository.findToIndex(createWatchlistEntryId(oid('entry-1')));
 
-    expect(result?.nombre).toBe('John Smith');
+    expect(result?.name).toBe('John Smith');
     expect(result?.id).toBe(oid('entry-1'));
   });
 
@@ -69,11 +69,11 @@ describe('MongoWatchlistEntryRepository (integration, real Mongo)', () => {
     expect(result).toBeNull();
   });
 
-  it('updateIndexedFields persists nombre_normalizado and phonetic_keys onto the entry', async () => {
+  it('updateIndexedFields persists normalized_name and phonetic_keys onto the entry', async () => {
     await db.collection<WatchlistEntryDocument>('watchlist_entries').insertOne(buildDocument());
 
     await repository.updateIndexedFields(createWatchlistEntryId(oid('entry-1')), {
-      nombreNormalizado: 'john smith',
+      normalizedName: 'john smith',
       phoneticKeys: ['JN', 'SM0'],
     });
 
@@ -81,7 +81,7 @@ describe('MongoWatchlistEntryRepository (integration, real Mongo)', () => {
       .collection<WatchlistEntryDocument>('watchlist_entries')
       .findOne({ _id: new ObjectId(oid('entry-1')) });
 
-    expect(stored?.nombre_normalizado).toBe('john smith');
+    expect(stored?.normalized_name).toBe('john smith');
     expect(stored?.phonetic_keys).toEqual(['JN', 'SM0']);
   });
 });

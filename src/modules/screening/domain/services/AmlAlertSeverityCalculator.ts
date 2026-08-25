@@ -35,7 +35,7 @@ export function severityFromConfidence(
   return 'MEDIUM';
 }
 
-/** Parses a watchlist `nivel_riesgo` column when it already is an AmlAlertSeverity. */
+/** Parses a watchlist `risk_level` column when it already is an AmlAlertSeverity. */
 export function parseRiskLevel(value: string | null): AmlAlertSeverity | null {
   if (value === null) {
     return null;

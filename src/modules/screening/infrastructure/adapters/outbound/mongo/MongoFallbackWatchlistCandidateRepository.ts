@@ -13,11 +13,11 @@ const COLLECTION_NAME = 'watchlist_entries';
 /**
  * Non-Atlas blocking adapter (design's "MongoIndexWatchlistCandidateRepository"
  * concept): a normal compound/text/regex query on `phonetic_keys` (array
- * membership) + `nombre_normalizado` + exact `documento`/`wallet_address`,
+ * membership) + `normalized_name` + exact `document`/`wallet_address`,
  * limit-bounded. Runs against a plain compound/regex index, so it is
  * fully compatible with `mongodb-memory-server` and is the adapter
  * exercised by CI (spec RF-2 scenario 2). Enforces org-tenant isolation
- * (RF-5) and excludes `estado != "ACTIVE"` / soft-deleted entries at query
+ * (RF-5) and excludes `status != "ACTIVE"` / soft-deleted entries at query
  * time, not post-hoc.
  */
 export class MongoFallbackWatchlistCandidateRepository implements WatchlistCandidateRepository {
@@ -42,14 +42,14 @@ export class MongoFallbackWatchlistCandidateRepository implements WatchlistCandi
 function buildFilter(query: WatchlistCandidateQuery): Filter<WatchlistEntryDocument> | null {
   const base: Filter<WatchlistEntryDocument> = {
     organization_id: new ObjectId(query.organizationId),
-    tipo_entrada: query.entryType,
-    estado: 'ACTIVE',
+    entry_type: query.entryType,
+    status: 'ACTIVE',
     deleted_at: null,
   };
 
   const blockingClauses: Filter<WatchlistEntryDocument>[] = [];
-  if (query.documento) {
-    blockingClauses.push({ documento: query.documento });
+  if (query.document) {
+    blockingClauses.push({ document: query.document });
   }
   if (query.walletAddress) {
     blockingClauses.push({ wallet_address: query.walletAddress });
@@ -58,7 +58,7 @@ function buildFilter(query: WatchlistCandidateQuery): Filter<WatchlistEntryDocum
     blockingClauses.push({ phonetic_keys: { $in: [...query.phoneticKeys] } });
   }
   if (query.normalizedName) {
-    blockingClauses.push({ nombre_normalizado: query.normalizedName });
+    blockingClauses.push({ normalized_name: query.normalizedName });
   }
 
   if (blockingClauses.length === 0) {

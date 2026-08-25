@@ -2,7 +2,7 @@ import { createMatchField } from '../../../../../src/modules/screening/domain/mo
 import { ScreeningError } from '../../../../../src/modules/screening/domain/errors/ScreeningError.js';
 
 describe('createMatchField', () => {
-  it.each(['NAME', 'DOCUMENTO', 'WALLET'])('accepts %s', (value) => {
+  it.each(['NAME', 'DOCUMENT', 'WALLET'])('accepts %s', (value) => {
     expect(createMatchField(value)).toBe(value);
   });
 

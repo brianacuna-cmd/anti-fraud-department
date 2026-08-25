@@ -43,10 +43,10 @@ describe('toCanonicalRiskEvent', () => {
       currency: 'USD',
       riskSignals: {},
       createdAt: CREATED_AT,
-      subjectIdentity: { nombre: 'John Smith', documento: '123456' },
+      subjectIdentity: { name: 'John Smith', document: '123456' },
     });
 
-    expect(event.subjectIdentity).toEqual({ nombre: 'John Smith', documento: '123456' });
+    expect(event.subjectIdentity).toEqual({ name: 'John Smith', document: '123456' });
   });
 
   it('leaves subjectIdentity undefined when absent', () => {

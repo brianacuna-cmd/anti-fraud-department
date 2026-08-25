@@ -253,6 +253,31 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     ).toHaveLength(1);
   });
 
+  it('creates watchlist_entries blocking indexes and drops obsolete Spanish-named indexes', async () => {
+    await ensureIndexes(db);
+    await ensureIndexes(db);
+
+    const watchlistIndexes = await db.collection('watchlist_entries').indexes();
+
+    expect(watchlistIndexes.find((index) => index.name === 'watchlist_entries_watchlist_status_idx')?.key).toEqual({
+      watchlist_id: 1,
+      status: 1,
+    });
+    expect(watchlistIndexes.find((index) => index.name === 'watchlist_entries_document_idx')?.key).toEqual({
+      document: 1,
+    });
+    expect(watchlistIndexes.find((index) => index.name === 'watchlist_entries_phonetic_keys_idx')?.key).toEqual({
+      phonetic_keys: 1,
+    });
+    expect(watchlistIndexes.find((index) => index.name === 'watchlist_entries_normalized_name_idx')?.key).toEqual({
+      normalized_name: 1,
+    });
+
+    expect(watchlistIndexes.find((index) => index.name === 'watchlist_entries_watchlist_estado_idx')).toBeUndefined();
+    expect(watchlistIndexes.find((index) => index.name === 'watchlist_entries_documento_idx')).toBeUndefined();
+    expect(watchlistIndexes.find((index) => index.name === 'watchlist_entries_nombre_normalizado_idx')).toBeUndefined();
+  });
+
   it('creates the OrganizationFraudConfig unique index (case-management Slice 2) and stays idempotent on re-run', async () => {
     await ensureIndexes(db);
     await ensureIndexes(db);

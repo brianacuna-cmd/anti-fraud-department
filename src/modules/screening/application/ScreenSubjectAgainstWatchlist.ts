@@ -25,8 +25,8 @@ export interface ScreenSubjectAgainstWatchlistInput {
   readonly auth: AuthContext;
   readonly customerId: string;
   readonly entryType: EntryType;
-  readonly nombre?: string;
-  readonly documento?: string;
+  readonly name?: string;
+  readonly document?: string;
   readonly walletAddress?: string;
   readonly limit?: number;
   /**
@@ -89,17 +89,17 @@ interface SubjectField {
 
 function subjectFields(input: ScreenSubjectAgainstWatchlistInput): SubjectField[] {
   const fields: SubjectField[] = [];
-  // Trim the stored subjectValue, not just the emptiness check: DOCUMENTO and
+  // Trim the stored subjectValue, not just the emptiness check: DOCUMENT and
   // WALLET feed exact/Levenshtein matching directly, so a padded input (e.g.
   // " 12345 ") would otherwise never match the stored (unpadded) entry and
   // silently drop the alert/risk signal. NAME is normalized later anyway.
-  const nombre = input.nombre?.trim();
-  if (nombre !== undefined && nombre.length > 0) {
-    fields.push({ field: createMatchField('NAME'), subjectValue: nombre });
+  const name = input.name?.trim();
+  if (name !== undefined && name.length > 0) {
+    fields.push({ field: createMatchField('NAME'), subjectValue: name });
   }
-  const documento = input.documento?.trim();
-  if (documento !== undefined && documento.length > 0) {
-    fields.push({ field: createMatchField('DOCUMENTO'), subjectValue: documento });
+  const document = input.document?.trim();
+  if (document !== undefined && document.length > 0) {
+    fields.push({ field: createMatchField('DOCUMENT'), subjectValue: document });
   }
   const walletAddress = input.walletAddress?.trim();
   if (walletAddress !== undefined && walletAddress.length > 0) {
@@ -128,15 +128,15 @@ function buildQuery(
       .flatMap((token) => phoneticEncoder.encode(token));
     return { ...base, normalizedName, phoneticKeys };
   }
-  if (subjectField.field === 'DOCUMENTO') {
-    return { ...base, documento: subjectField.subjectValue };
+  if (subjectField.field === 'DOCUMENT') {
+    return { ...base, document: subjectField.subjectValue };
   }
   return { ...base, walletAddress: subjectField.subjectValue };
 }
 
 function candidateValueForField(candidate: WatchlistCandidate, field: MatchField): string | null {
-  if (field === 'NAME') return candidate.nombre;
-  if (field === 'DOCUMENTO') return candidate.documento;
+  if (field === 'NAME') return candidate.name;
+  if (field === 'DOCUMENT') return candidate.document;
   return candidate.walletAddress;
 }
 
@@ -167,9 +167,9 @@ async function scoreCandidatesForField(
     const match = createScreeningMatch({
       entryId: candidate.id,
       watchlistId: candidate.watchlistId,
-      name: candidate.nombre,
-      document: candidate.documento,
-      riskLevel: candidate.nivelRiesgo,
+      name: candidate.name,
+      document: candidate.document,
+      riskLevel: candidate.riskLevel,
       matchField: subjectField.field,
       algorithm: algorithmFor(subjectField.field),
     });
@@ -218,7 +218,7 @@ function buildRiskSignal(sorted: readonly ScreeningMatchResult[]): WatchlistRisk
 }
 
 /**
- * Screens a subject's presented fields (nombre/documento/walletAddress,
+ * Screens a subject's presented fields (name/document/walletAddress,
  * whichever are populated) against the org-scoped watchlist: blocking layer
  * (RF-2/RF-5) then in-memory fine scoring (RF-1), confidence tiering (RF-4),
  * idempotent alert persistence via `OpenAmlAlert` (RF-3/RF-6). NEVER blocks
