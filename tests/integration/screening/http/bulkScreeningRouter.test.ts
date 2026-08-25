@@ -169,6 +169,39 @@ describe('POST /api/v1/bulk-screening-jobs', () => {
     expect(response.status).toBe(401);
   });
 
+  it('stores the upload under tempDir even when originalname contains path segments', async () => {
+    const { app, jobRepo } = buildApp();
+    const csvPath = writeCsvFile('customer_id,name\nabc,Alice\n');
+
+    const response = await request(app)
+      .post('/api/v1/bulk-screening-jobs')
+      .attach('file', csvPath, { filename: '../../../evil.csv', contentType: 'text/csv' });
+
+    expect(response.status).toBe(202);
+    const job = jobRepo.all()[0];
+    expect(job.filePath.startsWith(TEMP_DIR)).toBe(true);
+    expect(path.normalize(job.filePath)).toBe(job.filePath);
+    expect(path.relative(TEMP_DIR, job.filePath).startsWith('..')).toBe(false);
+    expect(fs.existsSync(job.filePath)).toBe(true);
+  });
+
+  it('does not leave a multer temp file after 401', async () => {
+    const { app } = buildApp(null);
+    if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
+    const before = new Set(fs.readdirSync(TEMP_DIR));
+    const csvPath = writeCsvFile('customer_id,name\nabc,Alice\n');
+
+    const response = await request(app)
+      .post('/api/v1/bulk-screening-jobs')
+      .attach('file', csvPath, { contentType: 'text/csv' });
+
+    expect(response.status).toBe(401);
+    const leftover = fs
+      .readdirSync(TEMP_DIR)
+      .filter((name) => !before.has(name) && name !== path.basename(csvPath));
+    expect(leftover).toEqual([]);
+  });
+
   it('accepts application/csv content-type', async () => {
     const { app } = buildApp();
     const csvPath = writeCsvFile('customer_id,name\nabc123,Alice\n');

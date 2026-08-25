@@ -1,6 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { Router } from 'express';
 import multer from 'multer';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
@@ -41,9 +42,9 @@ export function bulkScreeningRouter(deps: BulkScreeningRouterDeps): Router {
   const upload = multer({
     storage: multer.diskStorage({
       destination: (_req, _file, cb) => cb(null, tempDir),
-      filename: (_req, file, cb) => {
-        const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        cb(null, `${unique}-${file.originalname}`);
+      filename: (_req, _file, cb) => {
+        // Never interpolate originalname — path.join would honour `..` segments.
+        cb(null, `${Date.now()}-${randomBytes(8).toString('hex')}.csv`);
       },
     }),
     limits: { fileSize: deps.maxUploadBytes ?? 5_242_880 },
@@ -66,23 +67,29 @@ export function bulkScreeningRouter(deps: BulkScreeningRouterDeps): Router {
       next();
     });
   }, async (req, res) => {
-    const auth = requireAuthContext(req);
-    const file = req.file;
+    try {
+      const auth = requireAuthContext(req);
+      const file = req.file;
 
-    if (file === undefined) {
-      throw invariantViolation('a multipart file field "file" is required');
+      if (file === undefined) {
+        throw invariantViolation('a multipart file field "file" is required');
+      }
+
+      if (!isCsvFile(file)) {
+        throw invariantViolation(
+          'uploaded file must be a CSV (text/csv, application/csv, text/plain, or .csv extension)',
+          { mimetype: file.mimetype, originalname: file.originalname },
+        );
+      }
+
+      const jobId = await deps.submitBulkScreeningJob({ auth, filePath: file.path });
+      res.status(202).json(toSubmitBulkScreeningJobResponse(jobId));
+    } catch (err) {
+      if (req.file?.path) {
+        await fs.promises.unlink(req.file.path).catch(() => undefined);
+      }
+      throw err;
     }
-
-    if (!isCsvFile(file)) {
-      fs.unlink(file.path, () => {});
-      throw invariantViolation(
-        'uploaded file must be a CSV (text/csv, application/csv, text/plain, or .csv extension)',
-        { mimetype: file.mimetype, originalname: file.originalname },
-      );
-    }
-
-    const jobId = await deps.submitBulkScreeningJob({ auth, filePath: file.path });
-    res.status(202).json(toSubmitBulkScreeningJobResponse(jobId));
   });
 
   router.get('/bulk-screening-jobs/:id', async (req, res) => {
