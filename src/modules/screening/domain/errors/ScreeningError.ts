@@ -40,3 +40,19 @@ export function amlAlertNotFound(alertId: string): ScreeningError {
     alertId,
   });
 }
+
+/**
+ * Both "no such id" and "belongs to another organization" resolve to the
+ * same 404 (spec RNF-1: never leak cross-tenant existence).
+ */
+export function watchlistNotFound(watchlistId: string): ScreeningError {
+  return new ScreeningError('WATCHLIST_NOT_FOUND', `Watchlist "${watchlistId}" was not found`, {
+    watchlistId,
+  });
+}
+
+export function watchlistNameTaken(name: string): ScreeningError {
+  return new ScreeningError('WATCHLIST_NAME_TAKEN', `Watchlist name "${name}" is already in use`, {
+    name,
+  });
+}

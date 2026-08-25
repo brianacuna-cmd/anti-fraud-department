@@ -589,4 +589,94 @@ describe('ensureIndexes (integration, real Mongo)', () => {
       }),
     ).rejects.toMatchObject({ code: 11000 });
   });
+
+  // ─── watchlists (screening, Slice A2, design §7 / ADR-5) ───────────────────
+
+  it('creates the required indexes on the watchlists collection', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+
+    const indexes = await db.collection('watchlists').indexes();
+
+    const orgStatusIdx = indexes.find((i) => i.name === 'watchlists_org_status_idx');
+    expect(orgStatusIdx).toBeDefined();
+    expect(orgStatusIdx?.key).toEqual({ organization_id: 1, status: 1 });
+
+    const orgTypeIdx = indexes.find((i) => i.name === 'watchlists_org_type_idx');
+    expect(orgTypeIdx).toBeDefined();
+    expect(orgTypeIdx?.key).toEqual({ organization_id: 1, type: 1 });
+
+    const orgNameIdx = indexes.find((i) => i.name === 'watchlists_org_name_partial_unique');
+    expect(orgNameIdx).toBeDefined();
+    expect(orgNameIdx?.key).toEqual({ organization_id: 1, name: 1 });
+    expect(orgNameIdx?.unique).toBe(true);
+    expect(orgNameIdx?.partialFilterExpression).toEqual({ deleted_at: null });
+  });
+
+  it('rejects a duplicate watchlist name within the same org (partial unique index, non-deleted)', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+
+    const organizationId = new ObjectId();
+    const now = new Date('2026-01-01T00:00:00.000Z');
+    await db.collection('watchlists').insertOne({
+      _id: new ObjectId(),
+      organization_id: organizationId,
+      name: 'OFAC List',
+      source: 'OFAC',
+      type: 'BLACKLIST',
+      status: 'ACTIVE',
+      deleted_at: null,
+      created_at: now,
+      updated_at: now,
+    });
+
+    await expect(
+      db.collection('watchlists').insertOne({
+        _id: new ObjectId(),
+        organization_id: organizationId,
+        name: 'OFAC List',
+        source: 'OFAC',
+        type: 'BLACKLIST',
+        status: 'ACTIVE',
+        deleted_at: null,
+        created_at: now,
+        updated_at: now,
+      }),
+    ).rejects.toMatchObject({ code: 11000 });
+  });
+
+  it('allows the same watchlist name to be reused after soft-delete (partial filter excludes deleted_at != null)', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+
+    const organizationId = new ObjectId();
+    const now = new Date('2026-01-01T00:00:00.000Z');
+    await db.collection('watchlists').insertOne({
+      _id: new ObjectId(),
+      organization_id: organizationId,
+      name: 'Reusable List',
+      source: 'OFAC',
+      type: 'BLACKLIST',
+      status: 'INACTIVE',
+      deleted_at: now,
+      created_at: now,
+      updated_at: now,
+    });
+
+    // Inserting a non-deleted doc with the same name should succeed
+    await expect(
+      db.collection('watchlists').insertOne({
+        _id: new ObjectId(),
+        organization_id: organizationId,
+        name: 'Reusable List',
+        source: 'OFAC',
+        type: 'BLACKLIST',
+        status: 'ACTIVE',
+        deleted_at: null,
+        created_at: now,
+        updated_at: now,
+      }),
+    ).resolves.toBeDefined();
+  });
 });
