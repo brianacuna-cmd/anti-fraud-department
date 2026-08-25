@@ -14,7 +14,7 @@ describe('createCaseManagementNotificationSenderAdapter', () => {
     await sender.send({
       organizationId: oid('org-1'),
       recipientUserId: oid('user-1'),
-      alertType: 'CASO_ASIGNADO',
+      alertType: 'CASE_ASSIGNED',
       context: { caseId: oid('case-1') },
     });
 
@@ -22,7 +22,7 @@ describe('createCaseManagementNotificationSenderAdapter', () => {
       {
         organizationId: oid('org-1'),
         recipientUserId: oid('user-1'),
-        alertType: 'CASO_ASIGNADO',
+        alertType: 'CASE_ASSIGNED',
         context: { caseId: oid('case-1') },
       },
     ]);
@@ -37,7 +37,7 @@ describe('createCaseManagementNotificationSenderAdapter', () => {
 
     const sender = createCaseManagementNotificationSenderAdapter(sendNotification);
     await sender.send(
-      { organizationId: oid('org-1'), recipientUserId: oid('user-1'), alertType: 'CASO_ASIGNADO', context: {} },
+      { organizationId: oid('org-1'), recipientUserId: oid('user-1'), alertType: 'CASE_ASSIGNED', context: {} },
       tx,
     );
 
@@ -54,7 +54,7 @@ describe('createCaseManagementNotificationSenderAdapter', () => {
     await sender.send({
       organizationId: oid('org-1'),
       recipientUserId: oid('user-1'),
-      alertType: 'CASO_ASIGNADO',
+      alertType: 'CASE_ASSIGNED',
       context: {},
     });
 

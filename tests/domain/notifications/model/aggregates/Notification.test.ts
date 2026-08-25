@@ -12,7 +12,7 @@ function baseInput() {
     id: createNotificationId(oid('notification-1')),
     organizationId: createOrganizationId(oid('org-1')),
     recipientUserId: createUserId(oid('user-1')),
-    alertType: 'CASO_ASIGNADO' as const,
+    alertType: 'CASE_ASSIGNED' as const,
     channel: 'EMAIL' as const,
     context: { caseId: oid('case-1') },
     now: NOW,
@@ -26,7 +26,7 @@ describe('Notification.create', () => {
     expect(notification.id).toBe(oid('notification-1'));
     expect(notification.organizationId).toBe(oid('org-1'));
     expect(notification.recipientUserId).toBe(oid('user-1'));
-    expect(notification.alertType).toBe('CASO_ASIGNADO');
+    expect(notification.alertType).toBe('CASE_ASSIGNED');
     expect(notification.channel).toBe('EMAIL');
     expect(notification.context).toEqual({ caseId: oid('case-1') });
     expect(notification.createdAt).toBe(NOW);
@@ -39,7 +39,7 @@ describe('Notification.rehydrate', () => {
       id: createNotificationId(oid('notification-1')),
       organizationId: createOrganizationId(oid('org-1')),
       recipientUserId: createUserId(oid('user-1')),
-      alertType: 'SLA_POR_VENCER' as const,
+      alertType: 'SLA_DUE_SOON' as const,
       channel: 'EMAIL' as const,
       context: {},
       createdAt: NOW,
@@ -47,7 +47,7 @@ describe('Notification.rehydrate', () => {
 
     const notification = Notification.rehydrate(props);
 
-    expect(notification.alertType).toBe('SLA_POR_VENCER');
+    expect(notification.alertType).toBe('SLA_DUE_SOON');
     expect(notification.createdAt).toBe(NOW);
   });
 });
@@ -66,7 +66,7 @@ describe('Notification immutability', () => {
       id: oid('notification-1'),
       organizationId: oid('org-1'),
       recipientUserId: oid('user-1'),
-      alertType: 'CASO_ASIGNADO',
+      alertType: 'CASE_ASSIGNED',
       channel: 'EMAIL',
       context: { caseId: oid('case-1') },
       createdAt: NOW,

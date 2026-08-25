@@ -125,7 +125,7 @@ describe('createReassignCaseUseCase (manual reassign)', () => {
     });
   });
 
-  it('sends CASO_ASIGNADO to the new USER assignee inside the same transaction (atomic)', async () => {
+  it('sends CASE_ASSIGNED to the new USER assignee inside the same transaction (atomic)', async () => {
     const target = createAssignedTo('USER', oid('analyst-2'));
     const { reassignCase, notificationSender } = buildUseCase(buildCase(), [target]);
 
@@ -141,7 +141,7 @@ describe('createReassignCaseUseCase (manual reassign)', () => {
     expect(requests[0]).toMatchObject({
       organizationId: ORG_1,
       recipientUserId: oid('analyst-2'),
-      alertType: 'CASO_ASIGNADO',
+      alertType: 'CASE_ASSIGNED',
     });
     expect(requests[0]?.context).toMatchObject({ caseId: CASE_ID });
   });
@@ -162,7 +162,7 @@ describe('createReassignCaseUseCase (manual reassign)', () => {
     expect(notificationSender.all()).toHaveLength(0);
   });
 
-  it('fans out CASO_ASIGNADO to every active member when reassigning to a ROLE (PR3)', async () => {
+  it('fans out CASE_ASSIGNED to every active member when reassigning to a ROLE (PR3)', async () => {
     const target = createAssignedTo('ROLE', oid('role-1'));
     const { reassignCase, notificationSender, assigneeDirectory } = buildUseCase(buildCase(), [target]);
     assigneeDirectory.allowRoleRecipients(ORG_1, oid('role-1'), [oid('analyst-2'), oid('analyst-3')]);
@@ -178,7 +178,7 @@ describe('createReassignCaseUseCase (manual reassign)', () => {
     expect(requests.map((request) => request.recipientUserId).sort()).toEqual(
       [oid('analyst-2'), oid('analyst-3')].sort(),
     );
-    expect(requests.every((request) => request.alertType === 'CASO_ASIGNADO')).toBe(true);
+    expect(requests.every((request) => request.alertType === 'CASE_ASSIGNED')).toBe(true);
   });
 
   it('returns CASE_NOT_FOUND when the case is soft-deleted', async () => {

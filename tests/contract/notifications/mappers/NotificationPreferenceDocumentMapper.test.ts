@@ -19,7 +19,7 @@ describe('NotificationPreferenceDocumentMapper', () => {
         _id: new ObjectId(),
         organization_id: new ObjectId(oid('org-1')),
         user_id: new ObjectId(oid('user-1')),
-        alert_type: 'CASO_ASIGNADO',
+        alert_type: 'CASE_ASSIGNED',
         channel: 'EMAIL',
         enabled: false,
         created_at: toDate(NOW),
@@ -30,11 +30,26 @@ describe('NotificationPreferenceDocumentMapper', () => {
 
       expect(pref.organizationId).toBe(oid('org-1'));
       expect(pref.userId).toBe(oid('user-1'));
-      expect(pref.alertType).toBe('CASO_ASIGNADO');
+      expect(pref.alertType).toBe('CASE_ASSIGNED');
       expect(pref.channel).toBe('EMAIL');
       expect(pref.enabled).toBe(false);
       expect(pref.createdAt).toBe(NOW);
       expect(pref.updatedAt).toBe(NOW);
+    });
+
+    it('normalizes a legacy Spanish alert_type column to the English domain value', () => {
+      const document: NotificationPreferenceDocument = {
+        _id: new ObjectId(),
+        organization_id: new ObjectId(oid('org-1')),
+        user_id: new ObjectId(oid('user-1')),
+        alert_type: 'CASO_ASIGNADO',
+        channel: 'EMAIL',
+        enabled: true,
+        created_at: toDate(NOW),
+        updated_at: toDate(NOW),
+      };
+
+      expect(toDomain(document).alertType).toBe('CASE_ASSIGNED');
     });
   });
 
@@ -43,7 +58,7 @@ describe('NotificationPreferenceDocumentMapper', () => {
       const pref = NotificationPreference.create({
         organizationId: createOrganizationId(oid('org-1')),
         userId: createUserId(oid('user-1')),
-        alertType: 'RIESGO_CRITICO',
+        alertType: 'CRITICAL_RISK',
         channel: 'EMAIL',
         enabled: true,
         now: NOW,
@@ -54,7 +69,7 @@ describe('NotificationPreferenceDocumentMapper', () => {
       expect(fields.key).toEqual({
         organization_id: new ObjectId(oid('org-1')),
         user_id: new ObjectId(oid('user-1')),
-        alert_type: 'RIESGO_CRITICO',
+        alert_type: 'CRITICAL_RISK',
         channel: 'EMAIL',
       });
       expect(fields.set).toEqual({ enabled: true, updated_at: toDate(NOW) });

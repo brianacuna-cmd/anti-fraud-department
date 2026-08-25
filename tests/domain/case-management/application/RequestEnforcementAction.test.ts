@@ -144,7 +144,7 @@ describe('RequestEnforcementAction (ENF-001)', () => {
     expect(result.approvalRequest!.status).toBe('PENDING');
     expect(notificationSender.all()).toHaveLength(1);
     expect(notificationSender.all()[0]!.recipientUserId).toBe(SUPERVISOR_ID);
-    expect(notificationSender.all()[0]!.alertType).toBe('APROBACION_PENDIENTE');
+    expect(notificationSender.all()[0]!.alertType).toBe('APPROVAL_PENDING');
   });
 
   it('no exige doble firma para REVIEW', async () => {

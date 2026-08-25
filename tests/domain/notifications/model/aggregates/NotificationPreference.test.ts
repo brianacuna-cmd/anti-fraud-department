@@ -12,7 +12,7 @@ function baseInput() {
   return {
     organizationId: createOrganizationId(oid('org-1')),
     userId: createUserId(oid('user-1')),
-    alertType: createAlertType('SLA_POR_VENCER'),
+    alertType: createAlertType('SLA_DUE_SOON'),
     channel: createNotificationChannel('EMAIL'),
     enabled: false,
     now: NOW,
@@ -32,7 +32,7 @@ describe('NotificationPreference.create', () => {
 
     expect(pref.organizationId).toBe(oid('org-1'));
     expect(pref.userId).toBe(oid('user-1'));
-    expect(pref.alertType).toBe('SLA_POR_VENCER');
+    expect(pref.alertType).toBe('SLA_DUE_SOON');
     expect(pref.channel).toBe('EMAIL');
     expect(pref.enabled).toBe(false);
   });

@@ -223,7 +223,7 @@ describe('caseRouter POST /cases/:caseId/reassign', () => {
     expect(notificationSender.all()[0]).toMatchObject({
       organizationId: ORG_1,
       recipientUserId: TARGET_USER,
-      alertType: 'CASO_ASIGNADO',
+      alertType: 'CASE_ASSIGNED',
     });
   });
 

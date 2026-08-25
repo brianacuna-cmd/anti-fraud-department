@@ -16,7 +16,7 @@ describe('NotificationDocumentMapper round-trip', () => {
       id: createNotificationId(oid('notification-1')),
       organizationId: createOrganizationId(oid('org-1')),
       recipientUserId: createUserId(oid('user-1')),
-      alertType: 'CASO_ASIGNADO',
+      alertType: 'CASE_ASSIGNED',
       channel: 'EMAIL',
       context: { caseId: oid('case-1'), previousAssigneeId: null },
       now: NOW,
@@ -26,7 +26,7 @@ describe('NotificationDocumentMapper round-trip', () => {
     expect(document._id).toEqual(new ObjectId(oid('notification-1')));
     expect(document.organization_id).toEqual(new ObjectId(oid('org-1')));
     expect(document.recipient_user_id).toEqual(new ObjectId(oid('user-1')));
-    expect(document.alert_type).toBe('CASO_ASIGNADO');
+    expect(document.alert_type).toBe('CASE_ASSIGNED');
     expect(document.channel).toBe('EMAIL');
     expect(document.context).toEqual({ caseId: oid('case-1'), previousAssigneeId: null });
     expect(document.created_at).toEqual(toDate(NOW));
@@ -35,7 +35,7 @@ describe('NotificationDocumentMapper round-trip', () => {
     expect(rehydrated.id).toBe(oid('notification-1'));
     expect(rehydrated.organizationId).toBe(oid('org-1'));
     expect(rehydrated.recipientUserId).toBe(oid('user-1'));
-    expect(rehydrated.alertType).toBe('CASO_ASIGNADO');
+    expect(rehydrated.alertType).toBe('CASE_ASSIGNED');
     expect(rehydrated.channel).toBe('EMAIL');
     expect(rehydrated.context).toEqual({ caseId: oid('case-1'), previousAssigneeId: null });
     expect(rehydrated.createdAt).toEqual(NOW);
@@ -46,14 +46,28 @@ describe('NotificationDocumentMapper round-trip', () => {
       _id: new ObjectId(oid('notification-2')),
       organization_id: new ObjectId(oid('org-1')),
       recipient_user_id: new ObjectId(oid('user-2')),
-      alert_type: 'SLA_POR_VENCER',
+      alert_type: 'SLA_DUE_SOON',
       channel: 'EMAIL',
       context: {},
       created_at: toDate(NOW),
     };
 
     const domain = toDomain(document);
-    expect(domain.alertType).toBe('SLA_POR_VENCER');
+    expect(domain.alertType).toBe('SLA_DUE_SOON');
     expect(domain.context).toEqual({});
+  });
+
+  it('normalizes a legacy Spanish alert_type column to the English domain value', () => {
+    const document: NotificationDocument = {
+      _id: new ObjectId(oid('notification-3')),
+      organization_id: new ObjectId(oid('org-1')),
+      recipient_user_id: new ObjectId(oid('user-3')),
+      alert_type: 'SLA_POR_VENCER',
+      channel: 'EMAIL',
+      context: {},
+      created_at: toDate(NOW),
+    };
+
+    expect(toDomain(document).alertType).toBe('SLA_DUE_SOON');
   });
 });

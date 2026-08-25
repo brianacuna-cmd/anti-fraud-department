@@ -51,7 +51,7 @@ describe('MongoNotificationRepository (integration, real replica-set Mongo)', ()
       id,
       organizationId: createOrganizationId(oid('org-1')),
       recipientUserId: createUserId(oid('user-1')),
-      alertType: 'CASO_ASIGNADO',
+      alertType: 'CASE_ASSIGNED',
       channel: 'EMAIL',
       context: { caseId: oid('case-1') },
       now: NOW,
@@ -61,7 +61,7 @@ describe('MongoNotificationRepository (integration, real replica-set Mongo)', ()
 
     const raw = await db.collection<NotificationDocument>('notifications').findOne({ _id: new ObjectId(id) });
     expect(raw).not.toBeNull();
-    expect(raw?.alert_type).toBe('CASO_ASIGNADO');
+    expect(raw?.alert_type).toBe('CASE_ASSIGNED');
     expect(raw?.recipient_user_id).toEqual(new ObjectId(oid('user-1')));
   });
 
@@ -72,7 +72,7 @@ describe('MongoNotificationRepository (integration, real replica-set Mongo)', ()
       id,
       organizationId: createOrganizationId(oid('org-1')),
       recipientUserId: createUserId(oid('user-1')),
-      alertType: 'CASO_ASIGNADO',
+      alertType: 'CASE_ASSIGNED',
       channel: 'EMAIL',
       context: {},
       now: NOW,

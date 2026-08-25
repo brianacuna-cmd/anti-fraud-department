@@ -49,7 +49,7 @@ export async function notifyApprovers(
       {
         organizationId: input.organizationId,
         recipientUserId,
-        alertType: 'APROBACION_PENDIENTE',
+        alertType: 'APPROVAL_PENDING',
         context: {
           caseId: input.caseId,
           enforcementActionId: input.enforcementActionId,

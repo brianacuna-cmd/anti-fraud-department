@@ -41,7 +41,7 @@ export interface ReassignCaseDeps {
  * Manual case reassignment (PR2). Loads the case, enforces tenant + soft-delete
  * gates, validates the assignee belongs to the organization, then clones the
  * RouteCase audit/timeline pattern with `trigger: MANUAL`. Dispatches
- * CASO_ASIGNADO via `NotificationSender` inside the same transaction: to the
+ * CASE_ASSIGNED via `NotificationSender` inside the same transaction: to the
  * single USER assignee, or fanned out to every active member of a ROLE
  * assignee (each recipient's own EMAIL opt-out is still honored downstream).
  *
@@ -126,7 +126,7 @@ export function createReassignCaseUseCase(deps: ReassignCaseDeps) {
           {
             organizationId,
             recipientUserId,
-            alertType: 'CASO_ASIGNADO',
+            alertType: 'CASE_ASSIGNED',
             context: { caseId: updated.id, previousAssigneeId },
           },
           tx,
