@@ -14,7 +14,6 @@ export interface CaseResponseDto {
   readonly bridgeUserId: string | null;
   readonly bridgeWallet: string | null;
   readonly stripeCustomerId: string | null;
-  readonly finturuCacheSnapshot: Record<string, unknown> | null;
   readonly riskScore: number;
   readonly status: string;
   readonly priority: string;
@@ -35,7 +34,6 @@ export function toCaseResponse(kase: Case): CaseResponseDto {
     bridgeUserId: kase.bridgeUserId,
     bridgeWallet: kase.bridgeWallet,
     stripeCustomerId: kase.stripeCustomerId,
-    finturuCacheSnapshot: kase.finturuCacheSnapshot,
     riskScore: kase.riskScore,
     status: kase.status,
     priority: kase.priority,

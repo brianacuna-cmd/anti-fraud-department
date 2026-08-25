@@ -115,14 +115,21 @@ describe('IngestFinturuCase (integration)', () => {
     expect(result.case.riskScore).toBe(78);
     expect(result.case.status).toBe('OPEN');
     expect(result.case.priority).toBe('HIGH');
-    expect(result.case.finturuCacheSnapshot).toEqual(samplePayload);
+    // El payload crudo de Finturu ya NO se guarda en el expediente: los datos
+    // del cliente se leen en vivo. Lo que sí queda son los identificadores
+    // extraídos de él, comprobados justo arriba.
+    expect(result.case as unknown as Record<string, unknown>).not.toHaveProperty(
+      'finturuCacheSnapshot',
+    );
 
     // 1. Verify Cases collection
     const caseDoc = await db.collection('cases').findOne({ _id: new ObjectId(result.case.id) });
     expect(caseDoc).not.toBeNull();
     expect(caseDoc?.customer_id).toBe('usr_finturu_456');
     expect(caseDoc?.status).toBe('OPEN');
-    expect(caseDoc?.finturu_cache_snapshot).toBeDefined();
+    // El documento ya no lleva la copia del payload de Finturu: se dejó de
+    // guardar cuando los datos del cliente pasaron a leerse en vivo.
+    expect(caseDoc).not.toHaveProperty('finturu_cache_snapshot');
 
     // 2. Verify CaseTimeline collection
     const timelineDocs = await db.collection('case_timeline').find({ case_id: new ObjectId(result.case.id) }).toArray();

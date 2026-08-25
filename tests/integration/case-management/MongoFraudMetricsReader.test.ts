@@ -38,7 +38,6 @@ function caseDoc(id: ObjectId, seed: CaseSeed = {}) {
     bridge_wallet: null,
     stripe_customer_id: null,
     finturu_reference: null,
-    finturu_cache_snapshot: null,
     risk_score: seed.riskScore ?? 10,
     status: seed.status ?? 'OPEN',
     priority: seed.priority ?? 'MEDIUM',

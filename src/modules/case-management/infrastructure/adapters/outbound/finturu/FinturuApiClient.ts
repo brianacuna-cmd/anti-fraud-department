@@ -43,7 +43,28 @@ export interface FinturuStripeCustomerDto {
   readonly email?: string;
   readonly balance?: number;
   readonly currency?: string;
-  /** Correlacion cruzada: Finturu guarda aqui `idUser`/`idUserBridge`. */
+  readonly status?: string;
+  /**
+   * Enganche DIRECTO con el padrón: el `idUser` de Finturu al que pertenece la
+   * cuenta de Stripe.
+   *
+   * Es el camino bueno y llegó después. Antes solo se podía cruzar por correo
+   * o escarbando en `metadata`, y ninguno de los dos funcionaba: `name`,
+   * `email` y `metadata` salen de `account.requestBody` en api-business, que
+   * está vacío para todas las cuentas — de ahí que esos campos vengan nulos y
+   * que `balance`, `currency` y `livemode` sean valores por defecto y no datos.
+   * `idUserFinturu` y `userInfo`, en cambio, se leen de la relación con el
+   * usuario, así que sí traen algo.
+   */
+  readonly idUserFinturu?: number | string | null;
+  /** Identidad del usuario dueño de la cuenta, resuelta en origen. */
+  readonly userInfo?: {
+    readonly idUser?: number | string | null;
+    readonly names?: string | null;
+    readonly lastNames?: string | null;
+    readonly email?: string | null;
+  } | null;
+  /** Correlacion cruzada heredada: Finturu guardaba aqui `idUser`/`idUserBridge`. */
   readonly metadata?: Record<string, unknown> | null;
 }
 

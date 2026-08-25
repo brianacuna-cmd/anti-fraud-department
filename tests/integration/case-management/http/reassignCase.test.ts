@@ -247,7 +247,7 @@ describe('caseRouter POST /cases/:caseId/reassign', () => {
         bridgeWallet: live.bridgeWallet,
         stripeCustomerId: live.stripeCustomerId,
         finturuReference: live.finturuReference,
-        finturuCacheSnapshot: live.finturuCacheSnapshot,
+        scoringEvidence: null,
         idempotencyKey: live.idempotencyKey,
         riskScore: live.riskScore,
         status: live.status,

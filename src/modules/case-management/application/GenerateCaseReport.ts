@@ -3,6 +3,7 @@ import type { Clock } from '../../../shared/time/Clock.js';
 import type { Case } from '../domain/model/aggregates/Case.js';
 import type { CaseReport, CaseReportSnapshot } from '../domain/model/aggregates/CaseReport.js';
 import type { CaseRepository } from '../domain/ports/CaseRepository.js';
+import type { CustomerSnapshotProvider } from '../domain/ports/CustomerSnapshotProvider.js';
 import type { TimelineReader } from '../domain/ports/TimelineReader.js';
 import type { CaseNoteRepository } from '../domain/ports/CaseNoteRepository.js';
 import type { InvestigationRepository } from '../domain/ports/InvestigationRepository.js';
@@ -46,6 +47,12 @@ export interface GenerateCaseReportDeps {
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
   readonly generateCaseReportId: () => CaseReportId;
+  /**
+   * Compone la foto del cliente al congelar. Opcional: sin él —o si falla— el
+   * informe se genera igual, con los identificadores del expediente pero sin
+   * la foto del proveedor.
+   */
+  readonly customerSnapshots?: CustomerSnapshotProvider;
 }
 
 /**
@@ -108,6 +115,31 @@ export function createGenerateCaseReportUseCase(deps: GenerateCaseReportDeps) {
         deps.slaTracking.findByCaseId(caseId, tx),
       ]);
 
+      /*
+       * La foto del cliente se pide AHORA, al congelar.
+       *
+       * Antes se copiaba `kase.finturuCacheSnapshot`, guardado en el
+       * expediente el día que se abrió: un informe emitido seis meses después
+       * congelaba la foto de seis meses atrás y no había forma de saberlo
+       * leyéndolo. Ahora dice lo que era cierto el día que se firmó.
+       *
+       * Se traga el fallo a propósito: el informe es el acto que cierra el
+       * expediente y perderlo porque un proveedor externo no contesta sería
+       * peor que congelarlo sin foto. Los identificadores del cliente viven en
+       * el expediente y se congelan igualmente, así que el sujeto nunca queda
+       * sin identificar.
+       */
+      const customerSnapshot = await deps.customerSnapshots
+        ?.snapshotFor({
+          bridgeUserId: kase.bridgeUserId,
+          stripeCustomerId: kase.stripeCustomerId,
+          email: kase.customerEmail,
+        })
+        .catch((error: Error) => {
+          console.warn(`[reports] sin foto del cliente para ${caseId}: ${error.message}`);
+          return null;
+        }) ?? null;
+
       // Una aprobacion por sancion: la fila cuelga de la sancion, no del caso.
       const approvals = await Promise.all(
         enforcementActions.map(async (action) => ({
@@ -119,7 +151,7 @@ export function createGenerateCaseReportUseCase(deps: GenerateCaseReportDeps) {
       const now = deps.clock.now();
       const snapshot: CaseReportSnapshot = {
         generatedAt: now,
-        case: caseSnapshot(kase),
+        case: caseSnapshot(kase, customerSnapshot),
         timeline: timeline.map((event) => ({
           id: event.id,
           eventType: event.eventType,
@@ -258,7 +290,10 @@ export function createGenerateCaseReportUseCase(deps: GenerateCaseReportDeps) {
   };
 }
 
-function caseSnapshot(kase: Case): Readonly<Record<string, unknown>> {
+function caseSnapshot(
+  kase: Case,
+  customerSnapshot: Record<string, unknown> | null,
+): Readonly<Record<string, unknown>> {
   return {
     id: kase.id,
     status: kase.status,
@@ -268,6 +303,10 @@ function caseSnapshot(kase: Case): Readonly<Record<string, unknown>> {
     assignedTo: kase.assignedTo ? { type: kase.assignedTo.type, id: kase.assignedTo.id } : null,
     dueDate: kase.dueDate,
     tags: kase.tags,
+    // Por qué se abrió el expediente. Viajaba dentro de la vieja caché del
+    // cliente; ahora entra por derecho propio, porque es lo único de esta foto
+    // que no se puede reconstruir después.
+    scoringEvidence: kase.scoringEvidence,
     createdAt: kase.createdAt,
     updatedAt: kase.updatedAt,
     // Quien es el cliente, congelado. Sin esto el informe identifica al sujeto
@@ -278,7 +317,10 @@ function caseSnapshot(kase: Case): Readonly<Record<string, unknown>> {
       bridgeUserId: kase.bridgeUserId,
       bridgeWallet: kase.bridgeWallet,
       stripeCustomerId: kase.stripeCustomerId,
-      snapshot: kase.finturuCacheSnapshot,
+      // Compuesta al congelar, no arrastrada desde la apertura del caso.
+      // `null` cuando el proveedor no contestó: el informe vale igual, y es
+      // preferible un hueco honesto a una foto de fecha desconocida.
+      snapshot: customerSnapshot,
     },
   };
 }

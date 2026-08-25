@@ -30,7 +30,7 @@ export interface ScoreToCaseOrchestratorDeps {
 
 /**
  * Composition-root orchestrator (eslint boundaries): score → org thresholds →
- * optional CreateCase with frozen finturuCacheSnapshot. Lives outside module
+ * optional CreateCase con la evidencia del scoring. Lives outside module
  * trees so risk-assessment never imports case-management application code.
  */
 export function createScoreToCaseOrchestrator(deps: ScoreToCaseOrchestratorDeps) {
@@ -54,13 +54,12 @@ export function createScoreToCaseOrchestrator(deps: ScoreToCaseOrchestratorDeps)
       };
     }
 
-    const finturuCacheSnapshot = buildFinturuCacheSnapshot(input.event, scoreResult);
     const createInput: CreateCaseInput = {
       auth: input.auth,
       customerId: input.event.caseCustomerId,
       riskScore: scoreResult.riskScore,
       priority,
-      finturuCacheSnapshot,
+      scoringEvidence: buildScoringEvidence(input.event, scoreResult),
     };
     const kase = await deps.createCase(createInput);
 
@@ -75,7 +74,12 @@ export function createScoreToCaseOrchestrator(deps: ScoreToCaseOrchestratorDeps)
   };
 }
 
-function buildFinturuCacheSnapshot(
+/**
+ * Se llamaba `buildFinturuCacheSnapshot` y no construía nada de Finturu: son
+ * el evento que abrió el caso y el veredicto del motor. El nombre venía del
+ * campo donde acababa, que ya no existe.
+ */
+function buildScoringEvidence(
   event: CanonicalRiskEvent,
   scoreResult: {
     readonly riskScore: number;

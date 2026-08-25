@@ -79,7 +79,7 @@ function buildResolvedCase(overrides: { deletedAt?: typeof NOW | null } = {}): C
     bridgeWallet: resolved.bridgeWallet,
     stripeCustomerId: resolved.stripeCustomerId,
     finturuReference: resolved.finturuReference,
-    finturuCacheSnapshot: resolved.finturuCacheSnapshot,
+    scoringEvidence: null,
     idempotencyKey: resolved.idempotencyKey,
     riskScore: resolved.riskScore,
     status: resolved.status,

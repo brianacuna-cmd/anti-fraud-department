@@ -60,7 +60,7 @@ function stubCase(priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL', snapshot: Re
     customerId: 'cust-1',
     riskScore: createRiskScore(80),
     priority,
-    finturuCacheSnapshot: snapshot,
+    scoringEvidence: snapshot,
     now: NOW,
   });
 }
@@ -83,7 +83,7 @@ describe('createScoreToCaseOrchestrator', () => {
       getOrganizationFraudConfig: async () => buildConfig(),
       createCase: async (input) => {
         createCaseCalls.push(input);
-        created = stubCase('HIGH', (input.finturuCacheSnapshot as Record<string, unknown>) ?? null);
+        created = stubCase('HIGH', (input.scoringEvidence as Record<string, unknown>) ?? null);
         return created;
       },
     });
@@ -99,12 +99,12 @@ describe('createScoreToCaseOrchestrator', () => {
       customerId: string;
       riskScore: number;
       priority: string;
-      finturuCacheSnapshot: Record<string, unknown>;
+      scoringEvidence: Record<string, unknown>;
     };
     expect(call.customerId).toBe('cust-1');
     expect(call.riskScore).toBe(88);
     expect(call.priority).toBe('HIGH');
-    expect(call.finturuCacheSnapshot).toEqual({
+    expect(call.scoringEvidence).toEqual({
       event: {
         provider: 'stripe',
         providerEventType: 'CHARGEBACK',
@@ -119,7 +119,7 @@ describe('createScoreToCaseOrchestrator', () => {
       riskScore: 88,
       hits: [{ id: 'hit-a', points: 10 }],
     });
-    expect(call.finturuCacheSnapshot.event).not.toHaveProperty('rawPayload');
+    expect(call.scoringEvidence.event).not.toHaveProperty('rawPayload');
   });
 
   it('does not call CreateCase when score is below risk_threshold_low', async () => {
@@ -214,7 +214,7 @@ describe('createScoreToCaseOrchestrator', () => {
     expect(createCase).not.toHaveBeenCalled();
   });
 
-  it('strips subjectIdentity PII from finturuCacheSnapshot while keeping other event fields', async () => {
+  it('strips subjectIdentity PII from scoringEvidence while keeping other event fields', async () => {
     const event = buildEvent({
       subjectIdentity: {
         nombre: 'John Doe',
@@ -236,14 +236,14 @@ describe('createScoreToCaseOrchestrator', () => {
       getOrganizationFraudConfig: async () => buildConfig(),
       createCase: async (input) => {
         createCaseCalls.push(input);
-        return stubCase('HIGH', (input.finturuCacheSnapshot as Record<string, unknown>) ?? null);
+        return stubCase('HIGH', (input.scoringEvidence as Record<string, unknown>) ?? null);
       },
     });
 
     await process({ auth: AUTH, event });
 
-    const call = createCaseCalls[0] as { finturuCacheSnapshot: Record<string, unknown> };
-    const persistedEvent = call.finturuCacheSnapshot.event as Record<string, unknown>;
+    const call = createCaseCalls[0] as { scoringEvidence: Record<string, unknown> };
+    const persistedEvent = call.scoringEvidence.event as Record<string, unknown>;
     expect(persistedEvent).not.toHaveProperty('subjectIdentity');
     expect(persistedEvent).not.toHaveProperty('nombre');
     expect(persistedEvent).not.toHaveProperty('documento');
@@ -255,7 +255,7 @@ describe('createScoreToCaseOrchestrator', () => {
   it('freezes hits as [] when engine omitted hits evidence', async () => {
     const createCaseCalls: Array<{
       priority?: string;
-      finturuCacheSnapshot?: Record<string, unknown> | null;
+      scoringEvidence?: Record<string, unknown> | null;
     }> = [];
     const process = createScoreToCaseOrchestrator({
       calculateRiskScore: async () =>
@@ -269,13 +269,13 @@ describe('createScoreToCaseOrchestrator', () => {
       getOrganizationFraudConfig: async () => buildConfig(),
       createCase: async (input) => {
         createCaseCalls.push(input);
-        return stubCase('LOW', (input.finturuCacheSnapshot as Record<string, unknown>) ?? null);
+        return stubCase('LOW', (input.scoringEvidence as Record<string, unknown>) ?? null);
       },
     });
 
     await process({ auth: AUTH, event: buildEvent({ rawPayload: undefined }) });
 
-    expect(createCaseCalls[0]?.finturuCacheSnapshot?.hits).toEqual([]);
+    expect(createCaseCalls[0]?.scoringEvidence?.hits).toEqual([]);
     expect(createCaseCalls[0]?.priority).toBe('LOW');
   });
 });

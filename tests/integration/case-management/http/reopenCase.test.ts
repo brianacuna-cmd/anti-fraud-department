@@ -97,7 +97,7 @@ function buildResolvedCase(deleted = false): Case {
     bridgeWallet: resolved.bridgeWallet,
     stripeCustomerId: resolved.stripeCustomerId,
     finturuReference: resolved.finturuReference,
-    finturuCacheSnapshot: resolved.finturuCacheSnapshot,
+    scoringEvidence: null,
     idempotencyKey: resolved.idempotencyKey,
     riskScore: resolved.riskScore,
     status: resolved.status,

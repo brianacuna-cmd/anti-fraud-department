@@ -29,7 +29,12 @@ export interface CreateCaseInput {
    * Optional evidence freeze for automated score→case opens.
    * Manual `POST /cases` omits this; Case stores `null`.
    */
-  readonly finturuCacheSnapshot?: Record<string, unknown> | null;
+  /**
+   * Por qué se abrió: regla, versión, puntuación y aciertos. Lo pone el
+   * orquestador score→case; en un `POST /cases` manual no hay motor detrás y
+   * queda `null`.
+   */
+  readonly scoringEvidence?: Record<string, unknown> | null;
   /**
    * Optional external idempotency key (RF-1/RF-2). Absent/blank = today's
    * exact behavior. When present and non-blank, a second call with the same
@@ -129,7 +134,7 @@ async function createAndRoute(
     bridgeUserId: input.bridgeUserId,
     bridgeWallet: input.bridgeWallet,
     stripeCustomerId: input.stripeCustomerId,
-    finturuCacheSnapshot: input.finturuCacheSnapshot,
+    scoringEvidence: input.scoringEvidence,
     idempotencyKey,
     riskScore: createRiskScore(input.riskScore),
     priority: createCasePriority(input.priority ?? 'LOW'),

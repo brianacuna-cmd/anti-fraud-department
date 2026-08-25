@@ -20,7 +20,6 @@ describe('finturuWebhookRouter (HTTP Contract)', () => {
       bridgeUserId: (raw.idUserBridge as string) ?? null,
       bridgeWallet: (raw.address as string) ?? null,
       stripeCustomerId: (raw.idCustomer as string) ?? null,
-      finturuCacheSnapshot: raw,
       riskScore: createRiskScore(typeof raw.risk_score === 'number' ? raw.risk_score : 50),
       priority: createCasePriority('HIGH'),
       now: brand<string, 'Instant'>('2026-08-14T18:00:00.000Z'),

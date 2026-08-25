@@ -203,8 +203,7 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
       );
 
       if (existingCase) {
-        const updatedCase = existingCase.updateFinturuSnapshot({
-          finturuCacheSnapshot: raw,
+        const updatedCase = existingCase.refreshFromFinturu({
           riskScore,
           priority,
           customerEmail,
@@ -302,7 +301,6 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
         bridgeWallet,
         stripeCustomerId,
         finturuReference: typeof raw.reference === 'object' && raw.reference !== null ? (raw.reference as Record<string, unknown>) : null,
-        finturuCacheSnapshot: raw,
         riskScore,
         priority,
         tags,
