@@ -1,6 +1,6 @@
 /**
  * Closed set of error codes owned by the `case-management` module (mirrors
- * `IdentityAccessErrorCode`'s "lista cerrada por módulo" convention). Only
+ * `IdentityAccessErrorCode`'s "closed set per module" convention). Only
  * the codes needed by Slice 1 (Foundation) are declared here — later slices
  * extend this union explicitly as new use cases land.
  */
@@ -20,18 +20,18 @@ export type CaseManagementErrorCode =
   | 'APPROVAL_REQUEST_NOT_FOUND'
   | 'SELF_APPROVAL_FORBIDDEN'
   /**
-   * INV-015: el antivirus encontro malware en el fichero subido. El fichero NO
-   * se almacena ni se registra: lo unico que queda es la entrada de auditoria.
+   * INV-015: the antivirus found malware in the uploaded file. The file is
+   * NOT stored or registered: the only thing left is the audit row.
    */
   | 'EVIDENCE_INFECTED'
   /**
-   * El expediente no tiene responsable y por tanto no se puede trabajar. No es
-   * un problema de permisos —quien lo intenta puede tener el rol correcto—
-   * sino del estado del propio expediente.
+   * The case has no assignee and therefore cannot be worked. This is not a
+   * permissions problem —whoever tries may have the correct role— but of the
+   * state of the case itself.
    */
   | 'CASE_NOT_ASSIGNED'
   /**
-   * El expediente esta cerrado y por tanto ya no se instruye. Se resuelve
-   * reabriendolo, no cambiando de usuario ni reintentando.
+   * The case is closed and therefore is no longer worked. It is resolved by
+   * reopening it, not by changing user or retrying.
    */
   | 'CASE_CLOSED';

@@ -14,11 +14,11 @@ import {
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 
 /**
- * Caducidad de la URL. Cinco minutos: basta para que el navegador arranque la
- * descarga y es poco para que la URL sobreviva en un historial, un log de
- * proxy o un chat. La URL prefirmada es un permiso al portador — quien la
- * tenga se lleva la evidencia, sin pasar por la sesión— y su ventana es toda
- * la protección que hay.
+ * URL expiry. Five minutes: enough for the browser to start the download and
+ * short enough that the URL does not survive in a history, a proxy log, or a
+ * chat. The presigned URL is a bearer grant — whoever has it takes the
+ * evidence, without going through the session — and its window is the only
+ * protection there is.
  */
 export const EVIDENCE_URL_TTL_SECONDS = 300;
 
@@ -40,20 +40,20 @@ export interface CreateEvidenceDownloadUrlDeps {
 }
 
 /**
- * INV-004 — descarga segura por URL prefirmada temporal.
+ * INV-004 — secure download via a temporary presigned URL.
  *
  * GET /evidence/:evidenceId/download-url
  *
- * El fichero no atraviesa la API: una evidencia puede ser un volcado de
- * cientos de megas y hacerla pasar por el proceso Node lo bloquea mientras
- * dura. Las guardas de inquilino y borrado lógico se aplican ANTES de firmar,
- * que es el único momento en que se pueden aplicar: una vez emitida, la URL
- * ya no pasa por aquí.
+ * The file does not pass through the API: evidence can be a dump of hundreds
+ * of megabytes and pushing it through the Node process blocks it for the
+ * duration. Tenant and soft-delete gates are applied BEFORE signing, which
+ * is the only moment they can be applied: once issued, the URL no longer
+ * comes through here.
  *
- * Si el almacén configurado no sabe firmar —el de filesystem, en desarrollo—
- * esto falla explícitamente en vez de inventarse una URL. La ruta de streaming
- * `GET /evidence/:evidenceId/download` sigue existiendo y es la que sirve en
- * ese entorno.
+ * If the configured store cannot sign —the filesystem one, in development—
+ * this fails explicitly instead of inventing a URL. The streaming route
+ * `GET /evidence/:evidenceId/download` still exists and is what serves in
+ * that environment.
  */
 export function createCreateEvidenceDownloadUrlUseCase(deps: CreateEvidenceDownloadUrlDeps) {
   return async function createEvidenceDownloadUrl(

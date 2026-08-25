@@ -50,28 +50,29 @@ export interface GenerateCaseReportDeps {
 
 /**
  * Generates and persists an immutable snapshot of the FULL case file at time
- * T: detalle, identidad congelada del cliente, SLA, cronologia, notas,
- * evidencia (con su hash y su sello), investigaciones, dictamenes, sanciones,
- * sus aprobaciones y la resolucion.
+ * T: detail, frozen customer identity, SLA, timeline, notes, evidence (with
+ * its hash and timestamp), investigations, decisions, sanctions, their
+ * approvals, and the resolution.
  *
- * Tres cosas que antes faltaban y hacian el informe ilegible como expediente:
+ * Three things that were previously missing and made the report unreadable as
+ * a case file:
  *
- * - **La evidencia.** Un expediente congelado sin la lista de pruebas —con su
- *   SHA-256 y su sello— no sirve para acreditar nada: es justo lo que un
- *   tercero necesita para comprobar que el fichero que le entregas es el que
- *   se recogio.
- * - **Las aprobaciones.** Sin ellas no consta quien autorizo cada sancion, que
- *   es la mitad del control de cuatro ojos.
- * - **Los nombres.** El resto de tablas guardan ids; un informe lleno de
- *   ObjectIds no lo lee nadie. Se resuelven AQUI, al congelar, y no al
- *   imprimirlo: asi el informe sigue diciendo quien hizo que aunque esa
- *   persona se borre despues. Eso es precisamente lo que se espera de un
- *   documento inmutable.
+ * - **The evidence.** A frozen case without the list of proofs —with their
+ *   SHA-256 and timestamp— cannot attest to anything: that is exactly what a
+ *   third party needs to check that the file you hand them is the one that
+ *   was collected.
+ * - **The approvals.** Without them there is no record of who authorized each
+ *   sanction, which is half of four-eyes control.
+ * - **The names.** The rest of the tables store ids; a report full of
+ *   ObjectIds is unreadable. They are resolved HERE, at freeze time, and not
+ *   when printing: that way the report still says who did what even if that
+ *   person is later deleted. That is precisely what is expected of an
+ *   immutable document.
  *
- * Cualquier actor operativo puede generarlo; el caso debe pertenecer a su
- * organizacion y no estar borrado. El snapshot se arma desde los getters del
- * dominio (sin importar mappers de HTTP — eslint boundaries) y queda
- * congelado: el caso sigue cambiando, el informe no.
+ * Any operational actor can generate it; the case must belong to their
+ * organization and not be deleted. The snapshot is built from the domain
+ * getters (without importing HTTP mappers — eslint boundaries) and is then
+ * frozen: the case keeps changing, the report does not.
  */
 export function createGenerateCaseReportUseCase(deps: GenerateCaseReportDeps) {
   return async function generateCaseReport(input: GenerateCaseReportInput): Promise<CaseReport> {
@@ -108,7 +109,7 @@ export function createGenerateCaseReportUseCase(deps: GenerateCaseReportDeps) {
         deps.slaTracking.findByCaseId(caseId, tx),
       ]);
 
-      // Una aprobacion por sancion: la fila cuelga de la sancion, no del caso.
+      // One approval per sanction: the row hangs off the sanction, not the case.
       const approvals = await Promise.all(
         enforcementActions.map(async (action) => ({
           action,
@@ -168,9 +169,9 @@ export function createGenerateCaseReportUseCase(deps: GenerateCaseReportDeps) {
           createdBy: decision.createdBy,
           createdAt: decision.createdAt,
         })),
-        // Metadatos, nunca el fichero: un informe es un indice de la cadena de
-        // custodia, no un archivo adjunto. El SHA-256 es lo que permite
-        // comprobar despues que la prueba entregada es la que se recogio.
+        // Metadata, never the file: a report is an index of the chain of
+        // custody, not an attachment. The SHA-256 is what later lets you
+        // check that the delivered proof is the one that was collected.
         evidence: evidence.map((item) => ({
           id: item.id,
           filename: item.filename,
@@ -183,17 +184,17 @@ export function createGenerateCaseReportUseCase(deps: GenerateCaseReportDeps) {
                 timestampedAt: item.timestamp.timestampedAt,
               }
             : null,
-          // INV-015. Va en el informe congelado por la misma razon que el hash
-          // y el sello: es procedencia de la prueba. Si dentro de dos anos
-          // alguien pregunta que se comprobo sobre este fichero antes de
-          // aceptarlo, la respuesta tiene que estar dentro del snapshot, no en
-          // una coleccion viva que para entonces habra cambiado.
+          // INV-015. It goes in the frozen report for the same reason as the
+          // hash and timestamp: it is provenance of the proof. If in two years
+          // someone asks what was checked on this file before accepting it,
+          // the answer must be inside the snapshot, not in a live collection
+          // that will have changed by then.
           scanStatus: item.scanStatus,
           uploadedBy: item.uploadedBy,
           createdAt: item.createdAt,
           deletedAt: item.deletedAt,
         })),
-        // La otra mitad del control de cuatro ojos: quien pidio y quien firmo.
+        // The other half of four-eyes control: who requested and who signed.
         approvals: approvals.flatMap(({ action, approval }) =>
           approval === null
             ? []
@@ -270,9 +271,10 @@ function caseSnapshot(kase: Case): Readonly<Record<string, unknown>> {
     tags: kase.tags,
     createdAt: kase.createdAt,
     updatedAt: kase.updatedAt,
-    // Quien es el cliente, congelado. Sin esto el informe identifica al sujeto
-    // por un `customerId` que no dice nada a quien lo lee desde fuera, y que
-    // ademas puede haber dejado de resolver a nada en el proveedor.
+    // Who the customer is, frozen. Without this the report identifies the
+    // subject by a `customerId` that means nothing to someone reading from
+    // outside, and that may also have stopped resolving to anything at the
+    // provider.
     customer: {
       email: kase.customerEmail,
       bridgeUserId: kase.bridgeUserId,
@@ -284,19 +286,19 @@ function caseSnapshot(kase: Case): Readonly<Record<string, unknown>> {
 }
 
 /**
- * Nombres de todas las personas que aparecen en el expediente, resueltos al
- * CONGELAR.
+ * Names of every person who appears in the case, resolved at FREEZE time.
  *
- * Se guardan dentro del informe y no se resuelven al imprimirlo por lo mismo
- * que se congela el resto: un informe de hace dos anos tiene que seguir
- * diciendo quien cerro el caso aunque esa persona ya no exista en el sistema.
- * Un id que no resuelve simplemente no entra en el mapa, y quien lo lee
- * mostrara el id crudo antes que un nombre inventado.
+ * They are stored inside the report and not resolved when printing for the
+ * same reason the rest is frozen: a report from two years ago must still say
+ * who closed the case even if that person no longer exists in the system.
+ * An id that does not resolve simply stays out of the map, and whoever
+ * reads it will show the raw id rather than an invented name.
  *
- * Si el directorio de identidad falla, el informe se genera igual sin nombres:
- * perder el expediente entero por no poder poner un nombre seria peor.
+ * If the identity directory fails, the report is still generated without
+ * names: losing the whole case because a name could not be attached would
+ * be worse.
  */
-/** Todos los ids de persona que aparecen en el expediente, sin repetir. */
+/** Every person id that appears in the case, without duplicates. */
 function collectUserIds(sources: ActorSources): Set<string> {
   const userIds = new Set<string>([sources.reportedBy]);
   const singles: readonly (string | null)[] = [

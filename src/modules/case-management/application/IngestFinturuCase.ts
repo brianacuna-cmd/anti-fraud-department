@@ -37,10 +37,10 @@ export interface IngestFinturuCaseDeps {
   readonly generateOutboxEventId: () => OutboxEventId;
   readonly initializeCaseSla: InitializeCaseSlaService;
   /**
-   * CASE-002. Es el caso de uso `RouteCase` compuesto (el mismo que recibe
-   * `CreateCase`), asi que la asignacion, su hito `ASSIGNED` y su fila de
-   * auditoria confirman dentro de ESTA transaccion. Opcional: sin el, el
-   * expediente nace sin asignar y espera en la bandeja general.
+   * CASE-002. This is the composed `RouteCase` use case (the same one
+   * `CreateCase` receives), so the assignment, its `ASSIGNED` milestone, and
+   * its audit row commit inside THIS transaction. Optional: without it, the
+   * case is born unassigned and waits in the general inbox.
    */
   readonly routeCase?: (input: RouteCaseInput) => Promise<Case>;
 }
@@ -60,22 +60,23 @@ function extractString(obj: Record<string, unknown>, keys: readonly string[]): s
   return null;
 }
 
-/** La forma que Mongo acepta como ObjectId: 24 caracteres hexadecimales. */
+/** The shape Mongo accepts as an ObjectId: 24 hexadecimal characters. */
 const OBJECT_ID_PATTERN = /^[0-9a-fA-F]{24}$/;
 
 /**
- * Resuelve el inquilino al que pertenece el expediente, o falla diciendo por que.
+ * Resolves the tenant the case belongs to, or fails saying why.
  *
- * Antes, cuando no se resolvia ninguno, se inventaba el literal `'finturu-org'`.
- * Desde la migracion a ObjectId nativo eso reventaba dentro del driver con un
- * `BSONError` sobre cadenas hexadecimales: el webhook devolvia un 400 cuyo
- * mensaje no decia nada del problema real, y el operador no tenia forma de
- * saber que lo que faltaba era la organizacion.
+ * Previously, when none resolved, the literal `'finturu-org'` was invented.
+ * After the migration to native ObjectId that blew up inside the driver with a
+ * `BSONError` about hexadecimal strings: the webhook returned a 400 whose
+ * message said nothing about the real problem, and the operator had no way to
+ * know that what was missing was the organization.
  *
- * Un identificador que no sea un ObjectId —tipicamente un slug, que la lista de
- * extraccion admite— se rechaza en lugar de caer al inquilino por defecto: el
- * payload designo un inquilino concreto, y archivar su caso de fraude bajo otro
- * seria una fuga entre inquilinos, mucho peor que un webhook rechazado.
+ * An identifier that is not an ObjectId —typically a slug, which the
+ * extraction list allows— is rejected instead of falling through to the
+ * default tenant: the payload designated a concrete tenant, and archiving its
+ * fraud case under another would be a cross-tenant leak, far worse than a
+ * rejected webhook.
  */
 function requireTenantId(candidate: string | undefined): string {
   const value = candidate?.trim();
@@ -188,10 +189,10 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
 
     return deps.unitOfWork.withTransaction(async (tx) => {
       // 0. Check if a case already exists for this customer or bridge user
-      // CASE-011: solo un expediente ACTIVO deduplica. Antes la búsqueda no
-      // miraba el estado, así que un caso ya RESOLVED o ARCHIVED absorbía la
-      // reincidencia: el cliente volvía a ser reportado y, en vez de abrirse un
-      // expediente nuevo, se sobrescribía el snapshot del que ya estaba cerrado.
+      // CASE-011: only an ACTIVE case deduplicates. Previously the lookup did
+      // not look at status, so a case already RESOLVED or ARCHIVED absorbed the
+      // recurrence: the customer was reported again and, instead of opening a
+      // new case, the snapshot of the one that was already closed was overwritten.
       const existingCase = await deps.cases.findByCustomerOrBridgeId(
         {
           organizationId,
@@ -214,11 +215,11 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
           now,
         });
 
-        // CASE-007: la fecha límite depende de la prioridad, así que una
-        // reincidencia que sube el riesgo tiene que acortar el reloj. Si la
-        // prioridad no se movió, se deja el `dueDate` original: reiniciarlo en
-        // cada refresco de snapshot regalaría tiempo indefinidamente y el SLA
-        // dejaría de significar nada.
+        // CASE-007: the due date depends on priority, so a recurrence that
+        // raises the risk must shorten the clock. If priority did not move,
+        // the original `dueDate` is left: resetting it on every snapshot
+        // refresh would grant time indefinitely and the SLA would stop
+        // meaning anything.
         let recomputed = updatedCase;
         if (updatedCase.priority !== existingCase.priority) {
           const dueDate = await deps.initializeCaseSla({
@@ -233,10 +234,10 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
 
         await deps.cases.save(recomputed, tx);
 
-        // El hito en la línea de tiempo es parte del contrato de CASE-011: sin
-        // él, una reincidencia sobre un expediente abierto se absorbía en
-        // silencio y el analista no tenía forma de saber que Finturu había
-        // vuelto a reportar al mismo cliente.
+        // The timeline milestone is part of the CASE-011 contract: without
+        // it, a recurrence on an open case was absorbed in silence and the
+        // analyst had no way to know that Finturu had reported the same
+        // customer again.
         if (input.recordTimeline !== false) {
           const resnapshotEvent = CaseTimelineEvent.create({
             id: deps.generateTimelineEventId(),
@@ -287,8 +288,8 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
         tx,
       });
 
-      // El payload de Finturu puede traer etiquetas propias; si no, se marcan
-      // el origen y el canal para que la bandeja sepa de donde vino.
+      // The Finturu payload may bring its own tags; if not, origin and channel
+      // are marked so the inbox knows where it came from.
       const tags = Array.isArray(raw.tags)
         ? (raw.tags.filter((t) => typeof t === 'string') as string[])
         : ['WEBHOOK_INTAKE', 'FINTURU'];
@@ -325,12 +326,11 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
         await deps.timelineRecorder.record(timelineEvent, tx);
       }
 
-      // CASE-002: el enrutamiento importa mas por esta via que por la manual —
-      // un caso que entra por webhook no tiene a nadie delante para asignarlo.
-      // `RouteCase` persiste la asignacion, emite su propio hito `ASSIGNED` y
-      // audita la regla ganadora, todo dentro de esta misma transaccion.
-      // `createdBy: null` porque la regla, y no un humano, eligio al
-      // responsable.
+      // CASE-002: routing matters more on this path than on the manual one —
+      // a case that arrives via webhook has nobody in front of it to assign it.
+      // `RouteCase` persists the assignment, emits its own `ASSIGNED` milestone,
+      // and audits the winning rule, all inside this same transaction.
+      // `createdBy: null` because the rule, not a human, chose the assignee.
       const routedCase = deps.routeCase
         ? await deps.routeCase({
             kase,
@@ -364,9 +364,9 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
         tx,
       );
 
-      // 4. Record Outbox Event — se emite sobre `routedCase`, no sobre `kase`,
-      // para que el consumidor vea el expediente tal y como quedo confirmado
-      // (con responsable si alguna regla lo asigno).
+      // 4. Record Outbox Event — emitted on `routedCase`, not on `kase`,
+      // so the consumer sees the case as it was committed (with an assignee
+      // if some rule assigned one).
       const outboxEventId = deps.generateOutboxEventId();
       const outboxEvent = OutboxEvent.create({
         id: outboxEventId,

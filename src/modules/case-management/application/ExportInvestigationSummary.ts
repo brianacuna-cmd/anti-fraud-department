@@ -19,13 +19,13 @@ import { requireTenantContext } from './authorization/requireTenantContext.js';
 import type { createBuildEntityNetworkGraphUseCase } from './BuildEntityNetworkGraph.js';
 
 /**
- * Cómo entró el expediente en el informe.
+ * How the case entered the report.
  *
- * `PRIMARY` y `LINKED` son afirmaciones humanas: alguien dijo "este caso
- * pertenece a esta investigación". `NETWORK` es inferencia de la máquina a
- * partir de un identificador compartido. Quien lea el informe necesita poder
- * distinguirlos: un vínculo declarado sostiene una acusación, uno inferido
- * sostiene una línea de trabajo.
+ * `PRIMARY` and `LINKED` are human assertions: someone said "this case
+ * belongs to this investigation". `NETWORK` is machine inference from a
+ * shared identifier. Whoever reads the report needs to tell them apart: a
+ * declared link supports an accusation; an inferred one supports a line of
+ * inquiry.
  */
 export type InvestigationCaseOrigin = 'PRIMARY' | 'LINKED' | 'NETWORK';
 
@@ -53,8 +53,8 @@ export interface InvestigationSummaryCase {
   readonly customerId: string;
   readonly createdAt: Instant;
   /**
-   * Profundidad a la que la red alcanzó este expediente. 1 = lo toca la raíz.
-   * `0` en los vinculados a mano: no los descubrió la expansión.
+   * Depth at which the network reached this case. 1 = the root touches it.
+   * `0` on manually linked cases: the expansion did not discover them.
    */
   readonly depth: number;
   readonly decisions: readonly {
@@ -70,16 +70,16 @@ export interface InvestigationSummaryCase {
     readonly targetType: string;
     readonly targetId: string;
   }[];
-  /** Solo con `includeCaseDetail`. Excluye lo borrado en blando (INV-011). */
+  /** Only with `includeCaseDetail`. Excludes soft-deleted items (INV-011). */
   readonly notes?: readonly InvestigationSummaryNote[];
-  /** Solo con `includeCaseDetail`. Excluye lo borrado en blando (INV-011). */
+  /** Only with `includeCaseDetail`. Excludes soft-deleted items (INV-011). */
   readonly evidence?: readonly InvestigationSummaryEvidence[];
 }
 
 export interface InvestigationSummary {
   readonly investigation: {
     readonly id: string;
-    /** Expediente raíz. Puede no aparecer en `cases` si se borró entre medias. */
+    /** Root case. May be missing from `cases` if it was deleted in the meantime. */
     readonly caseId: string;
     readonly subjectType: string;
     readonly subjectId: string;
@@ -93,16 +93,16 @@ export interface InvestigationSummary {
   };
   readonly network: {
     readonly rootId: string;
-    /** Expedientes que descubrió la expansión. No incluye los vinculados a mano. */
+    /** Cases the expansion discovered. Does not include manually linked ones. */
     readonly totalCases: number;
     readonly totalEntities: number;
     readonly entitiesByType: Readonly<Record<EntityNodeType, number>>;
     readonly depthReached: number;
-    /** `true` = la red mostrada es un recorte, no la red completa. */
+    /** `true` = the shown network is a slice, not the full network. */
     readonly truncated: boolean;
   };
   readonly totals: {
-    /** Todos los expedientes del informe: vinculados a mano más los de la red. */
+    /** Every case in the report: manually linked plus those from the network. */
     readonly totalCases: number;
     readonly linkedCases: number;
     readonly networkCases: number;
@@ -120,10 +120,10 @@ export interface ExportInvestigationSummaryInput {
   readonly investigationId: string;
   readonly maxDepth?: number;
   /**
-   * Añade notas y evidencia de cada expediente. Lo pide `/export`, que compone
-   * el documento probatorio; `/summary` lo omite porque alimenta un panel y la
-   * red puede llegar a `MAX_GRAPH_NODES` expedientes — arrastrar el cuerpo de
-   * cada nota convertiría una vista en una descarga.
+   * Adds notes and evidence for each case. `/export` requests this to compose
+   * the evidentiary document; `/summary` omits it because it feeds a dashboard
+   * and the network can reach `MAX_GRAPH_NODES` cases — dragging every note
+   * body along would turn a view into a download.
    */
   readonly includeCaseDetail?: boolean;
 }
@@ -140,31 +140,31 @@ export interface ExportInvestigationSummaryDeps {
 }
 
 /**
- * INV-014 — informe ejecutivo consolidado de una investigación profunda.
+ * INV-014 — consolidated executive report for a deep investigation.
  *
- * Sirve dos rutas con el mismo cuerpo:
+ * Serves two routes with the same body:
  *
- *   GET /investigations/:id/summary  — vista viva, sin notas ni evidencia
- *   GET /investigations/:id/export   — vía `ExportInvestigation`, congelado
+ *   GET /investigations/:id/summary  — live view, without notes or evidence
+ *   GET /investigations/:id/export   — via `ExportInvestigation`, frozen
  *
- * DE DÓNDE SALEN LOS EXPEDIENTES
+ * WHERE THE CASES COME FROM
  *
- * De dos sitios, y hacen falta los dos. La expansión de INV-013 descubre lo
- * que nadie declaró —el caso que comparte wallet con el sujeto y que ningún
- * analista relacionó—, pero solo ve conexiones que existen como identificador
- * compartido. Un vínculo hecho a mano puede no tener ninguno: dos expedientes
- * que un investigador ató por el modus operandi no comparten campo alguno, y
- * la expansión jamás los va a juntar.
+ * From two places, and both are needed. INV-013 expansion discovers what
+ * nobody declared — the case that shares a wallet with the subject and that
+ * no analyst related — but it only sees connections that exist as a shared
+ * identifier. A hand-made link may have none: two cases an investigator
+ * tied together by modus operandi share no field, and expansion will never
+ * join them.
  *
- * Por eso el informe es la unión: `caseId` + `linkedCaseIds` siempre, más lo
- * que aporte la red. Quedarse solo con la red pierde el trabajo humano;
- * quedarse solo con los vínculos convierte el informe en una lista que ya
- * estaba escrita. Cada expediente lleva su `origin` para que quien lo lea sepa
- * cuál de las dos cosas está mirando.
+ * That is why the report is the union: `caseId` + `linkedCaseIds` always,
+ * plus whatever the network contributes. Staying with the network alone
+ * loses the human work; staying with the links alone turns the report into
+ * a list that was already written. Each case carries its `origin` so the
+ * reader knows which of the two they are looking at.
  *
- * `network.truncated` se propaga tal cual desde el grafo: si la red venía
- * recortada, los totales son un mínimo, no un total, y quien lo lea tiene que
- * poder saberlo.
+ * `network.truncated` is propagated as-is from the graph: if the network
+ * came truncated, the totals are a floor, not a total, and the reader has
+ * to be able to tell.
  */
 export function createExportInvestigationSummaryUseCase(deps: ExportInvestigationSummaryDeps) {
   return async function exportInvestigationSummary(
@@ -225,11 +225,11 @@ interface CaseRequest {
 }
 
 /**
- * La unión de vínculos declarados y red inferida, sin repetir.
+ * The union of declared links and inferred network, without duplicates.
  *
- * El orden importa: lo declarado se resuelve primero, así que un expediente
- * que está a la vez vinculado a mano y descubierto por la red conserva el
- * origen humano, que es el que más dice.
+ * Order matters: declared items are resolved first, so a case that is both
+ * manually linked and discovered by the network keeps the human origin,
+ * which is the one that says more.
  */
 function collectCaseRequests(
   primary: CaseId,
@@ -267,7 +267,7 @@ const ORIGIN_RANK: Readonly<Record<InvestigationCaseOrigin, number>> = {
   NETWORK: 2,
 };
 
-/** El caso raíz arriba, después lo declarado, y dentro de cada grupo el riesgo manda. */
+/** Root case first, then declared ones, and within each group risk leads. */
 function byOriginThenRisk(a: InvestigationSummaryCase, b: InvestigationSummaryCase): number {
   const rank = ORIGIN_RANK[a.origin] - ORIGIN_RANK[b.origin];
   return rank === 0 ? b.riskScore - a.riskScore : rank;
@@ -284,8 +284,8 @@ async function buildCaseSummary(
 ): Promise<InvestigationSummaryCase | null> {
   const id = createCaseId(request.caseId);
   const kase = await deps.cases.findById(id);
-  // El grafo se armó con una foto anterior; si el expediente desaparecio entre
-  // medias, se omite en vez de reventar el informe entero.
+  // The graph was built from an earlier snapshot; if the case disappeared in
+  // the meantime, omit it instead of blowing up the whole report.
   if (kase === null) {
     return null;
   }

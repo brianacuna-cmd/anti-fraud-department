@@ -18,16 +18,16 @@ export interface OrganizationFraudConfigProps {
   /** Tenant webhook URL for enforcement outbox delivery; null/empty = unset. */
   readonly outboundWebhookUrl: string | null;
   /**
-   * Secreto compartido con el inquilino para firmar lo que le enviamos.
+   * Shared secret with the tenant for signing what we send them.
    *
-   * Es POR INQUILINO y no del despliegue a proposito: con un secreto unico,
-   * cualquier inquilino que conociera el suyo podria falsificar entregas
-   * firmadas al endpoint de otro, y una notificacion de sancion falsificada es
-   * exactamente lo que este canal no puede permitir.
+   * It is PER TENANT and not of the deployment on purpose: with a single
+   * secret, any tenant who knew theirs could forge signed deliveries to
+   * another tenant's endpoint, and a forged sanction notification is exactly
+   * what this channel cannot allow.
    *
-   * `null` = sin firmar. Se permite para no romper integraciones que ya estan
-   * en pie, pero el receptor no puede distinguir nuestros envios de los de
-   * cualquiera que conozca su URL.
+   * `null` = unsigned. Allowed so as not to break integrations that are
+   * already in place, but the receiver cannot distinguish our sends from
+   * anyone else's who knows their URL.
    */
   readonly outboundWebhookSecret: string | null;
   readonly createdAt: Instant;

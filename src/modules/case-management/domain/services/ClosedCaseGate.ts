@@ -1,7 +1,7 @@
 import type { Case } from '../model/aggregates/Case.js';
 import { caseClosed } from '../errors/CaseManagementError.js';
 
-/** Los dos estados en que el expediente ya no se instruye. */
+/** The two statuses in which the case is no longer worked. */
 const CLOSED_STATUSES = new Set(['RESOLVED', 'ARCHIVED']);
 
 export function isClosed(kase: Case): boolean {
@@ -9,29 +9,30 @@ export function isClosed(kase: Case): boolean {
 }
 
 /**
- * Un expediente cerrado no se instruye.
+ * A closed case is not worked.
  *
- * Ni notas, ni evidencia, ni investigaciones, ni dictámenes, ni medidas, ni
- * cambios de prioridad o etiquetas. Si hace falta seguir trabajándolo, el
- * camino es reabrirlo — y eso deja su propio hito en la cronología.
+ * No notes, evidence, investigations, analyst decisions, enforcement
+ * actions, or priority/tag changes. If it still needs work, the path is
+ * to reopen it — and that leaves its own milestone on the timeline.
  *
- * POR QUÉ IMPORTA MÁS AQUÍ QUE EN OTRO SISTEMA
+ * WHY IT MATTERS MORE HERE THAN IN ANOTHER SYSTEM
  *
- * El informe congelado se genera al cerrar. Permitir que después se añada
- * evidencia produce la peor combinación posible: un expediente cuyo contenido
- * real ya no coincide con el documento que se entregó como su foto
- * inmutable. Quien reciba ese informe estará leyendo algo que la base de
- * datos ya contradice, y no habrá forma de saber cuál de los dos vale.
+ * The frozen report is generated on close. Allowing evidence to be added
+ * afterwards produces the worst possible combination: a case whose real
+ * contents no longer match the document delivered as its immutable
+ * snapshot. Whoever receives that report will be reading something the
+ * database already contradicts, with no way to know which of the two
+ * counts.
  *
- * Reabrir, en cambio, es explícito: exige justificación, reinicia el SLA,
- * queda registrado, y el informe siguiente se genera sobre el estado nuevo.
+ * Reopening, by contrast, is explicit: it requires justification, resets
+ * the SLA, is recorded, and the next report is generated on the new state.
  *
- * QUÉ NO CUBRE
+ * WHAT IT DOES NOT COVER
  *
- * `GenerateCaseReport` no pasa por aquí a propósito: congelar el expediente
- * es precisamente lo que se hace DESPUÉS de cerrarlo. Y `ReassignCase`
- * tampoco — cambiar de responsable no altera el contenido del expediente y
- * es lo que hace falta para que otra persona pueda reabrirlo.
+ * `GenerateCaseReport` skips this on purpose: freezing the case is
+ * precisely what is done AFTER closing it. And `ReassignCase` does too —
+ * changing the assignee does not alter the case contents and is what is
+ * needed so another person can reopen it.
  */
 export function assertNotClosed(kase: Case): void {
   if (isClosed(kase)) {

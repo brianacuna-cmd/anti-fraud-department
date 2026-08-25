@@ -7,16 +7,17 @@ import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { OVERSIGHT_READ_ROLES, requireReadRole } from './authorization/policy.js';
 
 /**
- * Una solicitud SIEMPRE viaja con la sancion que la motiva: revisarla a
- * ciegas —sin saber si bloquea una wallet o suspende a un cliente— no es
- * revisar, es firmar.
+ * A request ALWAYS travels with the sanction that motivates it: reviewing it
+ * blindly —without knowing whether it blocks a wallet or suspends a customer—
+ * is not reviewing, it is signing.
  */
 export interface PendingApproval {
   readonly approvalRequest: ApprovalRequest;
   readonly enforcementAction: EnforcementAction;
   /**
-   * `false` cuando quien consulta es quien pidio la medida: la vera en la
-   * cola, sabra que esta esperando, y no podra decidirla (cuatro ojos).
+   * `false` when the caller is who requested the measure: they will see it in
+   * the queue, they will know it is waiting, and they will not be able to
+   * decide it (four eyes).
    */
   readonly reviewableByCaller: boolean;
 }
@@ -38,18 +39,18 @@ export interface ListApprovalRequestsDeps {
 }
 
 /**
- * GET /approval-requests — la cola de doble firma (ENF-002).
+ * GET /approval-requests — the dual-control queue (ENF-002).
  *
- * Sin esto el control de cuatro ojos no tenia donde ejercerse: existian las
- * solicitudes y existia la ruta para decidir UNA por su id, pero nada que
- * respondiera "que hay esperando". Un control que nadie puede ver es un
- * control que no se ejerce.
+ * Without this, four-eyes control had nowhere to be exercised: the requests
+ * existed and so did the route to decide ONE by its id, but nothing answered
+ * "what is waiting". A control nobody can see is a control that is not
+ * exercised.
  *
- * Se consulta partiendo de `enforcement_actions` y no de `approval_requests`
- * porque la fila de aprobacion NO lleva `organization_id` (design: el ambito
- * lo hereda de la sancion), asi que es la sancion la que aporta la guarda de
- * inquilino. De paso, el orden y la paginacion salen ya resueltos del
- * repositorio de sanciones.
+ * The query starts from `enforcement_actions` and not from `approval_requests`
+ * because the approval row does NOT carry `organization_id` (design: the
+ * scope is inherited from the sanction), so it is the sanction that supplies
+ * the tenant gate. As a side effect, order and pagination already come
+ * resolved from the sanctions repository.
  */
 export function createListApprovalRequestsUseCase(deps: ListApprovalRequestsDeps) {
   return async function listApprovalRequests(
@@ -70,9 +71,9 @@ export function createListApprovalRequestsUseCase(deps: ListApprovalRequestsDeps
       const approvalRequest = await deps.approvalRequests.findByEnforcementActionId(
         enforcementAction.id,
       );
-      // Una sancion PENDING sin solicitud es una anterior a ENF-002: la cola
-      // la omite en vez de inventarle una fila, y sigue siendo aprobable por
-      // la ruta directa, que crea la solicitud al vuelo.
+      // A PENDING sanction without a request is one from before ENF-002: the
+      // queue omits it instead of inventing a row, and it remains approvable
+      // through the direct route, which creates the request on the fly.
       if (approvalRequest === null || approvalRequest.status !== 'PENDING') {
         continue;
       }

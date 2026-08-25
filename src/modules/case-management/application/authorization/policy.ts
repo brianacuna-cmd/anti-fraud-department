@@ -9,58 +9,59 @@ import {
 import { forbiddenReadOnly, forbiddenRole } from '../../domain/errors/CaseManagementError.js';
 
 /**
- * Política de acceso de case-management, en un único fichero.
+ * Case-management access policy, in a single file.
  *
- * Antes cada caso de uso declaraba su propia lista (`const CLOSE_ROLES =
- * ['SUPERVISOR', 'ADMIN']`) y la guarda miraba solo `roleId`. Eso tenía dos
- * consecuencias, ambas equivocadas:
+ * Previously each use case declared its own list (`const CLOSE_ROLES =
+ * ['SUPERVISOR', 'ADMIN']`) and the guard looked only at `roleId`. That had
+ * two consequences, both wrong:
  *
- * 1. `ADMIN` podía dictaminar, cerrar, sancionar y borrar evidencia — el
- *    mismo actor que da y quita permisos.
- * 2. El actor `ORGANIZATION` llega SIEMPRE con `roleId: null` (el resolver
- *    de sesión solo resuelve rol para el actor `USER`), así que hasta las
- *    lecturas le respondían `role "null" is not authorized`.
+ * 1. `ADMIN` could record decisions, close, sanction, and delete evidence —
+ *    the same actor that grants and revokes permissions.
+ * 2. The `ORGANIZATION` actor ALWAYS arrives with `roleId: null` (the
+ *    session resolver only resolves a role for the `USER` actor), so even
+ *    reads answered `role "null" is not authorized`.
  *
- * Ahora hay dos guardas explícitas —lectura y operación— y las listas viven
- * aquí. Ver `shared/kernel/AccessTier.ts` para el porqué de la separación.
+ * There are now two explicit guards — read and operation — and the lists
+ * live here. See `shared/kernel/AccessTier.ts` for why they are split.
  */
 
-/** Instruir un expediente: notas, prioridad, etiquetas, dictamen, lotes. */
+/** Work a case: notes, priority, tags, analyst decision, bulk actions. */
 export const CASE_WORK_ROLES: readonly string[] = [ROLE_ANALYST, ROLE_SUPERVISOR];
 
 /**
- * Actos irreversibles o de autoridad: cerrar, reabrir, aprobar/rechazar y
- * ejecutar sanciones, borrar notas y evidencia, y tocar las reglas de
- * enrutamiento. Solo el supervisor.
+ * Irreversible or authority acts: close, reopen, approve/reject and
+ * execute sanctions, delete notes and evidence, and touch routing rules.
+ * Supervisor only.
  */
 export const SUPERVISION_ROLES: readonly string[] = [ROLE_SUPERVISOR];
 
 /**
- * Repartir trabajo: asignar y reasignar expedientes.
+ * Distribute work: assign and reassign cases.
  *
- * SOLO el `ADMIN`. El reparto de trabajo es una decisión de quien administra
- * personas, no de quien las hace: un analista no elige su carga y un
- * supervisor no se queda los casos que prefiere.
+ * `ADMIN` ONLY. Work distribution is a decision of whoever administers
+ * people, not of whoever does the work: an analyst does not pick their
+ * load and a supervisor does not keep the cases they prefer.
  *
- * Junto con `AssignmentGate` esto define el flujo del departamento: los casos
- * entran, el enrutamiento automático los reparte cuando alguna regla casa, y
- * lo que quede huérfano espera a que el ADMIN lo adjudique. Nadie trabaja un
- * expediente que no le dieron.
+ * Together with `AssignmentGate` this defines the department flow: cases
+ * come in, automatic routing distributes them when a rule matches, and
+ * whatever is left orphaned waits for ADMIN to assign it. Nobody works a
+ * case they were not given.
  *
- * EL COSTE, dicho: sin un ADMIN disponible los casos sin asignar se quedan
- * congelados. No es un efecto colateral, es la consecuencia directa de que el
- * reparto sea una sola puerta.
+ * THE COST, stated: without an available ADMIN, unassigned cases stay
+ * frozen. That is not a side effect; it is the direct consequence of
+ * distribution being a single door.
  */
 export const CASE_ASSIGN_ROLES: readonly string[] = [ROLE_ADMIN];
 
 /**
- * Guarda de ASIGNACIÓN. No pasa por `isObserver` a propósito.
+ * ASSIGNMENT guard. Does not go through `isObserver` on purpose.
  *
- * `requireOperationalRole` rechaza a todo observador antes de mirar la lista,
- * que es lo correcto para instruir; aquí la lista SÍ manda, porque el `ADMIN`
- * es observador de expedientes y aun así reparte el trabajo. Poner esta
- * excepción en su propia guarda —en vez de abrir un hueco en la otra— es lo
- * que evita que mañana se cuele por ahí algo que sí instruye.
+ * `requireOperationalRole` rejects every observer before looking at the
+ * list, which is correct for working a case; here the list DOES govern,
+ * because `ADMIN` is an observer of cases and still distributes the work.
+ * Putting this exception in its own guard — instead of opening a hole in
+ * the other — is what keeps something that actually works a case from
+ * slipping through tomorrow.
  */
 export function requireAssignmentRole(auth: AuthContext): void {
   if (
@@ -72,15 +73,15 @@ export function requireAssignmentRole(auth: AuthContext): void {
   }
 }
 
-/** Lectura de gobierno: cola de sanciones, reglas, exportaciones. */
+/** Oversight reads: sanction queue, rules, exports. */
 export const OVERSIGHT_READ_ROLES: readonly string[] = [ROLE_SUPERVISOR, ROLE_ADMIN, ROLE_AUDITOR];
 
 /**
- * Guarda de ESCRITURA. Exige un actor `USER` con rol operativo permitido.
+ * WRITE guard. Requires a `USER` actor with an allowed operational role.
  *
- * El actor `ORGANIZATION` y los roles observadores (`ADMIN`, `AUDITOR`) se
- * rechazan con un mensaje que dice que su acceso es de solo lectura, en vez
- * del críptico `role "null"` que devolvía la guarda anterior.
+ * The `ORGANIZATION` actor and observer roles (`ADMIN`, `AUDITOR`) are
+ * rejected with a message that says their access is read-only, instead of
+ * the cryptic `role "null"` the previous guard returned.
  */
 export function requireOperationalRole(auth: AuthContext, allowed: readonly string[]): void {
   if (isObserver(auth)) {
@@ -92,9 +93,9 @@ export function requireOperationalRole(auth: AuthContext, allowed: readonly stri
 }
 
 /**
- * Guarda de LECTURA. El actor `ORGANIZATION` pasa siempre —es dueño del
- * inquilino y no puede ver menos que sus propios usuarios—; el actor `USER`
- * se somete a la lista.
+ * READ guard. The `ORGANIZATION` actor always passes — it owns the tenant
+ * and cannot see less than its own users —; the `USER` actor is subject to
+ * the list.
  */
 export function requireReadRole(auth: AuthContext, allowed: readonly string[]): void {
   if (auth.actorType === 'ORGANIZATION') {

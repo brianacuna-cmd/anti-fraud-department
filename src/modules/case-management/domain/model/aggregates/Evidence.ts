@@ -24,8 +24,8 @@ export interface EvidenceProps {
   readonly storageKey: string;
   readonly timestamp: EvidenceTimestamp | null;
   /**
-   * Veredicto del antivirus (INV-015). `SKIPPED` significa que no habia
-   * escaner configurado — NO que el fichero este limpio.
+   * Antivirus verdict (INV-015). `SKIPPED` means there was no scanner
+   * configured — NOT that the file is clean.
    */
   readonly scanStatus: ScanStatus;
   readonly uploadedBy: string;

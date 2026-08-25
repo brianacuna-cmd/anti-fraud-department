@@ -5,7 +5,7 @@ import type { Transaction } from './UnitOfWork.js';
 
 /**
  * Outbound port for `investigations` (1:N per case). `save` is upsert (open +
- * later close). `listByCaseId` backs the ficha; `findById` backs the detail
+ * later close). `listByCaseId` backs the case file; `findById` backs the detail
  * endpoint (tenant gate is applied by the use case, mirroring `GetCase`).
  */
 export interface InvestigationRepository {

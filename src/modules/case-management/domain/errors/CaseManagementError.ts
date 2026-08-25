@@ -50,12 +50,13 @@ export function forbiddenRole(
 }
 
 /**
- * El actor pertenece al plano de gobierno (`ORGANIZATION`, `ADMIN`,
- * `AUDITOR`): observa el inquilino entero y no opera sobre él.
+ * The actor belongs to the governance plane (`ORGANIZATION`, `ADMIN`,
+ * `AUDITOR`): they observe the whole tenant and do not operate on it.
  *
- * Se separa de `forbiddenRole` porque el mensaje es lo unico que llega a la
- * pantalla: `role "null" is not authorized` no le dice a nadie que su acceso
- * es de solo lectura por diseno, ni a quien tiene que pedirle la accion.
+ * Separated from `forbiddenRole` because the message is the only thing that
+ * reaches the screen: `role "null" is not authorized` does not tell anyone
+ * that their access is read-only by design, nor whom they must ask to
+ * perform the action.
  */
 export function forbiddenReadOnly(
   auth: { readonly actorType: string; readonly roleId: string | null },
@@ -70,12 +71,13 @@ export function forbiddenReadOnly(
 }
 
 /**
- * Principio de cuatro ojos: quien solicita una sancion no puede autorizarla.
+ * Four-eyes principle: whoever requests a sanction cannot authorize it.
  *
- * Codigo propio y no `FORBIDDEN_ROLE` porque no es un problema de rol — el
- * supervisor que la pidio TIENE el rol para aprobar. Lo que falla es la
- * separacion entre quien propone y quien revisa, y quien lo recibe necesita
- * entender que la accion no es suya, sino de otra persona.
+ * Own code and not `FORBIDDEN_ROLE` because this is not a role problem — the
+ * supervisor who requested it DOES have the role to approve. What fails is
+ * the separation between who proposes and who reviews, and whoever receives
+ * this needs to understand that the action is not theirs, but another
+ * person's.
  */
 export function selfApprovalForbidden(
   requesterId: string,
@@ -151,10 +153,10 @@ export function approvalRequestNotFound(approvalRequestId: string): CaseManageme
 }
 
 /**
- * INV-015: el antivirus reconocio malware. Se nombra la firma porque el
- * analista necesita saber QUE se detecto —un falso positivo de un PDF con
- * macros no se trata igual que un troyano— y porque sin ella el rechazo es
- * indistinguible de un fallo del sistema.
+ * INV-015: the antivirus recognized malware. The signature is named because
+ * the analyst needs to know WHAT was detected —a false positive from a PDF
+ * with macros is not treated the same as a trojan— and because without it
+ * the rejection is indistinguishable from a system failure.
  */
 export function evidenceInfected(filename: string, signature: string): CaseManagementError {
   return new CaseManagementError(
@@ -165,11 +167,11 @@ export function evidenceInfected(filename: string, signature: string): CaseManag
 }
 
 /**
- * Un expediente sin responsable esta congelado.
+ * A case with no assignee is frozen.
  *
- * La regla existe para que ningun caso avance mientras nadie responde por el:
- * un expediente que se instruye, se dictamina y se cierra sin que conste quien
- * lo llevaba es justo el que no se puede defender despues.
+ * The rule exists so that no case advances while nobody is accountable for
+ * it: a case that is worked, decided, and closed without a record of who
+ * carried it is exactly the one that cannot be defended later.
  */
 export function caseNotAssigned(caseId: string): CaseManagementError {
   return new CaseManagementError(
@@ -180,11 +182,11 @@ export function caseNotAssigned(caseId: string): CaseManagementError {
 }
 
 /**
- * Un expediente cerrado ya no se instruye.
+ * A closed case is no longer worked.
  *
- * El mensaje nombra el camino de salida —reabrir— porque quien recibe este
- * error casi siempre tiene el permiso y solo le falta saber que hay un paso
- * previo.
+ * The message names the way out —reopen— because whoever receives this
+ * error almost always has the permission and only needs to know there is a
+ * prior step.
  */
 export function caseClosed(caseId: string, status: string): CaseManagementError {
   return new CaseManagementError(

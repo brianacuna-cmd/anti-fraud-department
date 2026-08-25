@@ -49,9 +49,9 @@ export interface RecordAnalystDecisionResult {
   readonly decision: AnalystDecision;
   readonly enforcementAction: EnforcementAction | null;
   /**
-   * La solicitud de cuatro ojos abierta junto a la sancion. `null` cuando no
-   * hay sancion, o cuando es `REVIEW` — revisar a un cliente no restringe
-   * nada, asi que no pasa por doble firma.
+   * The four-eyes request opened alongside the sanction. `null` when there is
+   * no sanction, or when it is `REVIEW` — flagging a customer for a closer
+   * look restricts nothing, so it does not go through dual control.
    */
   readonly approvalRequest: ApprovalRequest | null;
   readonly caseStatus: CaseStatus;
@@ -81,16 +81,16 @@ export interface RecordAnalystDecisionDeps {
  * enforcement_action from caller-supplied action/target fields.
  * Case status is intentionally never mutated.
  *
- * CUATRO OJOS (ENF-002). Junto a toda sancion no-REVIEW nace, en la MISMA
- * transaccion, su `approval_request` en PENDING, y se avisa a los
- * supervisores.
+ * FOUR EYES (ENF-002). Alongside every non-REVIEW sanction, in the SAME
+ * transaction, its `approval_request` is born in PENDING, and supervisors
+ * are notified.
  *
- * Antes la solicitud se creaba perezosamente dentro de
- * `ApproveEnforcementAction`, y eso dejaba el control sin efecto: una sancion
- * pendiente no tenia ninguna solicitud que revisar hasta que alguien ya la
- * habia aprobado, asi que la cola de doble firma no existia como cola y nadie
- * recibia aviso de que hubiera algo esperando. El sitio donde se PIDE la
- * medida es el unico sitio donde puede nacer la peticion de revisarla.
+ * Previously the request was created lazily inside
+ * `ApproveEnforcementAction`, and that left the control with no effect: a
+ * pending sanction had no request to review until someone had already
+ * approved it, so the dual-control queue did not exist as a queue and nobody
+ * received notice that something was waiting. The place where the measure is
+ * REQUESTED is the only place where the request to review it can be born.
  */
 export function createRecordAnalystDecisionUseCase(deps: RecordAnalystDecisionDeps) {
   return async function recordAnalystDecision(
@@ -110,9 +110,9 @@ export function createRecordAnalystDecisionUseCase(deps: RecordAnalystDecisionDe
       if (existing.organizationId !== organizationId) {
         throw forbiddenCrossTenant('case does not belong to the actor organization');
       }
-      // Sin responsable el expediente esta congelado. Ver `AssignmentGate`.
+      // Without an assignee the case is frozen. See `AssignmentGate`.
       assertAssigned(existing);
-      // Un expediente cerrado no se instruye. Ver `ClosedCaseGate`.
+      // A closed case is not worked. See `ClosedCaseGate`.
       assertNotClosed(existing);
 
       const now = deps.clock.now();
@@ -144,9 +144,9 @@ export function createRecordAnalystDecisionUseCase(deps: RecordAnalystDecisionDe
         });
         await deps.enforcementActions.save(enforcementAction, tx);
 
-        // REVIEW no restringe nada al cliente: marcar a alguien para mirarlo
-        // con calma no necesita doble firma, y exigirla solo llenaria la cola
-        // del supervisor de ruido.
+        // REVIEW restricts nothing on the customer: flagging someone for a
+        // closer look does not need dual control, and requiring it would only
+        // fill the supervisor queue with noise.
         if (enforcementAction.actionType !== 'REVIEW') {
           approvalRequest = ApprovalRequest.create({
             id: deps.generateApprovalRequestId(),

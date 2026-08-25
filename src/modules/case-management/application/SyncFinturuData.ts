@@ -26,13 +26,13 @@ export interface SyncFinturuDataDeps {
 }
 
 /**
- * Lee una clave de correlacion de un objeto sin contrato (`metadata` de Stripe,
- * `source`/`destination` de un transfer). Devuelve `null` si falta, para que el
- * llamante nunca compare `undefined` contra un Set.
+ * Reads a correlation key from an untyped object (Stripe `metadata`,
+ * a transfer's `source`/`destination`). Returns `null` if missing, so the
+ * caller never compares `undefined` against a Set.
  *
- * Acepta numero ademas de texto: el padron de Finturu tipa el MISMO campo como
- * numero en unos payloads y como cadena en otros, y descartar la variante
- * numerica dejaria sin correlacionar a la mitad de los clientes.
+ * Accepts a number as well as text: Finturu's register types the SAME field
+ * as a number in some payloads and as a string in others, and discarding the
+ * numeric variant would leave half the customers uncorrelated.
  */
 function readKey(bag: Record<string, unknown> | undefined, key: string): string | null {
   const value = bag?.[key];

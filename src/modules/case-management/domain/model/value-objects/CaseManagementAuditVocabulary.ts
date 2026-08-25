@@ -28,10 +28,10 @@ export type CaseManagementAuditAction =
   | 'DELETE_CASE_NOTE'
   | 'RECORD_ANALYST_DECISION'
   /**
-   * ENF-001: la medida se pidio suelta, no como efecto de un dictamen. Se
-   * audita aparte de `RECORD_ANALYST_DECISION` porque la pregunta que hace un
-   * regulador —quien pidio restringir este dinero y con que veredicto
-   * detras— se responde distinto en cada caso.
+   * ENF-001: the measure was requested on its own, not as an effect of a
+   * decision. It is audited separately from `RECORD_ANALYST_DECISION` because
+   * the question a regulator asks —who requested restricting this money and
+   * with what verdict behind it— is answered differently in each case.
    */
   | 'REQUEST_ENFORCEMENT_ACTION'
   | 'APPROVE_ENFORCEMENT_ACTION'
