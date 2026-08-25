@@ -17,17 +17,17 @@ export interface ListCaseDecisionsDeps {
 }
 
 /**
- * GET /cases/:caseId/decisions — los dictamenes ya emitidos sobre un caso.
+ * GET /cases/:caseId/decisions — the decisions already issued on a case.
  *
- * Faltaba, y se notaba: la ficha abria todo expediente diciendo "Sin
- * dictaminar" porque no tenia de donde leerlos, y solo mostraba el dictamen
- * que se registrara en esa misma sesion. Un caso ya resuelto se veia como uno
- * recien abierto.
+ * It was missing, and it showed: the case file opened every case saying
+ * "Undecided" because it had nowhere to read them from, and only showed the
+ * decision recorded in that same session. An already resolved case looked
+ * like a newly opened one.
  *
- * Lectura pura, sin guarda de rol: quien puede ver el caso puede ver que se
- * concluyo sobre el — negarselo al auditor seria negarle justamente lo que
- * viene a auditar. Las mismas puertas que `GetCase`: inquilino y borrado
- * logico.
+ * Pure read, no role gate: whoever can see the case can see what was
+ * concluded about it — denying that to the auditor would deny them exactly
+ * what they came to audit. The same doors as `GetCase`: tenant and
+ * soft-delete.
  */
 export function createListCaseDecisionsUseCase(deps: ListCaseDecisionsDeps) {
   return async function listCaseDecisions(

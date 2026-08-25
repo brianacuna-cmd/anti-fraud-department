@@ -3,7 +3,7 @@ import type { Transaction } from './UnitOfWork.js';
 export interface CaseNotification {
   readonly organizationId: string;
   readonly recipientUserId: string;
-  /** Tipo del catalogo cerrado de `notifications` (p. ej. CASE_ASSIGNED). */
+  /** Type from the closed `notifications` catalog (e.g. CASE_ASSIGNED). */
   readonly alertType: string;
   readonly title: string;
   readonly body: string;
@@ -12,15 +12,15 @@ export interface CaseNotification {
 }
 
 /**
- * Puerto propio de case-management para avisar a una persona.
+ * Case-management's own port for notifying a person.
  *
- * Declarado aqui y no importado del modulo `notifications` por la misma razon
- * que `AuditRecorder`: un modulo no depende de otro, y el puente se monta en
- * la raiz de composicion.
+ * Declared here and not imported from the `notifications` module for the
+ * same reason as `AuditRecorder`: one module does not depend on another, and
+ * the bridge is wired in the composition root.
  *
- * `notify` NO devuelve nada ni falla: avisar es el eco de un hecho, no el
- * hecho. Si el aviso no sale, la reasignacion o el vencimiento que lo motivo
- * siguen siendo ciertos y deben persistir igual.
+ * `notify` returns nothing and does not fail: notifying is the echo of a
+ * fact, not the fact. If the notice does not go out, the reassignment or
+ * the SLA expiry that motivated it is still true and must persist the same.
  */
 export interface Notifier {
   notify(notification: CaseNotification, tx?: Transaction): Promise<void>;

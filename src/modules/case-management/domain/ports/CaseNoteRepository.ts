@@ -8,7 +8,7 @@ import type { Transaction } from './UnitOfWork.js';
  * and takes an optional `Transaction` so a note commits atomically with its
  * timeline event and audit row. `findById` backs the soft-delete path and
  * returns rows regardless of `deleted_at` (idempotency); `listByCaseId` backs
- * the ficha, oldest-first, hiding soft-deleted notes.
+ * the case file, oldest-first, hiding soft-deleted notes.
  */
 export interface CaseNoteRepository {
   save(note: CaseNote, tx?: Transaction): Promise<void>;

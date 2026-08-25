@@ -14,13 +14,12 @@ export interface AssigneeDirectory {
    */
   listRoleRecipients(organizationId: string, roleId: string): Promise<readonly string[]>;
   /**
-   * Nombres legibles para un puñado de asignatarios, por su id.
+   * Readable names for a handful of assignees, by their id.
    *
-   * Los devuelve el panel de carga de trabajo: sin esto la barra de cada
-   * responsable se rotula con un ObjectId en hexadecimal, que no le dice a
-   * nadie quién tiene los expedientes encima. Un id que no se resuelva
-   * (usuario borrado, rol retirado) simplemente no aparece en el mapa, y
-   * quien llama decide con qué rotularlo.
+   * The workload dashboard returns them: without this each assignee's bar is
+   * labeled with a hexadecimal ObjectId, which tells nobody who has the cases
+   * on their plate. An id that does not resolve (deleted user, retired role)
+   * simply does not appear in the map, and the caller decides how to label it.
    */
   displayNames(
     organizationId: string,

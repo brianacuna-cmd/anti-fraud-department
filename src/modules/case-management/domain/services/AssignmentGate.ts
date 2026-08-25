@@ -2,31 +2,32 @@ import type { Case } from '../model/aggregates/Case.js';
 import { caseNotAssigned } from '../errors/CaseManagementError.js';
 
 /**
- * Un expediente sin responsable está congelado.
+ * A case without an assignee is frozen.
  *
- * Mientras `assignedTo` sea `null` el caso no sale de `OPEN`: no se pasa a
- * revisión, no se le añaden notas ni evidencia, no se abre investigación, no
- * se dictamina, no se piden medidas y no se cierra.
+ * While `assignedTo` is `null` the case does not leave `OPEN`: it is not
+ * sent to review, notes and evidence are not added, no investigation is
+ * opened, no decision is recorded, no measures are requested, and it is
+ * not closed.
  *
- * POR QUÉ EN EL DOMINIO Y NO EN CADA CASO DE USO
+ * WHY IN THE DOMAIN AND NOT IN EACH USE CASE
  *
- * Son ocho caminos los que tocan un expediente. Una comprobación repetida en
- * ocho sitios acaba estando en siete — es la misma razón por la que la regla
- * de los cuatro ojos vive en el agregado `ApprovalRequest` y no en los tres
- * casos de uso que deciden una solicitud.
+ * Eight paths touch a case. A check repeated in eight places ends up in
+ * seven — the same reason the four-eyes rule lives in the `ApprovalRequest`
+ * aggregate and not in the three use cases that decide a request.
  *
- * POR QUÉ NO ES UN PROBLEMA DE PERMISOS
+ * WHY IT IS NOT A PERMISSIONS PROBLEM
  *
- * Quien lo intenta puede tener el rol perfecto. Lo que falta es que alguien
- * responda por el expediente. Por eso el error es `CASE_NOT_ASSIGNED` (409) y
- * no `FORBIDDEN_ROLE` (403): se arregla asignando el caso, no cambiando de
- * usuario, y decirlo mal manda a la persona a pedir permisos que ya tiene.
+ * Whoever tries may have the perfect role. What is missing is that someone
+ * is accountable for the case. That is why the error is `CASE_NOT_ASSIGNED`
+ * (409) and not `FORBIDDEN_ROLE` (403): it is fixed by assigning the case,
+ * not by switching users, and saying it wrong sends the person to ask for
+ * permissions they already have.
  *
- * QUÉ NO CUBRE
+ * WHAT IT DOES NOT COVER
  *
- * `ReassignCase` es la puerta de salida de este estado y por eso no pasa por
- * aquí. La reasignación y la lectura del expediente siguen abiertas: mirar un
- * caso huérfano es precisamente lo que hace falta para decidir a quién dárselo.
+ * `ReassignCase` is the way out of this state and therefore does not go
+ * through here. Reassignment and reading the case stay open: looking at an
+ * orphaned case is precisely what is needed to decide who to give it to.
  */
 export function assertAssigned(kase: Case): void {
   if (kase.assignedTo === null) {

@@ -58,18 +58,20 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
     if (input.assignedTo?.id && input.assignedTo?.type) {
       assignedTo = createAssignedTo(input.assignedTo.type, input.assignedTo.id);
     } else if (input.autoAssignToMe && input.auth.actorType === 'USER' && input.auth.userId) {
-      // Solo un actor USER tiene un "yo" al que asignarse. Para ORGANIZATION,
-      // `auth.userId` lleva el id de la organización (el resolver lo rellena
-      // así porque el campo no admite null), y asignarlo como si fuera un
-      // usuario dejaba el caso apuntando a alguien que no existe.
+      // Only a USER actor has a "me" to assign to. For ORGANIZATION,
+      // `auth.userId` carries the organization id (the resolver fills it
+      // that way because the field does not allow null), and assigning it
+      // as if it were a user left the case pointing at someone who does
+      // not exist.
       assignedTo = createAssignedTo('USER', input.auth.userId);
     }
 
     return deps.unitOfWork.withTransaction(async (tx) => {
       // Check if a case already exists
-      // Sin `statuses`: a diferencia de la ingesta por webhook, abrir un caso a
-      // mano sobre un cliente con expediente cerrado debe reabrir aquel, no
-      // crear uno paralelo. Ese es el camino que ejercita `CASE_REOPENED` abajo.
+      // Without `statuses`: unlike webhook ingestion, opening a case by
+      // hand on a customer with a closed case must reopen that one, not
+      // create a parallel one. That is the path that exercises `CASE_REOPENED`
+      // below.
       const existing = await deps.cases.findByCustomerOrBridgeId(
         {
           organizationId,
@@ -95,9 +97,9 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
           updated = updated.reassign(assignedTo, now);
         }
 
-        // CASE-009: reabrir reinicia el reloj. Sin esto un expediente que vuelve
-        // a la bandeja arrastraría el `dueDate` del ciclo anterior —
-        // normalmente ya vencido— y nacería incumpliendo su propio SLA.
+        // CASE-009: reopening restarts the clock. Without this a case that
+        // returns to the inbox would drag the `dueDate` of the previous cycle —
+        // usually already overdue — and would be born already failing its own SLA.
         const reopenDueDate = await deps.initializeCaseSla({
           organizationId,
           caseId: existing.id,

@@ -49,7 +49,7 @@ export interface ReassignCaseDeps {
  */
 export function createReassignCaseUseCase(deps: ReassignCaseDeps) {
   return async function reassignCase(input: ReassignCaseInput): Promise<Case> {
-    // Asignar es repartir trabajo, no instruir: ver `CASE_ASSIGN_ROLES`.
+    // Assigning is distributing work, not working the case: see `CASE_ASSIGN_ROLES`.
     requireAssignmentRole(input.auth);
     const organizationId = requireTenantContext(input.auth);
     const caseId = createCaseId(input.caseId);

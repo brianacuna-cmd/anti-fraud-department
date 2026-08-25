@@ -1,21 +1,21 @@
 /**
- * Directorio de clientes de Finturu materializado en local.
+ * Locally materialized Finturu customer directory.
  *
- * No es un agregado de dominio: es una copia de lectura de datos que viven en
- * Bridge/Stripe. Existe porque recorrer esas APIs en vivo cuesta minutos
- * (medido: ~3 min el padrón completo), lo que hace inviable componer el
- * directorio en cada petición. El sync lo refresca por lotes; las pantallas
- * leen de aquí.
+ * This is not a domain aggregate: it is a read copy of data that lives in
+ * Bridge/Stripe. It exists because walking those APIs live costs minutes
+ * (measured: ~3 min for the full register), which makes composing the
+ * directory on every request unviable. Sync refreshes it in batches; screens
+ * read from here.
  *
- * **No está particionado por organización.** Detrás hay una única cuenta de
- * Bridge, así que el padrón es el mismo se mire desde donde se mire; darle un
- * `OrganizationId` solo duplicaba filas y abría la puerta a que el sync
- * escribiera bajo una organización y la pantalla leyera bajo otra. Lo que sí
- * es por organización es el cruce con los expedientes, y eso vive en `Cases`.
+ * **Not partitioned by organization.** Behind it there is a single Bridge
+ * account, so the register is the same no matter where you look; giving it an
+ * `OrganizationId` only duplicated rows and opened the door for sync to write
+ * under one organization and the screen to read under another. What IS per
+ * organization is the join with cases, and that lives in `Cases`.
  *
- * Deliberadamente separado de `Cases`: un cliente monitoreado no es un
- * expediente de fraude. Mezclarlos convertiría a los 1400+ clientes del padrón
- * en casos abiertos.
+ * Deliberately separate from `Cases`: a monitored customer is not a fraud
+ * case. Mixing them would turn the 1400+ customers in the register into
+ * open cases.
  */
 
 export interface FinturuDirectoryEntry {
@@ -37,22 +37,22 @@ export interface FinturuDirectoryEntry {
 export interface FinturuDirectoryQuery {
   readonly limit: number;
   readonly offset: number;
-  /** Búsqueda por nombre, email, teléfono, identificadores o dirección de wallet. */
+  /** Search by name, email, phone, identifiers, or wallet address. */
   readonly search?: string;
 }
 
 export interface FinturuDirectoryPage {
   readonly items: readonly FinturuDirectoryEntry[];
-  /** Total de clientes que cumplen el filtro, para paginar de verdad. */
+  /** Total customers matching the filter, so pagination is real. */
   readonly total: number;
-  /** Cuándo se refrescó el directorio por última vez; `null` si nunca. */
+  /** When the directory was last refreshed; `null` if never. */
   readonly syncedAt: string | null;
 }
 
 export interface FinturuDirectoryRepository {
   /**
-   * Reemplaza el directorio. Los clientes que ya no vengan en el lote se
-   * eliminan, de modo que una baja en origen desaparece de aquí.
+   * Replaces the directory. Customers that no longer come in the batch are
+   * removed, so a deletion at the source disappears from here.
    */
   replaceAll(entries: readonly FinturuDirectoryEntry[], syncedAt: string): Promise<void>;
 

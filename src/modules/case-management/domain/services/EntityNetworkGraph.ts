@@ -26,54 +26,54 @@ export type NetworkNode =
     };
 
 /**
- * Arista `expediente → identificador`. El grafo es bipartito a propósito: no
- * emitimos aristas caso→caso.
+ * Edge `case → identifier`. The graph is bipartite on purpose: we do not
+ * emit case→case edges.
  *
- * Decir "estos dos expedientes están conectados" sin más es justo la parte que
- * el analista no puede auditar, y en un expediente de fraude eso no vale: lo
- * que sostiene una acusación es *por qué* están conectados. Dejando el
- * identificador como nodo intermedio, el camino se lee solo —caso A → wallet
- * 0xabc → caso B— y el salto queda con su prueba pegada. Reconstruir la unión
- * caso-caso a partir de esto es trivial para quien la quiera; recuperar el
- * motivo a partir de una arista directa, imposible.
+ * Saying "these two cases are connected" and stopping there is exactly the
+ * part the analyst cannot audit, and in a fraud case that is not enough:
+ * what supports an accusation is *why* they are connected. Leaving the
+ * identifier as an intermediate node, the path reads itself — case A →
+ * wallet 0xabc → case B — and the hop keeps its proof attached. Rebuilding
+ * the case-to-case union from this is trivial for whoever wants it;
+ * recovering the reason from a direct edge is impossible.
  */
 export interface NetworkEdge {
-  /** Id del nodo CASE. */
+  /** CASE node id. */
   readonly from: string;
-  /** Id del nodo ENTITY. */
+  /** ENTITY node id. */
   readonly to: string;
-  /** Por qué identificador conectan, para poder pintar y filtrar la arista. */
+  /** Which identifier connects them, so the edge can be drawn and filtered. */
   readonly type: EntityNodeType;
 }
 
 export interface EntityNetworkGraph {
-  /** Nodo por el que se empezó a expandir. */
+  /** Node from which expansion started. */
   readonly rootId: string;
   readonly nodes: readonly NetworkNode[];
   readonly edges: readonly NetworkEdge[];
-  /** Rondas de expansión efectivamente recorridas (`profundidad_explorada`). */
+  /** Expansion rounds actually walked (`profundidad_explorada`). */
   readonly depthReached: number;
   /**
-   * `true` cuando la expansión paró por alcanzar `maxDepth` o el techo de
-   * nodos y quedaban identificadores sin visitar — es decir, el grafo NO es la
-   * red completa. Se propaga al JSON para que nadie lea un grafo recortado
-   * como si fuera exhaustivo.
+   * `true` when expansion stopped because it hit `maxDepth` or the node
+   * ceiling and identifiers were still left unvisited — i.e. the graph is
+   * NOT the full network. Propagated to JSON so nobody reads a truncated
+   * graph as if it were exhaustive.
    */
   readonly truncated: boolean;
 }
 
 /**
- * Identificadores que un expediente aporta a la red.
+ * Identifiers a case contributes to the network.
  *
- * Salen de los campos ya normalizados por la ingesta (`IngestFinturuCase`
- * extrae `idUserBridge`, `walletBridge`, `idCustomer`… de la maraña de formas
- * en que Finturu los manda) y no del `finturuCacheSnapshot` crudo. El snapshot
- * es un `Record<string, unknown>` congelado cuyas claves cambian según el
- * proveedor y la fecha; volver a escarbarlo aquí sería duplicar ese parseo en
- * un segundo sitio que se desincronizaría del primero.
+ * They come from fields already normalized by ingestion (`IngestFinturuCase`
+ * extracts `idUserBridge`, `walletBridge`, `idCustomer`… from the tangle of
+ * shapes Finturu sends) and not from the raw `finturuCacheSnapshot`. The
+ * snapshot is a frozen `Record<string, unknown>` whose keys change by
+ * provider and date; digging through it here would duplicate that parse in
+ * a second place that would drift from the first.
  *
- * Los vacíos se descartan: un `customerEmail` en `''` no conecta a nadie, pero
- * como nodo agruparía bajo un mismo punto a todos los expedientes sin email.
+ * Empty values are dropped: a `customerEmail` of `''` connects nobody, but
+ * as a node it would group every case without an email under one point.
  */
 export function entityIdentifiersOf(kase: Case): readonly EntityRef[] {
   const candidates: readonly (readonly [EntityNodeType, string | null])[] = [
@@ -90,30 +90,30 @@ export function entityIdentifiersOf(kase: Case): readonly EntityRef[] {
     .filter((ref) => ref.value !== '');
 }
 
-/** Techo de nodos por grafo. Ver `EntityNetworkGraphBuilder`. */
+/** Node ceiling per graph. See `EntityNetworkGraphBuilder`. */
 export const MAX_GRAPH_NODES = 500;
 
 /**
- * Acumulador de la exploración en anchura.
+ * Accumulator for breadth-first exploration.
  *
- * El recorrido es bipartito y alterna: identificadores del frente → los
- * expedientes que los citan → los identificadores *nuevos* de esos
- * expedientes, que forman el frente siguiente. Una "ronda" es ese ciclo
- * completo, y es lo que cuenta `depthReached`.
+ * The walk is bipartite and alternates: identifiers on the frontier → the
+ * cases that cite them → the *new* identifiers of those cases, which form
+ * the next frontier. A "round" is that full cycle, and that is what
+ * `depthReached` counts.
  *
- * La E/S vive fuera: el caso de uso pregunta al repositorio y va entregando
- * expedientes con `absorb`, que devuelve el frente siguiente. Así toda la
- * lógica de grafo —deduplicación, profundidad, corte— se prueba sin Mongo.
+ * I/O lives outside: the use case queries the repository and feeds cases
+ * into `absorb`, which returns the next frontier. That way all graph logic
+ * — deduplication, depth, cutoff — is tested without Mongo.
  *
- * El techo de `MAX_GRAPH_NODES` no es una optimización: en un tenant con una
- * red grande, un identificador compartido por miles de expedientes (un email
- * de dominio corporativo, una wallet de exchange) hace estallar la expansión a
- * la ronda siguiente. Preferimos devolver un grafo recortado y marcado como
- * tal antes que tumbar la petición.
+ * The `MAX_GRAPH_NODES` ceiling is not an optimization: in a tenant with a
+ * large network, an identifier shared by thousands of cases (a corporate
+ * domain email, an exchange wallet) blows the expansion up on the next
+ * round. We would rather return a truncated graph marked as such than
+ * take the request down.
  *
- * Los recorridos usan `every` en vez de `for` + `break` porque el lint del
- * repo prohíbe anidar bloques (`max-depth: 1`): devolver `false` desde el
- * callback es aquí la forma de cortar.
+ * Walks use `every` instead of `for` + `break` because repo lint forbids
+ * nested blocks (`max-depth: 1`): returning `false` from the callback is
+ * how we cut off here.
  */
 export class EntityNetworkGraphBuilder {
   private readonly nodes = new Map<string, NetworkNode>();
@@ -143,18 +143,18 @@ export class EntityNetworkGraphBuilder {
     this.visitedEntities.add(rootId);
   }
 
-  /** El frente inicial: solo la raíz. */
+  /** The initial frontier: only the root. */
   frontier(): readonly EntityRef[] {
     return [{ type: this.root.type, value: this.rootValue }];
   }
 
   /**
-   * Incorpora los expedientes que citan el frente actual y devuelve el frente
-   * siguiente: los identificadores que aún no se habían visto.
+   * Absorbs the cases that cite the current frontier and returns the next
+   * frontier: identifiers that have not been seen yet.
    *
-   * Devolver vacío significa que la red se agotó y el caso de uso puede parar
-   * antes de llegar a `maxDepth` — el resultado es entonces la red completa,
-   * no un recorte, y `truncated` se queda en `false`.
+   * Returning empty means the network is exhausted and the use case can
+   * stop before reaching `maxDepth` — the result is then the full network,
+   * not a slice, and `truncated` stays `false`.
    */
   absorb(cases: readonly Case[], round: number): readonly EntityRef[] {
     assertRoundWithin(round, this.maxDepth);
@@ -166,8 +166,8 @@ export class EntityNetworkGraphBuilder {
   }
 
   /**
-   * Cierra el grafo. `pendingFrontier` son los identificadores que quedaron sin
-   * expandir; si los hay, el grafo es un recorte y así se marca.
+   * Closes the graph. `pendingFrontier` are the identifiers left unexpanded;
+   * if any remain, the graph is a slice and is marked as such.
    */
   build(pendingFrontier: readonly EntityRef[]): EntityNetworkGraph {
     return {
@@ -179,7 +179,7 @@ export class EntityNetworkGraphBuilder {
     };
   }
 
-  /** `false` corta el recorrido: se alcanzó el techo de nodos. */
+  /** `false` cuts the walk: the node ceiling was reached. */
   private absorbCase(kase: Case, round: number, next: EntityRef[]): boolean {
     const caseNodeId = `CASE:${kase.id}`;
     if (!this.ensureCaseNode(kase, caseNodeId, round)) {
@@ -188,7 +188,7 @@ export class EntityNetworkGraphBuilder {
     return entityIdentifiersOf(kase).every((ref) => this.absorbRef(ref, caseNodeId, round, next));
   }
 
-  /** `false` corta el recorrido: se alcanzó el techo de nodos. */
+  /** `false` cuts the walk: the node ceiling was reached. */
   private absorbRef(ref: EntityRef, caseNodeId: string, round: number, next: EntityRef[]): boolean {
     const entityId = entityNodeKey(ref.type, ref.value);
     if (!this.ensureEntityNode(ref, entityId, round)) {

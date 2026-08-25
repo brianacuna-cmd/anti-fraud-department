@@ -1,17 +1,16 @@
 import { invariantViolation } from '../../errors/CaseManagementError.js';
 
 /**
- * Los identificadores por los que dos expedientes pueden resultar ser la
- * misma red.
+ * The identifiers by which two cases may turn out to be the same network.
  *
- * No es `InvestigationSubjectType` ampliado por comodidad. Aquel es el
- * catálogo de lo que un analista puede *elegir* investigar (WALLET, EMAIL,
- * CUSTOMER); este es el de lo que la ingesta sabe *normalizar* de Finturu, y
- * son cosas distintas: `BRIDGE_USER` y `STRIPE_CUSTOMER` conectan casos con
- * mucha más precisión que un email —son claves de proveedor, no texto que el
- * defraudador escribe— pero a nadie se le ocurre abrir una investigación
- * "sobre un id de Stripe". Mezclarlos obligaría a uno de los dos a admitir
- * valores que no le corresponden.
+ * This is not `InvestigationSubjectType` enlarged for convenience. That one
+ * is the catalog of what an analyst can *choose* to investigate (WALLET,
+ * EMAIL, CUSTOMER); this is what ingestion knows how to *normalize* from
+ * Finturu, and they are different things: `BRIDGE_USER` and `STRIPE_CUSTOMER`
+ * connect cases with far more precision than an email —they are provider
+ * keys, not text the fraudster types— but nobody would open an investigation
+ * "about a Stripe id". Mixing them would force one of the two to admit
+ * values that do not belong to it.
  */
 export type EntityNodeType = 'CUSTOMER' | 'EMAIL' | 'WALLET' | 'BRIDGE_USER' | 'STRIPE_CUSTOMER';
 
@@ -33,13 +32,13 @@ export function createEntityNodeType(value: string): EntityNodeType {
 }
 
 /**
- * Traduce el tipo de sujeto de una investigación al nodo del grafo por el que
- * hay que empezar a tirar.
+ * Translates an investigation's subject type to the graph node from which
+ * expansion should start pulling.
  *
- * El mapa es total sobre `InvestigationSubjectType` a propósito: si mañana el
- * catálogo de sujetos crece, el `switch` deja de compilar y alguien tiene que
- * decidir por qué identificador se expande, en vez de que la investigación
- * nueva devuelva un grafo vacío sin que nadie se entere.
+ * The map is total over `InvestigationSubjectType` on purpose: if tomorrow
+ * the subject catalog grows, the `switch` stops compiling and someone has to
+ * decide by which identifier it expands, instead of the new investigation
+ * returning an empty graph without anyone noticing.
  */
 export function entityNodeTypeForSubject(subjectType: 'WALLET' | 'EMAIL' | 'CUSTOMER'): EntityNodeType {
   switch (subjectType) {
@@ -53,31 +52,31 @@ export function entityNodeTypeForSubject(subjectType: 'WALLET' | 'EMAIL' | 'CUST
 }
 
 /**
- * Forma canónica de un identificador, para que dos escrituras del mismo dato
- * caigan en el mismo nodo.
+ * Canonical form of an identifier, so two writings of the same data land on
+ * the same node.
  *
- * El email se pasa a minúsculas porque `Fraude@X.com` y `fraude@x.com` son el
- * mismo buzón y quien abre cuentas en serie lo sabe. El resto solo se recorta:
- * una wallet EVM se escribe en checksum-case a propósito (EIP-55) y un id de
- * Bridge o Stripe es opaco, así que bajarlos a minúsculas sería inventarse una
- * equivalencia que el proveedor no garantiza.
+ * Email is lowercased because `Fraude@X.com` and `fraude@x.com` are the same
+ * mailbox and whoever opens accounts in series knows it. The rest is only
+ * trimmed: an EVM wallet is written in checksum-case on purpose (EIP-55) and
+ * a Bridge or Stripe id is opaque, so lowercasing them would invent an
+ * equivalence the provider does not guarantee.
  */
 export function normalizeEntityValue(type: EntityNodeType, value: string): string {
   const trimmed = value.trim();
   return type === 'EMAIL' ? trimmed.toLowerCase() : trimmed;
 }
 
-/** Clave estable `TIPO:valor`, para deduplicar nodos y como id en el JSON de salida. */
+/** Stable `TYPE:value` key, to de-duplicate nodes and as the id in the output JSON. */
 export function entityNodeKey(type: EntityNodeType, value: string): string {
   return `${type}:${normalizeEntityValue(type, value)}`;
 }
 
 /**
- * Un identificador concreto: el tipo y su valor ya canonizado.
+ * A concrete identifier: the type and its already-canonicalized value.
  *
- * Vive aquí y no junto al motor de grafo porque `CaseRepository` lo usa en la
- * firma de `findByEntityIdentifiers`, y un puerto del dominio no puede
- * depender de un servicio del dominio sin invertir la relación.
+ * Lives here and not next to the graph engine because `CaseRepository` uses
+ * it in the `findByEntityIdentifiers` signature, and a domain port cannot
+ * depend on a domain service without inverting the relationship.
  */
 export interface EntityRef {
   readonly type: EntityNodeType;

@@ -15,7 +15,7 @@ export interface GetCaseDeps {
 }
 
 /**
- * Reads a single case (the ficha). Tenant-scoped: a soft-deleted or missing
+ * Reads a single case (the case file). Tenant-scoped: a soft-deleted or missing
  * case is a 404 (`caseNotFound`); a case from another organization is a 403
  * (`forbiddenCrossTenant`) — never leaked as "not found".
  */

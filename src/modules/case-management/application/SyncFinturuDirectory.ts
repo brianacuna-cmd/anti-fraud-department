@@ -24,13 +24,13 @@ export interface SyncFinturuDirectoryDeps {
 }
 
 /**
- * Lee una clave de correlacion de un objeto sin contrato (`metadata` de Stripe,
- * `source`/`destination` de un transfer). Devuelve `null` si falta, para que el
- * llamante nunca compare `undefined` contra un Set.
+ * Reads a correlation key from an untyped object (Stripe `metadata`,
+ * a transfer's `source`/`destination`). Returns `null` if missing, so the
+ * caller never compares `undefined` against a Set.
  *
- * Acepta numero ademas de texto: el padron de Finturu tipa el MISMO campo como
- * numero en unos payloads y como cadena en otros, y descartar la variante
- * numerica dejaria sin correlacionar a la mitad de los clientes.
+ * Accepts a number as well as text: Finturu's register types the SAME field
+ * as a number in some payloads and as a string in others, and discarding the
+ * numeric variant would leave half the customers uncorrelated.
  */
 function readKey(bag: Record<string, unknown> | undefined, key: string): string | null {
   const value = bag?.[key];
@@ -53,16 +53,16 @@ function riskFor(status: string | undefined, transfers: readonly FinturuTransfer
 }
 
 /**
- * Refresca la copia local del directorio de clientes.
+ * Refreshes the local copy of the customer directory.
  *
- * Recorre los listados completos de Finturu (clientes, billeteras,
- * transferencias y Stripe), los correlaciona en memoria y sustituye el
- * directorio de la organización. Tarda varios minutos porque Bridge es lento,
- * y ese es justamente el motivo de que exista: se paga una vez en segundo
- * plano en lugar de en cada carga de pantalla.
+ * Walks Finturu's full listings (customers, wallets, transfers, and Stripe),
+ * correlates them in memory, and replaces the organization directory. It
+ * takes several minutes because Bridge is slow, and that is exactly why it
+ * exists: the cost is paid once in the background instead of on every
+ * screen load.
  *
- * A diferencia de `SyncFinturuData`, NO crea expedientes: alimenta solo el
- * directorio. Abrir un caso sigue siendo una decisión explícita de un analista.
+ * Unlike `SyncFinturuData`, it does NOT create cases: it only feeds the
+ * directory. Opening a case remains an explicit analyst decision.
  */
 export function createSyncFinturuDirectoryUseCase(deps: SyncFinturuDirectoryDeps) {
   return async function syncFinturuDirectory(): Promise<SyncFinturuDirectoryResult> {
@@ -121,7 +121,7 @@ export function createSyncFinturuDirectoryUseCase(deps: SyncFinturuDirectoryDeps
       const email = customer.email ? String(customer.email).trim().toLowerCase() : '';
       const idUser = customer.idUser ? String(customer.idUser).trim() : bridgeUserId;
 
-      // Sin identificador estable no hay clave con la que persistirlo.
+      // Without a stable identifier there is no key to persist it with.
       if (!idUser) continue;
 
       const userWallets = bridgeUserId ? walletsByUser.get(bridgeUserId) ?? [] : [];

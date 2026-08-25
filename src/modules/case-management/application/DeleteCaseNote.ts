@@ -28,7 +28,7 @@ export interface DeleteCaseNoteDeps {
 
 /**
  * DELETE /notes/:id — logical (soft) delete. Role-gated to SUPERVISOR.
- * Marks `deletedAt = now` so an erroneous note is hidden from the ficha without
+ * Marks `deletedAt = now` so an erroneous note is hidden from the case file without
  * dropping the row (append-only history + referential integrity preserved).
  * Idempotent: re-deleting an already-deleted note is a no-op. Records
  * NOTE_DELETED timeline + DELETE_CASE_NOTE audit.

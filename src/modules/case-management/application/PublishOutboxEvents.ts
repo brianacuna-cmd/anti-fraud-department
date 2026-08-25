@@ -3,12 +3,12 @@ import type { OutboxEventRelayRepository } from '../../../shared/outbox/OutboxEv
 import type { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
 
 /**
- * Destino de un evento ya confirmado.
+ * Destination of an already committed event.
  *
- * Se declara como puerto y no como una llamada HTTP concreta porque a dia de
- * hoy no hay ningun consumidor decidido: dejarlo abstracto permite despachar a
- * un log mientras se decide, y cambiar a una cola o a un webhook sin tocar el
- * publicador.
+ * Declared as a port rather than a concrete HTTP call because as of today
+ * there is no decided consumer: leaving it abstract lets us dispatch to a
+ * log while deciding, and switch to a queue or a webhook without touching
+ * the publisher.
  */
 export interface OutboxPublisher {
   publish(event: OutboxEvent): Promise<void>;
@@ -27,22 +27,23 @@ export interface PublishOutboxEventsDeps {
 }
 
 /**
- * Despacha los eventos que la transaccion dejo en PENDING.
+ * Dispatches the events the transaction left in PENDING.
  *
- * Hasta ahora el patron estaba montado a medias: los eventos se escribian en
- * la misma transaccion que el caso —que es la parte dificil y la que garantiza
- * que no se pierdan— pero nadie los sacaba, asi que se acumulaban en PENDING
- * indefinidamente.
+ * Until now the pattern was only half-built: events were written in the same
+ * transaction as the case —which is the hard part and the one that guarantees
+ * they are not lost— but nobody took them out, so they piled up in PENDING
+ * indefinitely.
  *
- * Entrega **al menos una vez**, no exactamente una: si el proceso muere entre
- * publicar y marcar, el evento se reintentara. Es la garantia correcta para un
- * outbox — la alternativa (marcar antes de publicar) perderia eventos en
- * silencio, que es mucho peor que entregar uno repetido. Los consumidores
- * tienen que ser idempotentes, y `aggregateId` + `eventType` les da con que.
+ * Delivery is **at least once**, not exactly once: if the process dies
+ * between publish and mark, the event will be retried. That is the correct
+ * guarantee for an outbox — the alternative (mark before publish) would
+ * silently lose events, which is much worse than delivering a duplicate.
+ * Consumers must be idempotent, and `aggregateId` + `eventType` gives them
+ * what they need.
  *
- * Un fallo individual marca ese evento como FAILED con su motivo y el barrido
- * continua: un consumidor que rechaza un payload concreto no puede bloquear la
- * cola entera detras de el.
+ * An individual failure marks that event as FAILED with its reason and the
+ * sweep continues: a consumer that rejects a particular payload cannot
+ * block the entire queue behind it.
  */
 export function createPublishOutboxEventsUseCase(deps: PublishOutboxEventsDeps) {
   return async function publishOutboxEvents(): Promise<PublishOutboxEventsResult> {
@@ -62,8 +63,8 @@ export function createPublishOutboxEventsUseCase(deps: PublishOutboxEventsDeps) 
         try {
           await deps.outbox.update(event.markFailed(reason));
         } catch {
-          // Si ni siquiera se puede anotar el fallo, se deja en PENDING: el
-          // proximo pase lo reintentara, que es preferible a perderlo.
+          // If the failure cannot even be recorded, it is left in PENDING: the
+          // next pass will retry it, which is preferable to losing it.
         }
         failed += 1;
       }
@@ -74,11 +75,11 @@ export function createPublishOutboxEventsUseCase(deps: PublishOutboxEventsDeps) 
 }
 
 /**
- * Publicador por defecto: deja constancia en el log.
+ * Default publisher: leaves a record in the log.
  *
- * No es un marcador de posicion vacio — mientras no exista un consumidor real,
- * este deja rastro auditable de que el evento salio y cuando, en lugar de que
- * los eventos se queden atascados en PENDING sin que nadie lo note.
+ * This is not an empty placeholder — while there is no real consumer, it
+ * leaves an auditable trail that the event went out and when, instead of
+ * events getting stuck in PENDING without anyone noticing.
  */
 export function createLogOutboxPublisher(): OutboxPublisher {
   return {

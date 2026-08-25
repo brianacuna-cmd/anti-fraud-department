@@ -75,19 +75,19 @@ export function createReopenCaseUseCase(deps: ReopenCaseDeps) {
       const reopened = existing.reopen(input.targetStatus, now);
 
       /*
-       * Sin configuracion del inquilino se usa la ventana por defecto, igual
-       * que al ABRIR el expediente.
+       * Without tenant config the default window is used, same as when
+       * OPENING the case.
        *
-       * Antes esto lanzaba `ORGANIZATION_FRAUD_CONFIG_NOT_FOUND` y dejaba el
-       * sistema contradiciendose: `InitializeCaseSla` —el camino de apertura y
-       * el de reapertura desde el directorio— cae al valor por defecto sin
-       * quejarse, asi que un inquilino sin configurar podia abrir casos y
-       * cerrarlos, pero no reabrirlos. Dos caminos que calculan el mismo plazo
-       * no pueden discrepar sobre si la configuracion es obligatoria.
+       * Previously this threw `ORGANIZATION_FRAUD_CONFIG_NOT_FOUND` and left
+       * the system contradicting itself: `InitializeCaseSla` —the open path
+       * and the reopen-from-directory path— falls back to the default without
+       * complaining, so an unconfigured tenant could open cases and close
+       * them, but not reopen them. Two paths that compute the same deadline
+       * cannot disagree on whether the config is mandatory.
        *
-       * La leniencia es la direccion correcta de las dos: negarse a reabrir un
-       * expediente por un ajuste que nunca hizo falta para abrirlo bloquea
-       * trabajo real sin proteger nada.
+       * Leniency is the right of the two directions: refusing to reopen a
+       * case over a setting that was never needed to open it blocks real
+       * work without protecting anything.
        */
       const config = await deps.fraudConfig.findByOrganization(organizationId, tx);
       const window = slaWindowFromConfig(config);
