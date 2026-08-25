@@ -261,7 +261,7 @@ import { createAmlAlertCaseOpener } from './composition/amlAlertCaseOpener.js';
 import { generateAmlAlertId } from './modules/screening/domain/model/value-objects/AmlAlertId.js';
 import { createEntryType, isEntryType } from './modules/screening/domain/model/value-objects/EntryType.js';
 import { MongoAmlAlertRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlAlertRepository.js';
-import { MongoAmlExpedienteTimelineRecorder } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlExpedienteTimelineRecorder.js';
+import { MongoAmlAlertTimelineRecorder } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlAlertTimelineRecorder.js';
 import { MongoUnitOfWork as ScreeningMongoUnitOfWork } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { MongoFallbackWatchlistCandidateRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoFallbackWatchlistCandidateRepository.js';
 import { MongoAtlasWatchlistCandidateRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoAtlasWatchlistCandidateRepository.js';
@@ -1148,11 +1148,11 @@ async function bootstrap(): Promise<void> {
   // aml_alerts + case_timeline + outbox_events write (natural-key unique
   // index still backs RF-6 idempotency against races).
   const amlAlerts = new MongoAmlAlertRepository(db);
-  const amlExpedienteTimeline = new MongoAmlExpedienteTimelineRecorder(db);
+  const amlAlertTimeline = new MongoAmlAlertTimelineRecorder(db);
   const screeningUnitOfWork = new ScreeningMongoUnitOfWork(client);
   const openAmlAlert = createOpenAmlAlertUseCase({
     amlAlertRepository: amlAlerts,
-    timelineRecorder: amlExpedienteTimeline,
+    timelineRecorder: amlAlertTimeline,
     outbox: outboxEvents,
     unitOfWork: screeningUnitOfWork,
     clock,
@@ -1164,11 +1164,11 @@ async function bootstrap(): Promise<void> {
   const listAmlAlerts = createListAmlAlertsUseCase({ amlAlertRepository: amlAlerts });
   const getAmlAlertTimeline = createGetAmlAlertTimelineUseCase({
     getAmlAlert,
-    timelineRecorder: amlExpedienteTimeline,
+    timelineRecorder: amlAlertTimeline,
   });
   const transitionAmlAlert = createTransitionAmlAlertUseCase({
     amlAlertRepository: amlAlerts,
-    timelineRecorder: amlExpedienteTimeline,
+    timelineRecorder: amlAlertTimeline,
     unitOfWork: screeningUnitOfWork,
     clock,
     generateTimelineEventId: generateObjectIdHex,
@@ -1176,7 +1176,7 @@ async function bootstrap(): Promise<void> {
   const escalateAmlAlert = createEscalateAmlAlertUseCase({
     amlAlertRepository: amlAlerts,
     caseOpener: createAmlAlertCaseOpener(createCase),
-    timelineRecorder: amlExpedienteTimeline,
+    timelineRecorder: amlAlertTimeline,
     unitOfWork: screeningUnitOfWork,
     clock,
     generateTimelineEventId: generateObjectIdHex,
@@ -1188,7 +1188,7 @@ async function bootstrap(): Promise<void> {
   const screeningAuditRecorder = createScreeningAuditRecorderAdapter(recordAuditLog);
   const resolveAmlAlert = createResolveAmlAlertUseCase({
     amlAlertRepository: amlAlerts,
-    timelineRecorder: amlExpedienteTimeline,
+    timelineRecorder: amlAlertTimeline,
     auditRecorder: screeningAuditRecorder,
     unitOfWork: screeningUnitOfWork,
     clock,

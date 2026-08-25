@@ -7,7 +7,7 @@ import { createWatchlistId } from '../../../../src/modules/screening/domain/mode
 import { createMatchScore } from '../../../../src/modules/screening/domain/model/value-objects/MatchScore.js';
 import { createScreeningMatch } from '../../../../src/modules/screening/domain/model/entities/ScreeningMatch.js';
 import { InMemoryAmlAlertRepository } from '../../../helpers/screening/InMemoryAmlAlertRepository.js';
-import { InMemoryAmlExpedienteTimelineRecorder } from '../../../helpers/screening/InMemoryAmlExpedienteTimelineRecorder.js';
+import { InMemoryAmlAlertTimelineRecorder } from '../../../helpers/screening/InMemoryAmlAlertTimelineRecorder.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/screening/infrastructure/PassthroughUnitOfWork.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
@@ -41,7 +41,7 @@ function buildAlert(organizationId = ORG_1): AmlAlert {
 
 function buildUseCase() {
   const amlAlertRepository = new InMemoryAmlAlertRepository();
-  const timelineRecorder = new InMemoryAmlExpedienteTimelineRecorder();
+  const timelineRecorder = new InMemoryAmlAlertTimelineRecorder();
   const transitionAmlAlert = createTransitionAmlAlertUseCase({
     amlAlertRepository,
     timelineRecorder,

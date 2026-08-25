@@ -13,7 +13,7 @@ import { createWatchlistId } from '../../../src/modules/screening/domain/model/v
 import { createMatchScore } from '../../../src/modules/screening/domain/model/value-objects/MatchScore.js';
 import { createScreeningMatch } from '../../../src/modules/screening/domain/model/entities/ScreeningMatch.js';
 import { MongoAmlAlertRepository } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlAlertRepository.js';
-import { MongoAmlExpedienteTimelineRecorder } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlExpedienteTimelineRecorder.js';
+import { MongoAmlAlertTimelineRecorder } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlAlertTimelineRecorder.js';
 import { MongoUnitOfWork } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { MongoOutboxEventRepository } from '../../../src/shared/outbox/mongo/MongoOutboxEventRepository.js';
 import { generateOutboxEventId } from '../../../src/shared/outbox/OutboxEventId.js';
@@ -68,7 +68,7 @@ describe('OpenAmlAlert (integration, real Mongo transaction)', () => {
   function buildUseCase() {
     return createOpenAmlAlertUseCase({
       amlAlertRepository: new MongoAmlAlertRepository(db),
-      timelineRecorder: new MongoAmlExpedienteTimelineRecorder(db),
+      timelineRecorder: new MongoAmlAlertTimelineRecorder(db),
       outbox: new MongoOutboxEventRepository(db),
       unitOfWork: new MongoUnitOfWork(client),
       clock: new FixedClock(NOW),

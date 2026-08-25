@@ -1,5 +1,5 @@
 import type { AmlAlert } from '../../../../../domain/model/aggregates/AmlAlert.js';
-import type { AmlExpedienteTimelineEvent } from '../../../../../domain/ports/AmlExpedienteTimelineRecorder.js';
+import type { AmlAlertTimelineEvent } from '../../../../../domain/ports/AmlAlertTimelineRecorder.js';
 
 export interface AmlAlertMatchedEntryDto {
   readonly entryId: string;
@@ -63,7 +63,7 @@ export function toAmlAlertResponse(alert: AmlAlert): AmlAlertResponseDto {
 }
 
 export function toAmlAlertTimelineEventResponse(
-  event: AmlExpedienteTimelineEvent,
+  event: AmlAlertTimelineEvent,
 ): AmlAlertTimelineEventDto {
   return {
     id: event.id,

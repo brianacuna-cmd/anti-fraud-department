@@ -61,7 +61,7 @@ describe('src/main.ts risk-assessment wiring', () => {
 
   it('wires OpenAmlAlert (aml_alerts + case_timeline + outbox_events) into screening', () => {
     expect(MAIN).toContain('createOpenAmlAlertUseCase');
-    expect(MAIN).toContain('MongoAmlExpedienteTimelineRecorder');
+    expect(MAIN).toContain('MongoAmlAlertTimelineRecorder');
     expect(MAIN).toContain('ScreeningMongoUnitOfWork');
     expect(MAIN).toContain('openAmlAlert');
   });

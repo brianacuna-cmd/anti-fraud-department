@@ -3,7 +3,7 @@ import type { Clock } from '../../../shared/time/Clock.js';
 import type { AmlAlert } from '../domain/model/aggregates/AmlAlert.js';
 import type { AmlAlertStatus } from '../domain/model/value-objects/AmlAlertStatus.js';
 import type { AmlAlertRepository } from '../domain/ports/AmlAlertRepository.js';
-import type { AmlExpedienteTimelineRecorder } from '../domain/ports/AmlExpedienteTimelineRecorder.js';
+import type { AmlAlertTimelineRecorder } from '../domain/ports/AmlAlertTimelineRecorder.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import { createAmlAlertId } from '../domain/model/value-objects/AmlAlertId.js';
@@ -27,7 +27,7 @@ export interface ResolveAmlAlertInput {
 
 export interface ResolveAmlAlertDeps {
   readonly amlAlertRepository: AmlAlertRepository;
-  readonly timelineRecorder: AmlExpedienteTimelineRecorder;
+  readonly timelineRecorder: AmlAlertTimelineRecorder;
   readonly auditRecorder: AuditRecorder;
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
@@ -45,7 +45,7 @@ function nextStatusFor(verdict: AmlAlertVerdict): AmlAlertStatus {
 /**
  * Disposition path: an analyst records a compliance verdict
  * with a mandatory justification. Within ONE `unitOfWork.withTransaction`:
- * transitions the alert (RF-1/RF-4), appends the STATE_CHANGED expediente
+ * transitions the alert (RF-1/RF-4), appends the STATE_CHANGED timeline
  * timeline row (parity with `TransitionAmlAlert`), and writes exactly one
  * audit row (RF-3) — both-or-neither via the shared transaction handle.
  */
