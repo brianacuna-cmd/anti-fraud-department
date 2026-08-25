@@ -24,7 +24,7 @@ export interface ReportRouterDeps {
  */
 export function reportRouter(deps: ReportRouterDeps): Router {
   const router = Router();
-  // Sin estado: una instancia para todo el router, como los renderizadores de
+  // Stateless: one instance for the whole router, like the renderers in
   // `caseExportRouter`.
   const pdf = new CaseReportPdfRenderer();
   const dossierPacker = new DossierZipPacker();
@@ -48,13 +48,13 @@ export function reportRouter(deps: ReportRouterDeps): Router {
   });
 
   /**
-   * El informe como documento. Pasa por la MISMA guarda de inquilino que el
-   * JSON (`getCaseReport`), asi que el PDF no es una puerta de atras a un
-   * expediente de otra organizacion.
+   * The report as a document. Goes through the SAME tenant guard as the
+   * JSON (`getCaseReport`), so the PDF is not a back door to another
+   * organization's case.
    *
-   * `attachment` y no `inline`: un informe se archiva o se manda, y el nombre
-   * del fichero lleva el id del expediente para que siga siendo identificable
-   * fuera de la aplicacion.
+   * `attachment` and not `inline`: a report is archived or sent, and the
+   * filename carries the case id so it remains identifiable outside the
+   * application.
    */
   router.get('/reports/:reportId/pdf', async (req, res) => {
     const auth = requireAuthContext(req);
@@ -71,9 +71,9 @@ export function reportRouter(deps: ReportRouterDeps): Router {
   });
 
   /**
-   * INV-016. `X-Dossier-Missing-Evidence` avisa de las evidencias cuyo blob no
-   * estaba en el almacen: el paquete se entrega igual —lo que hay sigue
-   * sirviendo— pero quien lo recibe tiene que enterarse sin abrir el ZIP.
+   * INV-016. `X-Dossier-Missing-Evidence` warns of evidence whose blob was not
+   * in the store: the package is still delivered —what is there still
+   * serves— but whoever receives it has to find out without opening the ZIP.
    */
   router.get('/cases/:caseId/dossier', async (req, res) => {
     const auth = requireAuthContext(req);

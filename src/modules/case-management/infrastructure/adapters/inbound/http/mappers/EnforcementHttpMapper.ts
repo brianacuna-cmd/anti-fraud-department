@@ -47,7 +47,7 @@ export interface ApprovalRequestResponseDto {
 export interface RecordAnalystDecisionResponseDto {
   readonly decision: AnalystDecisionResponseDto;
   readonly enforcementAction: EnforcementActionResponseDto | null;
-  /** La solicitud de doble firma abierta con la sancion (ENF-002). */
+  /** The open dual-control request attached to the sanction (ENF-002). */
   readonly approvalRequest: ApprovalRequestResponseDto | null;
   readonly caseStatus: string;
 }

@@ -4,7 +4,7 @@ export type Sleeper = (ms: number) => Promise<void>;
 
 export interface OutboxPublishSchedulerDeps {
   readonly publishOutboxEvents: () => Promise<PublishOutboxEventsResult>;
-  /** Retardo inyectable entre pasadas (en pruebas: FakeSleeper). */
+  /** Injectable delay between ticks (in tests: FakeSleeper). */
   readonly sleeper?: Sleeper;
   readonly onError?: (error: unknown) => void;
 }
@@ -19,19 +19,19 @@ const defaultSleeper: Sleeper = (ms) =>
   });
 
 /**
- * Driver de fondo para `PublishOutboxEvents`.
+ * Background driver for `PublishOutboxEvents`.
  *
- * Copia el mismo bucle de sondeo que `SlaSweepScheduler` y
- * `CustomerOutgoingEventDispatcher` —`Sleeper` inyectable, `stop()`, `onError`—
- * en lugar de introducir una dependencia de cron: un intervalo fijo en un solo
- * proceso es todo lo que hace falta, y el repositorio ya tiene ese idiom
- * probado.
+ * Copies the same polling loop as `SlaSweepScheduler` and
+ * `CustomerOutgoingEventDispatcher` —injectable `Sleeper`, `stop()`, `onError`—
+ * instead of introducing a cron dependency: a fixed interval in a single
+ * process is all that is needed, and the repository already has that idiom
+ * proven.
  *
- * AVISO DE MULTI-INSTANCIA: a diferencia del barrido de SLA, `findPending` no
- * reclama las filas en exclusiva, asi que dos instancias pueden publicar el
- * mismo evento. La entrega ya es "al menos una vez" por diseno y los
- * consumidores tienen que ser idempotentes, pero conviene arrancar una sola
- * instancia hasta que el repositorio ofrezca un `claim` atomico.
+ * MULTI-INSTANCE WARNING: unlike the SLA sweep, `findPending` does not claim
+ * rows exclusively, so two instances can publish the same event. Delivery is
+ * already "at least once" by design and consumers have to be idempotent, but
+ * it is wise to run a single instance until the repository offers an atomic
+ * `claim`.
  */
 export function createOutboxPublishScheduler(deps: OutboxPublishSchedulerDeps) {
   const sleeper = deps.sleeper ?? defaultSleeper;

@@ -69,8 +69,8 @@ export function investigationRouter(deps: InvestigationRouterDeps): Router {
     res.status(200).json({ items: items.map(toInvestigationResponse) });
   });
 
-  // INV-014. Antes que `/investigations/:investigationId`, por lo mismo que
-  // el grafo: ese patron tragaria "summary" como si fuera un id.
+  // INV-014. Before `/investigations/:investigationId`, for the same reason
+  // as the graph: that pattern would swallow "summary" as if it were an id.
   router.get('/investigations/:investigationId/summary', async (req, res) => {
     const auth = requireAuthContext(req);
     const query = parseRequest(entityNetworkGraphQuerySchema, req.query);
@@ -82,11 +82,11 @@ export function investigationRouter(deps: InvestigationRouterDeps): Router {
     res.status(200).json(summary);
   });
 
-  // INV-014, mismo informe que `/summary` pero congelado en `case_reports`.
-  // Es una escritura, no una consulta; se deja en GET porque lo que produce es
-  // un documento y quien lo pide espera descargarselo, pero no es idempotente:
-  // cada llamada deja un informe nuevo, y eso es lo que se quiere — el
-  // historial de que se entrego, y cuando.
+  // INV-014, same report as `/summary` but frozen in `case_reports`.
+  // It is a write, not a query; it is left as GET because what it produces is
+  // a document and the caller expects to download it, but it is not idempotent:
+  // each call leaves a new report, and that is the point — the history of
+  // what was delivered, and when.
   router.get('/investigations/:investigationId/export', async (req, res) => {
     const auth = requireAuthContext(req);
     const query = parseRequest(entityNetworkGraphQuerySchema, req.query);
@@ -98,8 +98,8 @@ export function investigationRouter(deps: InvestigationRouterDeps): Router {
     res.status(200).json(toCaseReportResponse(report));
   });
 
-  // Antes que `/investigations/:investigationId`: Express casa por orden y
-  // ese patron tragaria "graph" como si fuera un id.
+  // Before `/investigations/:investigationId`: Express matches by order and
+  // that pattern would swallow "graph" as if it were an id.
   router.get('/investigations/:investigationId/graph', async (req, res) => {
     const auth = requireAuthContext(req);
     const query = parseRequest(entityNetworkGraphQuerySchema, req.query);

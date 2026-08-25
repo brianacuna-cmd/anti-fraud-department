@@ -2,12 +2,12 @@ import JSZip from 'jszip';
 import type { CaseAuditDossier } from '../../../../../application/GenerateCaseAuditDossier.js';
 
 /**
- * Empaqueta un `CaseAuditDossier` en un ZIP.
+ * Packs a `CaseAuditDossier` into a ZIP.
  *
- * Vive en infraestructura y no en el caso de uso a propósito: el caso de uso
- * decide QUÉ ficheros lleva el dossier y por qué, que es una decisión de
- * negocio auditable; el contenedor con que se entrega es un detalle de
- * transporte. Cambiar mañana a tar.gz no debería tocar nada de lo anterior.
+ * Lives in infrastructure and not in the use case on purpose: the use case
+ * decides WHICH files the dossier carries and why, which is an auditable
+ * business decision; the container it is delivered in is a transport
+ * detail. Switching to tar.gz tomorrow should not touch any of the above.
  */
 export class DossierZipPacker {
   readonly contentType = 'application/zip';
@@ -17,11 +17,11 @@ export class DossierZipPacker {
     const date = new Date(0);
 
     for (const entry of dossier.entries) {
-      // Fecha fija en todas las entradas: sin esto JSZip sella cada fichero con
-      // la hora de generacion y dos paquetes del MISMO expediente congelado
-      // salen con bytes distintos. Un dossier legal tiene que poder
-      // reproducirse: si su hash cambia cada vez que se pide, no se puede
-      // referenciar por hash en un escrito.
+      // Fixed date on every entry: without this JSZip stamps each file with
+      // generation time and two packages of the SAME frozen case come out
+      // with different bytes. A legal dossier has to be reproducible: if its
+      // hash changes every time it is requested, it cannot be referenced by
+      // hash in a filing.
       zip.file(entry.path, entry.bytes, { date, binary: true });
     }
 
@@ -32,7 +32,7 @@ export class DossierZipPacker {
     });
   }
 
-  /** Nombre del adjunto. Lleva el expediente y el informe: identifica el paquete fuera del sistema. */
+  /** Attachment name. Carries the case and the report: identifies the package outside the system. */
   filenameFor(dossier: CaseAuditDossier): string {
     return `dossier-${dossier.caseId}-${dossier.reportId}.zip`;
   }

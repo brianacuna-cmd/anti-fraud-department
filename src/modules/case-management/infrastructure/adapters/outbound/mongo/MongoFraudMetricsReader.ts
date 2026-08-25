@@ -16,12 +16,12 @@ const CASES = 'cases';
 const ENFORCEMENT_ACTIONS = 'enforcement_actions';
 const RESOLUTIONS = 'resolutions';
 
-/** Estados en los que un expediente sigue sobre la mesa de alguien. */
+/** Statuses in which a case is still on someone's desk. */
 const ACTIVE_STATUSES = ['OPEN', 'IN_REVIEW'];
 
 /**
- * Cortes de riesgo del panel. Fijos y nombrados aqui —no configurables— para
- * que dos lecturas del panel en momentos distintos sean comparables.
+ * Dashboard risk cuts. Fixed and named here —not configurable— so two
+ * readings of the dashboard at different times are comparable.
  */
 const RISK_BUCKETS: readonly { label: string; from: number; to: number }[] = [
   { label: 'Bajo', from: 0, to: 24 },
@@ -30,7 +30,7 @@ const RISK_BUCKETS: readonly { label: string; from: number; to: number }[] = [
   { label: 'Crítico', from: 75, to: 100 },
 ];
 
-/** Cuantos responsables devuelve `workload`: una barra por persona, no un censo. */
+/** How many assignees `workload` returns: one bar per person, not a census. */
 const WORKLOAD_LIMIT = 8;
 
 interface CountRow {
@@ -39,12 +39,12 @@ interface CountRow {
 }
 
 /**
- * Lado de lectura del panel de gobierno.
+ * Read side of the governance dashboard.
  *
- * Todo se resuelve con `aggregate` en el servidor y NUNCA trayendo los casos
- * al proceso: el panel lo abre quien supervisa el departamento entero, con lo
- * que la alternativa —listar y contar en Node— crece con el tamaño del
- * inquilino justo para quien mas casos tiene.
+ * Everything is resolved with `aggregate` on the server and NEVER by bringing
+ * the cases into the process: the dashboard is opened by whoever supervises
+ * the whole department, so the alternative —list and count in Node— grows
+ * with tenant size exactly for whoever has the most cases.
  */
 export class MongoFraudMetricsReader implements FraudMetricsReader {
   private readonly cases: Collection<CaseDocument>;
@@ -61,8 +61,8 @@ export class MongoFraudMetricsReader implements FraudMetricsReader {
     const organizationId = new ObjectId(query.organizationId);
     const now = toDate(query.now);
     const windowStart = startOfUtcDay(addDays(now, -(query.windowDays - 1)));
-    // `deleted_at: null` en TODA consulta: un expediente retirado no debe
-    // seguir sumando en ninguna barra del panel.
+    // `deleted_at: null` on EVERY query: a withdrawn case must not keep
+    // adding to any dashboard bar.
     const tenant = { organization_id: organizationId, deleted_at: null };
 
     const [byStatus, byPriority, byRiskBucket, overdue, unassigned, opened, enforcementByStatus, enforcementByType, workload, closures] =
@@ -108,8 +108,8 @@ export class MongoFraudMetricsReader implements FraudMetricsReader {
   }
 
   /**
-   * `$group` por un campo, generico sobre la coleccion: `cases` y
-   * `enforcement_actions` cuentan igual y solo cambian de origen y de filtro.
+   * `$group` by a field, generic over the collection: `cases` and
+   * `enforcement_actions` count the same and only change origin and filter.
    */
   private async countBy<T extends Document>(
     collection: Collection<T>,
@@ -132,8 +132,8 @@ export class MongoFraudMetricsReader implements FraudMetricsReader {
           $bucket: {
             groupBy: '$risk_score',
             boundaries: [...RISK_BUCKETS.map((bucket) => bucket.from), 101],
-            // Un `risk_score` fuera de 0..100 seria un dato corrupto; que caiga
-            // en un cajon propio y no contamine el tramo "Crítico".
+            // A `risk_score` outside 0..100 would be corrupt data; let it
+            // fall into a bucket of its own and not contaminate the "Crítico" band.
             default: -1,
             output: { count: { $sum: 1 } },
           },
@@ -145,7 +145,7 @@ export class MongoFraudMetricsReader implements FraudMetricsReader {
     return RISK_BUCKETS.map((bucket) => ({ ...bucket, count: counts.get(bucket.from) ?? 0 }));
   }
 
-  /** Altas por dia natural UTC. Los cierres salen de `closures`, con su join. */
+  /** Openings per UTC calendar day. Closures come from `closures`, with its join. */
   private async openedPerDay(match: Filter<CaseDocument>): Promise<Map<string, number>> {
     const rows = await this.cases
       .aggregate<CountRow>([
@@ -203,17 +203,17 @@ export class MongoFraudMetricsReader implements FraudMetricsReader {
   }
 
   /**
-   * Cierres de la ventana: la serie diaria y cuanto se tardo de media.
+   * Closures in the window: the daily series and how long they took on average.
    *
-   * Las dos salen de la MISMA agregacion (`$facet`) porque comparten filtro, y
-   * ese filtro es la razon de que no baste con contar `resolutions`:
+   * Both come from the SAME aggregation (`$facet`) because they share a
+   * filter, and that filter is why counting `resolutions` is not enough:
    *
-   * - El tiempo se mide contra `cases.created_at`, y `resolutions` guarda
-   *   cuando se cerro pero no cuando se abrio — de ahi el `$lookup`.
-   * - Un expediente retirado (`deleted_at`) no cuenta en ninguna otra barra
-   *   del panel. Contando `resolutions` a secas, su cierre SI aparecia en la
-   *   linea: el panel se contradecia consigo mismo, con un dia que registraba
-   *   mas cierres que altas sin que hubiera pasado nada raro.
+   * - Time is measured against `cases.created_at`, and `resolutions` stores
+   *   when it was closed but not when it was opened — hence the `$lookup`.
+   * - A withdrawn case (`deleted_at`) does not count on any other dashboard
+   *   bar. Counting `resolutions` alone, its closure DID appear on the
+   *   line: the dashboard contradicted itself, with a day that recorded
+   *   more closures than openings without anything unusual having happened.
    */
   private async closures(
     organizationId: ObjectId,
@@ -276,8 +276,8 @@ export class MongoFraudMetricsReader implements FraudMetricsReader {
 }
 
 /**
- * Rellena los dias sin movimiento con ceros. Mongo solo devuelve los dias que
- * existen; una serie con huecos dibuja una linea que se salta fechas.
+ * Fills days with no activity with zeros. Mongo only returns days that exist;
+ * a series with gaps draws a line that skips dates.
  */
 function buildFlowSeries(
   windowStart: Date,
