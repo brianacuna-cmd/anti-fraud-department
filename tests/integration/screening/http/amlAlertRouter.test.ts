@@ -127,7 +127,7 @@ describe('GET /api/v1/aml-alerts (compliance inbox)', () => {
     expect(response.status).toBe(200);
     expect(response.body.total).toBe(1);
     expect(response.body.items[0].id).toBe(oid('inbox-open'));
-    expect(response.body.items[0].estado).toBe('OPEN');
+    expect(response.body.items[0].status).toBe('OPEN');
     expect(response.body.items[0].caseId).toBeNull();
   });
 
@@ -163,7 +163,7 @@ describe('AML alert triage', () => {
 
     const investigating = await request(app).post(`/api/v1/aml-alerts/${oid('fp-alert')}/investigate`);
     expect(investigating.status).toBe(200);
-    expect(investigating.body.estado).toBe('INVESTIGATING');
+    expect(investigating.body.status).toBe('INVESTIGATING');
 
     const timeline = await request(app).get(`/api/v1/aml-alerts/${oid('fp-alert')}/timeline`);
     expect(timeline.status).toBe(200);
@@ -177,7 +177,7 @@ describe('AML alert triage', () => {
       .patch(`/api/v1/aml-alerts/${oid('fp-alert')}/resolve`)
       .send({ verdict: 'FALSE_POSITIVE', justification: 'Different date of birth.' });
     expect(resolved.status).toBe(200);
-    expect(resolved.body.estado).toBe('FALSE_POSITIVE');
+    expect(resolved.body.status).toBe('FALSE_POSITIVE');
     expect(resolved.body.caseId).toBeNull();
     expect(auditRecorder.events).toHaveLength(1);
     expect(auditRecorder.events[0]).toMatchObject({
@@ -197,7 +197,7 @@ describe('AML alert triage', () => {
       .send({ verdict: 'CONFIRMED_MATCH', justification: 'Matched government ID.' });
 
     expect(resolved.status).toBe(200);
-    expect(resolved.body.estado).toBe('RESOLVED');
+    expect(resolved.body.status).toBe('RESOLVED');
     expect(auditRecorder.events).toHaveLength(1);
   });
 
@@ -291,7 +291,7 @@ describe('AML alert triage', () => {
     const response = await request(app).post(`/api/v1/aml-alerts/${oid('escalate-me')}/escalate`);
 
     expect(response.status).toBe(200);
-    expect(response.body.estado).toBe('INVESTIGATING');
+    expect(response.body.status).toBe('INVESTIGATING');
     expect(response.body.caseId).toBe(CASE_ID);
     expect(response.body.alreadyEscalated).toBe(false);
 
