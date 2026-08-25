@@ -24,7 +24,13 @@ export class TalismanSimilarityCalculator implements SimilarityCalculator {
   }
 }
 
+/**
+ * Canonical token order, so word order stops mattering before `jaroWinkler`
+ * sees the two names. The comparator is explicit for the same reason as in
+ * `MatchingStrategySelector`: the default `sort()` orders by UTF-16 code unit
+ * and files every accented letter after `Z`.
+ */
 function tokenSort(value: string): string {
   const tokens = value.split(WHITESPACE_PATTERN).filter((token) => token.length > 0);
-  return tokens.sort().join(' ');
+  return tokens.sort((a, b) => a.localeCompare(b)).join(' ');
 }

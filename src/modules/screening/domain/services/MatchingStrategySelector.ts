@@ -51,8 +51,18 @@ function phoneticAgreement(
   return sharedCount / maxKeys;
 }
 
+/**
+ * Canonical token order, so «JUAN PÉREZ» and «PÉREZ JUAN» reduce to the same
+ * string before the similarity score is computed.
+ *
+ * The comparator is explicit on purpose: the default `sort()` orders by UTF-16
+ * code unit, which puts every accented letter after `Z` («Bruno» before
+ * «Ángel»). Both sides go through this same function so the score would come
+ * out consistent either way, but names in this domain are full of accents and
+ * an ordering that reads as alphabetical is the one worth committing to.
+ */
 function tokenSort(tokens: readonly string[]): string {
-  return [...tokens].sort().join(' ');
+  return [...tokens].sort((a, b) => a.localeCompare(b)).join(' ');
 }
 
 function scoreNameMatch(
