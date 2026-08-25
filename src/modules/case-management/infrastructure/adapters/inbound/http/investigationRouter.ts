@@ -8,6 +8,8 @@ import type { createUpdateInvestigationFindingsUseCase } from '../../../../appli
 import type { createLinkInvestigationCasesUseCase } from '../../../../application/LinkInvestigationCases.js';
 import type { createListActiveInvestigationsUseCase } from '../../../../application/ListActiveInvestigations.js';
 import type { createUpdateInvestigationStatusUseCase } from '../../../../application/UpdateInvestigationStatus.js';
+import type { createBuildEntityNetworkGraphUseCase } from '../../../../application/BuildEntityNetworkGraph.js';
+import type { createExportInvestigationSummaryUseCase } from '../../../../application/ExportInvestigationSummary.js';
 import type { createExportInvestigationUseCase } from '../../../../application/ExportInvestigation.js';
 import {
   openInvestigationSchema,
@@ -15,6 +17,7 @@ import {
   updateInvestigationFindingsSchema,
   linkInvestigationCasesSchema,
   updateInvestigationStatusSchema,
+  entityNetworkGraphQuerySchema,
 } from './dto/investigationSchemas.js';
 import { toInvestigationResponse } from './mappers/InvestigationHttpMapper.js';
 import { toCaseReportResponse } from './mappers/CaseReportHttpMapper.js';
@@ -29,6 +32,8 @@ export interface InvestigationRouterDeps {
   readonly linkInvestigationCases: ReturnType<typeof createLinkInvestigationCasesUseCase>;
   readonly listActiveInvestigations: ReturnType<typeof createListActiveInvestigationsUseCase>;
   readonly updateInvestigationStatus: ReturnType<typeof createUpdateInvestigationStatusUseCase>;
+  readonly buildEntityNetworkGraph: ReturnType<typeof createBuildEntityNetworkGraphUseCase>;
+  readonly exportInvestigationSummary: ReturnType<typeof createExportInvestigationSummaryUseCase>;
   readonly exportInvestigation: ReturnType<typeof createExportInvestigationUseCase>;
 }
 
@@ -64,13 +69,46 @@ export function investigationRouter(deps: InvestigationRouterDeps): Router {
     res.status(200).json({ items: items.map(toInvestigationResponse) });
   });
 
+  // INV-014. Antes que `/investigations/:investigationId`, por lo mismo que
+  // el grafo: ese patron tragaria "summary" como si fuera un id.
+  router.get('/investigations/:investigationId/summary', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const query = parseRequest(entityNetworkGraphQuerySchema, req.query);
+    const summary = await deps.exportInvestigationSummary({
+      auth,
+      investigationId: req.params.investigationId!,
+      ...(query.maxDepth === undefined ? {} : { maxDepth: query.maxDepth }),
+    });
+    res.status(200).json(summary);
+  });
+
+  // INV-014, mismo informe que `/summary` pero congelado en `case_reports`.
+  // Es una escritura, no una consulta; se deja en GET porque lo que produce es
+  // un documento y quien lo pide espera descargarselo, pero no es idempotente:
+  // cada llamada deja un informe nuevo, y eso es lo que se quiere — el
+  // historial de que se entrego, y cuando.
   router.get('/investigations/:investigationId/export', async (req, res) => {
     const auth = requireAuthContext(req);
+    const query = parseRequest(entityNetworkGraphQuerySchema, req.query);
     const report = await deps.exportInvestigation({
       auth,
       investigationId: req.params.investigationId!,
+      ...(query.maxDepth === undefined ? {} : { maxDepth: query.maxDepth }),
     });
     res.status(200).json(toCaseReportResponse(report));
+  });
+
+  // Antes que `/investigations/:investigationId`: Express casa por orden y
+  // ese patron tragaria "graph" como si fuera un id.
+  router.get('/investigations/:investigationId/graph', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const query = parseRequest(entityNetworkGraphQuerySchema, req.query);
+    const graph = await deps.buildEntityNetworkGraph({
+      auth,
+      investigationId: req.params.investigationId!,
+      ...(query.maxDepth === undefined ? {} : { maxDepth: query.maxDepth }),
+    });
+    res.status(200).json(graph);
   });
 
   router.get('/investigations/:investigationId', async (req, res) => {

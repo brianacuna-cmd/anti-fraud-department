@@ -1,29 +1,22 @@
 import type { AuthContext } from '../../../shared/kernel/AuthContext.js';
 import type { Clock } from '../../../shared/time/Clock.js';
-import type { CaseRepository } from '../domain/ports/CaseRepository.js';
-import type { InvestigationRepository } from '../domain/ports/InvestigationRepository.js';
-import type { CaseNoteRepository } from '../domain/ports/CaseNoteRepository.js';
-import type { EvidenceRepository } from '../domain/ports/EvidenceRepository.js';
 import type { CaseReportRepository } from '../domain/ports/CaseReportRepository.js';
-import type { UnitOfWork, Transaction } from '../domain/ports/UnitOfWork.js';
+import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import type { CaseReportId } from '../domain/model/value-objects/CaseReportId.js';
-import type { CaseId } from '../domain/model/value-objects/CaseId.js';
 import type { CaseReport } from '../domain/model/aggregates/CaseReport.js';
 import { CaseReport as CaseReportAggregate } from '../domain/model/aggregates/CaseReport.js';
-import { createInvestigationId } from '../domain/model/value-objects/InvestigationId.js';
-import { investigationNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
+import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
+import type { createExportInvestigationSummaryUseCase } from './ExportInvestigationSummary.js';
 
 export interface ExportInvestigationInput {
   readonly auth: AuthContext;
   readonly investigationId: string;
+  readonly maxDepth?: number;
 }
 
 export interface ExportInvestigationDeps {
-  readonly investigations: InvestigationRepository;
-  readonly cases: CaseRepository;
-  readonly notes: CaseNoteRepository;
-  readonly evidence: EvidenceRepository;
+  readonly exportInvestigationSummary: ReturnType<typeof createExportInvestigationSummaryUseCase>;
   readonly reports: CaseReportRepository;
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
@@ -31,97 +24,70 @@ export interface ExportInvestigationDeps {
 }
 
 /**
- * GET /investigations/:id/export — consolidates the investigation's linked
- * cases (primary + linkedCaseIds) with their notes and evidence, plus the
- * findings JSON, into an executive report persisted as a `case_reports`
- * snapshot keyed on the primary case. Any authenticated tenant actor; the
- * investigation must belong to the actor's org. Scope: investigations,
- * case_reports.
+ * INV-014 — congela el informe ejecutivo de una investigación.
+ *
+ * GET /investigations/:investigationId/export
+ *
+ * Es el mismo informe que devuelve `/summary`, con notas y evidencia de cada
+ * expediente, escrito en `case_reports` con `reportType: 'INVESTIGATION_EXPORT'`
+ * y colgado del expediente raíz de la investigación.
+ *
+ * POR QUÉ DOS RUTAS Y NO UNA
+ *
+ * `/summary` responde "cómo está la red ahora" y por eso no se guarda: una
+ * investigación abierta cambia con cada expediente que entra, y una copia
+ * congelada de eso solo produce informes que envejecen en silencio.
+ *
+ * Un export es lo contrario. Se entrega a alguien —un comité, un regulador, un
+ * juzgado— y ese alguien tiene que poder abrir meses después exactamente lo que
+ * se le entregó. Si el documento se recalcula al abrirlo, emisor y receptor
+ * acaban leyendo cosas distintas bajo el mismo identificador, y no hay forma de
+ * saber cuál valía. Congelarlo es lo que lo convierte en una entrega y no en un
+ * enlace.
+ *
+ * POR QUÉ LA LECTURA QUEDA FUERA DE LA TRANSACCIÓN
+ *
+ * La transacción envuelve solo la escritura del informe. Componerlo recorre la
+ * red entera —hasta `MAX_GRAPH_NODES` expedientes, con sus notas, evidencia,
+ * dictámenes y medidas—, y mantener una transacción abierta durante ese
+ * recorrido bloquearía el conjunto de trabajo mucho más de lo que hace falta
+ * para insertar una fila. Nada de lo que se lee se modifica aquí, así que lo
+ * único que se pierde es la lectura consistente: el informe puede mezclar dos
+ * instantes separados por milisegundos. Para una foto ejecutiva es aceptable;
+ * `generatedAt` deja constancia de cuándo se tomó.
  */
 export function createExportInvestigationUseCase(deps: ExportInvestigationDeps) {
-  return async function exportInvestigation(input: ExportInvestigationInput): Promise<CaseReport> {
-    const organizationId = requireTenantContext(input.auth);
-    const investigationId = createInvestigationId(input.investigationId);
-
-    return deps.unitOfWork.withTransaction(async (tx) => {
-      const investigation = await deps.investigations.findById(investigationId, tx);
-      if (investigation === null) {
-        throw investigationNotFound(investigationId);
-      }
-      if (investigation.organizationId !== organizationId) {
-        throw forbiddenCrossTenant('investigation does not belong to the actor organization');
-      }
-
-      const caseIds = dedupe([investigation.caseId, ...investigation.linkedCaseIds]);
-      const caseEntries: Array<Record<string, unknown>> = [];
-      for (const caseId of caseIds) {
-        caseEntries.push(await buildCaseEntry(caseId, deps, tx));
-      }
-
-      const now = deps.clock.now();
-      const report = CaseReportAggregate.create({
-        id: deps.generateCaseReportId(),
-        caseId: investigation.caseId,
-        organizationId,
-        generatedBy: input.auth.userId,
-        snapshot: {
-          reportType: 'INVESTIGATION_EXPORT',
-          investigationId: investigation.id,
-          subjectType: investigation.subjectType,
-          subjectId: investigation.subjectId,
-          status: investigation.status,
-          findings: investigation.findingsData,
-          findingsSummary: investigation.findings,
-          explorationDepth: investigation.explorationDepth,
-          linkedCaseIds: [...investigation.linkedCaseIds],
-          cases: caseEntries,
-        },
-        now,
-      });
-      await deps.reports.save(report, tx);
-      return report;
+  return async function exportInvestigation(
+    input: ExportInvestigationInput,
+  ): Promise<CaseReport> {
+    // Valida tenant, existencia y pertenencia; si algo falla, revienta antes
+    // de que se abra ninguna transacción.
+    const summary = await deps.exportInvestigationSummary({
+      auth: input.auth,
+      investigationId: input.investigationId,
+      includeCaseDetail: true,
+      ...(input.maxDepth === undefined ? {} : { maxDepth: input.maxDepth }),
     });
-  };
-}
 
-async function buildCaseEntry(
-  caseId: CaseId,
-  deps: ExportInvestigationDeps,
-  tx: Transaction,
-): Promise<Record<string, unknown>> {
-  const kase = await deps.cases.findById(caseId, tx);
-  const notes = await deps.notes.listByCaseId(caseId, tx);
-  const evidence = await deps.evidence.listByCaseId(caseId, tx);
-  return {
-    caseId,
-    status: kase?.status ?? null,
-    priority: kase?.priority ?? null,
-    riskScore: kase?.riskScore ?? null,
-    customerId: kase?.customerId ?? null,
-    notes: notes.map((note) => ({
-      id: note.id,
-      authorId: note.authorId,
-      body: note.body,
-      createdAt: note.createdAt,
-    })),
-    evidence: evidence.map((item) => ({
-      id: item.id,
-      filename: item.filename,
-      contentType: item.contentType,
-      byteSize: item.byteSize,
-      sha256: item.sha256,
-    })),
-  };
-}
+    const report = CaseReportAggregate.create({
+      id: deps.generateCaseReportId(),
+      caseId: createCaseId(summary.investigation.caseId),
+      organizationId: requireTenantContext(input.auth),
+      generatedBy: input.auth.userId,
+      snapshot: {
+        reportType: 'INVESTIGATION_EXPORT',
+        investigation: summary.investigation,
+        network: summary.network,
+        totals: summary.totals,
+        cases: summary.cases,
+        generatedAt: summary.generatedAt,
+      },
+      now: deps.clock.now(),
+    });
 
-function dedupe(ids: readonly CaseId[]): CaseId[] {
-  const seen = new Set<string>();
-  const result: CaseId[] = [];
-  for (const id of ids) {
-    if (!seen.has(id as string)) {
-      seen.add(id as string);
-      result.push(id);
-    }
-  }
-  return result;
+    await deps.unitOfWork.withTransaction(async (tx) => {
+      await deps.reports.save(report, tx);
+    });
+    return report;
+  };
 }

@@ -52,7 +52,13 @@ import { createAssignedTo } from '../../../../src/modules/case-management/domain
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ORG_1 = oid('org-1');
-const ORG_1_ANALYST = createAuthContext({ userId: oid('analyst-1'), organizationId: ORG_1, actorType: 'USER' });
+const ORG_1_ANALYST = createAuthContext({
+  userId: oid('analyst-1'),
+  organizationId: ORG_1,
+  actorType: 'USER',
+  // Repartir trabajo es del ADMIN: el analista ya no elige su carga.
+  roleId: 'ADMIN',
+});
 const CASE_ID = createCaseId(oid('case-reassign-1'));
 const TARGET_USER = oid('analyst-2');
 

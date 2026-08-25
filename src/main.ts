@@ -12,7 +12,10 @@ import { organizationRouter } from './modules/identity-access/infrastructure/ada
 import { userRouter } from './modules/identity-access/infrastructure/adapters/inbound/http/userRouter.js';
 import { adminOrganizationRouter } from './modules/identity-access/infrastructure/adapters/inbound/http/adminOrganizationRouter.js';
 import { authRouter } from './modules/identity-access/infrastructure/adapters/inbound/http/authRouter.js';
-import { assertAuthConfigSafeForProduction } from './modules/identity-access/infrastructure/adapters/inbound/http/auth/assertAuthConfigSafeForProduction.js';
+import {
+  assertAuthConfigSafeForProduction,
+  DEV_TOKEN_SECRET,
+} from './modules/identity-access/infrastructure/adapters/inbound/http/auth/assertAuthConfigSafeForProduction.js';
 import { resolveAuthContextResolver } from './modules/identity-access/infrastructure/adapters/inbound/http/auth/resolveAuthContextResolver.js';
 import { createAuthContextMiddleware } from './modules/identity-access/infrastructure/adapters/inbound/http/auth/authContextMiddleware.js';
 import { MongoOrganizationRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoOrganizationRepository.js';
@@ -97,6 +100,16 @@ import { MongoInvestigationRepository } from './modules/case-management/infrastr
 import { MongoCaseReportRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseReportRepository.js';
 import { MongoEvidenceRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoEvidenceRepository.js';
 import { FilesystemEvidenceStore } from './modules/case-management/infrastructure/adapters/outbound/storage/FilesystemEvidenceStore.js';
+import { S3EvidenceStore } from './modules/case-management/infrastructure/adapters/outbound/storage/S3EvidenceStore.js';
+import { Rfc3161TimestampAuthority } from './modules/case-management/infrastructure/adapters/outbound/timestamp/Rfc3161TimestampAuthority.js';
+import { ClamAvMalwareScanner } from './modules/case-management/infrastructure/adapters/outbound/antivirus/ClamAvMalwareScanner.js';
+import { DisabledMalwareScanner } from './modules/case-management/infrastructure/adapters/outbound/antivirus/DisabledMalwareScanner.js';
+import { createGenerateCaseAuditDossierUseCase } from './modules/case-management/application/GenerateCaseAuditDossier.js';
+import { createCreateEvidenceDownloadUrlUseCase } from './modules/case-management/application/CreateEvidenceDownloadUrl.js';
+import { CaseReportPdfRenderer } from './modules/case-management/infrastructure/adapters/inbound/http/report/CaseReportPdfRenderer.js';
+import type { EvidenceStore } from './modules/case-management/domain/ports/EvidenceStore.js';
+import type { TimestampAuthority } from './modules/case-management/domain/ports/TimestampAuthority.js';
+import type { MalwareScanner } from './modules/case-management/domain/ports/MalwareScanner.js';
 import { NullTimestampAuthority } from './modules/case-management/infrastructure/adapters/outbound/timestamp/NullTimestampAuthority.js';
 import { MongoUnitOfWork as CaseManagementMongoUnitOfWork } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { generateCaseId } from './modules/case-management/domain/model/value-objects/CaseId.js';
@@ -107,6 +120,7 @@ import { createRouteCaseUseCase } from './modules/case-management/application/Ro
 import { createReassignCaseUseCase } from './modules/case-management/application/ReassignCase.js';
 import { createListCasesUseCase } from './modules/case-management/application/ListCases.js';
 import { createExportCasesUseCase } from './modules/case-management/application/ExportCases.js';
+import { createGetFraudMetricsUseCase } from './modules/case-management/application/GetFraudMetrics.js';
 import { createReopenCaseUseCase } from './modules/case-management/application/ReopenCase.js';
 import { createUpdateCasePriorityTagsUseCase } from './modules/case-management/application/UpdateCasePriorityTags.js';
 import { createBulkCaseActionUseCase } from './modules/case-management/application/BulkCaseAction.js';
@@ -121,14 +135,17 @@ import { createStartReviewUseCase } from './modules/case-management/application/
 import { createOpenInvestigationUseCase } from './modules/case-management/application/OpenInvestigation.js';
 import { createListInvestigationsUseCase } from './modules/case-management/application/ListInvestigations.js';
 import { createGetInvestigationUseCase } from './modules/case-management/application/GetInvestigation.js';
+import { createBuildEntityNetworkGraphUseCase } from './modules/case-management/application/BuildEntityNetworkGraph.js';
+import { createExportInvestigationUseCase } from './modules/case-management/application/ExportInvestigation.js';
+import { createExportInvestigationSummaryUseCase } from './modules/case-management/application/ExportInvestigationSummary.js';
 import { createCloseInvestigationUseCase } from './modules/case-management/application/CloseInvestigation.js';
 import { createUpdateInvestigationFindingsUseCase } from './modules/case-management/application/UpdateInvestigationFindings.js';
 import { createLinkInvestigationCasesUseCase } from './modules/case-management/application/LinkInvestigationCases.js';
 import { createListActiveInvestigationsUseCase } from './modules/case-management/application/ListActiveInvestigations.js';
 import { createUpdateInvestigationStatusUseCase } from './modules/case-management/application/UpdateInvestigationStatus.js';
-import { createExportInvestigationUseCase } from './modules/case-management/application/ExportInvestigation.js';
 import { generateInvestigationId } from './modules/case-management/domain/model/value-objects/InvestigationId.js';
 import { investigationRouter } from './modules/case-management/infrastructure/adapters/inbound/http/investigationRouter.js';
+import { createResolveToReportOrchestrator } from './composition/resolveToReportOrchestrator.js';
 import { createGenerateCaseReportUseCase } from './modules/case-management/application/GenerateCaseReport.js';
 import { createListCaseReportsUseCase } from './modules/case-management/application/ListCaseReports.js';
 import { createGetCaseReportUseCase } from './modules/case-management/application/GetCaseReport.js';
@@ -153,6 +170,26 @@ import { MongoCaseSlaTrackingRepository } from './modules/case-management/infras
 import { ZenRoutingEngine } from './modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { caseRouter } from './modules/case-management/infrastructure/adapters/inbound/http/caseRouter.js';
 import { caseExportRouter } from './modules/case-management/infrastructure/adapters/inbound/http/caseExportRouter.js';
+import { metricsRouter } from './modules/case-management/infrastructure/adapters/inbound/http/metricsRouter.js';
+import { MongoFraudMetricsReader } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoFraudMetricsReader.js';
+// Integracion Finturu (propia de este fork): ingesta por webhook, padron de
+// clientes y consultas en vivo a los proveedores.
+import { createIngestFinturuCaseUseCase } from './modules/case-management/application/IngestFinturuCase.js';
+import { createInitializeCaseSlaService } from './modules/case-management/application/InitializeCaseSla.js';
+import { createSyncFinturuDataUseCase } from './modules/case-management/application/SyncFinturuData.js';
+import { createGetFinturuDirectoryUseCase } from './modules/case-management/application/GetFinturuDirectory.js';
+import { createSyncFinturuDirectoryUseCase } from './modules/case-management/application/SyncFinturuDirectory.js';
+import { DirectorySyncScheduler } from './modules/case-management/application/DirectorySyncScheduler.js';
+import { createOpenFraudCaseUseCase } from './modules/case-management/application/OpenFraudCaseFromCustomer.js';
+import {
+  createLogOutboxPublisher,
+  createPublishOutboxEventsUseCase,
+} from './modules/case-management/application/PublishOutboxEvents.js';
+import { FinturuApiClient } from './modules/case-management/infrastructure/adapters/outbound/finturu/FinturuApiClient.js';
+import { MongoFinturuDirectoryRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoFinturuDirectoryRepository.js';
+import { createOutboxPublishScheduler } from './modules/case-management/infrastructure/scheduler/OutboxPublishScheduler.js';
+import { finturuRouter } from './modules/case-management/infrastructure/adapters/inbound/http/finturuRouter.js';
+import { finturuWebhookRouter } from './modules/case-management/infrastructure/adapters/inbound/http/finturuWebhookRouter.js';
 import { caseManagementErrorStatus } from './modules/case-management/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createCaseManagementAuditRecorderAdapter } from './composition/caseManagementAuditRecorderAdapter.js';
 import { createScreeningAuditRecorderAdapter } from './composition/screeningAuditRecorderAdapter.js';
@@ -161,6 +198,8 @@ import { generateCaseSlaTrackingId } from './modules/case-management/domain/mode
 import { createGetOrganizationFraudConfigUseCase } from './modules/case-management/application/GetOrganizationFraudConfig.js';
 import { createUpsertOrganizationFraudConfigUseCase } from './modules/case-management/application/UpsertOrganizationFraudConfig.js';
 import { createRecordAnalystDecisionUseCase } from './modules/case-management/application/RecordAnalystDecision.js';
+import { createRequestEnforcementActionUseCase } from './modules/case-management/application/RequestEnforcementAction.js';
+import { createListCaseDecisionsUseCase } from './modules/case-management/application/ListCaseDecisions.js';
 import { createApproveEnforcementActionUseCase } from './modules/case-management/application/ApproveEnforcementAction.js';
 import { createRejectEnforcementActionUseCase } from './modules/case-management/application/RejectEnforcementAction.js';
 import { createExecuteEnforcementActionUseCase } from './modules/case-management/application/ExecuteEnforcementAction.js';
@@ -175,6 +214,7 @@ import { organizationFraudConfigRouter } from './modules/case-management/infrast
 import { enforcementRouter } from './modules/case-management/infrastructure/adapters/inbound/http/enforcementRouter.js';
 import { approvalRequestRouter } from './modules/case-management/infrastructure/adapters/inbound/http/approvalRequestRouter.js';
 import { createReviewApprovalRequestUseCase } from './modules/case-management/application/ReviewApprovalRequest.js';
+import { createListApprovalRequestsUseCase } from './modules/case-management/application/ListApprovalRequests.js';
 import { routingRuleRouter } from './modules/case-management/infrastructure/adapters/inbound/http/routingRuleRouter.js';
 import { MongoAnalystDecisionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoAnalystDecisionRepository.js';
 import { MongoEnforcementActionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoEnforcementActionRepository.js';
@@ -259,7 +299,11 @@ const PLATFORM_ADMIN_AUTH = process.env.PLATFORM_ADMIN_AUTH ?? 'disabled';
 // wire) so a future key rotation only needs to bump this and start a new
 // AesGcmSecretCipher instance; old tokens under the old version simply fail
 // to decrypt (`decrypt` returns null, never throws).
-const TOKEN_SECRET = process.env.TOKEN_SECRET ?? 'dev-only-insecure-token-secret';
+// NOSONAR (S2068): `DEV_TOKEN_SECRET` no es una credencial, es el valor
+// por defecto de desarrollo. `assertAuthConfigSafeForProduction` aborta el
+// arranque si sigue puesto con NODE_ENV=production, asi que no puede llegar
+// a un despliegue real.
+const TOKEN_SECRET = process.env.TOKEN_SECRET ?? DEV_TOKEN_SECRET; // NOSONAR
 const TOKEN_KEY_VERSION = Number(process.env.TOKEN_KEY_VERSION ?? 1);
 // Fail-safe default `false` (design D-A7/§4a): a production deployment
 // behind a real reverse proxy MUST set TRUST_PROXY explicitly, or `req.ip`
@@ -295,6 +339,42 @@ const AUTH_PASSWORD_RESET_TTL_SECONDS = Number(process.env.AUTH_PASSWORD_RESET_T
 const PASSWORD_RESET_EMAIL_FROM = process.env.PASSWORD_RESET_EMAIL_FROM ?? 'fraud@backendstudio.tech';
 const NOTIFICATION_EMAIL_FROM = process.env.NOTIFICATION_EMAIL_FROM ?? PASSWORD_RESET_EMAIL_FROM;
 const EVIDENCE_STORAGE_DIR = process.env.EVIDENCE_STORAGE_DIR ?? './.evidence';
+/**
+ * Almacen de evidencias. `EVIDENCE_S3_BUCKET` presente = S3 (INV-002/004);
+ * ausente = filesystem local, que sirve en desarrollo pero NO sabe emitir URLs
+ * prefirmadas. Las credenciales no se leen aqui: las resuelve la cadena por
+ * defecto del SDK (rol de la instancia, perfil, entorno).
+ */
+/**
+ * Variable opcional que ACTIVA una función cuando está presente.
+ *
+ * Trata la cadena vacía como ausente. `TSA_URL=` en un `.env` produce `''`,
+ * que no es `undefined`, así que un simple `process.env.X` encendía la función
+ * con una URL vacía y fallaba en tiempo de ejecución en vez de quedarse
+ * apagada. Quien deja la variable en blanco está diciendo «esto no», no
+ * «esto, con el valor vacío».
+ */
+function optionalEnv(name: string): string | undefined {
+  const raw = process.env[name];
+  return raw === undefined || raw.trim() === '' ? undefined : raw.trim();
+}
+
+const EVIDENCE_S3_BUCKET = optionalEnv('EVIDENCE_S3_BUCKET');
+const EVIDENCE_S3_REGION = process.env.EVIDENCE_S3_REGION ?? 'us-east-1';
+const EVIDENCE_S3_PREFIX = optionalEnv('EVIDENCE_S3_PREFIX');
+const EVIDENCE_S3_ENDPOINT = optionalEnv('EVIDENCE_S3_ENDPOINT');
+/**
+ * TSA RFC 3161 (INV-003). Sin `TSA_URL` no se sella: la evidencia se registra
+ * igual con su SHA-256, pero sin sello de tiempo oponible a un tercero.
+ */
+const TSA_URL = optionalEnv('TSA_URL');
+const TSA_AUTHORITY_NAME = optionalEnv('TSA_AUTHORITY_NAME') ?? TSA_URL ?? 'unknown';
+/**
+ * Antivirus (INV-015). Sin `CLAMAV_HOST` los ficheros se marcan SKIPPED — que
+ * es lo que de verdad ocurrio— en vez de CLEAN.
+ */
+const CLAMAV_HOST = optionalEnv('CLAMAV_HOST');
+const CLAMAV_PORT = Number(process.env.CLAMAV_PORT ?? 3310);
 const PASSWORD_RESET_LINK_BASE_URL = process.env.PASSWORD_RESET_LINK_BASE_URL ?? 'http://localhost:3000/reset-password';
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 /** Poll interval for customer_outgoing_events webhook dispatcher (PR5). */
@@ -308,6 +388,7 @@ const OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS = Number(
  * against the same due rows; `markNotified` idempotency is the only guard.
  */
 const SLA_SWEEP_INTERVAL_MS = Number(process.env.SLA_SWEEP_INTERVAL_MS ?? 60_000);
+const OUTBOX_PUBLISH_INTERVAL_MS = Number(process.env.OUTBOX_PUBLISH_INTERVAL_MS ?? 60_000);
 /**
  * screening-watchlist-matcher Slice 7 (design "KEY DECISION — Atlas Search
  * testability"): selects the blocking-layer candidate adapter.
@@ -324,7 +405,12 @@ async function bootstrap(): Promise<void> {
   // Fail-closed (design D4, D6): AUTH_MODE=trusted-header trusts client
   // headers verbatim and must never run in production; PLATFORM_ADMIN_AUTH=
   // trusted-header is likewise production-forbidden for every tier.
-  assertAuthConfigSafeForProduction(process.env.NODE_ENV, AUTH_MODE, PLATFORM_ADMIN_AUTH);
+  assertAuthConfigSafeForProduction(
+    process.env.NODE_ENV,
+    AUTH_MODE,
+    PLATFORM_ADMIN_AUTH,
+    process.env.TOKEN_SECRET,
+  );
 
   const { client, db } = await connectMongo(MONGO_URI, MONGO_DB_NAME);
   const clock = new SystemClock();
@@ -448,6 +534,14 @@ async function bootstrap(): Promise<void> {
   const caseRoutingEngine = new ZenRoutingEngine();
   const organizationFraudConfig = new MongoOrganizationFraudConfigRepository(db);
   const caseSlaTracking = new MongoCaseSlaTrackingRepository(db);
+  const caseReports = new MongoCaseReportRepository(db);
+  // Suben aqui, con el resto de repositorios: `GenerateCaseReport` los
+  // necesita para congelar la evidencia y las aprobaciones, y se cablea
+  // antes que los routers que los usaban originalmente.
+  const evidence = new MongoEvidenceRepository(db);
+  const approvalRequests = new MongoApprovalRequestRepository(db);
+  const analystDecisions = new MongoAnalystDecisionRepository(db);
+  const enforcementActions = new MongoEnforcementActionRepository(db);
   const routeCase = createRouteCaseUseCase({
     cases,
     routingRules: caseRoutingRules,
@@ -477,12 +571,170 @@ async function bootstrap(): Promise<void> {
     routeCase,
     calculateSla,
   });
+  // ---------------------------------------------------------------------
+  // Integracion Finturu (propia de este fork).
+  //
+  // `initializeCaseSla` es el gemelo de `calculateSla` para las vias que
+  // necesitan la fecha limite ANTES de construir el agregado (la ingesta crea
+  // el caso ya con `dueDate` en un solo `save`). Escribe el mismo
+  // `CaseSlaTracking` sobre el mismo repositorio, asi que ambas vias dejan los
+  // mismos datos.
+  // ---------------------------------------------------------------------
+  const initializeCaseSla = createInitializeCaseSlaService({
+    slaTracking: caseSlaTracking,
+    fraudConfig: organizationFraudConfig,
+    generateCaseSlaTrackingId,
+  });
+
+  const ingestFinturuCase = createIngestFinturuCaseUseCase({
+    cases,
+    timelineRecorder: caseTimelineRecorder,
+    outbox: outboxEvents,
+    unitOfWork: caseManagementUnitOfWork,
+    clock,
+    generateCaseId,
+    generateTimelineEventId,
+    generateOutboxEventId,
+    auditRecorder: caseManagementAuditRecorder,
+    initializeCaseSla,
+    routeCase,
+  });
+
+  const finturuApiClient = new FinturuApiClient({
+    baseUrl: process.env.FINTURU_API_URL ?? 'http://localhost:3001',
+    encryptionKey: process.env.FRAUD_DEPARTMENT_KEY,
+    timeoutMs: Number(process.env.FINTURU_TIMEOUT_MS ?? 10_000),
+  });
+
+  const syncFinturuData = createSyncFinturuDataUseCase({
+    finturuClient: finturuApiClient,
+    ingestFinturuCase,
+    defaultOrganizationId: process.env.DEFAULT_ORGANIZATION_ID ?? '019d7e58aed0777318d11d4d',
+  });
+
+  // El directorio se sirve desde una copia local: recorrer Bridge en vivo
+  // cuesta minutos. `syncFinturuDirectory` la refresca, `getFinturuDirectory`
+  // solo lee.
+  const finturuDirectory = new MongoFinturuDirectoryRepository(db);
+
+  const getFinturuDirectory = createGetFinturuDirectoryUseCase({
+    directory: finturuDirectory,
+    cases,
+    defaultOrganizationId: process.env.DEFAULT_ORGANIZATION_ID ?? '019d7e58aed0777318d11d4d',
+  });
+
+  // Cliente aparte para el sync. `finturuApiClient` corta a los 10 s porque
+  // sirve peticiones interactivas, donde rendirse rapido es lo correcto; los
+  // listados completos que recorre el sync tardan minutos y necesitan
+  // paciencia, no reintentos.
+  const finturuSyncClient = new FinturuApiClient({
+    baseUrl: process.env.FINTURU_API_URL ?? 'http://localhost:3001',
+    encryptionKey: process.env.FRAUD_DEPARTMENT_KEY,
+    timeoutMs: Number(process.env.FINTURU_SYNC_TIMEOUT_MS ?? 600_000),
+  });
+
+  const syncFinturuDirectory = createSyncFinturuDirectoryUseCase({
+    finturuClient: finturuSyncClient,
+    directory: finturuDirectory,
+    clock,
+  });
+
+  const directorySyncScheduler = new DirectorySyncScheduler({
+    syncDirectory: syncFinturuDirectory,
+    intervalMinutes: Number(process.env.FINTURU_DIRECTORY_SYNC_MINUTES ?? 360),
+  });
+
+  const openFraudCase = createOpenFraudCaseUseCase({
+    cases,
+    timelineRecorder: caseTimelineRecorder,
+    outbox: outboxEvents,
+    unitOfWork: caseManagementUnitOfWork,
+    clock,
+    generateCaseId,
+    generateTimelineEventId,
+    generateOutboxEventId,
+    auditRecorder: caseManagementAuditRecorder,
+    initializeCaseSla,
+  });
+
+  // El otro extremo del outbox: los eventos entran en la misma transaccion que
+  // el caso —la parte dificil, la que garantiza que no se pierdan— pero sin un
+  // relay se quedaban en PENDING indefinidamente.
+  const publishOutboxEvents = createPublishOutboxEventsUseCase({
+    outbox: outboxEvents,
+    publisher: createLogOutboxPublisher(),
+    clock,
+  });
+
+  const outboxPublishScheduler = createOutboxPublishScheduler({ publishOutboxEvents });
+
+  const caseManagementFinturuRouter = finturuRouter({
+    syncFinturuData,
+    getFinturuDirectory,
+    directorySyncScheduler,
+    openFraudCase,
+    finturuClient: finturuApiClient,
+  });
+
+  const finturuWebhook = finturuWebhookRouter({
+    ingestFinturuCase,
+    defaultOrganizationId: process.env.DEFAULT_ORGANIZATION_ID ?? '019d7e58aed0777318d11d4d',
+    encryptionKey: process.env.FRAUD_DEPARTMENT_KEY,
+  });
+
   const caseExportHttpRouter = caseExportRouter({
     exportCases: createExportCasesUseCase({ cases }),
+  });
+  const caseMetricsHttpRouter = metricsRouter({
+    getFraudMetrics: createGetFraudMetricsUseCase({
+      metrics: new MongoFraudMetricsReader(db),
+      clock,
+      assignees: assigneeDirectory,
+    }),
   });
   const getOrganizationFraudConfig = createGetOrganizationFraudConfigUseCase({
     repository: organizationFraudConfig,
   });
+  /*
+   * Compartido: lo usa el router de informes (generacion manual) y el
+   * orquestador que lo dispara solo al resolver. Una sola instancia para que
+   * no puedan divergir.
+   */
+  const generateCaseReport = createGenerateCaseReportUseCase({
+    cases,
+    timelineReader: caseTimelineReader,
+    notes: caseNotes,
+    investigations,
+    resolutions,
+    enforcementActions,
+    analystDecisions,
+    evidence,
+    approvalRequests,
+    slaTracking: caseSlaTracking,
+    assignees: assigneeDirectory,
+    reports: caseReports,
+    auditRecorder: caseManagementAuditRecorder,
+    unitOfWork: caseManagementUnitOfWork,
+    clock,
+    generateCaseReportId,
+  });
+
+  /**
+   * Compartido: lo sirve `/investigations/:id/summary` en vivo y lo consume
+   * `ExportInvestigation` para congelarlo. Una sola instancia para que la
+   * vista y el documento entregado no puedan divergir.
+   */
+  const exportInvestigationSummary = createExportInvestigationSummaryUseCase({
+    cases,
+    investigations,
+    decisions: analystDecisions,
+    enforcementActions,
+    notes: caseNotes,
+    evidence,
+    buildEntityNetworkGraph: createBuildEntityNetworkGraphUseCase({ cases, investigations }),
+    clock,
+  });
+
   const caseManagementCasesRouter = caseRouter({
     createCase,
     reassignCase: createReassignCaseUseCase({
@@ -540,17 +792,21 @@ async function bootstrap(): Promise<void> {
       generateTimelineEventId,
     }),
     listCaseNotes: createListCaseNotesUseCase({ cases, notes: caseNotes }),
-    resolveCase: createResolveCaseUseCase({
-      cases,
-      resolutions,
-      timelineRecorder: caseTimelineRecorder,
-      auditRecorder: caseManagementAuditRecorder,
-      unitOfWork: caseManagementUnitOfWork,
-      clock,
-      generateResolutionId,
-      generateTimelineEventId,
-      outbox: outboxEvents,
-      generateOutboxEventId,
+    // Al resolver, el informe se congela solo. Ver `resolveToReportOrchestrator`.
+    resolveCase: createResolveToReportOrchestrator({
+      resolveCase: createResolveCaseUseCase({
+        cases,
+        resolutions,
+        timelineRecorder: caseTimelineRecorder,
+        auditRecorder: caseManagementAuditRecorder,
+        unitOfWork: caseManagementUnitOfWork,
+        clock,
+        generateResolutionId,
+        generateTimelineEventId,
+        outbox: outboxEvents,
+        generateOutboxEventId,
+      }),
+      generateCaseReport,
     }),
     archiveCase: createArchiveCaseUseCase({
       cases,
@@ -571,8 +827,6 @@ async function bootstrap(): Promise<void> {
       generateTimelineEventId,
     }),
   });
-  const caseReports = new MongoCaseReportRepository(db);
-  const evidence = new MongoEvidenceRepository(db);
   const investigationHttpRouter = investigationRouter({
     openInvestigation: createOpenInvestigationUseCase({
       cases,
@@ -584,6 +838,15 @@ async function bootstrap(): Promise<void> {
     }),
     listInvestigations: createListInvestigationsUseCase({ cases, investigations }),
     getInvestigation: createGetInvestigationUseCase({ investigations }),
+    buildEntityNetworkGraph: createBuildEntityNetworkGraphUseCase({ cases, investigations }),
+    exportInvestigationSummary,
+    exportInvestigation: createExportInvestigationUseCase({
+      exportInvestigationSummary,
+      reports: caseReports,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateCaseReportId,
+    }),
     closeInvestigation: createCloseInvestigationUseCase({
       investigations,
       auditRecorder: caseManagementAuditRecorder,
@@ -611,16 +874,6 @@ async function bootstrap(): Promise<void> {
       unitOfWork: caseManagementUnitOfWork,
       clock,
     }),
-    exportInvestigation: createExportInvestigationUseCase({
-      investigations,
-      cases,
-      notes: caseNotes,
-      evidence,
-      reports: caseReports,
-      unitOfWork: caseManagementUnitOfWork,
-      clock,
-      generateCaseReportId,
-    }),
   });
   const organizationFraudConfigHttpRouter = organizationFraudConfigRouter({
     getOrganizationFraudConfig,
@@ -629,35 +882,70 @@ async function bootstrap(): Promise<void> {
       clock,
     }),
   });
-  const analystDecisions = new MongoAnalystDecisionRepository(db);
-  const enforcementActions = new MongoEnforcementActionRepository(db);
+  const evidenceStore: EvidenceStore =
+    EVIDENCE_S3_BUCKET === undefined
+      ? new FilesystemEvidenceStore(EVIDENCE_STORAGE_DIR)
+      : new S3EvidenceStore({
+          bucket: EVIDENCE_S3_BUCKET,
+          region: EVIDENCE_S3_REGION,
+          ...(EVIDENCE_S3_PREFIX === undefined ? {} : { prefix: EVIDENCE_S3_PREFIX }),
+          ...(EVIDENCE_S3_ENDPOINT === undefined
+            ? {}
+            : { endpoint: EVIDENCE_S3_ENDPOINT, forcePathStyle: true }),
+        });
+  console.log(
+    EVIDENCE_S3_BUCKET === undefined
+      ? `Evidence store: filesystem (${EVIDENCE_STORAGE_DIR}) — presigned URLs unavailable`
+      : `Evidence store: S3 bucket ${EVIDENCE_S3_BUCKET} (${EVIDENCE_S3_REGION})`,
+  );
+
+  const timestampAuthority: TimestampAuthority =
+    TSA_URL === undefined
+      ? new NullTimestampAuthority()
+      : new Rfc3161TimestampAuthority({ url: TSA_URL, authorityName: TSA_AUTHORITY_NAME });
+  console.log(
+    TSA_URL === undefined
+      ? 'RFC3161 timestamping: DISABLED — evidence is hashed but not sealed'
+      : `RFC3161 timestamping: ${TSA_AUTHORITY_NAME}`,
+  );
+
+  const malwareScanner: MalwareScanner =
+    CLAMAV_HOST === undefined
+      ? new DisabledMalwareScanner()
+      : new ClamAvMalwareScanner({ host: CLAMAV_HOST, port: CLAMAV_PORT });
+  console.log(
+    CLAMAV_HOST === undefined
+      ? 'Malware scanning: DISABLED — uploads are recorded as SKIPPED, not CLEAN'
+      : `Malware scanning: clamd at ${CLAMAV_HOST}:${CLAMAV_PORT}`,
+  );
+
   const reportHttpRouter = reportRouter({
-    generateCaseReport: createGenerateCaseReportUseCase({
-      cases,
-      timelineReader: caseTimelineReader,
-      notes: caseNotes,
-      investigations,
-      resolutions,
-      enforcementActions,
-      analystDecisions,
-      reports: caseReports,
-      auditRecorder: caseManagementAuditRecorder,
-      unitOfWork: caseManagementUnitOfWork,
-      clock,
-      generateCaseReportId,
-    }),
+    generateCaseReport,
     listCaseReports: createListCaseReportsUseCase({ cases, reports: caseReports }),
     getCaseReport: createGetCaseReportUseCase({ reports: caseReports }),
+    generateCaseAuditDossier: createGenerateCaseAuditDossierUseCase({
+      cases,
+      reports: caseReports,
+      evidence,
+      evidenceStore,
+      timelineRecorder: caseTimelineRecorder,
+      renderReportPdf: (report) => new CaseReportPdfRenderer().render(report),
+      clock,
+    }),
   });
-  const evidenceStore = new FilesystemEvidenceStore(EVIDENCE_STORAGE_DIR);
-  const timestampAuthority = new NullTimestampAuthority();
   const evidenceHttpRouter = evidenceRouter({
+    createEvidenceDownloadUrl: createCreateEvidenceDownloadUrlUseCase({
+      evidence,
+      evidenceStore,
+      clock,
+    }),
     registerEvidence: createRegisterEvidenceUseCase({
       cases,
       investigations,
       evidence,
       evidenceStore,
       timestampAuthority,
+      malwareScanner,
       timelineRecorder: caseTimelineRecorder,
       auditRecorder: caseManagementAuditRecorder,
       unitOfWork: caseManagementUnitOfWork,
@@ -687,12 +975,12 @@ async function bootstrap(): Promise<void> {
       generateTimelineEventId,
     }),
   });
-  const approvalRequests = new MongoApprovalRequestRepository(db);
   const customerOutgoingEvents = new MongoCustomerOutgoingEventRepository(db);
   const outgoingWebhookClient = new HttpOutgoingWebhookClient();
   const customerOutgoingEventDispatcher = createCustomerOutgoingEventDispatcher({
     outgoingEvents: customerOutgoingEvents,
     webhookClient: outgoingWebhookClient,
+    fraudConfig: organizationFraudConfig,
     clock,
   });
   // casemgmt-notifications-sla-sweep PR2 (Slice 13): advances due
@@ -712,14 +1000,34 @@ async function bootstrap(): Promise<void> {
       cases,
       decisions: analystDecisions,
       enforcementActions,
+      approvalRequests,
       timelineRecorder: caseTimelineRecorder,
       auditRecorder: caseManagementAuditRecorder,
+      notificationSender: caseManagementNotificationSender,
+      assigneeDirectory,
       unitOfWork: caseManagementUnitOfWork,
       clock,
       generateAnalystDecisionId,
       generateEnforcementActionId,
+      generateApprovalRequestId,
       generateTimelineEventId,
     }),
+    requestEnforcementAction: createRequestEnforcementActionUseCase({
+      cases,
+      decisions: analystDecisions,
+      enforcementActions,
+      approvalRequests,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      notificationSender: caseManagementNotificationSender,
+      assigneeDirectory,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateEnforcementActionId,
+      generateApprovalRequestId,
+      generateTimelineEventId,
+    }),
+    listCaseDecisions: createListCaseDecisionsUseCase({ cases, analystDecisions }),
     approveEnforcementAction: createApproveEnforcementActionUseCase({
       enforcementActions,
       approvalRequests,
@@ -765,6 +1073,10 @@ async function bootstrap(): Promise<void> {
       auditRecorder: caseManagementAuditRecorder,
       unitOfWork: caseManagementUnitOfWork,
       clock,
+    }),
+    listApprovalRequests: createListApprovalRequestsUseCase({
+      enforcementActions,
+      approvalRequests,
     }),
   });
   const routingRuleHttpRouter = routingRuleRouter({
@@ -1068,6 +1380,12 @@ async function bootstrap(): Promise<void> {
   // lifecycle") adds the three `requirePlatformAdmin`-gated key-lifecycle
   // routes on this same router — one-time download, rotation, revocation.
   const identityAccessAdminOrganizationsRouter = adminOrganizationRouter({
+    // Sin `db` el paso 1 no puede resolver a que super admin pertenece el
+    // reto: cae al correo por defecto, manda el OTP a una direccion que nadie
+    // controla y nunca persiste el secreto TOTP.
+    db,
+    // Paso 2 del login de super admin: el OTP viaja por este remitente.
+    emailSender,
     provisionAdminOrganization: createProvisionAdminOrganizationUseCase({
       admins,
       keyPairs: adminKeyPairGenerator,
@@ -1126,6 +1444,19 @@ async function bootstrap(): Promise<void> {
   // Constructed here, not imported into `application/`, because `application`
   // may only depend on its own module's `domain` (eslint `boundaries`).
   const dummyCredential = createPasswordCredential(DUMMY_PASSWORD_HASH);
+
+  // Se comparte entre el paso 1 y el paso 3 del login de organizacion: el paso
+  // 1 lo usa para rechazar credenciales invalidas ANTES de enviar el OTP, y el
+  // paso 3 vuelve a verificarlas antes de emitir la sesion.
+  const organizationAuthenticator = createAuthenticateActorUseCase({
+    gateway: new OrganizationActorGateway(organizations),
+    passwordHasher,
+    clock,
+    dummyCredential,
+    actorType: 'ORGANIZATION',
+    auditRecorder,
+  });
+
   const identityAccessAuthRouter = authRouter({
     beginUserLogin: createBeginUserLoginUseCase({
       authenticateActor: createAuthenticateActorUseCase({
@@ -1143,15 +1474,16 @@ async function bootstrap(): Promise<void> {
       challengeTtlSeconds: AUTH_MFA_CHALLENGE_TTL_SECONDS,
       enrollmentTtlSeconds: AUTH_MFA_ENROLLMENT_TTL_SECONDS,
     }),
+    // Sin esto el paso 1 acepta cualquier email: responde OTP_REQUIRED y
+    // dispara un correo a esa direccion, dejando la verificacion de
+    // credenciales para el paso 3.
+    authenticateOrganization: organizationAuthenticator,
+    // Sin estas dos, el login de organizacion se degrada en silencio: el paso 1
+    // no manda el OTP y los pasos 2-3 no leen ni guardan el secreto TOTP.
+    emailSender,
+    db,
     issueOrganizationSession: createIssueOrganizationSessionUseCase({
-      authenticateActor: createAuthenticateActorUseCase({
-        gateway: new OrganizationActorGateway(organizations),
-        passwordHasher,
-        clock,
-        dummyCredential,
-        actorType: 'ORGANIZATION',
-        auditRecorder,
-      }),
+      authenticateActor: organizationAuthenticator,
       issueSessionFor: sessionIssuer,
       unitOfWork,
       clock,
@@ -1205,6 +1537,7 @@ async function bootstrap(): Promise<void> {
     resolveAuthContextResolver(AUTH_MODE, {
       sessionTokenService,
       sessionRepository: sessions,
+      userRepositoryFactory,
       platformAdminAuth: PLATFORM_ADMIN_AUTH,
     }),
   );
@@ -1223,7 +1556,10 @@ async function bootstrap(): Promise<void> {
   // on the SAME authenticated `/api/v1` router — rely on
   // `authContextMiddleware` above to resolve the caller's AuthContext.
   identityAccessRouter.use(caseExportHttpRouter);
+  identityAccessRouter.use(caseMetricsHttpRouter);
   identityAccessRouter.use(caseManagementCasesRouter);
+  identityAccessRouter.use(caseManagementFinturuRouter);
+  identityAccessRouter.use(finturuWebhook);
   identityAccessRouter.use(investigationHttpRouter);
   identityAccessRouter.use(reportHttpRouter);
   identityAccessRouter.use(evidenceHttpRouter);
@@ -1239,7 +1575,13 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(inboundWebhookSecretHttpRouter);
 
   const app = createApp({
-    routers: [{ path: '/api/v1', router: identityAccessRouter }],
+    routers: [
+      { path: '/api/v1', router: identityAccessRouter },
+      // Finturu llama sin sesion, asi que el webhook se expone tambien fuera
+      // de `/api/v1`. Va en `routers` y no en `webhookRouters` porque su
+      // payload se descifra ya deserializado, no sobre los bytes crudos.
+      { path: '/', router: finturuWebhook },
+    ],
     webhookRouters: [{ path: '/webhooks', router: ingestWebhookRouter }],
     // Merged status maps: identity-access + notifications + case-management
     // + risk-assessment + screening + ingest closed error codes. Overlapping
@@ -1282,6 +1624,12 @@ async function bootstrap(): Promise<void> {
 
   slaSweepScheduler.start(SLA_SWEEP_INTERVAL_MS);
   console.log(`SLA sweep scheduler started (interval=${SLA_SWEEP_INTERVAL_MS}ms)`);
+
+  directorySyncScheduler.start();
+  console.log('Finturu directory sync scheduler started');
+
+  outboxPublishScheduler.start(OUTBOX_PUBLISH_INTERVAL_MS);
+  console.log(`Outbox publish scheduler started (interval=${OUTBOX_PUBLISH_INTERVAL_MS}ms)`);
 
   app.listen(PORT, () => {
     console.log(`anti-fraud-department listening on port ${PORT}`);

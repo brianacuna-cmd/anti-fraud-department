@@ -10,7 +10,7 @@ import { createUserId } from '../domain/model/value-objects/UserId.js';
 import { createRoleId } from '../domain/model/value-objects/RoleId.js';
 import { userNotFound, roleNotAssignable } from '../domain/errors/IdentityAccessError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireOrganizationActor } from './authorization/requireOrganizationActor.js';
+import { requireUserRole, USER_MANAGE_ROLES } from './authorization/requireUserRole.js';
 
 export interface ChangeUserRoleInput {
   readonly auth: AuthContext;
@@ -37,7 +37,8 @@ export interface ChangeUserRoleDeps {
  */
 export function createChangeUserRoleUseCase(deps: ChangeUserRoleDeps) {
   return async function changeUserRole(input: ChangeUserRoleInput): Promise<User> {
-    requireOrganizationActor(input.auth);
+    // role-authorization: ORGANIZATION o USER con rol ADMIN pueden cambiar roles.
+    await requireUserRole(input.auth, deps.userRepositoryFactory, USER_MANAGE_ROLES, 'change user roles');
     const organizationId = createOrganizationId(requireTenantContext(input.auth));
     const repository = deps.userRepositoryFactory.forTenant(organizationId);
 

@@ -3,7 +3,7 @@ import type { NotificationPreferenceRepository } from '../domain/ports/Notificat
 import { createOrganizationId } from '../domain/model/value-objects/OrganizationId.js';
 import { createUserId } from '../domain/model/value-objects/UserId.js';
 import { ALERT_TYPES, type AlertType } from '../domain/model/value-objects/AlertType.js';
-import { CHANNELS, type NotificationChannel } from '../domain/model/value-objects/NotificationChannel.js';
+import { CONFIGURABLE_CHANNELS, type NotificationChannel } from '../domain/model/value-objects/NotificationChannel.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 
 export interface GetNotificationPreferencesInput {
@@ -36,7 +36,7 @@ export function createGetNotificationPreferencesUseCase(deps: GetNotificationPre
     const rows = await deps.repository.findByUser(organizationId, userId);
 
     return ALERT_TYPES.flatMap((alertType) =>
-      CHANNELS.map((channel) => {
+      CONFIGURABLE_CHANNELS.map((channel) => {
         const row = rows.find((candidate) => candidate.alertType === alertType && candidate.channel === channel);
         return {
           alertType,

@@ -15,6 +15,8 @@ import { CaseSlaTracking } from '../domain/model/aggregates/CaseSlaTracking.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { createCasePriority } from '../domain/model/value-objects/CasePriority.js';
+import { assertAssigned } from '../domain/services/AssignmentGate.js';
+import { assertNotClosed } from '../domain/services/ClosedCaseGate.js';
 import {
   caseNotFound,
   forbiddenCrossTenant,
@@ -22,11 +24,9 @@ import {
   organizationFraudConfigNotFound,
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
+import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
 
 const MS_PER_MINUTE = 60_000;
-const UPDATE_PRIORITY_TAGS_ROLES = ['ANALYST', 'SUPERVISOR', 'ADMIN'] as const;
-
 export interface UpdateCasePriorityTagsInput {
   readonly auth: AuthContext;
   readonly caseId: string;
@@ -47,7 +47,7 @@ export interface UpdateCasePriorityTagsDeps {
 }
 
 /**
- * PATCH /cases/:id/priority-tags. Role-gated to ANALYST|SUPERVISOR|ADMIN via
+ * PATCH /cases/:id/priority-tags. Role-gated to ANALYST|SUPERVISOR via
  * `auth.roleId` (triage operation). Replaces the whole `tags` array and sets
  * `priority`. When the priority actually changes, recomputes the SLA dueDate
  * from org fraud config minutes and resets (or creates) CaseSlaTracking,
@@ -60,7 +60,7 @@ export function createUpdateCasePriorityTagsUseCase(deps: UpdateCasePriorityTags
   return async function updateCasePriorityTags(
     input: UpdateCasePriorityTagsInput,
   ): Promise<Case> {
-    requireRole(input.auth, UPDATE_PRIORITY_TAGS_ROLES);
+    requireOperationalRole(input.auth, CASE_WORK_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const caseId = createCaseId(input.caseId);
     const nextPriority = createCasePriority(input.priority);
@@ -74,6 +74,10 @@ export function createUpdateCasePriorityTagsUseCase(deps: UpdateCasePriorityTags
       if (existing.organizationId !== organizationId) {
         throw forbiddenCrossTenant('case does not belong to the actor organization');
       }
+      // Sin responsable el expediente esta congelado. Ver `AssignmentGate`.
+      assertAssigned(existing);
+      // Un expediente cerrado no se instruye. Ver `ClosedCaseGate`.
+      assertNotClosed(existing);
 
       const previousPriority = existing.priority;
       const previousTags = [...existing.tags];

@@ -138,7 +138,7 @@ describe('createCreateUserUseCase', () => {
     expect(user.roleId).toBe('SUPERVISOR');
   });
 
-  it('rejects a USER-tier actor with FORBIDDEN_CROSS_TENANT before any user is persisted', async () => {
+  it('rejects a non-ADMIN USER-tier actor with FORBIDDEN_ROLE before any user is persisted', async () => {
     const { createUser, userRepositoryFactory } = buildUseCase();
 
     expect.assertions(3);
@@ -153,7 +153,7 @@ describe('createCreateUserUseCase', () => {
       });
     } catch (error) {
       expect(error).toBeInstanceOf(IdentityAccessError);
-      expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('FORBIDDEN_CROSS_TENANT');
+      expect((error as InstanceType<typeof IdentityAccessError>).code).toBe('FORBIDDEN_ROLE');
     }
     const list = await userRepositoryFactory.forTenant(createOrganizationId(oid('org-1'))).list(10);
     expect(list.items).toHaveLength(0);

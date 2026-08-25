@@ -1,6 +1,7 @@
 import type { Request } from 'express';
 import type { AuthContext } from '../kernel/AuthContext.js';
 import { AuthScopeError } from '../kernel/AuthScopeError.js';
+import { UnauthenticatedError } from '../kernel/UnauthenticatedError.js';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -30,7 +31,10 @@ export function attachAuthContext(req: Request, auth: AuthContext): void {
  */
 export function requireAuthContextAnyScope(req: Request): AuthContext {
   if (!req.authContext) {
-    throw new Error('AuthContext missing on request — authContextMiddleware must run before this route');
+    // Un token ausente/expirado/revocado hace que el resolver no adjunte
+    // nada — es un 401 de request, no un bug de wiring (el middleware
+    // siempre corre; simplemente no resolvió nada).
+    throw new UnauthenticatedError();
   }
   return req.authContext;
 }

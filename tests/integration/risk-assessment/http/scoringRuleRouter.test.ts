@@ -94,7 +94,7 @@ describe('scoringRuleRouter (HTTP)', () => {
       createAuthContext({
         userId: oid('user-1'),
         organizationId: oid('org-1'),
-        roleId: 'ADMIN',
+        roleId: 'SUPERVISOR',
       }),
     );
 
@@ -156,7 +156,7 @@ describe('scoringRuleRouter (HTTP)', () => {
     const auth = createAuthContext({
       userId: oid('user-1'),
       organizationId: oid('org-1'),
-      roleId: 'ADMIN',
+      roleId: 'SUPERVISOR',
     });
     const { app, auditRecorder } = buildApp(() => auth);
 

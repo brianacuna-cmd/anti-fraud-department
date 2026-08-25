@@ -214,7 +214,7 @@ describe('createExecuteEnforcementActionUseCase', () => {
     const { executeEnforcementAction, outgoingEvents } = buildUseCase({ seedAction: review });
 
     const result = await executeEnforcementAction({
-      auth: ADMIN,
+      auth: SUPERVISOR,
       enforcementActionId: review.id,
     });
 
@@ -344,19 +344,17 @@ describe('createExecuteEnforcementActionUseCase', () => {
     expect(outgoingEvents.all()).toHaveLength(0);
   });
 
-  it('rejects ANALYST and AUDITOR with FORBIDDEN_ROLE', async () => {
+  /** ADMIN incluido: ejecutar una sancion es operacion, no gobierno (SoD). */
+  it.each([
+    ['ANALYST', () => ANALYST],
+    ['AUDITOR', () => AUDITOR],
+    ['ADMIN', () => ADMIN],
+  ])('rejects %s with FORBIDDEN_ROLE', async (_role, actor) => {
     const { executeEnforcementAction } = buildUseCase({ seedAction: buildApprovedAction() });
 
     await expect(
       executeEnforcementAction({
-        auth: ANALYST,
-        enforcementActionId: ACTION_ID,
-      }),
-    ).rejects.toMatchObject({ code: 'FORBIDDEN_ROLE' } satisfies Partial<CaseManagementError>);
-
-    await expect(
-      executeEnforcementAction({
-        auth: AUDITOR,
+        auth: actor(),
         enforcementActionId: ACTION_ID,
       }),
     ).rejects.toMatchObject({ code: 'FORBIDDEN_ROLE' } satisfies Partial<CaseManagementError>);

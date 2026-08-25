@@ -11,4 +11,5 @@ import type { Transaction } from './UnitOfWork.js';
  */
 export interface TimelineRecorder {
   record(event: CaseTimelineEvent, tx?: Transaction): Promise<void>;
+  listByCaseId(caseId: string): Promise<readonly CaseTimelineEvent[]>;
 }

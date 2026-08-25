@@ -112,7 +112,7 @@ function seedFraudConfig(repo: InMemoryOrganizationFraudConfigRepository): void 
   );
 }
 
-function buildUseCase(seed?: Case, withSla = true) {
+function buildUseCase(seed?: Case, withSla = true, withFraudConfig = true) {
   const cases = new InMemoryCaseRepository();
   if (seed !== undefined) {
     void cases.save(seed);
@@ -121,7 +121,7 @@ function buildUseCase(seed?: Case, withSla = true) {
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
   const slaTracking = new InMemoryCaseSlaTrackingRepository();
   const fraudConfig = new InMemoryOrganizationFraudConfigRepository();
-  seedFraudConfig(fraudConfig);
+  if (withFraudConfig) seedFraudConfig(fraudConfig);
 
   if (seed !== undefined && withSla) {
     void slaTracking.save(
@@ -191,12 +191,12 @@ describe('createReopenCaseUseCase (role-gated reopen + SLA reset)', () => {
     });
   });
 
-  it('allows ADMIN to reopen an ARCHIVED case to IN_REVIEW', async () => {
+  it('allows SUPERVISOR to reopen an ARCHIVED case to IN_REVIEW', async () => {
     const archived = buildResolvedCase().transitionTo('ARCHIVED', NOW);
     const { reopenCase } = buildUseCase(archived);
 
     const result = await reopenCase({
-      auth: ADMIN,
+      auth: SUPERVISOR,
       caseId: CASE_ID,
       targetStatus: 'IN_REVIEW',
       justification: 'Supervisor requested reopen',
@@ -204,6 +204,23 @@ describe('createReopenCaseUseCase (role-gated reopen + SLA reset)', () => {
 
     expect(result.status).toBe('IN_REVIEW');
     expect(result.dueDate).toEqual(EXPECTED_DUE);
+  });
+
+  /**
+   * Reabrir revive un expediente cerrado: es un acto de autoridad operativa,
+   * no de gobierno. ADMIN lo ve, no lo hace (SoD).
+   */
+  it('rejects ADMIN as read-only', async () => {
+    const { reopenCase } = buildUseCase(buildResolvedCase());
+
+    await expect(
+      reopenCase({
+        auth: ADMIN,
+        caseId: CASE_ID,
+        targetStatus: 'IN_REVIEW',
+        justification: 'Admin should not be able to do this',
+      }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN_ROLE' });
   });
 
   it('rejects missing justification with INVARIANT_VIOLATION', async () => {
@@ -282,5 +299,35 @@ describe('createReopenCaseUseCase (role-gated reopen + SLA reset)', () => {
     expect(slaTracking.all()).toHaveLength(1);
     expect(slaTracking.all()[0]?.status).toBe('ON_TRACK');
     expect(slaTracking.all()[0]?.dueDate).toEqual(EXPECTED_DUE);
+  });
+});
+
+/*
+ * Esta prueba existe por un fallo real: `ReopenCase` lanzaba
+ * ORGANIZATION_FRAUD_CONFIG_NOT_FOUND cuando el inquilino no tenia
+ * configuracion, mientras que ABRIR el mismo expediente caia a la ventana por
+ * defecto sin quejarse. Un inquilino recien creado podia abrir casos y
+ * cerrarlos, pero no reabrirlos.
+ *
+ * Dos caminos que calculan el mismo plazo no pueden discrepar sobre si la
+ * configuracion es obligatoria, y no habia ninguna prueba que lo sujetara.
+ */
+describe('createReopenCaseUseCase sin configuracion antifraude', () => {
+  it('reabre con la ventana por defecto en vez de fallar', async () => {
+    const seed = buildResolvedCase();
+    const h = buildUseCase(seed, true, false);
+
+    const reopened = await h.reopenCase({
+      auth: SUPERVISOR,
+      caseId: CASE_ID,
+      targetStatus: 'OPEN',
+      justification: 'Aparecio informacion nueva.',
+    });
+
+    expect(reopened.status).toBe('OPEN');
+    // Lo que importa no es el numero exacto sino que EXISTA un plazo: un
+    // expediente reabierto sin fecha limite es invisible al barrido de SLA.
+    expect(reopened.dueDate).not.toBeNull();
+    expect(await h.slaTracking.findByCaseId(CASE_ID)).not.toBeNull();
   });
 });

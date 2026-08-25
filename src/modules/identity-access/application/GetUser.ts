@@ -5,6 +5,7 @@ import { createOrganizationId } from '../domain/model/value-objects/Organization
 import { createUserId } from '../domain/model/value-objects/UserId.js';
 import { userNotFound } from '../domain/errors/IdentityAccessError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
+import { requireUserRole, USER_READ_ROLES } from './authorization/requireUserRole.js';
 
 export interface GetUserInput {
   readonly auth: AuthContext;
@@ -22,6 +23,12 @@ export interface GetUserDeps {
  */
 export function createGetUserUseCase(deps: GetUserDeps) {
   return async function getUser(input: GetUserInput): Promise<User> {
+    // role-authorization: /users/me (self-read) es libre para todo rol;
+    // leer a terceros exige ORGANIZATION o rol ADMIN/SUPERVISOR/AUDITOR.
+    const isSelf = input.auth.actorType === 'USER' && input.auth.userId === input.userId;
+    if (!isSelf) {
+      await requireUserRole(input.auth, deps.userRepositoryFactory, USER_READ_ROLES, 'read other users');
+    }
     const repository = deps.userRepositoryFactory.forTenant(createOrganizationId(requireTenantContext(input.auth)));
 
     const user = await repository.findById(createUserId(input.userId));

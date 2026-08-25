@@ -70,7 +70,7 @@ describe('CreateScoringRule', () => {
     });
 
     const created = await create({
-      auth: supervisorAuth({ roleId: 'ADMIN' }),
+      auth: supervisorAuth(),
       name: 'draft-b',
       conditions: VALID_JDM,
     });

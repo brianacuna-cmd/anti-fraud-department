@@ -1,7 +1,13 @@
 import { Router } from 'express';
+import { randomUUID } from 'node:crypto';
+import { generateOtp } from './auth/generateOtp.js';
+import { authenticator } from 'otplib';
+import QRCode from 'qrcode';
+import type { Db } from 'mongodb';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
 import type { createBeginUserLoginUseCase } from '../../../../application/auth/BeginUserLogin.js';
 import type { createIssueSessionUseCase } from '../../../../application/auth/IssueSession.js';
+import type { createAuthenticateActorUseCase } from '../../../../application/auth/AuthenticateActor.js';
 import type { createIssueOrganizationSessionUseCase } from '../../../../application/auth/IssueOrganizationSession.js';
 import type { createLogoutUseCase } from '../../../../application/auth/Logout.js';
 import type { createRequestPasswordResetUseCase } from '../../../../application/auth/RequestPasswordReset.js';
@@ -10,12 +16,16 @@ import type { createRefreshSessionUseCase } from '../../../../application/auth/R
 import {
   usersLoginSchema,
   organizationsLoginSchema,
+  organizationsOtpVerifySchema,
+  organizationsMfaSchema,
   usersMfaSchema,
   requestPasswordResetSchema,
   confirmPasswordResetSchema,
   refreshSchema,
 } from './dto/authSchemas.js';
 import { parseRequest } from './parseRequest.js';
+
+import type { EmailSender } from '../../../../domain/ports/EmailSender.js';
 
 export interface AuthRouterDeps {
   /**
@@ -30,6 +40,17 @@ export interface AuthRouterDeps {
    * no MFA branch, unlike the USER tier's two-step flow.
    */
   readonly issueOrganizationSession: ReturnType<typeof createIssueOrganizationSessionUseCase>;
+  /**
+   * Verificación de credenciales de ORGANIZATION para el paso 1 del login.
+   *
+   * OBLIGATORIA a propósito. Mientras fue opcional, `main.ts` dejó de
+   * inyectarla sin que nada lo advirtiera: el paso 1 respondía
+   * `OTP_REQUIRED` a cualquier email —enviándole un correo— y las
+   * credenciales no se comprobaban hasta el paso 3. Una guarda de seguridad
+   * que se desactiva sola cuando falta su dependencia es peor que no
+   * tenerla, así que ahora olvidarla es un error de compilación.
+   */
+  readonly authenticateOrganization: ReturnType<typeof createAuthenticateActorUseCase>;
   /** Step 2, challenge path (design "IssueSession flow"). */
   readonly issueSession: ReturnType<typeof createIssueSessionUseCase>;
   readonly logout: ReturnType<typeof createLogoutUseCase>;
@@ -43,6 +64,18 @@ export interface AuthRouterDeps {
    * credential, so this route never calls `requireAuthContext`.
    */
   readonly refreshSession: ReturnType<typeof createRefreshSessionUseCase>;
+  /**
+   * OBLIGATORIA: por aqui sale el OTP del paso 1 del login de organizacion.
+   * Mientras fue opcional, `main.ts` dejo de inyectarla y el flujo respondia
+   * `OTP_REQUIRED` sin enviar nada, dejando al usuario esperando un codigo
+   * que nunca salio.
+   */
+  readonly emailSender: EmailSender;
+  /**
+   * OBLIGATORIA: los pasos 2 y 3 leen y persisten el secreto TOTP. Sin ella el
+   * enrolamiento no se guarda y cada login vuelve a pedir el QR.
+   */
+  readonly db: Db;
 }
 
 /**
@@ -86,9 +119,196 @@ export function authRouter(deps: AuthRouterDeps): Router {
     res.status(200).json(result);
   });
 
+  // Organization 3-step 2FA pending state & enrolled TOTP secrets
+  /**
+   * El OTP caduca y admite un número acotado de intentos. Sin lo primero un
+   * código seguía siendo válido indefinidamente; sin lo segundo, seis dígitos
+   * son forzables probando. Al agotarse los intentos se descarta el pendiente
+   * entero, así que hay que volver a autenticarse desde el paso 1.
+   */
+  const ORG_OTP_TTL_MS = 10 * 60 * 1000;
+  const ORG_OTP_MAX_ATTEMPTS = 5;
+
+  const pendingOrgLogins = new Map<
+    string,
+    {
+      email: string;
+      password: string;
+      otp: string;
+      challengeToken: string;
+      totpSecret?: string;
+      expiresAt: number;
+      attempts: number;
+    }
+  >();
+
   router.post('/auth/organizations/login', async (req, res) => {
     const body = parseRequest(organizationsLoginSchema, req.body);
-    const result = await deps.issueOrganizationSession({ ...body, ipAddress: req.ip ?? null });
+
+    // La contraseña se verifica AQUÍ, antes de nada. Antes solo se guardaba y
+    // no se comprobaba hasta el paso 3, así que una credencial inválida
+    // avanzaba a la pantalla de OTP y disparaba un correo: el rechazo llegaba
+    // dos pasos tarde y cualquiera podía provocar envíos a esa dirección.
+    // Lanza `invalidCredentials` (401), igual que el login de usuario.
+    await deps.authenticateOrganization({
+      email: body.email,
+      password: body.password,
+      ipAddress: req.ip ?? null,
+    });
+
+    // Step 1: Generate OTP for email step
+    const otp = generateOtp();
+    const challengeToken = 'org_chal_' + randomUUID();
+
+    pendingOrgLogins.set(body.email.toLowerCase(), {
+      email: body.email,
+      password: body.password,
+      otp,
+      challengeToken,
+      expiresAt: Date.now() + ORG_OTP_TTL_MS,
+      attempts: 0,
+    });
+
+    // No se espera al envio: la respuesta no debe depender de la latencia del
+    // proveedor de correo. Pero el fallo SI se registra — tragarselo dejaba al
+    // usuario esperando un codigo que nunca salio, sin rastro de por que.
+    void deps.emailSender
+      .send({
+        from: 'fraud@backendstudio.tech',
+        to: body.email,
+        subject: 'Código OTP de Inicio de Sesión - AntiFraud',
+        text: `Tu código de verificación OTP para ingresar es: ${otp}`,
+        html: `<h2>Código de Verificación</h2><p>Tu código OTP de 6 dígitos para ingresar es: <strong>${otp}</strong></p>`,
+      })
+      .catch((error: unknown) => {
+        console.error(`[auth] no se pudo enviar el OTP de organizacion a ${body.email}:`, error);
+      });
+
+    res.status(200).json({
+      status: 'OTP_REQUIRED',
+      email: body.email,
+      message: 'Código OTP enviado al email de la Organización',
+    });
+  });
+
+  router.post('/auth/organizations/otp/verify', async (req, res) => {
+    const body = parseRequest(organizationsOtpVerifySchema, req.body);
+    const emailKey = body.email.toLowerCase();
+    const pending = pendingOrgLogins.get(emailKey);
+
+    if (!pending || pending.expiresAt < Date.now()) {
+      if (pending) pendingOrgLogins.delete(emailKey);
+      res.status(401).json({ message: 'Código OTP de Email incorrecto o expirado' });
+      return;
+    }
+
+    if (pending.otp !== body.otp) {
+      pending.attempts += 1;
+      // Agotados los intentos se invalida el pendiente: si no, cada 401 dejaba
+      // el mismo código vivo para el siguiente intento, sin coste alguno.
+      if (pending.attempts >= ORG_OTP_MAX_ATTEMPTS) pendingOrgLogins.delete(emailKey);
+      res.status(401).json({ message: 'Código OTP de Email incorrecto o expirado' });
+      return;
+    }
+
+    // Secreto TOTP ya enrolado, si lo hay. Nombres en snake_case: la migracion
+    // a `organizations`/`users` dejo atras las colecciones PascalCase, y estas
+    // consultas se quedaron apuntando a las viejas — nunca encontraban nada, de
+    // modo que cada login repetia el alta en vez de retar al factor existente.
+    let existingSecret: string | null = null;
+    {
+      const pattern = `^${emailKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
+      const emailFilter = { email: { $regex: pattern, $options: 'i' } };
+
+      const orgDoc = await deps.db.collection('organizations').findOne(emailFilter);
+      if (typeof orgDoc?.mfa_secret === 'string' && orgDoc.mfa_secret.length > 0) {
+        existingSecret = orgDoc.mfa_secret;
+      } else {
+        const userDoc = await deps.db.collection('users').findOne({ ...emailFilter, 'mfa.enabled': true });
+        const secret = (userDoc?.mfa as { secret?: unknown } | undefined)?.secret;
+        if (typeof secret === 'string' && secret.length > 0) {
+          existingSecret = secret;
+        }
+      }
+    }
+
+    if (existingSecret) {
+      // Organization has ALREADY enrolled TOTP -> challenge path
+      pending.totpSecret = existingSecret;
+      res.status(200).json({
+        status: 'MFA_CHALLENGE_REQUIRED',
+        challengeToken: pending.challengeToken,
+      });
+      return;
+    }
+
+    // Organization has NOT enrolled TOTP yet -> enrollment path (generate QR Code)
+    const secret = authenticator.generateSecret();
+    pending.totpSecret = secret;
+    const otpauth = authenticator.keyuri(pending.email, 'AntiFraud Org', secret);
+    const qrCodeUrl = await QRCode.toDataURL(otpauth);
+
+    res.status(200).json({
+      status: 'MFA_ENROLLMENT_REQUIRED',
+      challengeToken: pending.challengeToken,
+      qrCodeUrl,
+      secret,
+    });
+  });
+
+  router.post('/auth/organizations/mfa', async (req, res) => {
+    const body = parseRequest(organizationsMfaSchema, req.body);
+    let matchedEmail: string | null = null;
+    let matchedCreds: { email: string; password: string; totpSecret?: string; expiresAt: number } | null = null;
+
+    for (const [emailKey, pending] of pendingOrgLogins.entries()) {
+      if (pending.challengeToken === body.challengeToken) {
+        matchedEmail = emailKey;
+        matchedCreds = pending;
+        break;
+      }
+    }
+
+    if (!matchedCreds || !matchedEmail || !matchedCreds.totpSecret || matchedCreds.expiresAt < Date.now()) {
+      if (matchedEmail) pendingOrgLogins.delete(matchedEmail);
+      res.status(401).json({ message: 'Challenge de Organización inválido o expirado' });
+      return;
+    }
+
+    // Verify TOTP code against secret
+    const isValidTotp = authenticator.check(body.totp, matchedCreds.totpSecret);
+    if (!isValidTotp) {
+      res.status(401).json({ message: 'Código TOTP de la App Autenticadora incorrecto' });
+      return;
+    }
+
+    // Persiste el secreto TOTP recien enrolado. `updated_at` va como Date, no
+    // como cadena ISO: el resto del esquema lo tipa asi, y guardarlo como texto
+    // rompia a cualquier lector que lo tratara como fecha.
+    {
+      const pattern = `^${matchedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
+      const emailFilter = { email: { $regex: pattern, $options: 'i' } };
+      const now = new Date();
+
+      await deps.db
+        .collection('organizations')
+        .updateOne(emailFilter, { $set: { mfa_secret: matchedCreds.totpSecret, updated_at: now } });
+
+      // El usuario administrador refleja el mismo factor, para que su ficha
+      // muestre MFA activo.
+      await deps.db.collection('users').updateMany(emailFilter, {
+        $set: { 'mfa.secret': matchedCreds.totpSecret, 'mfa.enabled': true, updated_at: now },
+      });
+    }
+
+    pendingOrgLogins.delete(matchedEmail);
+
+    const result = await deps.issueOrganizationSession({
+      email: matchedCreds.email,
+      password: matchedCreds.password,
+      ipAddress: req.ip ?? null,
+    });
+
     res.status(200).json(result);
   });
 

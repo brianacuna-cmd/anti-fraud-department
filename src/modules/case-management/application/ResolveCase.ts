@@ -10,7 +10,7 @@ export type ResolveCaseDeps = CloseCaseDeps & {
 };
 
 /**
- * Resolves a case (OPEN|IN_REVIEW -> RESOLVED). SUPERVISOR|ADMIN only.
+ * Resolves a case (OPEN|IN_REVIEW -> RESOLVED). SUPERVISOR only.
  * Stops the SLA (clears the case dueDate) and emits a CASE_RESOLVED
  * `outbox_events` row in the same transaction. See `closeCase`.
  */

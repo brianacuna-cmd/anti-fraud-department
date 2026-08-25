@@ -4,7 +4,10 @@ services:
     container_name: anti-fraud-department-mongo
     command: ["--replSet", "rs0", "--bind_ip_all"]
     ports:
-      - "27017:27017"
+      # 27017 lo ocupa el mongod de Homebrew (standalone, sin replSet).
+      # Publicamos en 27018; dentro del contenedor mongod sigue en 27017,
+      # que es el host que usa la config de rs0.
+      - "27018:27017"
     volumes:
       - mongo_data:/data/db
     healthcheck:
@@ -21,6 +24,35 @@ services:
       retries: 10
       start_period: 5s
 
+  # Antivirus de evidencias (INV-015). El backend le habla por INSTREAM: los
+  # bytes viajan por el socket y clamd NO comparte disco, que es lo que permite
+  # escanear ANTES de guardar nada en el almacen.
+  #
+  # El primer arranque tarda: freshclam se descarga la base de firmas (~250 MB)
+  # y hasta que termina el healthcheck no pasa a healthy.
+  clamav:
+    image: clamav/clamav:1.4
+    # ClamAV solo publica amd64. En Apple Silicon corre emulado —lento pero
+    # funcional para desarrollo—; en un servidor x86 es nativo. NO se sustituye
+    # por una imagen comunitaria de arm64: es el componente que decide si un
+    # fichero entra al expediente, y ahi la procedencia importa mas que la
+    # velocidad.
+    platform: linux/amd64
+    container_name: anti-fraud-department-clamav
+    ports:
+      - "3310:3310"
+    volumes:
+      - clamav_db:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 20s
+      timeout: 10s
+      retries: 12
+      start_period: 240s
+
+
 volumes:
   mongo_data:
     name: anti-fraud-department-mongo-data
+  clamav_db:
+    name: anti-fraud-department-clamav-db

@@ -83,14 +83,14 @@ describe('createUpsertInboundWebhookSecretUseCase', () => {
     expect(result).not.toHaveProperty('ciphertext');
   });
 
-  it('ADMIN upsert replaces the previous coinflow ciphertext for the same org (S23)', async () => {
+  it('re-upsert replaces the previous coinflow ciphertext for the same org (S23)', async () => {
     const secrets = new InMemorySecrets();
     const first = buildUseCase(secrets, NOW);
-    await first({ auth: ADMIN, provider: 'coinflow', secret: 'validation-key-old' });
+    await first({ auth: SUPERVISOR, provider: 'coinflow', secret: 'validation-key-old' });
     const original = await secrets.findByOrgProvider(ORG, 'coinflow');
 
     const upsert = buildUseCase(secrets, LATER);
-    const result = await upsert({ auth: ADMIN, provider: 'coinflow', secret: 'validation-key-new' });
+    const result = await upsert({ auth: SUPERVISOR, provider: 'coinflow', secret: 'validation-key-new' });
 
     const stored = await secrets.findByOrgProvider(ORG, 'coinflow');
     expect(stored).not.toBeNull();
@@ -104,11 +104,20 @@ describe('createUpsertInboundWebhookSecretUseCase', () => {
     expect(secrets.rows.size).toBe(1);
   });
 
-  it('rejects AUDITOR upsert with FORBIDDEN_ROLE and does not create or change a row (S24)', async () => {
+  /**
+   * ADMIN incluido: rotar el secreto de un webhook cambia quien puede meter
+   * casos en el sistema. Es operacion, no gobierno (SoD, ver
+   * `shared/kernel/AccessTier.ts`).
+   */
+  it.each([
+    ['AUDITOR', () => AUDITOR],
+    ['ADMIN', () => ADMIN],
+  ])('rejects %s upsert with FORBIDDEN_ROLE and does not create or change a row (S24)', async (_role, actor) => {
     const secrets = new InMemorySecrets();
     const upsert = buildUseCase(secrets);
+    const readOnly = actor();
 
-    await expect(upsert({ auth: AUDITOR, provider: 'stripe', secret: 'whsec_auditor' })).rejects.toMatchObject({
+    await expect(upsert({ auth: readOnly, provider: 'stripe', secret: 'whsec_auditor' })).rejects.toMatchObject({
       constructor: IngestError,
       code: 'FORBIDDEN_ROLE',
     });
@@ -118,7 +127,7 @@ describe('createUpsertInboundWebhookSecretUseCase', () => {
     await buildUseCase(secrets)({ auth: SUPERVISOR, provider: 'stripe', secret: 'whsec_keep' });
     const before = await secrets.findByOrgProvider(ORG, 'stripe');
 
-    await expect(upsert({ auth: AUDITOR, provider: 'stripe', secret: 'whsec_overwrite' })).rejects.toMatchObject({
+    await expect(upsert({ auth: readOnly, provider: 'stripe', secret: 'whsec_overwrite' })).rejects.toMatchObject({
       code: 'FORBIDDEN_ROLE',
     });
     const after = await secrets.findByOrgProvider(ORG, 'stripe');

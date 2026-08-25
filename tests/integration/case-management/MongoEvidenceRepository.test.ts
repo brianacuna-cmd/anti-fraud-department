@@ -33,6 +33,7 @@ function buildEvidence(
     sha256: 'deadbeef',
     storageKey: `org-1/case-1/${id}`,
     timestamp: overrides.timestamp ? { token: 'tok', authority: 'tsa.example', timestampedAt: NOW } : null,
+    scanStatus: 'CLEAN',
     uploadedBy: oid('analyst-1'),
     now: NOW,
   });

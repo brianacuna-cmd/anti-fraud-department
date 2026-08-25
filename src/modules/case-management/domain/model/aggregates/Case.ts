@@ -43,6 +43,7 @@ export interface CreateCaseInput {
   readonly idempotencyKey?: string | null;
   readonly riskScore: RiskScore;
   readonly priority: CasePriority;
+  readonly assignedTo?: AssignedTo | null;
   readonly tags?: readonly string[];
   readonly now: Instant;
 }
@@ -72,7 +73,7 @@ export class Case {
       riskScore: input.riskScore,
       status: 'OPEN',
       priority: input.priority,
-      assignedTo: null,
+      assignedTo: input.assignedTo ?? null,
       dueDate: null,
       tags: input.tags ?? [],
       createdAt: input.now,
@@ -216,6 +217,56 @@ export class Case {
    */
   withDueDate(dueDate: Instant | null, now: Instant): Case {
     return new Case({ ...this.props, dueDate, updatedAt: now });
+  }
+
+  /**
+   * CASE-007 — reetiquetado y cambio de severidad.
+   *
+   * Las etiquetas se normalizan aquí y no en el borde HTTP: se recortan, se
+   * descartan las vacías y se deduplican preservando el orden de llegada. Sin
+   * esto un mismo criterio entraba tres veces escrito distinto (`"AML"`,
+   * `" AML"`, `"AML "`) y el filtro por etiquetas de CASE-004, que exige
+   * coincidencia exacta, dejaba de encontrar el caso.
+   *
+   * No toca `dueDate`: recalcular el vencimiento es competencia de las vías
+   * de SLA, que son las únicas que pueden escribir ese campo.
+   */
+  reclassify(input: {
+    readonly priority?: CasePriority;
+    readonly tags?: readonly string[];
+    readonly now: Instant;
+  }): Case {
+    const tags = input.tags === undefined ? this.props.tags : normalizeTags(input.tags);
+
+    return new Case({
+      ...this.props,
+      priority: input.priority ?? this.props.priority,
+      tags,
+      updatedAt: input.now,
+    });
+  }
+
+  updateFinturuSnapshot(input: {
+    readonly finturuCacheSnapshot: Record<string, unknown>;
+    readonly riskScore?: RiskScore;
+    readonly priority?: CasePriority;
+    readonly customerEmail?: string | null;
+    readonly bridgeUserId?: string | null;
+    readonly bridgeWallet?: string | null;
+    readonly stripeCustomerId?: string | null;
+    readonly now: Instant;
+  }): Case {
+    return new Case({
+      ...this.props,
+      finturuCacheSnapshot: input.finturuCacheSnapshot,
+      riskScore: input.riskScore ?? this.props.riskScore,
+      priority: input.priority ?? this.props.priority,
+      customerEmail: input.customerEmail ?? this.props.customerEmail,
+      bridgeUserId: input.bridgeUserId ?? this.props.bridgeUserId,
+      bridgeWallet: input.bridgeWallet ?? this.props.bridgeWallet,
+      stripeCustomerId: input.stripeCustomerId ?? this.props.stripeCustomerId,
+      updatedAt: input.now,
+    });
   }
 }
 

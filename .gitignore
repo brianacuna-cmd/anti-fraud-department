@@ -15,3 +15,7 @@ coverage/
 
 # SDD planning artifacts live in Engram only, not in the repo
 openspec/
+
+# Almacen local de evidencias (adaptador de filesystem). Son ficheros de
+# prueba subidos a expedientes: no se versionan.
+.evidence/

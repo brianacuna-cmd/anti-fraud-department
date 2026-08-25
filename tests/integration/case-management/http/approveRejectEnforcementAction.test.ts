@@ -9,6 +9,8 @@ import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { caseManagementErrorStatus } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/errorStatus.js';
 import { enforcementRouter } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/enforcementRouter.js';
+import { createListCaseDecisionsUseCase } from '../../../../src/modules/case-management/application/ListCaseDecisions.js';
+import { createRequestEnforcementActionUseCase } from '../../../../src/modules/case-management/application/RequestEnforcementAction.js';
 import { createRecordAnalystDecisionUseCase } from '../../../../src/modules/case-management/application/RecordAnalystDecision.js';
 import { createApproveEnforcementActionUseCase } from '../../../../src/modules/case-management/application/ApproveEnforcementAction.js';
 import { createRejectEnforcementActionUseCase } from '../../../../src/modules/case-management/application/RejectEnforcementAction.js';
@@ -22,6 +24,8 @@ import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMem
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
 import { InMemoryAnalystDecisionRepository } from '../../../helpers/case-management/InMemoryAnalystDecisionRepository.js';
 import { InMemoryEnforcementActionRepository } from '../../../helpers/case-management/InMemoryEnforcementActionRepository.js';
+import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
+import { InMemoryCaseManagementNotificationSender } from '../../../helpers/case-management/InMemoryCaseManagementNotificationSender.js';
 import { InMemoryApprovalRequestRepository } from '../../../helpers/case-management/InMemoryApprovalRequestRepository.js';
 import { InMemoryCustomerOutgoingEventRepository } from '../../../helpers/case-management/InMemoryCustomerOutgoingEventRepository.js';
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
@@ -87,18 +91,38 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
   const unitOfWork = new PassthroughUnitOfWork();
 
   const router = enforcementRouter({
+    requestEnforcementAction: createRequestEnforcementActionUseCase({
+      cases,
+      decisions,
+      enforcementActions,
+      approvalRequests,
+      timelineRecorder,
+      auditRecorder,
+      notificationSender: new InMemoryCaseManagementNotificationSender(),
+      assigneeDirectory: new InMemoryAssigneeDirectory(),
+      unitOfWork,
+      clock,
+      generateEnforcementActionId,
+      generateApprovalRequestId,
+      generateTimelineEventId,
+    }),
     recordAnalystDecision: createRecordAnalystDecisionUseCase({
       cases,
       decisions,
       enforcementActions,
+      approvalRequests,
       timelineRecorder,
       auditRecorder,
+      notificationSender: new InMemoryCaseManagementNotificationSender(),
+      assigneeDirectory: new InMemoryAssigneeDirectory(),
       unitOfWork,
       clock,
       generateAnalystDecisionId,
       generateEnforcementActionId,
+      generateApprovalRequestId,
       generateTimelineEventId,
     }),
+    listCaseDecisions: createListCaseDecisionsUseCase({ cases, analystDecisions: decisions }),
     approveEnforcementAction: createApproveEnforcementActionUseCase({
       enforcementActions,
       approvalRequests,

@@ -13,7 +13,7 @@ import { createRoleId } from '../domain/model/value-objects/RoleId.js';
 import { userEmailTaken, roleNotAssignable } from '../domain/errors/IdentityAccessError.js';
 import { assertPasswordPolicy } from '../domain/model/value-objects/PasswordPolicy.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireOrganizationActor } from './authorization/requireOrganizationActor.js';
+import { requireUserRole, USER_MANAGE_ROLES } from './authorization/requireUserRole.js';
 
 export interface CreateUserInput {
   readonly auth: AuthContext;
@@ -55,7 +55,8 @@ export interface CreateUserDeps {
  */
 export function createCreateUserUseCase(deps: CreateUserDeps) {
   return async function createUser(input: CreateUserInput): Promise<User> {
-    requireOrganizationActor(input.auth);
+    // role-authorization: ORGANIZATION o USER con rol ADMIN pueden crear usuarios.
+    await requireUserRole(input.auth, deps.userRepositoryFactory, USER_MANAGE_ROLES, 'create users');
     assertPasswordPolicy(input.password);
     const organizationId = createOrganizationId(requireTenantContext(input.auth));
     const repository = deps.userRepositoryFactory.forTenant(organizationId);

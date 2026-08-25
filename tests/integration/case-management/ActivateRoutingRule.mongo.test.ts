@@ -112,7 +112,7 @@ describe('ActivateRoutingRule with Mongo (non-exclusive)', () => {
       auth: createAuthContext({
         userId: oid('user-1'),
         organizationId: ORG,
-        roleId: 'ADMIN',
+        roleId: 'SUPERVISOR',
       }),
       ruleId: first.id,
     });

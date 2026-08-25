@@ -9,6 +9,8 @@ import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { caseManagementErrorStatus } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/errorStatus.js';
 import { enforcementRouter } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/enforcementRouter.js';
+import { createListCaseDecisionsUseCase } from '../../../../src/modules/case-management/application/ListCaseDecisions.js';
+import { createRequestEnforcementActionUseCase } from '../../../../src/modules/case-management/application/RequestEnforcementAction.js';
 import { createRecordAnalystDecisionUseCase } from '../../../../src/modules/case-management/application/RecordAnalystDecision.js';
 import { createApproveEnforcementActionUseCase } from '../../../../src/modules/case-management/application/ApproveEnforcementAction.js';
 import { createRejectEnforcementActionUseCase } from '../../../../src/modules/case-management/application/RejectEnforcementAction.js';
@@ -22,6 +24,8 @@ import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMem
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
 import { InMemoryAnalystDecisionRepository } from '../../../helpers/case-management/InMemoryAnalystDecisionRepository.js';
 import { InMemoryEnforcementActionRepository } from '../../../helpers/case-management/InMemoryEnforcementActionRepository.js';
+import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
+import { InMemoryCaseManagementNotificationSender } from '../../../helpers/case-management/InMemoryCaseManagementNotificationSender.js';
 import { InMemoryApprovalRequestRepository } from '../../../helpers/case-management/InMemoryApprovalRequestRepository.js';
 import { InMemoryCustomerOutgoingEventRepository } from '../../../helpers/case-management/InMemoryCustomerOutgoingEventRepository.js';
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
@@ -33,6 +37,7 @@ import { generateCustomerOutgoingEventId } from '../../../../src/modules/case-ma
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
 import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
+import { createAssignedTo } from '../../../../src/modules/case-management/domain/model/value-objects/AssignedTo.js';
 import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
@@ -65,18 +70,38 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
   const unitOfWork = new PassthroughUnitOfWork();
 
   const router = enforcementRouter({
+    requestEnforcementAction: createRequestEnforcementActionUseCase({
+      cases,
+      decisions,
+      enforcementActions,
+      approvalRequests,
+      timelineRecorder,
+      auditRecorder,
+      notificationSender: new InMemoryCaseManagementNotificationSender(),
+      assigneeDirectory: new InMemoryAssigneeDirectory(),
+      unitOfWork,
+      clock,
+      generateEnforcementActionId,
+      generateApprovalRequestId,
+      generateTimelineEventId,
+    }),
     recordAnalystDecision: createRecordAnalystDecisionUseCase({
       cases,
       decisions,
       enforcementActions,
+      approvalRequests,
       timelineRecorder,
       auditRecorder,
+      notificationSender: new InMemoryCaseManagementNotificationSender(),
+      assigneeDirectory: new InMemoryAssigneeDirectory(),
       unitOfWork,
       clock,
       generateAnalystDecisionId,
       generateEnforcementActionId,
+      generateApprovalRequestId,
       generateTimelineEventId,
     }),
+    listCaseDecisions: createListCaseDecisionsUseCase({ cases, analystDecisions: decisions }),
     approveEnforcementAction: createApproveEnforcementActionUseCase({
       enforcementActions,
       approvalRequests,
@@ -143,6 +168,9 @@ describe('enforcementRouter POST /cases/:caseId/decisions', () => {
         customerId: 'customer-1',
         riskScore: createRiskScore(80),
         priority: 'HIGH',
+        // La regla de asignacion congela los expedientes huerfanos:
+        // sin responsable no se pueden trabajar.
+        assignedTo: createAssignedTo('USER', oid('analyst-1')),
         now: NOW,
       }).transitionTo('IN_REVIEW', NOW),
     );
@@ -180,6 +208,9 @@ describe('enforcementRouter POST /cases/:caseId/decisions', () => {
         customerId: 'customer-1',
         riskScore: createRiskScore(20),
         priority: 'LOW',
+        // La regla de asignacion congela los expedientes huerfanos:
+        // sin responsable no se pueden trabajar.
+        assignedTo: createAssignedTo('USER', oid('analyst-1')),
         now: NOW,
       }),
     );
@@ -207,6 +238,9 @@ describe('enforcementRouter POST /cases/:caseId/decisions', () => {
         customerId: 'customer-1',
         riskScore: createRiskScore(50),
         priority: 'MEDIUM',
+        // La regla de asignacion congela los expedientes huerfanos:
+        // sin responsable no se pueden trabajar.
+        assignedTo: createAssignedTo('USER', oid('analyst-1')),
         now: NOW,
       }),
     );
@@ -232,6 +266,9 @@ describe('enforcementRouter POST /cases/:caseId/decisions', () => {
         customerId: 'customer-1',
         riskScore: createRiskScore(50),
         priority: 'MEDIUM',
+        // La regla de asignacion congela los expedientes huerfanos:
+        // sin responsable no se pueden trabajar.
+        assignedTo: createAssignedTo('USER', oid('analyst-1')),
         now: NOW,
       }),
     );

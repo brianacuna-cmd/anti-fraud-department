@@ -86,7 +86,7 @@ describe('DeactivateRoutingRule', () => {
       clock: { now: () => LATER },
     });
 
-    const result = await deactivate({ auth: supervisorAuth('ADMIN'), ruleId: draft.id });
+    const result = await deactivate({ auth: supervisorAuth(), ruleId: draft.id });
 
     expect(result.status).toBe('INACTIVE');
     expect(result.id).toBe(draft.id);

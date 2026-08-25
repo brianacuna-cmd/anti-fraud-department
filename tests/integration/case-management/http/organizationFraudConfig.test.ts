@@ -16,7 +16,12 @@ import { OrganizationFraudConfig } from '../../../../src/modules/case-management
 import { createOrganizationFraudConfigId } from '../../../../src/modules/case-management/domain/model/value-objects/OrganizationFraudConfigId.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
-const ORG_1_USER = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1') });
+const ORG_1_USER = createAuthContext({
+  userId: oid('user-1'),
+  organizationId: oid('org-1'),
+  actorType: 'USER',
+  roleId: 'SUPERVISOR',
+});
 
 const FULL_BODY = {
   slaLowMinutes: 240,

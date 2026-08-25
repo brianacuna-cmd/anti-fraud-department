@@ -16,6 +16,7 @@ export interface UserResponseDto {
   readonly isPlatformAdmin: boolean;
   /** user-roles PR-1b (design "5. `CreateUser` use case changes"): response wire key pinned to `roleId`. */
   readonly roleId: string;
+  readonly mfa: { readonly enabled: boolean };
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -38,6 +39,7 @@ export function toUserResponse(user: User): UserResponseDto {
     status: user.status,
     isPlatformAdmin: user.isPlatformAdmin,
     roleId: user.roleId,
+    mfa: { enabled: user.mfa.enabled },
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };

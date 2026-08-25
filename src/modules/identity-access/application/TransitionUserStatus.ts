@@ -11,6 +11,7 @@ import { createUserId } from '../domain/model/value-objects/UserId.js';
 import { createTransitionActor } from '../domain/model/value-objects/TransitionActor.js';
 import { userNotFound } from '../domain/errors/IdentityAccessError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
+import { requireUserRole, USER_MANAGE_ROLES } from './authorization/requireUserRole.js';
 
 export interface TransitionUserStatusInput {
   readonly auth: AuthContext;
@@ -44,6 +45,9 @@ export interface TransitionUserStatusDeps {
  */
 export function createTransitionUserStatusUseCase(deps: TransitionUserStatusDeps) {
   return async function transitionUserStatus(input: TransitionUserStatusInput): Promise<User> {
+    // role-authorization: cubre también DELETE /users/:id (delega aquí con
+    // next=DISABLED). Solo ORGANIZATION o rol ADMIN cambian estados de usuarios.
+    await requireUserRole(input.auth, deps.userRepositoryFactory, USER_MANAGE_ROLES, 'transition user status');
     const organizationId = createOrganizationId(requireTenantContext(input.auth));
     const repository = deps.userRepositoryFactory.forTenant(organizationId);
 

@@ -36,3 +36,16 @@ export const updateInvestigationStatusSchema = z.object({
 });
 
 export type UpdateInvestigationStatusBody = z.infer<typeof updateInvestigationStatusSchema>;
+
+/**
+ * GET /investigations/:investigationId/graph query (INV-013).
+ *
+ * `maxDepth` se acota aqui y no solo en el caso de uso porque el tope es una
+ * defensa de la peticion: cada ronda multiplica el frente, y sin el limite en
+ * el borde cualquiera pide profundidad 50 desde la barra del navegador.
+ */
+export const entityNetworkGraphQuerySchema = z.object({
+  maxDepth: z.coerce.number().int().min(1).max(5).optional(),
+});
+
+export type EntityNetworkGraphQuery = z.infer<typeof entityNetworkGraphQuerySchema>;

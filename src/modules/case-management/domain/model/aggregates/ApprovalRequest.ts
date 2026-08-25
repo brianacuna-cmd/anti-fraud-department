@@ -4,7 +4,7 @@ import type { ApprovalRequestStatus } from '../value-objects/ApprovalRequestStat
 import type { EnforcementActionId } from '../value-objects/EnforcementActionId.js';
 import { approvalRequestStatusTransitions } from '../../services/transitions.js';
 import { assertTransitionAllowed } from '../../services/StatusTransitionPolicy.js';
-import { invariantViolation } from '../../errors/CaseManagementError.js';
+import { invariantViolation, selfApprovalForbidden } from '../../errors/CaseManagementError.js';
 
 export interface ApprovalRequestProps {
   readonly id: ApprovalRequestId;
@@ -30,7 +30,17 @@ export interface ReviewApprovalRequestInput {
   readonly now: Instant;
 }
 
-/** Approval gate for non-REVIEW enforcement actions (design: approval_requests). */
+/**
+ * Puerta de aprobacion de las sanciones no-REVIEW (design: approval_requests)
+ * y sede del principio de CUATRO OJOS.
+ *
+ * La regla —quien solicita no puede revisar— vive AQUI y no en el caso de uso
+ * a proposito: hay tres caminos que deciden una solicitud
+ * (`ApproveEnforcementAction`, `RejectEnforcementAction` y
+ * `ReviewApprovalRequest`), y una comprobacion repetida en tres sitios es una
+ * comprobacion que algun dia estara en dos. En el agregado no hay forma de
+ * llegar a `APPROVED` ni a `REJECTED` sin pasar por ella.
+ */
 export class ApprovalRequest {
   private constructor(private readonly props: ApprovalRequestProps) {}
 
@@ -98,6 +108,12 @@ export class ApprovalRequest {
 
   private decide(next: 'APPROVED' | 'REJECTED', input: ReviewApprovalRequestInput): ApprovalRequest {
     assertNonEmpty('reviewerId', input.reviewerId);
+    // Cuatro ojos. Aplica tanto a aprobar como a RECHAZAR: dejar que el
+    // solicitante retire lo suyo parece inofensivo, pero convierte la cola de
+    // revision en algo que una sola persona puede vaciar sin que nadie mire.
+    if (input.reviewerId === this.props.requesterId) {
+      throw selfApprovalForbidden(this.props.requesterId, this.props.id);
+    }
     assertTransitionAllowed(approvalRequestStatusTransitions, this.props.status, next);
     return new ApprovalRequest({
       ...this.props,

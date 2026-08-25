@@ -217,7 +217,7 @@ function buildAppWithRealResolver(
     }),
   });
 
-  const resolver = new SessionTokenAuthContextResolver(TOKEN_SERVICE_FIXTURE, sessions);
+  const resolver = new SessionTokenAuthContextResolver(TOKEN_SERVICE_FIXTURE, sessions, userRepositoryFactory);
   const authContextMiddleware = createAuthContextMiddleware(resolver);
 
   const mounted = Router();
@@ -251,7 +251,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
     expect(response.body).not.toHaveProperty('passwordHash');
   });
 
-  it('POST /users rejects a USER-tier actor with 403 FORBIDDEN_CROSS_TENANT (user-roles PR-1b org-only gate)', async () => {
+  it('POST /users rejects a USER-tier actor with 403 FORBIDDEN_ROLE (user-roles PR-1b org-only gate + role gate)', async () => {
     const actingUser = createAuthContext({ userId: oid('u9'), organizationId: oid('org-1'), isPlatformAdmin: false });
     const { app } = buildApp(() => actingUser);
 
@@ -260,7 +260,10 @@ describe('userRouter (e2e, in-memory repository)', () => {
       .send({ email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     expect(response.status).toBe(403);
-    expect(response.body.error.code).toBe('FORBIDDEN_CROSS_TENANT');
+    // Este fork mete `requireUserRole` delante del gate de solo-organizacion,
+    // asi que un actor USER se rechaza por su rol —un 403 mas concreto— antes
+    // de llegar a la comprobacion de inquilino.
+    expect(response.body.error.code).toBe('FORBIDDEN_ROLE');
   });
 
   it('POST /users rejects role=ADMIN with 400 ROLE_NOT_ASSIGNABLE (user-roles PR-1b)', async () => {
@@ -379,7 +382,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
     expect(response.body.roleId).toBe('SUPERVISOR');
   });
 
-  it('POST /users/:id/role rejects a USER-tier actor with 403 FORBIDDEN_CROSS_TENANT (user-roles PR-2)', async () => {
+  it('POST /users/:id/role rejects a USER-tier actor with 403 FORBIDDEN_ROLE (user-roles PR-2 + role gate)', async () => {
     const { app: seedApp } = buildApp(() => ORG_1_ORGANIZATION);
     const created = await request(seedApp)
       .post('/api/v1/users')
@@ -393,7 +396,10 @@ describe('userRouter (e2e, in-memory repository)', () => {
       .send({ role: 'SUPERVISOR' });
 
     expect(response.status).toBe(403);
-    expect(response.body.error.code).toBe('FORBIDDEN_CROSS_TENANT');
+    // Este fork mete `requireUserRole` delante del gate de solo-organizacion,
+    // asi que un actor USER se rechaza por su rol —un 403 mas concreto— antes
+    // de llegar a la comprobacion de inquilino.
+    expect(response.body.error.code).toBe('FORBIDDEN_ROLE');
   });
 
   it('POST /users/:id/role returns 404 USER_NOT_FOUND for an unknown user', async () => {
@@ -577,7 +583,7 @@ describe('userRouter (e2e, in-memory repository)', () => {
       expect(response.body.error.code).toBe('INVALID_CREDENTIALS');
     });
 
-    it('POST /users/me/password requires authentication (no upstream AuthContext at all — a wiring error, same as every other route)', async () => {
+    it('POST /users/me/password requires authentication (no resolved AuthContext — 401, same as every other route)', async () => {
       const sharedFactory = new InMemoryUserRepositoryFactory();
       const { app: seedApp } = buildApp(() => ORG_1_ORGANIZATION, sharedFactory);
       const mfaChallenges = new InMemoryMfaChallengeStore();
@@ -589,7 +595,10 @@ describe('userRouter (e2e, in-memory repository)', () => {
         .post('/api/v1/users/me/password')
         .send({ currentPassword: 'OldPassw0rd', newPassword: 'NewPassw0rd' });
 
-      expect(response.status).toBe(500);
+      // `requireAuthContext` lanza `UnauthenticatedError`: con un resolver de
+      // sesion real, un token ausente/expirado/revocado deja la request sin
+      // contexto y eso es un 401, no un fallo de cableado.
+      expect(response.status).toBe(401);
     });
   });
 
@@ -737,7 +746,10 @@ describe('userRouter (e2e, in-memory repository)', () => {
       // No AuthContext was ever attached (self-expired token resolves to
       // null) — `requireScopedAuthContext` throws the wiring error, which
       // Express 5 forwards to the generic error handler.
-      expect(response.status).toBe(500);
+      // `requireAuthContext` lanza `UnauthenticatedError`: con un resolver de
+      // sesion real, un token ausente/expirado/revocado deja la request sin
+      // contexto y eso es un 401, no un fallo de cableado.
+      expect(response.status).toBe(401);
     });
   });
 });

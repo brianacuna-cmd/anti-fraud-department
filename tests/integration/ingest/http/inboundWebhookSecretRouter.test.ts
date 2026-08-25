@@ -181,8 +181,8 @@ describe('inboundWebhookSecretRouter', () => {
     expect(webhook.body).toEqual({ status: 'PROCESSED' });
   });
 
-  it('ADMIN PUT replaces coinflow ciphertext and returns only provider and updatedAt (S23)', async () => {
-    const { app, secrets } = buildApp(ADMIN);
+  it('re-PUT replaces coinflow ciphertext and returns only provider and updatedAt (S23)', async () => {
+    const { app, secrets } = buildApp(SUPERVISOR);
 
     const first = await request(app)
       .put('/api/v1/inbound-webhook-secrets')
@@ -212,8 +212,16 @@ describe('inboundWebhookSecretRouter', () => {
     expect(secrets.rows.size).toBe(0);
   });
 
-  it('AUDITOR PUT is 403 FORBIDDEN_ROLE and creates no row (S24)', async () => {
-    const { app, secrets } = buildApp(AUDITOR);
+  /**
+   * ADMIN incluido: rotar el secreto de un webhook decide quien puede meter
+   * casos en el sistema, y el plano de gobierno no opera (SoD, ver
+   * `shared/kernel/AccessTier.ts`).
+   */
+  it.each([
+    ['AUDITOR', () => AUDITOR],
+    ['ADMIN', () => ADMIN],
+  ])('%s PUT is 403 FORBIDDEN_ROLE and creates no row (S24)', async (_role, actor) => {
+    const { app, secrets } = buildApp(actor());
 
     const put = await request(app)
       .put('/api/v1/inbound-webhook-secrets')

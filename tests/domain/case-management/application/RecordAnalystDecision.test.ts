@@ -3,9 +3,11 @@ import { createRecordAnalystDecisionUseCase } from '../../../../src/modules/case
 import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
 import { EnforcementAction } from '../../../../src/modules/case-management/domain/model/aggregates/EnforcementAction.js';
 import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
+import { createAssignedTo } from '../../../../src/modules/case-management/domain/model/value-objects/AssignedTo.js';
 import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
 import { generateAnalystDecisionId } from '../../../../src/modules/case-management/domain/model/value-objects/AnalystDecisionId.js';
 import { generateEnforcementActionId } from '../../../../src/modules/case-management/domain/model/value-objects/EnforcementActionId.js';
+import { generateApprovalRequestId } from '../../../../src/modules/case-management/domain/model/value-objects/ApprovalRequestId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { createAnalystDecisionId } from '../../../../src/modules/case-management/domain/model/value-objects/AnalystDecisionId.js';
 import { createEnforcementActionId } from '../../../../src/modules/case-management/domain/model/value-objects/EnforcementActionId.js';
@@ -15,6 +17,9 @@ import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMem
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
 import { InMemoryAnalystDecisionRepository } from '../../../helpers/case-management/InMemoryAnalystDecisionRepository.js';
 import { InMemoryEnforcementActionRepository } from '../../../helpers/case-management/InMemoryEnforcementActionRepository.js';
+import { InMemoryApprovalRequestRepository } from '../../../helpers/case-management/InMemoryApprovalRequestRepository.js';
+import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
+import { InMemoryCaseManagementNotificationSender } from '../../../helpers/case-management/InMemoryCaseManagementNotificationSender.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
@@ -26,14 +31,17 @@ const ORG_1 = oid('org-1');
 const ORG_2 = oid('org-2');
 const CASE_ID = createCaseId(oid('case-decision-1'));
 
+const ANALYST_ID = oid('analyst-1');
+const SUPERVISOR_ID = oid('supervisor-1');
+
 const ANALYST = createAuthContext({
-  userId: oid('analyst-1'),
+  userId: ANALYST_ID,
   organizationId: ORG_1,
   actorType: 'USER',
   roleId: 'ANALYST',
 });
 const SUPERVISOR = createAuthContext({
-  userId: oid('supervisor-1'),
+  userId: SUPERVISOR_ID,
   organizationId: ORG_1,
   actorType: 'USER',
   roleId: 'SUPERVISOR',
@@ -58,6 +66,9 @@ function buildCase(overrides: { organizationId?: string; deletedAt?: typeof NOW 
     customerId: 'customer-1',
     riskScore: createRiskScore(70),
     priority: 'HIGH',
+    // La regla de asignacion congela los expedientes huerfanos:
+    // sin responsable no se pueden trabajar.
+    assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   });
   if (overrides.status === 'IN_REVIEW') {
@@ -96,21 +107,40 @@ function buildUseCase(seed?: Case) {
   }
   const decisions = new InMemoryAnalystDecisionRepository();
   const enforcementActions = new InMemoryEnforcementActionRepository();
+  const approvalRequests = new InMemoryApprovalRequestRepository();
   const timelineRecorder = new InMemoryTimelineRecorder();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
+  const notificationSender = new InMemoryCaseManagementNotificationSender();
+  const assigneeDirectory = new InMemoryAssigneeDirectory();
+  // Dos supervisores en el inquilino, uno de ellos el propio analista que
+  // firma las pruebas: sirve para comprobar que al solicitante no se le avisa.
+  assigneeDirectory.allowRoleRecipients(ORG_1, 'SUPERVISOR', [SUPERVISOR_ID, ANALYST_ID]);
   const recordAnalystDecision = createRecordAnalystDecisionUseCase({
     cases,
     decisions,
     enforcementActions,
+    approvalRequests,
     timelineRecorder,
     auditRecorder,
+    notificationSender,
+    assigneeDirectory,
     unitOfWork: new PassthroughUnitOfWork(),
     clock: new FixedClock(NOW),
     generateAnalystDecisionId,
     generateEnforcementActionId,
+    generateApprovalRequestId,
     generateTimelineEventId,
   });
-  return { recordAnalystDecision, cases, decisions, enforcementActions, timelineRecorder, auditRecorder };
+  return {
+    recordAnalystDecision,
+    cases,
+    decisions,
+    enforcementActions,
+    approvalRequests,
+    timelineRecorder,
+    auditRecorder,
+    notificationSender,
+  };
 }
 
 describe('createRecordAnalystDecisionUseCase', () => {
@@ -189,7 +219,7 @@ describe('createRecordAnalystDecisionUseCase', () => {
     const { recordAnalystDecision, enforcementActions } = buildUseCase(buildCase());
 
     const result = await recordAnalystDecision({
-      auth: ADMIN,
+      auth: SUPERVISOR,
       caseId: CASE_ID,
       decision: 'INCONCLUSIVE',
       confidence: 10,
@@ -232,12 +262,128 @@ describe('createRecordAnalystDecisionUseCase', () => {
     expect(result.enforcementAction?.actionType).toBe('SUSPEND');
   });
 
-  it('rejects AUDITOR with FORBIDDEN_ROLE', async () => {
+  /**
+   * ADMIN incluido: dictaminar es instruir el expediente, y quien administra
+   * al equipo no lo instruye (SoD, ver `shared/kernel/AccessTier.ts`).
+   */
+  /* ---------------------------------------------------------------------- */
+  /* Cuatro ojos (ENF-002)                                                    */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * La solicitud de doble firma tiene que nacer AQUI, con la sancion.
+   *
+   * Antes se creaba perezosamente al aprobarla, lo que dejaba el control sin
+   * efecto: no habia nada que revisar hasta que alguien ya habia aprobado.
+   */
+  it('opens a PENDING approval request alongside the sanction, in the same write', async () => {
+    const { recordAnalystDecision, approvalRequests, enforcementActions } = buildUseCase(
+      buildCase({ status: 'IN_REVIEW' }),
+    );
+
+    const result = await recordAnalystDecision({
+      auth: ANALYST,
+      caseId: CASE_ID,
+      decision: 'FRAUD_CONFIRMED',
+      confidence: 90,
+      comment: 'patrón confirmado',
+      actionType: 'BLOCK',
+      targetType: 'WALLET',
+      targetId: '0xabc',
+    });
+
+    expect(result.approvalRequest).not.toBeNull();
+    expect(result.approvalRequest!.status).toBe('PENDING');
+    expect(result.approvalRequest!.requesterId).toBe(ANALYST_ID);
+    expect(result.approvalRequest!.reviewerId).toBeNull();
+    expect(result.approvalRequest!.enforcementActionId).toBe(result.enforcementAction!.id);
+    expect(approvalRequests.all()).toHaveLength(1);
+    expect(enforcementActions.all()[0]?.status).toBe('PENDING');
+  });
+
+  /** Avisar al solicitante seria ofrecerle algo que el agregado le va a negar. */
+  it('notifies the other supervisors, never the requester', async () => {
+    const { recordAnalystDecision, notificationSender } = buildUseCase(
+      buildCase({ status: 'IN_REVIEW' }),
+    );
+
+    const result = await recordAnalystDecision({
+      auth: ANALYST,
+      caseId: CASE_ID,
+      decision: 'FRAUD_CONFIRMED',
+      confidence: 90,
+      comment: 'patrón confirmado',
+      actionType: 'SUSPEND',
+      targetType: 'CUSTOMER',
+      targetId: '1887',
+    });
+
+    const sent = notificationSender.all();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.recipientUserId).toBe(SUPERVISOR_ID);
+    expect(sent[0]?.alertType).toBe('APROBACION_PENDIENTE');
+    expect(sent[0]?.context).toMatchObject({
+      caseId: CASE_ID,
+      approvalRequestId: result.approvalRequest!.id,
+      requesterId: ANALYST_ID,
+      actionType: 'SUSPEND',
+    });
+  });
+
+  /**
+   * REVIEW solo marca a un cliente para mirarlo con calma: no restringe nada,
+   * asi que exigirle doble firma solo llenaria la cola del supervisor de ruido.
+   */
+  it('skips dual control for REVIEW, which restricts nothing', async () => {
+    const { recordAnalystDecision, approvalRequests, notificationSender } = buildUseCase(
+      buildCase({ status: 'IN_REVIEW' }),
+    );
+
+    const result = await recordAnalystDecision({
+      auth: ANALYST,
+      caseId: CASE_ID,
+      decision: 'FRAUD_CONFIRMED',
+      confidence: 40,
+      comment: 'merece una segunda mirada',
+      actionType: 'REVIEW',
+      targetType: 'CUSTOMER',
+      targetId: '1887',
+    });
+
+    expect(result.enforcementAction).not.toBeNull();
+    expect(result.approvalRequest).toBeNull();
+    expect(approvalRequests.all()).toHaveLength(0);
+    expect(notificationSender.all()).toHaveLength(0);
+  });
+
+  it('opens no approval request when the decision carries no sanction', async () => {
+    const { recordAnalystDecision, approvalRequests, notificationSender } = buildUseCase(
+      buildCase({ status: 'IN_REVIEW' }),
+    );
+
+    const result = await recordAnalystDecision({
+      auth: ANALYST,
+      caseId: CASE_ID,
+      decision: 'FALSE_POSITIVE',
+      confidence: 80,
+      comment: 'cliente legítimo',
+    });
+
+    expect(result.enforcementAction).toBeNull();
+    expect(result.approvalRequest).toBeNull();
+    expect(approvalRequests.all()).toHaveLength(0);
+    expect(notificationSender.all()).toHaveLength(0);
+  });
+
+  it.each([
+    ['AUDITOR', () => AUDITOR],
+    ['ADMIN', () => ADMIN],
+  ])('rejects %s with FORBIDDEN_ROLE', async (_role, actor) => {
     const { recordAnalystDecision, decisions, timelineRecorder, auditRecorder } = buildUseCase(buildCase());
 
     await expect(
       recordAnalystDecision({
-        auth: AUDITOR,
+        auth: actor(),
         caseId: CASE_ID,
         decision: 'FALSE_POSITIVE',
         confidence: 50,

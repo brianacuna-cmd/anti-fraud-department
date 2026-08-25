@@ -116,6 +116,35 @@ export class OutboxEvent {
     return this.props.createdAt;
   }
 
+  /**
+   * El relay consiguio entregar el evento. `lastError` se limpia: un evento
+   * publicado no arrastra el motivo de un intento anterior fallido.
+   */
+  markPublished(now: Instant): OutboxEvent {
+    return new OutboxEvent({
+      ...this.props,
+      status: 'PUBLISHED',
+      publishedAt: now,
+      lastError: null,
+      lockedUntil: null,
+    });
+  }
+
+  /**
+   * El intento fallo. Se conserva el motivo, se incrementa el contador de
+   * intentos y NO se toca `publishedAt`, que sigue siendo null: un evento
+   * fallido nunca llego a publicarse.
+   */
+  markFailed(reason: string): OutboxEvent {
+    return new OutboxEvent({
+      ...this.props,
+      status: 'FAILED',
+      lastError: reason,
+      publishAttempts: this.props.publishAttempts + 1,
+      lockedUntil: null,
+    });
+  }
+
   toProps(): OutboxEventProps {
     return this.props;
   }

@@ -7,6 +7,7 @@ import type { InvestigationRepository } from '../domain/ports/InvestigationRepos
 import type { EvidenceRepository } from '../domain/ports/EvidenceRepository.js';
 import type { EvidenceStore } from '../domain/ports/EvidenceStore.js';
 import type { TimestampAuthority } from '../domain/ports/TimestampAuthority.js';
+import type { MalwareScanner } from '../domain/ports/MalwareScanner.js';
 import type { TimelineRecorder } from '../domain/ports/TimelineRecorder.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
@@ -16,12 +17,16 @@ import { Evidence as EvidenceAggregate } from '../domain/model/aggregates/Eviden
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { createInvestigationId } from '../domain/model/value-objects/InvestigationId.js';
+import { assertAssigned } from '../domain/services/AssignmentGate.js';
+import { assertNotClosed } from '../domain/services/ClosedCaseGate.js';
 import {
   caseNotFound,
   forbiddenCrossTenant,
   investigationNotFound,
+  evidenceInfected,
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
+import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
 
 export interface RegisterEvidenceInput {
   readonly auth: AuthContext;
@@ -38,6 +43,7 @@ export interface RegisterEvidenceDeps {
   readonly evidence: EvidenceRepository;
   readonly evidenceStore: EvidenceStore;
   readonly timestampAuthority: TimestampAuthority;
+  readonly malwareScanner: MalwareScanner;
   readonly timelineRecorder: TimelineRecorder;
   readonly auditRecorder: AuditRecorder;
   readonly unitOfWork: UnitOfWork;
@@ -56,6 +62,7 @@ export interface RegisterEvidenceDeps {
  */
 export function createRegisterEvidenceUseCase(deps: RegisterEvidenceDeps) {
   return async function registerEvidence(input: RegisterEvidenceInput): Promise<Evidence> {
+    requireOperationalRole(input.auth, CASE_WORK_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const caseId = createCaseId(input.caseId);
 
@@ -66,6 +73,10 @@ export function createRegisterEvidenceUseCase(deps: RegisterEvidenceDeps) {
     if (kase.organizationId !== organizationId) {
       throw forbiddenCrossTenant('case does not belong to the actor organization');
     }
+    // Sin responsable el expediente esta congelado. Ver `AssignmentGate`.
+    assertAssigned(kase);
+    // Un expediente cerrado no se instruye. Ver `ClosedCaseGate`.
+    assertNotClosed(kase);
 
     let investigationId = null;
     if (input.investigationId !== undefined && input.investigationId !== null) {
@@ -84,8 +95,34 @@ export function createRegisterEvidenceUseCase(deps: RegisterEvidenceDeps) {
     const sha256 = createHash('sha256').update(input.bytes).digest('hex');
     const storageKey = `${organizationId}/${caseId}/${evidenceId}`;
 
+    // INV-015: escanear ANTES de tocar el almacen. Si el fichero esta
+    // infectado no se guarda en ningun sitio, asi que no hay nada que limpiar
+    // despues — y no queda una copia de malware en el bucket de evidencias
+    // esperando a que alguien la descargue. La entrada de auditoria del
+    // rechazo se escribe igual: el intento es en si mismo informacion.
+    const verdict = await deps.malwareScanner.scan(input.bytes, input.filename);
+    if (verdict.status === 'INFECTED') {
+      await deps.auditRecorder.record({
+        organizationId,
+        actorType: input.auth.actorType,
+        actorId: input.auth.userId,
+        action: 'REGISTER_EVIDENCE',
+        resource: 'evidence',
+        resourceId: null,
+        detail: {
+          caseId,
+          filename: input.filename,
+          sha256,
+          rejected: true,
+          signature: verdict.signature,
+        },
+        ipAddress: input.auth.ipAddress,
+      });
+      throw evidenceInfected(input.filename, verdict.signature);
+    }
+
     // Store the blob first — an object-store write is not part of the Mongo tx.
-    await deps.evidenceStore.put(storageKey, input.bytes);
+    await deps.evidenceStore.put(storageKey, input.bytes, input.contentType);
     const timestamp = await deps.timestampAuthority.requestTimestamp(sha256);
 
     const now = deps.clock.now();
@@ -100,6 +137,7 @@ export function createRegisterEvidenceUseCase(deps: RegisterEvidenceDeps) {
       sha256,
       storageKey,
       timestamp,
+      scanStatus: verdict.status,
       uploadedBy: input.auth.userId,
       now,
     });

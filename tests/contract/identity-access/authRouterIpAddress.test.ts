@@ -11,6 +11,9 @@ import type { createLogoutUseCase } from '../../../src/modules/identity-access/a
 import type { createRequestPasswordResetUseCase } from '../../../src/modules/identity-access/application/auth/RequestPasswordReset.js';
 import type { createConfirmPasswordResetUseCase } from '../../../src/modules/identity-access/application/auth/ConfirmPasswordReset.js';
 import type { createRefreshSessionUseCase } from '../../../src/modules/identity-access/application/auth/RefreshSession.js';
+import type { createAuthenticateActorUseCase } from '../../../src/modules/identity-access/application/auth/AuthenticateActor.js';
+import type { Db } from 'mongodb';
+import { FakeEmailSender } from '../../helpers/identity-access/FakeEmailSender.js';
 
 /**
  * Focused e2e for design D-A7's "Login captures IP from input" scenario:
@@ -35,6 +38,13 @@ describe('authRouter IP capture (design D-A7)', () => {
     const router = authRouter({
       beginUserLogin,
       issueOrganizationSession,
+      // Esta prueba solo recorre /auth/users/login, que no toca ninguna de las
+      // dos: se inyectan para satisfacer el contrato, no para ejercitarlas.
+      emailSender: new FakeEmailSender(),
+      db: {} as Db,
+      authenticateOrganization: (async () => undefined) as unknown as ReturnType<
+        typeof createAuthenticateActorUseCase
+      >,
       issueSession: (async () => ({
         accessToken: 'a',
         refreshToken: 'r',
@@ -74,18 +84,30 @@ describe('authRouter IP capture (design D-A7)', () => {
     ]);
   });
 
-  it('resolves ipAddress to null when req.ip is unavailable (trust proxy not configured)', async () => {
+  it('does not honor X-Forwarded-For when trust proxy is not configured', async () => {
+    // El login de organización ahora es de 3 pasos y no invoca
+    // `issueOrganizationSession` en el paso 1 — la captura se hace en el
+    // login de USER, cuyo route inyecta `req.ip` en la misma request.
     const calls: unknown[] = [];
-    const issueOrganizationSession = (async (input: unknown) => {
+    const beginUserLogin = (async (input: unknown) => {
       calls.push(input);
-      return { accessToken: 'a', refreshToken: 'r', expiresAt: '2026-01-01T00:00:00.000Z' };
-    }) as unknown as ReturnType<typeof createIssueOrganizationSessionUseCase>;
+      return { kind: 'enrollment', token: 'enrollment-token' };
+    }) as unknown as ReturnType<typeof createBeginUserLoginUseCase>;
 
     const router = authRouter({
-      beginUserLogin: (async () => ({ kind: 'enrollment', token: 'x' })) as unknown as ReturnType<
-        typeof createBeginUserLoginUseCase
+      beginUserLogin,
+      // Esta prueba solo recorre /auth/users/login, que no toca ninguna de las
+      // dos: se inyectan para satisfacer el contrato, no para ejercitarlas.
+      emailSender: new FakeEmailSender(),
+      db: {} as Db,
+      authenticateOrganization: (async () => undefined) as unknown as ReturnType<
+        typeof createAuthenticateActorUseCase
       >,
-      issueOrganizationSession,
+      issueOrganizationSession: (async () => ({
+        accessToken: 'a',
+        refreshToken: 'r',
+        expiresAt: '2026-01-01T00:00:00.000Z',
+      })) as unknown as ReturnType<typeof createIssueOrganizationSessionUseCase>,
       issueSession: (async () => ({
         accessToken: 'a',
         refreshToken: 'r',
@@ -109,9 +131,9 @@ describe('authRouter IP capture (design D-A7)', () => {
     });
 
     await request(app)
-      .post('/api/v1/auth/organizations/login')
+      .post('/api/v1/auth/users/login')
       .set('X-Forwarded-For', '203.0.113.9')
-      .send({ email: 'org@acme.example.com', password: 'org-password' });
+      .send({ organizationSlug: 'acme', email: 'alice@example.com', password: 'correct-password' });
 
     expect((calls[0] as { ipAddress: string | null }).ipAddress).not.toBe('203.0.113.9');
   });

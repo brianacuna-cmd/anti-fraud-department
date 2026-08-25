@@ -42,6 +42,10 @@ describe('toUserResponse', () => {
       lastName: 'Last',
       avatarUrl: null,
       status: 'ACTIVE',
+      // mfa.enabled es deliberadamente publico: /users/me lo usa para mostrar
+      // el estado real de MFA en el perfil. Solo el flag — nunca el secret ni
+      // los codigos de recuperacion.
+      mfa: { enabled: false },
       isPlatformAdmin: false,
       roleId: 'ANALYST',
       createdAt: NOW,
@@ -60,14 +64,15 @@ describe('toUserResponse', () => {
     expect(dto.middleName).toBe('Danger');
   });
 
-  it('excludes resetToken, mfa, and configuration — persistence/domain-only, never on a DTO (design A11)', () => {
+  it('excludes resetToken, configuration and the MFA secret — persistence/domain-only, never on a DTO (design A11); only mfa.enabled is public', () => {
     const user = buildUser(oid('user-1'));
 
     const dto = toUserResponse(user);
 
     expect(dto).not.toHaveProperty('resetToken');
-    expect(dto).not.toHaveProperty('mfa');
     expect(dto).not.toHaveProperty('configuration');
+    expect(dto.mfa).toEqual({ enabled: false });
+    expect(dto.mfa).not.toHaveProperty('secret');
   });
 });
 

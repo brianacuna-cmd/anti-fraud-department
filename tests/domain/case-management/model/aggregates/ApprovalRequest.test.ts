@@ -68,3 +68,73 @@ describe('ApprovalRequest transitions', () => {
     ).toThrow('cannot transition');
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Cuatro ojos                                                                 */
+/* -------------------------------------------------------------------------- */
+
+describe('ApprovalRequest dual control', () => {
+  const REQUESTER = oid('user-1');
+  const OTHER = oid('user-2');
+
+  /**
+   * El control entero se reduce a esto. Si esta prueba se cae, una sola
+   * persona puede pedir una sancion y ejecutarla sin que nadie la mire.
+   */
+  it('refuses to let the requester approve their own request', () => {
+    const request = build({ requesterId: REQUESTER });
+
+    expect(() => request.approve({ reviewerId: REQUESTER, reviewerComment: 'ok', now: LATER }))
+      .toThrow(expect.objectContaining({ code: 'SELF_APPROVAL_FORBIDDEN' }));
+  });
+
+  /**
+   * Y tambien rechazar. Dejar que el solicitante retire lo suyo parece
+   * inofensivo, pero convierte la cola de revision en algo que una sola
+   * persona puede vaciar sin que nadie mire.
+   */
+  it('refuses to let the requester reject their own request', () => {
+    const request = build({ requesterId: REQUESTER });
+
+    expect(() => request.reject({ reviewerId: REQUESTER, reviewerComment: 'me lo pensé mejor', now: LATER }))
+      .toThrow(expect.objectContaining({ code: 'SELF_APPROVAL_FORBIDDEN' }));
+  });
+
+  it('leaves the request untouched when self-review is refused', () => {
+    const request = build({ requesterId: REQUESTER });
+
+    expect(() => request.approve({ reviewerId: REQUESTER, reviewerComment: null, now: LATER })).toThrow();
+
+    expect(request.status).toBe('PENDING');
+    expect(request.reviewerId).toBeNull();
+    expect(request.reviewedAt).toBeNull();
+  });
+
+  it.each([
+    ['approve', 'APPROVED'],
+    ['reject', 'REJECTED'],
+  ])('lets a second person %s it', (method, expected) => {
+    const request = build({ requesterId: REQUESTER });
+
+    const decided =
+      method === 'approve'
+        ? request.approve({ reviewerId: OTHER, reviewerComment: 'revisado', now: LATER })
+        : request.reject({ reviewerId: OTHER, reviewerComment: 'revisado', now: LATER });
+
+    expect(decided.status).toBe(expected);
+    expect(decided.reviewerId).toBe(OTHER);
+    expect(decided.reviewedAt).toBe(LATER);
+  });
+
+  /** La comprobacion de cuatro ojos corre ANTES que la de transicion. */
+  it('reports self-review, not an invalid transition, on an already-decided request', () => {
+    const decided = build({ requesterId: REQUESTER }).approve({
+      reviewerId: OTHER,
+      reviewerComment: 'revisado',
+      now: LATER,
+    });
+
+    expect(() => decided.approve({ reviewerId: REQUESTER, reviewerComment: null, now: LATER }))
+      .toThrow(expect.objectContaining({ code: 'SELF_APPROVAL_FORBIDDEN' }));
+  });
+});

@@ -123,8 +123,8 @@ describe('ActivateRoutingRule', () => {
       clock: { now: () => LATER },
     });
 
-    await activate({ auth: supervisorAuth('ADMIN'), ruleId: draftA.id });
-    await activate({ auth: supervisorAuth('ADMIN'), ruleId: draftB.id });
+    await activate({ auth: supervisorAuth(), ruleId: draftA.id });
+    await activate({ auth: supervisorAuth(), ruleId: draftB.id });
 
     const statuses = routingRules.all().map((r) => ({ id: r.id, status: r.status }));
     expect(statuses).toEqual(

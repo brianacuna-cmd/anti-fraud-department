@@ -1,6 +1,5 @@
 import type { AuthContext } from '../../../shared/kernel/AuthContext.js';
 import type { Clock } from '../../../shared/time/Clock.js';
-import { fromDate, toDate } from '../../../shared/time/Instant.js';
 import type { CaseRepository } from '../domain/ports/CaseRepository.js';
 import type { CaseSlaTrackingRepository } from '../domain/ports/CaseSlaTrackingRepository.js';
 import type { OrganizationFraudConfigRepository } from '../domain/ports/OrganizationFraudConfigRepository.js';
@@ -15,16 +14,16 @@ import { CaseSlaTracking } from '../domain/model/aggregates/CaseSlaTracking.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import {
+  resolveSlaDueDate,
+  slaWindowFromConfig,
+} from '../domain/services/SlaPolicy.js';
+import {
   caseNotFound,
   forbiddenCrossTenant,
   invariantViolation,
-  organizationFraudConfigNotFound,
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
-
-const MS_PER_MINUTE = 60_000;
-const REOPEN_ROLES = ['SUPERVISOR', 'ADMIN'] as const;
+import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
 
 export interface ReopenCaseInput {
   readonly auth: AuthContext;
@@ -46,7 +45,7 @@ export interface ReopenCaseDeps {
 }
 
 /**
- * T6 reopen (PR4). Role-gated to SUPERVISOR|ADMIN via `auth.roleId`.
+ * T6 reopen (PR4). Role-gated to SUPERVISOR.
  * Requires non-empty justification. Soft-deleted cases surface as
  * CASE_NOT_FOUND. Resets CaseSlaTracking when present (or creates one),
  * recomputes dueDate from org fraud config minutes, and records
@@ -54,7 +53,7 @@ export interface ReopenCaseDeps {
  */
 export function createReopenCaseUseCase(deps: ReopenCaseDeps) {
   return async function reopenCase(input: ReopenCaseInput): Promise<Case> {
-    requireRole(input.auth, REOPEN_ROLES);
+    requireOperationalRole(input.auth, SUPERVISION_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const justification = input.justification.trim();
     if (justification.length === 0) {
@@ -75,12 +74,24 @@ export function createReopenCaseUseCase(deps: ReopenCaseDeps) {
       const previousStatus = existing.status;
       const reopened = existing.reopen(input.targetStatus, now);
 
+      /*
+       * Sin configuracion del inquilino se usa la ventana por defecto, igual
+       * que al ABRIR el expediente.
+       *
+       * Antes esto lanzaba `ORGANIZATION_FRAUD_CONFIG_NOT_FOUND` y dejaba el
+       * sistema contradiciendose: `InitializeCaseSla` —el camino de apertura y
+       * el de reapertura desde el directorio— cae al valor por defecto sin
+       * quejarse, asi que un inquilino sin configurar podia abrir casos y
+       * cerrarlos, pero no reabrirlos. Dos caminos que calculan el mismo plazo
+       * no pueden discrepar sobre si la configuracion es obligatoria.
+       *
+       * La leniencia es la direccion correcta de las dos: negarse a reabrir un
+       * expediente por un ajuste que nunca hizo falta para abrirlo bloquea
+       * trabajo real sin proteger nada.
+       */
       const config = await deps.fraudConfig.findByOrganization(organizationId, tx);
-      if (!config) {
-        throw organizationFraudConfigNotFound(organizationId);
-      }
-      const minutes = config.slaMinutesFor(reopened.priority);
-      const dueDate = fromDate(new Date(toDate(now).getTime() + minutes * MS_PER_MINUTE));
+      const window = slaWindowFromConfig(config);
+      const dueDate = resolveSlaDueDate(window, reopened.priority, now);
 
       const existingTracking = await deps.slaTracking.findByCaseId(reopened.id, tx);
       const tracking =

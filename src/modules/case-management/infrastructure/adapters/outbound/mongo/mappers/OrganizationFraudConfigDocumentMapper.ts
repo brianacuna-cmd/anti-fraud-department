@@ -17,6 +17,7 @@ export interface UpsertFields {
     readonly risk_threshold_critical: number;
     readonly feature_flags: Readonly<Record<string, boolean>>;
     readonly outbound_webhook_url: string | null;
+    readonly outbound_webhook_secret: string | null;
     readonly updated_at: Date;
   };
   readonly setOnInsert: { readonly _id: ObjectId; readonly created_at: Date };
@@ -40,6 +41,7 @@ export function toUpsertFields(config: OrganizationFraudConfig): UpsertFields {
       risk_threshold_critical: config.riskThresholdCritical,
       feature_flags: config.featureFlags,
       outbound_webhook_url: config.outboundWebhookUrl,
+      outbound_webhook_secret: config.outboundWebhookSecret,
       updated_at: toDate(config.updatedAt),
     },
     setOnInsert: { _id: new ObjectId(config.id), created_at: toDate(config.createdAt) },
@@ -61,6 +63,7 @@ export function toDomain(document: OrganizationFraudConfigDocument): Organizatio
     riskThresholdCritical: document.risk_threshold_critical,
     featureFlags: document.feature_flags,
     outboundWebhookUrl: document.outbound_webhook_url ?? null,
+    outboundWebhookSecret: document.outbound_webhook_secret ?? null,
     createdAt: fromDate(document.created_at),
     updatedAt: fromDate(document.updated_at),
   });

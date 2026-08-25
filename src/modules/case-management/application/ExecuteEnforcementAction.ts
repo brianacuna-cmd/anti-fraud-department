@@ -22,9 +22,7 @@ import {
   invariantViolation,
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
-
-const EXECUTE_ROLES = ['SUPERVISOR', 'ADMIN'] as const;
+import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
 
 /** Action types that require a configured outbound webhook URL before EXECUTED. */
 const WEBHOOK_REQUIRED_TYPES: ReadonlySet<EnforcementActionType> = new Set([
@@ -61,7 +59,7 @@ export interface ExecuteEnforcementActionDeps {
 }
 
 /**
- * Executes an enforcement action (PR4). SUPERVISOR|ADMIN only.
+ * Executes an enforcement action (PR4). SUPERVISOR only.
  * Non-REVIEW requires APPROVED; REVIEW auto-executes from PENDING.
  * Same UoW: mark EXECUTED + insert customer_outgoing_events PENDING when a
  * webhook URL is available. Fail-closed for BLOCK|RESTRICT|SUSPEND|DELETE if
@@ -72,7 +70,7 @@ export function createExecuteEnforcementActionUseCase(deps: ExecuteEnforcementAc
   return async function executeEnforcementAction(
     input: ExecuteEnforcementActionInput,
   ): Promise<ExecuteEnforcementActionResult> {
-    requireRole(input.auth, EXECUTE_ROLES);
+    requireOperationalRole(input.auth, SUPERVISION_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const enforcementActionId = createEnforcementActionId(input.enforcementActionId);
 

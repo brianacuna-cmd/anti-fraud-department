@@ -7,9 +7,7 @@ import {
   routingRuleNotFound,
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
-
-const ROUTING_RULE_READ_ROLES = ['SUPERVISOR', 'ADMIN', 'AUDITOR'] as const;
+import { requireReadRole, OVERSIGHT_READ_ROLES } from './authorization/policy.js';
 
 export interface GetRoutingRuleInput {
   readonly auth: AuthContext;
@@ -20,10 +18,13 @@ export interface GetRoutingRuleDeps {
   readonly routingRules: CaseRoutingRuleRepository;
 }
 
-/** Loads a routing rule by id; SUPERVISOR|ADMIN|AUDITOR; tenant-scoped. */
+/**
+ * Loads a routing rule by id; SUPERVISOR|ADMIN|AUDITOR + the ORGANIZATION
+ * actor; tenant-scoped.
+ */
 export function createGetRoutingRuleUseCase(deps: GetRoutingRuleDeps) {
   return async function getRoutingRule(input: GetRoutingRuleInput): Promise<CaseRoutingRule> {
-    requireRole(input.auth, ROUTING_RULE_READ_ROLES);
+    requireReadRole(input.auth, OVERSIGHT_READ_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const ruleId = createCaseRoutingRuleId(input.ruleId);
     const rule = await deps.routingRules.findById(ruleId);

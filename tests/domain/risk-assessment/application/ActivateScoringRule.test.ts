@@ -83,7 +83,7 @@ describe('ActivateScoringRule', () => {
       clock: { now: () => LATER },
     });
 
-    const result = await activate({ auth: supervisorAuth('ADMIN'), ruleId: draft.id });
+    const result = await activate({ auth: supervisorAuth(), ruleId: draft.id });
 
     expect(result.status).toBe('ACTIVE');
     expect(scoringRules.all()).toHaveLength(1);

@@ -6,10 +6,8 @@ import type { InboundWebhookSecretId } from '../domain/model/value-objects/Inbou
 import { createPaymentProvider, type PaymentProvider } from '../domain/model/value-objects/PaymentProvider.js';
 import type { InboundWebhookSecretRepository } from '../domain/ports/InboundWebhookSecretRepository.js';
 import type { SecretCipher } from '../domain/ports/SecretCipher.js';
-import { requireRole } from './authorization/requireRole.js';
+import { requireOperationalRole, SECRET_WRITE_ROLES } from './authorization/policy.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-
-const SECRET_WRITE_ROLES = ['SUPERVISOR', 'ADMIN'] as const;
 
 export interface UpsertInboundWebhookSecretInput {
   readonly auth: AuthContext;
@@ -30,14 +28,14 @@ export interface UpsertInboundWebhookSecretDeps {
 }
 
 /**
- * JWT SUPERVISOR|ADMIN upsert of one inbound secret per (org, provider).
+ * JWT SUPERVISOR upsert of one inbound secret per (org, provider).
  * Encrypts plaintext before persist; never returns ciphertext or secret.
  */
 export function createUpsertInboundWebhookSecretUseCase(deps: UpsertInboundWebhookSecretDeps) {
   return async function upsertInboundWebhookSecret(
     input: UpsertInboundWebhookSecretInput,
   ): Promise<UpsertInboundWebhookSecretResult> {
-    requireRole(input.auth, SECRET_WRITE_ROLES);
+    requireOperationalRole(input.auth, SECRET_WRITE_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const now = deps.clock.now();
     const ciphertext = deps.cipher.encrypt(input.secret);

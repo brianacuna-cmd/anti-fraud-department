@@ -11,6 +11,7 @@ import { caseManagementErrorStatus } from '../../../../src/modules/case-manageme
 import { evidenceRouter } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/evidenceRouter.js';
 import { noteRouter } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/noteRouter.js';
 import { createRegisterEvidenceUseCase } from '../../../../src/modules/case-management/application/RegisterEvidence.js';
+import { createCreateEvidenceDownloadUrlUseCase } from '../../../../src/modules/case-management/application/CreateEvidenceDownloadUrl.js';
 import { createListEvidenceUseCase } from '../../../../src/modules/case-management/application/ListEvidence.js';
 import { createGetEvidenceUseCase } from '../../../../src/modules/case-management/application/GetEvidence.js';
 import { createDownloadEvidenceUseCase } from '../../../../src/modules/case-management/application/DownloadEvidence.js';
@@ -20,6 +21,7 @@ import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemor
 import { InMemoryInvestigationRepository } from '../../../helpers/case-management/InMemoryInvestigationRepository.js';
 import { InMemoryEvidenceRepository } from '../../../helpers/case-management/InMemoryEvidenceRepository.js';
 import { InMemoryEvidenceStore } from '../../../helpers/case-management/InMemoryEvidenceStore.js';
+import { FakeMalwareScanner } from '../../../helpers/case-management/FakeMalwareScanner.js';
 import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InMemoryCaseNoteRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
@@ -40,6 +42,9 @@ const NOTE_ID = oid('note-1');
 
 const SUPERVISOR = createAuthContext({ userId: oid('sup-1'), organizationId: ORG_1, actorType: 'USER', roleId: 'SUPERVISOR' });
 const ANALYST = createAuthContext({ userId: oid('an-1'), organizationId: ORG_1, actorType: 'USER', roleId: 'ANALYST' });
+const ADMIN = createAuthContext({ userId: oid('adm-1'), organizationId: ORG_1, actorType: 'USER', roleId: 'ADMIN' });
+/** El actor ORGANIZATION nunca lleva `roleId`: el resolver de sesión solo lo resuelve para USER. */
+const ORGANIZATION = createAuthContext({ userId: ORG_1, organizationId: ORG_1, actorType: 'ORGANIZATION' });
 
 function seedEvidence(): Evidence {
   return Evidence.register({
@@ -53,6 +58,7 @@ function seedEvidence(): Evidence {
     sha256: 'a'.repeat(64),
     storageKey: 'k/1',
     timestamp: null,
+    scanStatus: 'CLEAN',
     uploadedBy: oid('an-1'),
     now: NOW,
   });
@@ -84,12 +90,14 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
   };
 
   const evidenceHttp = evidenceRouter({
+    createEvidenceDownloadUrl: createCreateEvidenceDownloadUrlUseCase({ evidence, evidenceStore, clock: new FixedClock(NOW) }),
     registerEvidence: createRegisterEvidenceUseCase({
       cases,
       investigations,
       evidence,
       evidenceStore,
       timestampAuthority: { requestTimestamp: async () => null },
+      malwareScanner: new FakeMalwareScanner(),
       ...shared,
       generateEvidenceId,
     }),
@@ -149,6 +157,42 @@ describe('DELETE /evidence/:id and /notes/:id (soft delete)', () => {
     expect(del.status).toBe(200);
     expect(del.body.deletedAt).not.toBeNull();
     expect(await notes.listByCaseId(createCaseId(CASE_ID))).toHaveLength(0);
+  });
+
+  /**
+   * La regresión que motivó la política: con sesión de organización, el
+   * expediente respondía `role "null" is not authorized` a cada botón. Ahora
+   * sigue siendo un 403 —esa sesión no opera— pero el cuerpo dice POR QUÉ, y
+   * la interfaz usa ese `readOnly` para no ofrecer el botón siquiera.
+   */
+  it.each([
+    ['ADMIN', () => ADMIN],
+    ['the ORGANIZATION actor', () => ORGANIZATION],
+  ])('answers %s with an explicit read-only 403, never a null-role one', async (_label, actor) => {
+    const { app, evidence, notes } = buildApp(actor);
+    await evidence.save(seedEvidence());
+    await notes.save(seedNote());
+
+    for (const path of [`/api/v1/evidence/${EV_ID}`, `/api/v1/notes/${NOTE_ID}`]) {
+      const del = await request(app).delete(path);
+      expect(del.status).toBe(403);
+      expect(del.body.error.code).toBe('FORBIDDEN_ROLE');
+      expect(del.body.error.metadata.readOnly).toBe(true);
+      expect(del.body.error.message).not.toContain('null');
+    }
+
+    // Y nada se ha tocado.
+    expect(await notes.listByCaseId(createCaseId(CASE_ID))).toHaveLength(1);
+  });
+
+  /** Leer sí: el plano de gobierno observa el expediente entero. */
+  it('still lets the ORGANIZATION actor read the evidence it may not delete', async () => {
+    const { app, evidence } = buildApp(() => ORGANIZATION);
+    await evidence.save(seedEvidence());
+
+    const get = await request(app).get(`/api/v1/evidence/${EV_ID}`);
+    expect(get.status).toBe(200);
+    expect(get.body.filename).toBe('proof.pdf');
   });
 
   it('returns 404 for a missing note', async () => {

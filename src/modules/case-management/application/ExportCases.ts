@@ -5,9 +5,8 @@ import type { CaseRepository } from '../domain/ports/CaseRepository.js';
 import type { CaseStatus } from '../domain/model/value-objects/CaseStatus.js';
 import type { CasePriority } from '../domain/model/value-objects/CasePriority.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
+import { requireReadRole, OVERSIGHT_READ_ROLES } from './authorization/policy.js';
 
-const EXPORT_READ_ROLES = ['SUPERVISOR', 'ADMIN', 'AUDITOR'] as const;
 /** Safety cap so a tenant-wide export cannot exhaust memory. */
 const CASE_EXPORT_MAX_ROWS = 5000;
 
@@ -36,13 +35,14 @@ export interface ExportCasesDeps {
 
 /**
  * GET /cases/export — tenant-scoped, filtered case export for internal audit /
- * ops. Role-gated to SUPERVISOR|ADMIN|AUDITOR. Format-agnostic: yields the
+ * ops. Read-gated to SUPERVISOR|ADMIN|AUDITOR + the ORGANIZATION actor.
+ * Format-agnostic: yields the
  * filtered domain rows (up to CASE_EXPORT_MAX_ROWS); the HTTP layer renders
  * them to json/xlsx/pdf. Scope: cases (read-only).
  */
 export function createExportCasesUseCase(deps: ExportCasesDeps) {
   return async function exportCases(input: ExportCasesInput): Promise<ExportCasesResult> {
-    requireRole(input.auth, EXPORT_READ_ROLES);
+    requireReadRole(input.auth, OVERSIGHT_READ_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const page = await deps.cases.list({
       organizationId,

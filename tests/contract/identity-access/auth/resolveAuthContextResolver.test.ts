@@ -5,6 +5,7 @@ import { TieredAuthContextResolver } from '../../../../src/modules/identity-acce
 import { AesGcmSecretCipher } from '../../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
 import { AesGcmSessionTokenService } from '../../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSessionTokenService.js';
 import { InMemorySessionRepository } from '../../../helpers/identity-access/InMemorySessionRepository.js';
+import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
 
 describe('resolveAuthContextResolver', () => {
   it('returns a TrustedHeaderAuthContextResolver for AUTH_MODE=trusted-header (unchanged, global dev/staging bypass)', () => {
@@ -21,7 +22,11 @@ describe('resolveAuthContextResolver', () => {
     const sessionTokenService = new AesGcmSessionTokenService(new AesGcmSecretCipher('secret', 1));
     const sessionRepository = new InMemorySessionRepository();
 
-    const resolver = resolveAuthContextResolver('session', { sessionTokenService, sessionRepository });
+    const resolver = resolveAuthContextResolver('session', {
+      sessionTokenService,
+      sessionRepository,
+      userRepositoryFactory: new InMemoryUserRepositoryFactory(),
+    });
 
     expect(resolver).toBeInstanceOf(TieredAuthContextResolver);
   });
@@ -34,7 +39,11 @@ describe('resolveAuthContextResolver', () => {
     const sessionTokenService = new AesGcmSessionTokenService(new AesGcmSecretCipher('secret', 1));
     const sessionRepository = new InMemorySessionRepository();
 
-    const resolver = resolveAuthContextResolver('session', { sessionTokenService, sessionRepository });
+    const resolver = resolveAuthContextResolver('session', {
+      sessionTokenService,
+      sessionRepository,
+      userRepositoryFactory: new InMemoryUserRepositoryFactory(),
+    });
 
     // No Authorization header and no trusted-header fallback => null, not a
     // resolved PLATFORM_ADMIN/USER context from trusted headers.
@@ -49,6 +58,7 @@ describe('resolveAuthContextResolver', () => {
     const resolver = resolveAuthContextResolver('session', {
       sessionTokenService,
       sessionRepository,
+      userRepositoryFactory: new InMemoryUserRepositoryFactory(),
       platformAdminAuth: 'trusted-header',
     });
 
@@ -67,6 +77,7 @@ describe('resolveAuthContextResolver', () => {
     const resolver = resolveAuthContextResolver('session', {
       sessionTokenService,
       sessionRepository,
+      userRepositoryFactory: new InMemoryUserRepositoryFactory(),
       platformAdminAuth: 'trusted-header',
     });
 

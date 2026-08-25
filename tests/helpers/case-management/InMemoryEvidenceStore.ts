@@ -11,4 +11,9 @@ export class InMemoryEvidenceStore implements EvidenceStore {
   async get(storageKey: string): Promise<Buffer | null> {
     return this.blobs.get(storageKey) ?? null;
   }
+
+  /** Claves guardadas. Permite afirmar que NO se guardo nada (INV-015). */
+  all(): readonly string[] {
+    return [...this.blobs.keys()];
+  }
 }

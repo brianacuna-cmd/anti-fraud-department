@@ -4,6 +4,7 @@ import type { OrganizationFraudConfigRepository } from '../domain/ports/Organiza
 import { OrganizationFraudConfig } from '../domain/model/aggregates/OrganizationFraudConfig.js';
 import { generateOrganizationFraudConfigId } from '../domain/model/value-objects/OrganizationFraudConfigId.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
+import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
 
 export interface UpsertOrganizationFraudConfigInput {
   readonly auth: AuthContext;
@@ -17,6 +18,7 @@ export interface UpsertOrganizationFraudConfigInput {
   readonly riskThresholdCritical: number;
   readonly featureFlags?: Readonly<Record<string, boolean>>;
   readonly outboundWebhookUrl?: string | null;
+  readonly outboundWebhookSecret?: string | null;
 }
 
 export interface UpsertOrganizationFraudConfigDeps {
@@ -35,6 +37,7 @@ export function createUpsertOrganizationFraudConfigUseCase(deps: UpsertOrganizat
   return async function upsertOrganizationFraudConfig(
     input: UpsertOrganizationFraudConfigInput,
   ): Promise<OrganizationFraudConfig> {
+    requireOperationalRole(input.auth, SUPERVISION_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const now = deps.clock.now();
 
@@ -52,6 +55,7 @@ export function createUpsertOrganizationFraudConfigUseCase(deps: UpsertOrganizat
             riskThresholdCritical: input.riskThresholdCritical,
             featureFlags: input.featureFlags,
             outboundWebhookUrl: input.outboundWebhookUrl,
+            outboundWebhookSecret: input.outboundWebhookSecret,
           },
           now,
         )
@@ -68,6 +72,7 @@ export function createUpsertOrganizationFraudConfigUseCase(deps: UpsertOrganizat
           riskThresholdCritical: input.riskThresholdCritical,
           featureFlags: input.featureFlags,
           outboundWebhookUrl: input.outboundWebhookUrl,
+          outboundWebhookSecret: input.outboundWebhookSecret,
           now,
         });
 

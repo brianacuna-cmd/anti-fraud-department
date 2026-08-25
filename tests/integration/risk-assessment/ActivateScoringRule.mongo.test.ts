@@ -113,7 +113,7 @@ describe('ActivateScoringRule with MongoUnitOfWork (integration)', () => {
     const auth = createAuthContext({
       userId: oid('user-1'),
       organizationId: ORG,
-      roleId: 'ADMIN',
+      roleId: 'SUPERVISOR',
     });
 
     await activate({ auth, ruleId: first.id });

@@ -22,6 +22,13 @@ export interface EvidenceDocument {
   readonly sha256: string;
   readonly storage_key: string;
   readonly timestamp: EvidenceTimestampDocument | null;
+  /**
+   * Veredicto del antivirus (INV-015). `null` en los documentos escritos antes
+   * de que existiera el escaneo: se rehidratan como `SKIPPED`, que es la
+   * verdad —nadie los miro— y no `CLEAN`, que seria una afirmacion inventada
+   * sobre ficheros que ya estan en el expediente.
+   */
+  readonly scan_status: string | null;
   readonly uploaded_by: string;
   readonly created_at: Date;
   readonly deleted_at: Date | null;

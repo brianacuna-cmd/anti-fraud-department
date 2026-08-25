@@ -10,7 +10,12 @@ import { CaseManagementError } from '../../../../src/modules/case-management/dom
 
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const NOW = fromDate(new Date('2026-01-02T00:00:00.000Z'));
-const ORG_1_USER = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1') });
+const ORG_1_USER = createAuthContext({
+  userId: oid('user-1'),
+  organizationId: oid('org-1'),
+  actorType: 'USER',
+  roleId: 'SUPERVISOR',
+});
 
 const VALID_INPUT = {
   slaLowMinutes: 240,
@@ -63,7 +68,7 @@ describe('createUpsertOrganizationFraudConfigUseCase', () => {
     expect(result.updatedAt).toBe(NOW);
   });
 
-  it('rejects a null organizationId with FORBIDDEN_CROSS_TENANT before any repository call', async () => {
+  it('rejects a platform admin, which has no tenant to configure, before any repository call', async () => {
     const repository = new InMemoryOrganizationFraudConfigRepository();
     const upsertSpy = jest.spyOn(repository, 'upsert');
     const upsertConfig = buildUseCase(repository);
@@ -74,8 +79,28 @@ describe('createUpsertOrganizationFraudConfigUseCase', () => {
       await upsertConfig({ auth: platformAdmin, ...VALID_INPUT });
     } catch (error) {
       expect(error).toBeInstanceOf(CaseManagementError);
-      expect((error as CaseManagementError).code).toBe('FORBIDDEN_CROSS_TENANT');
+      expect((error as CaseManagementError).code).toBe('FORBIDDEN_ROLE');
     }
+    expect(upsertSpy).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Los umbrales de riesgo y los plazos de SLA deciden qué se persigue y en
+   * cuánto tiempo: es política operativa. Quien administra al equipo la lee,
+   * no la reescribe (SoD, ver `shared/kernel/AccessTier.ts`).
+   */
+  it.each([
+    ['ADMIN', () => createAuthContext({ userId: oid('admin-1'), organizationId: oid('org-1'), actorType: 'USER', roleId: 'ADMIN' })],
+    ['the ORGANIZATION actor', () => createAuthContext({ userId: oid('org-1'), organizationId: oid('org-1'), actorType: 'ORGANIZATION' })],
+  ])('rejects %s as read-only before any repository call', async (_label, actor) => {
+    const repository = new InMemoryOrganizationFraudConfigRepository();
+    const upsertSpy = jest.spyOn(repository, 'upsert');
+    const upsertConfig = buildUseCase(repository);
+
+    await expect(upsertConfig({ auth: actor(), ...VALID_INPUT })).rejects.toMatchObject({
+      code: 'FORBIDDEN_ROLE',
+      metadata: expect.objectContaining({ readOnly: true }),
+    });
     expect(upsertSpy).not.toHaveBeenCalled();
   });
 

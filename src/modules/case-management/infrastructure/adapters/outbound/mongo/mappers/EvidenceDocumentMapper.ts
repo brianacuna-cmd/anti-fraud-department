@@ -5,6 +5,7 @@ import { createEvidenceId } from '../../../../../domain/model/value-objects/Evid
 import { createCaseId } from '../../../../../domain/model/value-objects/CaseId.js';
 import { createInvestigationId } from '../../../../../domain/model/value-objects/InvestigationId.js';
 import type { EvidenceDocument } from '../documents/EvidenceDocument.js';
+import type { ScanStatus } from '../../../../../domain/ports/MalwareScanner.js';
 
 /** camelCase (domain) -> snake_case (Mongo). Instant fields become BSON `Date`. */
 export function toDocument(evidence: Evidence): EvidenceDocument {
@@ -23,6 +24,7 @@ export function toDocument(evidence: Evidence): EvidenceDocument {
       timestamp === null
         ? null
         : { token: timestamp.token, authority: timestamp.authority, timestamped_at: toDate(timestamp.timestampedAt) },
+    scan_status: evidence.scanStatus,
     uploaded_by: evidence.uploadedBy,
     created_at: toDate(evidence.createdAt),
     deleted_at: evidence.deletedAt === null ? null : toDate(evidence.deletedAt),
@@ -50,8 +52,16 @@ export function toDomain(document: EvidenceDocument): Evidence {
     sha256: document.sha256,
     storageKey: document.storage_key,
     timestamp,
+    // Documento anterior a INV-015: nadie lo escaneo, y asi se dice.
+    scanStatus: toScanStatus(document.scan_status),
     uploadedBy: document.uploaded_by,
     createdAt: fromDate(document.created_at),
     deletedAt: document.deleted_at == null ? null : fromDate(document.deleted_at),
   });
+}
+
+const SCAN_STATUSES: ReadonlySet<string> = new Set<ScanStatus>(['CLEAN', 'INFECTED', 'SKIPPED']);
+
+function toScanStatus(value: string | null): ScanStatus {
+  return value !== null && SCAN_STATUSES.has(value) ? (value as ScanStatus) : 'SKIPPED';
 }

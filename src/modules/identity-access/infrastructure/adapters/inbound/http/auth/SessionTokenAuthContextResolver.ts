@@ -34,10 +34,28 @@ function extractBearerToken(req: Request): string | null {
  * for that tier, so `AuthContext.userId` is populated from
  * `session.organizationId` in that one case.
  */
+import type { UserRepositoryFactory } from '../../../../../domain/ports/UserRepositoryFactory.js';
+import { createOrganizationId } from '../../../../../domain/model/value-objects/OrganizationId.js';
+import { createUserId } from '../../../../../domain/model/value-objects/UserId.js';
+
 export class SessionTokenAuthContextResolver implements AuthContextResolver {
   constructor(
     private readonly sessionTokenService: SessionTokenService,
     private readonly sessionRepository: SessionRepository,
+    /**
+     * Necesario para poblar `AuthContext.roleId`.
+     *
+     * Sin el, el rol llega siempre `null` y toda guarda de case-management
+     * (`requireRole`) rechaza a cualquiera con `role "null" is not authorized`
+     * — reabrir, exportar, acciones por lote, reglas de enrutamiento,
+     * cumplimiento y aprobaciones quedaban inaccesibles por sesion real. Las
+     * pruebas no lo veian porque construyen el `AuthContext` a mano.
+     *
+     * Se resuelve por peticion contra el repositorio, nunca desde el token: un
+     * cambio de rol tiene que surtir efecto sin esperar a que caduque la
+     * sesion.
+     */
+    private readonly userRepositoryFactory: UserRepositoryFactory,
   ) {}
 
   async resolve(req: Request): Promise<AuthContext | null> {
@@ -80,6 +98,7 @@ export class SessionTokenAuthContextResolver implements AuthContextResolver {
       organizationId: session.organizationId,
       actorType: session.actorType,
       sessionId: session.id,
+      roleId: await this.resolveRoleId(session.actorType, session.organizationId, session.userId),
     });
   }
 
@@ -109,4 +128,26 @@ export class SessionTokenAuthContextResolver implements AuthContextResolver {
       mfaJti: payload.jti,
     });
   }
+
+  /**
+   * Rol del usuario que firma la peticion.
+   *
+   * Solo el actor USER tiene rol: la ORGANIZACION es dueña del inquilino y el
+   * PLATFORM_ADMIN es el operador global, y ambos pasan las guardas por su
+   * `actorType`, no por un `roleId`. Un usuario que ya no exista devuelve
+   * `null`, que las guardas rechazan — que es lo correcto.
+   */
+  private async resolveRoleId(
+    actorType: string,
+    organizationId: string | null,
+    userId: string | null,
+  ): Promise<string | null> {
+    if (actorType !== 'USER' || !organizationId || !userId) {
+      return null;
+    }
+    const repository = this.userRepositoryFactory.forTenant(createOrganizationId(organizationId));
+    const user = await repository.findById(createUserId(userId));
+    return user?.roleId ?? null;
+  }
+
 }

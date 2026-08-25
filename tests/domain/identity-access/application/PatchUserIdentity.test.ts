@@ -16,8 +16,8 @@ import { IdentityAccessError } from '../../../../src/modules/identity-access/dom
 
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const PATCHED_AT = fromDate(new Date('2026-01-02T00:00:00.000Z'));
-const ORG_1_USER = createAuthContext({ userId: oid('u1'), organizationId: oid('org-1'), isPlatformAdmin: false });
-const ORG_2_USER = createAuthContext({ userId: oid('u2'), organizationId: oid('org-2'), isPlatformAdmin: false });
+const ORG_1_USER = createAuthContext({ userId: oid('u1'), organizationId: oid('org-1'), actorType: 'ORGANIZATION' });
+const ORG_2_USER = createAuthContext({ userId: oid('u2'), organizationId: oid('org-2'), actorType: 'ORGANIZATION' });
 
 async function seedUser(
   userRepositoryFactory: InMemoryUserRepositoryFactory,

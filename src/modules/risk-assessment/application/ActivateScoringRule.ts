@@ -10,9 +10,7 @@ import {
   scoringRuleByIdNotFound,
 } from '../domain/errors/RiskAssessmentError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireRole } from './authorization/requireRole.js';
-
-const SCORING_RULE_ROLES = ['SUPERVISOR', 'ADMIN'] as const;
+import { requireOperationalRole, SCORING_RULE_WRITE_ROLES } from './authorization/policy.js';
 
 export interface ActivateScoringRuleInput {
   readonly auth: AuthContext;
@@ -28,11 +26,11 @@ export interface ActivateScoringRuleDeps {
 
 /**
  * Atomic activate: deactivate current ACTIVE (if any) and activate the draft
- * in one Unit of Work. SUPERVISOR|ADMIN only.
+ * in one Unit of Work. SUPERVISOR only.
  */
 export function createActivateScoringRuleUseCase(deps: ActivateScoringRuleDeps) {
   return async function activateScoringRule(input: ActivateScoringRuleInput): Promise<RiskScoringRule> {
-    requireRole(input.auth, SCORING_RULE_ROLES);
+    requireOperationalRole(input.auth, SCORING_RULE_WRITE_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const ruleId = createRiskScoringRuleId(input.ruleId);
 

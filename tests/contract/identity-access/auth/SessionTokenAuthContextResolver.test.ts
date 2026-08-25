@@ -9,6 +9,7 @@ import { createSessionId } from '../../../../src/modules/identity-access/domain/
 import { createOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createAdminOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/AdminOrganizationId.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
+import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const FAR_FUTURE = fromDate(new Date('2099-01-01T00:00:00.000Z'));
@@ -25,7 +26,7 @@ function buildRequest(bearerToken?: string): Request {
 function buildFixture() {
   const tokenService = new AesGcmSessionTokenService(new AesGcmSecretCipher('token-secret', 1));
   const sessionRepository = new InMemorySessionRepository();
-  const resolver = new SessionTokenAuthContextResolver(tokenService, sessionRepository);
+  const resolver = new SessionTokenAuthContextResolver(tokenService, sessionRepository, new InMemoryUserRepositoryFactory());
   return { tokenService, sessionRepository, resolver };
 }
 

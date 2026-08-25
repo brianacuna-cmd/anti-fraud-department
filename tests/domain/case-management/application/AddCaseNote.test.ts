@@ -3,6 +3,7 @@ import { createAddCaseNoteUseCase } from '../../../../src/modules/case-managemen
 import { createListCaseNotesUseCase } from '../../../../src/modules/case-management/application/ListCaseNotes.js';
 import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
 import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
+import { createAssignedTo } from '../../../../src/modules/case-management/domain/model/value-objects/AssignedTo.js';
 import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
 import { generateCaseNoteId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
@@ -19,7 +20,12 @@ import { CaseManagementError } from '../../../../src/modules/case-management/dom
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ORG_1 = oid('org-1');
 const ORG_2 = oid('org-2');
-const ANALYST = createAuthContext({ userId: oid('analyst-1'), organizationId: ORG_1, actorType: 'USER' });
+const ANALYST = createAuthContext({
+  userId: oid('analyst-1'),
+  organizationId: ORG_1,
+  actorType: 'USER',
+  roleId: 'ANALYST',
+});
 
 function buildCase(organizationId = ORG_1): Case {
   return Case.create({
@@ -28,6 +34,9 @@ function buildCase(organizationId = ORG_1): Case {
     customerId: 'customer-1',
     riskScore: createRiskScore(50),
     priority: 'MEDIUM',
+    // La regla de asignacion congela los expedientes huerfanos:
+    // sin responsable no se pueden trabajar.
+    assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   });
 }
@@ -95,3 +104,30 @@ describe('createAddCaseNoteUseCase', () => {
     expect(listed.map((n) => n.body)).toEqual(['first', 'second']);
   });
 });
+
+/*
+ * El informe congelado se genera al cerrar el expediente. Permitir que
+ * despues se le anadan notas o evidencia produce la peor combinacion posible:
+ * un expediente cuyo contenido real ya no coincide con el documento que se
+ * entrego como su foto inmutable.
+ */
+describe('un expediente cerrado no se instruye', () => {
+  it('rechaza anadir una nota a un caso resuelto', async () => {
+    const { addCaseNote, cases } = build();
+    const resuelto = Case.rehydrate({
+      ...toProps(buildCase()),
+      status: 'RESOLVED',
+    });
+    await cases.save(resuelto);
+
+    await expect(
+      addCaseNote({ auth: ANALYST, caseId: oid('case-1'), body: 'tarde' }),
+    ).rejects.toThrow(/reopen it before working on it again/);
+  });
+});
+
+function toProps(kase: Case) {
+  return {
+    ...kase.toProps(),
+  };
+}

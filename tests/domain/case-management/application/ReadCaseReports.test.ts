@@ -13,6 +13,10 @@ import { InMemoryInvestigationRepository } from '../../../helpers/case-managemen
 import { InMemoryResolutionRepository } from '../../../helpers/case-management/InMemoryResolutionRepository.js';
 import { InMemoryEnforcementActionRepository } from '../../../helpers/case-management/InMemoryEnforcementActionRepository.js';
 import { InMemoryAnalystDecisionRepository } from '../../../helpers/case-management/InMemoryAnalystDecisionRepository.js';
+import { InMemoryEvidenceRepository } from '../../../helpers/case-management/InMemoryEvidenceRepository.js';
+import { InMemoryApprovalRequestRepository } from '../../../helpers/case-management/InMemoryApprovalRequestRepository.js';
+import { InMemoryCaseSlaTrackingRepository } from '../../../helpers/case-management/InMemoryCaseSlaTrackingRepository.js';
+import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
 import { InMemoryCaseReportRepository } from '../../../helpers/case-management/InMemoryCaseReportRepository.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
@@ -36,6 +40,10 @@ function build() {
     resolutions: new InMemoryResolutionRepository(),
     enforcementActions: new InMemoryEnforcementActionRepository(),
     analystDecisions: new InMemoryAnalystDecisionRepository(),
+    evidence: new InMemoryEvidenceRepository(),
+    approvalRequests: new InMemoryApprovalRequestRepository(),
+    slaTracking: new InMemoryCaseSlaTrackingRepository(),
+    assignees: new InMemoryAssigneeDirectory(),
     reports,
     auditRecorder: new InMemoryCaseManagementAuditRecorder(),
     unitOfWork: new PassthroughUnitOfWork(),

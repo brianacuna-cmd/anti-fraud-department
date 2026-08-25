@@ -28,6 +28,31 @@ function buildCase(id: string, organizationId = oid('org-1')): Case {
   });
 }
 
+
+/** Caso con identificadores concretos, para la expansion del grafo (INV-013). */
+function buildCaseWithIdentifiers(
+  id: string,
+  overrides: {
+    organizationId?: string;
+    customerId?: string;
+    customerEmail?: string | null;
+    bridgeWallet?: string | null;
+    stripeCustomerId?: string | null;
+  } = {},
+): Case {
+  return Case.create({
+    id: createCaseId(id),
+    organizationId: overrides.organizationId ?? oid('org-1'),
+    customerId: overrides.customerId ?? 'customer-1',
+    customerEmail: overrides.customerEmail ?? null,
+    bridgeWallet: overrides.bridgeWallet ?? null,
+    stripeCustomerId: overrides.stripeCustomerId ?? null,
+    riskScore: createRiskScore(42),
+    priority: 'HIGH',
+    now: NOW,
+  });
+}
+
 describe('MongoCaseRepository (integration, real replica-set Mongo)', () => {
   let replicaSet: MongoMemoryReplSet;
   let client: MongoClient;
@@ -216,4 +241,92 @@ describe('MongoCaseRepository (integration, real replica-set Mongo)', () => {
     expect(page.total).toBe(1);
     expect(page.items[0]?.id).toBe(oid('list-match'));
   });
+
+  describe('findByEntityIdentifiers (INV-013)', () => {
+    it('devuelve los expedientes que comparten cualquiera de los identificadores', async () => {
+      const withWallet = buildCaseWithIdentifiers(oid('case-w'), { bridgeWallet: '0xabc' });
+      const withEmail = buildCaseWithIdentifiers(oid('case-e'), { customerEmail: 'mula@x.com' });
+      const unrelated = buildCaseWithIdentifiers(oid('case-u'), { bridgeWallet: '0xotra' });
+      await repository.save(withWallet);
+      await repository.save(withEmail);
+      await repository.save(unrelated);
+
+      const found = await repository.findByEntityIdentifiers({
+        organizationId: oid('org-1'),
+        refs: [
+          { type: 'WALLET', value: '0xabc' },
+          { type: 'EMAIL', value: 'mula@x.com' },
+        ],
+        limit: 50,
+      });
+
+      expect(found.map((kase) => kase.id).sort()).toEqual([withEmail.id, withWallet.id].sort());
+    });
+
+    it('no cruza inquilinos aunque el identificador sea identico', async () => {
+      await repository.save(buildCaseWithIdentifiers(oid('case-mine'), { bridgeWallet: '0xabc' }));
+      await repository.save(
+        buildCaseWithIdentifiers(oid('case-theirs'), {
+          organizationId: oid('org-2'),
+          bridgeWallet: '0xabc',
+        }),
+      );
+
+      const found = await repository.findByEntityIdentifiers({
+        organizationId: oid('org-1'),
+        refs: [{ type: 'WALLET', value: '0xabc' }],
+        limit: 50,
+      });
+
+      expect(found).toHaveLength(1);
+      expect(found[0]!.organizationId).toBe(oid('org-1'));
+    });
+
+    it('excluye los borrados logicamente', async () => {
+      const live = buildCaseWithIdentifiers(oid('case-live'), { bridgeWallet: '0xabc' });
+      const deleted = buildCaseWithIdentifiers(oid('case-dead'), { bridgeWallet: '0xabc' });
+      await repository.save(live);
+      await repository.save(deleted);
+      await db
+        .collection<CaseDocument>('cases')
+        .updateOne({ _id: new ObjectId(deleted.id) }, { $set: { deleted_at: new Date() } });
+
+      const found = await repository.findByEntityIdentifiers({
+        organizationId: oid('org-1'),
+        refs: [{ type: 'WALLET', value: '0xabc' }],
+        limit: 50,
+      });
+
+      expect(found.map((kase) => kase.id)).toEqual([live.id]);
+    });
+
+    it('respeta el limite por ronda', async () => {
+      await repository.save(buildCaseWithIdentifiers(oid('case-1'), { bridgeWallet: '0xabc' }));
+      await repository.save(buildCaseWithIdentifiers(oid('case-2'), { bridgeWallet: '0xabc' }));
+      await repository.save(buildCaseWithIdentifiers(oid('case-3'), { bridgeWallet: '0xabc' }));
+
+      const found = await repository.findByEntityIdentifiers({
+        organizationId: oid('org-1'),
+        refs: [{ type: 'WALLET', value: '0xabc' }],
+        limit: 2,
+      });
+
+      expect(found).toHaveLength(2);
+    });
+
+    it('devuelve vacio sin identificadores, sin tocar la coleccion', async () => {
+      await repository.save(buildCaseWithIdentifiers(oid('case-1'), { bridgeWallet: '0xabc' }));
+
+      // Un $or vacio es un error en Mongo: sin el corte previo, la expansion
+      // reventaria justo cuando la red se agota.
+      const found = await repository.findByEntityIdentifiers({
+        organizationId: oid('org-1'),
+        refs: [],
+        limit: 50,
+      });
+
+      expect(found).toEqual([]);
+    });
+  });
+
 });

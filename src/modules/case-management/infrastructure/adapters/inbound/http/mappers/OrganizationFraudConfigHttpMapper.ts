@@ -13,6 +13,11 @@ export interface OrganizationFraudConfigResponseDto {
   readonly riskThresholdCritical: number;
   readonly featureFlags: Readonly<Record<string, boolean>>;
   readonly outboundWebhookUrl: string | null;
+  /**
+   * Si hay secreto de firma configurado. El valor NO sale: quien pueda leer la
+   * configuracion podria si no firmar entregas indistinguibles de las nuestras.
+   */
+  readonly outboundWebhookSecretSet: boolean;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -33,6 +38,7 @@ export function toOrganizationFraudConfigResponse(
     riskThresholdCritical: config.riskThresholdCritical,
     featureFlags: config.featureFlags,
     outboundWebhookUrl: config.outboundWebhookUrl,
+    outboundWebhookSecretSet: config.outboundWebhookSecret !== null,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
   };
