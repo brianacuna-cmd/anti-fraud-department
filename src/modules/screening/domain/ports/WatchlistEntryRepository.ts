@@ -1,4 +1,8 @@
+import type { WatchlistEntry } from '../model/aggregates/WatchlistEntry.js';
 import type { WatchlistEntryId } from '../model/value-objects/WatchlistEntryId.js';
+import type { WatchlistEntryStatus } from '../model/value-objects/WatchlistEntryStatus.js';
+import type { RiskLevel } from '../model/value-objects/RiskLevel.js';
+import type { EntryType } from '../model/value-objects/EntryType.js';
 import type { WatchlistId } from '../model/value-objects/WatchlistId.js';
 import type { Instant } from '../../../../shared/time/Instant.js';
 import type { Transaction } from './UnitOfWork.js';
@@ -21,12 +25,28 @@ export interface WatchlistEntryToIndex {
   readonly name: string;
 }
 
+export interface WatchlistEntryListQuery {
+  readonly watchlistId: WatchlistId;
+  readonly organizationId: string;
+  readonly status?: readonly WatchlistEntryStatus[];
+  readonly entryType?: readonly EntryType[];
+  readonly riskLevel?: readonly RiskLevel[];
+  readonly country?: string;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+export interface WatchlistEntryListResult {
+  readonly items: readonly WatchlistEntry[];
+  readonly total: number;
+}
+
 export interface WatchlistEntryRepository {
   /** Fetches the minimal fields (id + raw name) needed to (re)compute indexed fields. */
-  findToIndex(id: WatchlistEntryId): Promise<WatchlistEntryToIndex | null>;
+  findToIndex(id: WatchlistEntryId, tx?: Transaction): Promise<WatchlistEntryToIndex | null>;
 
   /** Persists the precomputed `normalized_name` / `phonetic_keys` fields for an entry. */
-  updateIndexedFields(id: WatchlistEntryId, fields: WatchlistEntryIndexedFields): Promise<void>;
+  updateIndexedFields(id: WatchlistEntryId, fields: WatchlistEntryIndexedFields, tx?: Transaction): Promise<void>;
 
   /**
    * Cascade helper for `DeleteWatchlist` (design §3, RF-5): soft-deletes
@@ -35,4 +55,10 @@ export interface WatchlistEntryRepository {
    * (Slice B); only what the cascade needs.
    */
   softDeleteAllByWatchlist(watchlistId: WatchlistId, now: Instant, tx?: Transaction): Promise<void>;
+
+  /** Slice B: full CRUD write methods. */
+  create(entry: WatchlistEntry, tx?: Transaction): Promise<void>;
+  save(entry: WatchlistEntry, tx?: Transaction): Promise<void>;
+  findById(id: WatchlistEntryId, tx?: Transaction): Promise<WatchlistEntry | null>;
+  list(query: WatchlistEntryListQuery, tx?: Transaction): Promise<WatchlistEntryListResult>;
 }

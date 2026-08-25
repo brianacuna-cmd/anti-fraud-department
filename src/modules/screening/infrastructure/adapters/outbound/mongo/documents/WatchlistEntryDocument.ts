@@ -21,4 +21,7 @@ export interface WatchlistEntryDocument {
   readonly country: string | null;
   readonly status: string;
   readonly deleted_at: Date | null;
+  /** Additive (Slice B, RNF-5): absent on pre-B documents; write-path always sets them. */
+  readonly created_at?: Date;
+  readonly updated_at?: Date;
 }
