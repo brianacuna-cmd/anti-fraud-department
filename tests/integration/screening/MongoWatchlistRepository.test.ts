@@ -123,4 +123,17 @@ describe('MongoWatchlistRepository (integration, real Mongo)', () => {
     expect(byStatus.total).toBe(1);
     expect(byStatus.items[0]?.name).toBe('Blacklist A');
   });
+
+  it('translates a unique name collision into WATCHLIST_NAME_TAKEN', async () => {
+    await db.collection('watchlists').createIndex(
+      { organization_id: 1, name: 1 },
+      { unique: true, name: 'watchlists_org_name_partial_unique', partialFilterExpression: { deleted_at: null } },
+    );
+
+    await repository.create(buildWatchlist({ name: 'OFAC List' }));
+
+    await expect(repository.create(buildWatchlist({ name: 'OFAC List' }))).rejects.toMatchObject({
+      code: 'WATCHLIST_NAME_TAKEN',
+    });
+  });
 });

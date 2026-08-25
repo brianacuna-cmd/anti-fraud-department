@@ -319,6 +319,27 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { unique: true, name: 'aml_alerts_natural_key_unique' },
   );
 
+  // watchlists (screening, Slice A2, design §7 / ADR-5): list queries filter
+  // by org+status and org+type; the unique partial index on org+name where
+  // deleted_at is null enforces per-org name uniqueness among non-deleted
+  // watchlists only, allowing the same name to be reused after a soft-delete.
+  await db
+    .collection('watchlists')
+    .createIndex({ organization_id: 1, status: 1 }, { name: 'watchlists_org_status_idx' });
+
+  await db
+    .collection('watchlists')
+    .createIndex({ organization_id: 1, type: 1 }, { name: 'watchlists_org_type_idx' });
+
+  await db.collection('watchlists').createIndex(
+    { organization_id: 1, name: 1 },
+    {
+      unique: true,
+      name: 'watchlists_org_name_partial_unique',
+      partialFilterExpression: { deleted_at: null },
+    },
+  );
+
   // organization_screening_config (screening, design D-6): per-tenant
   // singleton of confidence thresholds — one document per organization.
   await db

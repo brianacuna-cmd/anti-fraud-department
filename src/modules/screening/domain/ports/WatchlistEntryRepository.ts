@@ -1,4 +1,7 @@
 import type { WatchlistEntryId } from '../model/value-objects/WatchlistEntryId.js';
+import type { WatchlistId } from '../model/value-objects/WatchlistId.js';
+import type { Instant } from '../../../../shared/time/Instant.js';
+import type { Transaction } from './UnitOfWork.js';
 
 /**
  * Write-path port for the `watchlist_entries` collection (spec NFI: single
@@ -24,4 +27,12 @@ export interface WatchlistEntryRepository {
 
   /** Persists the precomputed `normalized_name` / `phonetic_keys` fields for an entry. */
   updateIndexedFields(id: WatchlistEntryId, fields: WatchlistEntryIndexedFields): Promise<void>;
+
+  /**
+   * Cascade helper for `DeleteWatchlist` (design §3, RF-5): soft-deletes
+   * every non-removed entry of a watchlist within the SAME transaction as
+   * the watchlist delete. Minimal bulk op — NOT the full entry CRUD
+   * (Slice B); only what the cascade needs.
+   */
+  softDeleteAllByWatchlist(watchlistId: WatchlistId, now: Instant, tx?: Transaction): Promise<void>;
 }

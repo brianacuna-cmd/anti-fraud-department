@@ -256,9 +256,18 @@ import { createTransitionAmlAlertUseCase } from './modules/screening/application
 import { createEscalateAmlAlertUseCase } from './modules/screening/application/EscalateAmlAlert.js';
 import { createResolveAmlAlertUseCase } from './modules/screening/application/ResolveAmlAlert.js';
 import { amlAlertRouter } from './modules/screening/infrastructure/adapters/inbound/http/amlAlertRouter.js';
+import { watchlistRouter } from './modules/screening/infrastructure/adapters/inbound/http/watchlistRouter.js';
 import { screeningErrorStatus } from './modules/screening/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createAmlAlertCaseOpener } from './composition/amlAlertCaseOpener.js';
 import { generateAmlAlertId } from './modules/screening/domain/model/value-objects/AmlAlertId.js';
+import { generateWatchlistId } from './modules/screening/domain/model/value-objects/WatchlistId.js';
+import { MongoWatchlistRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoWatchlistRepository.js';
+import { MongoWatchlistEntryRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoWatchlistEntryRepository.js';
+import { createCreateWatchlistUseCase } from './modules/screening/application/CreateWatchlist.js';
+import { createListWatchlistsUseCase } from './modules/screening/application/ListWatchlists.js';
+import { createGetWatchlistUseCase } from './modules/screening/application/GetWatchlist.js';
+import { createUpdateWatchlistUseCase } from './modules/screening/application/UpdateWatchlist.js';
+import { createDeleteWatchlistUseCase } from './modules/screening/application/DeleteWatchlist.js';
 import { createEntryType, isEntryType } from './modules/screening/domain/model/value-objects/EntryType.js';
 import { MongoAmlAlertRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlAlertRepository.js';
 import { MongoAmlAlertTimelineRecorder } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlAlertTimelineRecorder.js';
@@ -1203,6 +1212,36 @@ async function bootstrap(): Promise<void> {
     escalateAmlAlert,
     resolveAmlAlert,
   });
+
+  // Watchlist CRUD (screening, Slice A2) — reuses the same screeningUnitOfWork
+  // and screeningAuditRecorder wired for ResolveAmlAlert above.
+  const watchlists = new MongoWatchlistRepository(db);
+  const watchlistEntries = new MongoWatchlistEntryRepository(db);
+  const watchlistsHttpRouter = watchlistRouter({
+    createWatchlist: createCreateWatchlistUseCase({
+      watchlistRepository: watchlists,
+      auditRecorder: screeningAuditRecorder,
+      unitOfWork: screeningUnitOfWork,
+      clock,
+      generateWatchlistId,
+    }),
+    listWatchlists: createListWatchlistsUseCase({ watchlistRepository: watchlists }),
+    getWatchlist: createGetWatchlistUseCase({ watchlistRepository: watchlists }),
+    updateWatchlist: createUpdateWatchlistUseCase({
+      watchlistRepository: watchlists,
+      auditRecorder: screeningAuditRecorder,
+      unitOfWork: screeningUnitOfWork,
+      clock,
+    }),
+    deleteWatchlist: createDeleteWatchlistUseCase({
+      watchlistRepository: watchlists,
+      watchlistEntryRepository: watchlistEntries,
+      auditRecorder: screeningAuditRecorder,
+      unitOfWork: screeningUnitOfWork,
+      clock,
+    }),
+  });
+
   const watchlistCandidates =
     SCREENING_MATCH_BACKEND === 'atlas'
       ? new MongoAtlasWatchlistCandidateRepository(db)
@@ -1573,6 +1612,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(riskScoreProcessRouter);
   identityAccessRouter.use(riskScoringRulesRouter);
   identityAccessRouter.use(amlAlertsHttpRouter);
+  identityAccessRouter.use(watchlistsHttpRouter);
   identityAccessRouter.use(inboundWebhookSecretHttpRouter);
 
   const app = createApp({

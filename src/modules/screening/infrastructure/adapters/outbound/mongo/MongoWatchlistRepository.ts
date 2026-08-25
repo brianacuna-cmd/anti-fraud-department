@@ -10,11 +10,20 @@ import type {
 import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
 import type { WatchlistDocument } from './documents/WatchlistDocument.js';
 import { toDocument, toDomain } from './mappers/WatchlistDocumentMapper.js';
+import { isDuplicateKeyError } from '../../../../../../shared/persistence/mongo/duplicateKey.js';
+import { watchlistNameTaken } from '../../../../domain/errors/ScreeningError.js';
 
 const COLLECTION_NAME = 'watchlists';
 
 function toSession(tx: Transaction | undefined): ClientSession | undefined {
   return tx as unknown as ClientSession | undefined;
+}
+
+function duplicateWatchlistNameOrRethrow(error: unknown, name: string): never {
+  if (isDuplicateKeyError(error)) {
+    throw watchlistNameTaken(name);
+  }
+  throw error;
 }
 
 function statusFilterFragment(query: WatchlistListQuery): Record<string, unknown> {
@@ -43,12 +52,20 @@ export class MongoWatchlistRepository implements WatchlistRepository {
   }
 
   async create(watchlist: Watchlist, tx?: Transaction): Promise<void> {
-    await this.collection.insertOne(toDocument(watchlist), { session: toSession(tx) });
+    try {
+      await this.collection.insertOne(toDocument(watchlist), { session: toSession(tx) });
+    } catch (error) {
+      throw duplicateWatchlistNameOrRethrow(error, watchlist.name);
+    }
   }
 
   async save(watchlist: Watchlist, tx?: Transaction): Promise<void> {
     const document = toDocument(watchlist);
-    await this.collection.replaceOne({ _id: document._id }, document, { session: toSession(tx) });
+    try {
+      await this.collection.replaceOne({ _id: document._id }, document, { session: toSession(tx) });
+    } catch (error) {
+      throw duplicateWatchlistNameOrRethrow(error, watchlist.name);
+    }
   }
 
   async findById(id: WatchlistId, tx?: Transaction): Promise<Watchlist | null> {
