@@ -74,8 +74,8 @@ export function createRunBulkScreeningJobUseCase(deps: RunBulkScreeningJobDeps) 
       return;
     }
 
-    const now = deps.clock.now();
-    const processingJob = job.startProcessing(now);
+    const startedAt = deps.clock.now();
+    const processingJob = job.startProcessing(startedAt);
     await deps.bulkScreeningJobRepository.saveStatus(processingJob);
 
     const filePath = job.filePath;
@@ -107,7 +107,7 @@ export function createRunBulkScreeningJobUseCase(deps: RunBulkScreeningJobDeps) 
           await deps.bulkScreeningJobRepository.incrementProgress(
             workingJob.id,
             PROGRESS_BATCH_SIZE,
-            now,
+            deps.clock.now(),
           );
           await yieldWork();
           batchSize = 0;
@@ -115,10 +115,14 @@ export function createRunBulkScreeningJobUseCase(deps: RunBulkScreeningJobDeps) 
       }
 
       if (batchSize > 0) {
-        await deps.bulkScreeningJobRepository.incrementProgress(workingJob.id, batchSize, now);
+        await deps.bulkScreeningJobRepository.incrementProgress(
+          workingJob.id,
+          batchSize,
+          deps.clock.now(),
+        );
       }
 
-      const completed = workingJob.setTotalRows(totalCount).complete(now);
+      const completed = workingJob.setTotalRows(totalCount).complete(deps.clock.now());
       await deps.bulkScreeningJobRepository.saveStatus(completed);
 
       await deps.auditRecorder.record({
@@ -131,10 +135,8 @@ export function createRunBulkScreeningJobUseCase(deps: RunBulkScreeningJobDeps) 
         detail: { totalRows: totalCount },
         ipAddress: auth.ipAddress,
       });
-
-      await deps.bulkCsvSource.discard(filePath);
     } catch {
-      const failed = workingJob.setTotalRows(totalCount).fail(now);
+      const failed = workingJob.setTotalRows(totalCount).fail(deps.clock.now());
       await deps.bulkScreeningJobRepository.saveStatus(failed);
 
       await deps.auditRecorder.record({
@@ -147,8 +149,8 @@ export function createRunBulkScreeningJobUseCase(deps: RunBulkScreeningJobDeps) 
         detail: { totalRows: totalCount },
         ipAddress: auth.ipAddress,
       });
-
-      // Best-effort discard: file might not be readable if that was the failure cause
+    } finally {
+      // Terminal status is already persisted; discard must not flip COMPLETED → FAILED.
       await deps.bulkCsvSource.discard(filePath).catch(() => undefined);
     }
   };

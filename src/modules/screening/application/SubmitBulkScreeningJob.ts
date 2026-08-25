@@ -26,6 +26,8 @@ export interface SubmitBulkScreeningJobDeps {
   readonly createRunJob: (auth: AuthContext, jobId: BulkScreeningJobId) => () => Promise<void>;
   /** Default: `(work) => setImmediate(work)`. Mirrors `ReceiveProviderWebhook.schedulePostAck`. */
   readonly scheduleWork?: (work: () => void) => void;
+  /** Default: `console.error`. Mirrors `ReceiveProviderWebhook.onPostAckError`. */
+  readonly onRunError?: (error: unknown) => void;
 }
 
 /**
@@ -33,8 +35,13 @@ export interface SubmitBulkScreeningJobDeps {
  * `SUBMIT_BULK_SCREENING_JOB` audit row in one transaction, then schedules
  * the worker via the injectable `scheduleWork`.
  */
+function defaultOnRunError(error: unknown): void {
+  console.error('RunBulkScreeningJob', error);
+}
+
 export function createSubmitBulkScreeningJobUseCase(deps: SubmitBulkScreeningJobDeps) {
   const schedule = deps.scheduleWork ?? ((work: () => void) => setImmediate(work));
+  const onRunError = deps.onRunError ?? defaultOnRunError;
 
   return async function submitBulkScreeningJob(
     input: SubmitBulkScreeningJobInput,
@@ -72,7 +79,9 @@ export function createSubmitBulkScreeningJobUseCase(deps: SubmitBulkScreeningJob
     });
 
     const run = deps.createRunJob(input.auth, jobId);
-    schedule(() => void run());
+    schedule(() => {
+      void run().catch(onRunError);
+    });
 
     return jobId;
   };

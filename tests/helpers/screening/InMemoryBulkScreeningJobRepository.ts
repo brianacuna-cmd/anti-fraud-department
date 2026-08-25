@@ -1,4 +1,4 @@
-import type { BulkScreeningJob } from '../../../src/modules/screening/domain/model/aggregates/BulkScreeningJob.js';
+import { BulkScreeningJob } from '../../../src/modules/screening/domain/model/aggregates/BulkScreeningJob.js';
 import type { BulkScreeningJobId } from '../../../src/modules/screening/domain/model/value-objects/BulkScreeningJobId.js';
 import type { Instant } from '../../../src/shared/time/Instant.js';
 import type { BulkScreeningJobRepository } from '../../../src/modules/screening/domain/ports/BulkScreeningJobRepository.js';
@@ -26,12 +26,24 @@ export class InMemoryBulkScreeningJobRepository implements BulkScreeningJobRepos
     this.incrementProgressCalls.push({ id, amount, now });
     const job = this.byId.get(String(id));
     if (job) {
-      this.byId.set(String(id), job);
+      this.byId.set(
+        String(id),
+        BulkScreeningJob.rehydrate({
+          ...job.toProps(),
+          processedRows: job.processedRows + amount,
+          updatedAt: now,
+        }),
+      );
     }
   }
 
   async saveStatus(job: BulkScreeningJob): Promise<void> {
-    this.byId.set(String(job.id), job);
+    const existing = this.byId.get(String(job.id));
+    const processedRows = existing?.processedRows ?? job.processedRows;
+    this.byId.set(
+      String(job.id),
+      BulkScreeningJob.rehydrate({ ...job.toProps(), processedRows }),
+    );
   }
 
   all(): BulkScreeningJob[] {

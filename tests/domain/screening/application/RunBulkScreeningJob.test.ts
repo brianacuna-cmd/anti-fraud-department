@@ -29,7 +29,10 @@ class RecordingAuditRecorder implements AuditRecorder {
 class FakeBulkCsvSource implements BulkCsvSource {
   readonly discardCalls: string[] = [];
 
-  constructor(private readonly data: CsvRow[] | Error) {}
+  constructor(
+    private readonly data: CsvRow[] | Error,
+    private readonly discardError?: Error,
+  ) {}
 
   async *readRows(_filePath: string): AsyncGenerator<CsvRow> {
     if (this.data instanceof Error) throw this.data;
@@ -38,6 +41,7 @@ class FakeBulkCsvSource implements BulkCsvSource {
 
   async discard(filePath: string): Promise<void> {
     this.discardCalls.push(filePath);
+    if (this.discardError) throw this.discardError;
   }
 }
 
@@ -55,10 +59,11 @@ function buildJob(orgId = ORG): BulkScreeningJob {
 function buildUseCase(
   csvRows: CsvRow[] | Error,
   screenSubjectCalls: ScreenSubjectAgainstWatchlistInput[] = [],
+  discardError?: Error,
 ) {
   const jobRepository = new InMemoryBulkScreeningJobRepository();
   const auditRecorder = new RecordingAuditRecorder();
-  const source = new FakeBulkCsvSource(csvRows);
+  const source = new FakeBulkCsvSource(csvRows, discardError);
   const screenSubject = jest.fn(async (input: ScreenSubjectAgainstWatchlistInput) => {
     screenSubjectCalls.push(input);
     return { matches: [], riskSignal: null };
@@ -181,6 +186,7 @@ describe('createRunBulkScreeningJobUseCase', () => {
 
     const saved = await jobRepository.findByIdForOrg(job.id, ORG);
     expect(saved?.totalRows).toBe(105);
+    expect(saved?.processedRows).toBe(105);
   });
 
   it('returns early without throwing when the job does not exist', async () => {
@@ -220,5 +226,22 @@ describe('createRunBulkScreeningJobUseCase', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].auth.organizationId).toBe(ORG);
     expect(calls[0].customerId).toBe('cust-1');
+  });
+
+  it('keeps COMPLETED when discard throws after a successful run', async () => {
+    const { jobRepository, auditRecorder, source, runJob } = buildUseCase(
+      [{ customer_id: 'cust-1', entry_type: 'PERSON', name: 'Alice' }],
+      [],
+      new Error('EPERM'),
+    );
+    const job = buildJob();
+    await jobRepository.create(job);
+
+    await expect(runJob({ auth: ANALYST, jobId: job.id })).resolves.toBeUndefined();
+
+    const saved = await jobRepository.findByIdForOrg(job.id, ORG);
+    expect(saved?.status).toBe('COMPLETED');
+    expect(auditRecorder.events.map((e) => e.action)).toEqual(['COMPLETE_BULK_SCREENING_JOB']);
+    expect(source.discardCalls).toContain(FILE);
   });
 });

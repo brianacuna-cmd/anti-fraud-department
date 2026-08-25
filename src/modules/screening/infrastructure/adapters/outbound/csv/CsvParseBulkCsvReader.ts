@@ -29,8 +29,12 @@ export class CsvParseBulkCsvReader implements BulkCsvSource {
     input.on('error', (err) => parser.destroy(err));
     input.pipe(parser);
 
-    for await (const record of parser) {
-      yield record as CsvRow;
+    try {
+      for await (const record of parser) {
+        yield record as CsvRow;
+      }
+    } finally {
+      input.destroy();
     }
   }
 

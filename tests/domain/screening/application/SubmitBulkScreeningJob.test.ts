@@ -98,4 +98,29 @@ describe('createSubmitBulkScreeningJobUseCase', () => {
       submitBulkScreeningJob({ auth: PLATFORM_ADMIN, filePath: '/tmp/bulk/file.csv' }),
     ).rejects.toMatchObject({ code: 'FORBIDDEN_CROSS_TENANT' });
   });
+
+  it('routes a rejected run() to onRunError instead of leaving an unhandled rejection', async () => {
+    const onRunError = jest.fn();
+    const jobRepository = new InMemoryBulkScreeningJobRepository();
+    const auditRecorder = new RecordingAuditRecorder();
+    const run = jest.fn<Promise<void>, []>().mockRejectedValue(new Error('boom'));
+    const submitBulkScreeningJob = createSubmitBulkScreeningJobUseCase({
+      bulkScreeningJobRepository: jobRepository,
+      auditRecorder,
+      unitOfWork: new PassthroughUnitOfWork(),
+      clock: new FixedClock(NOW),
+      generateJobId: generateBulkScreeningJobId,
+      scheduleWork: (work) => work(),
+      createRunJob: () => run,
+      onRunError,
+    });
+
+    await expect(
+      submitBulkScreeningJob({ auth: ANALYST, filePath: '/tmp/bulk/file.csv' }),
+    ).resolves.toBeDefined();
+
+    await Promise.resolve();
+    expect(onRunError).toHaveBeenCalledTimes(1);
+    expect(onRunError.mock.calls[0][0]).toEqual(new Error('boom'));
+  });
 });
