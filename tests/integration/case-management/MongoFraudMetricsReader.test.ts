@@ -117,7 +117,7 @@ describe('MongoFraudMetricsReader (integration, real Mongo aggregations)', () =>
         dueDate: daysAgo(5),
         deletedAt: daysAgo(1),
       }),
-      // Otro inquilino: nunca debe filtrarse.
+      // Another tenant: must never leak in.
       caseDoc(new ObjectId(oid('metrics-case-other')), {
         organizationId: OTHER_ORG,
         status: 'OPEN',
@@ -125,7 +125,7 @@ describe('MongoFraudMetricsReader (integration, real Mongo aggregations)', () =>
         riskScore: 95,
         dueDate: daysAgo(9),
       }),
-      // Fuera de la ventana de 7 dias que pide el test.
+      // Outside the 7-day window the test asks for.
       caseDoc(new ObjectId(oid('metrics-case-old')), {
         status: 'ARCHIVED',
         priority: 'LOW',
@@ -154,8 +154,8 @@ describe('MongoFraudMetricsReader (integration, real Mongo aggregations)', () =>
         resolved_by: ANALYST_B,
         created_at: daysAgo(1),
       },
-      // Cierre de un expediente retirado: su alta no cuenta en ninguna otra
-      // barra, asi que su cierre tampoco puede contar en la linea.
+      // Closure of a withdrawn case: its opening counts in no other bar, so
+      // its closure cannot count in the series either.
       {
         _id: new ObjectId(oid('metrics-resolution-deleted')),
         case_id: new ObjectId(oid('metrics-case-deleted')),
@@ -234,7 +234,7 @@ describe('MongoFraudMetricsReader (integration, real Mongo aggregations)', () =>
       now: fromDate(NOW),
     });
 
-    // El vencido del otro inquilino y el borrado logico quedan fuera.
+    // The other tenant's overdue case and the soft-deleted one stay out.
     expect(snapshot.cases.overdue).toBe(1);
     expect(snapshot.cases.unassigned).toBe(1);
   });
@@ -311,9 +311,9 @@ describe('MongoFraudMetricsReader (integration, real Mongo aggregations)', () =>
   });
 
   /**
-   * La linea contaba `resolutions` a secas, asi que un expediente retirado
-   * sumaba un cierre sin haber sumado nunca un alta: habia dias con mas
-   * cierres que altas sin que hubiera pasado nada raro.
+   * The series counted `resolutions` as-is, so a withdrawn case added a
+   * closure without ever adding an opening: there were days with more
+   * closures than openings without anything unusual having happened.
    */
   it('excludes closures of soft-deleted cases from both the series and the average', async () => {
     const snapshot = await reader.snapshot({

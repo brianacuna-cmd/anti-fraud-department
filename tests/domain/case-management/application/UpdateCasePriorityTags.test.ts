@@ -48,8 +48,8 @@ function buildCase(overrides: { deletedAt?: typeof NOW | null } = {}): Case {
     riskScore: createRiskScore(50),
     priority: 'MEDIUM',
     tags: ['fraud'],
-    // La regla de asignacion congela los expedientes huerfanos:
-    // sin responsable no se pueden trabajar.
+    // Assignment rule freezes orphan cases:
+    // without an owner they cannot be worked.
     assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   }).withDueDate(OLD_DUE, NOW);

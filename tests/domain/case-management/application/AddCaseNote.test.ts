@@ -34,8 +34,8 @@ function buildCase(organizationId = ORG_1): Case {
     customerId: 'customer-1',
     riskScore: createRiskScore(50),
     priority: 'MEDIUM',
-    // La regla de asignacion congela los expedientes huerfanos:
-    // sin responsable no se pueden trabajar.
+    // Assignment rule freezes orphan cases:
+    // without an owner they cannot be worked.
     assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   });
@@ -106,10 +106,10 @@ describe('createAddCaseNoteUseCase', () => {
 });
 
 /*
- * El informe congelado se genera al cerrar el expediente. Permitir que
- * despues se le anadan notas o evidencia produce la peor combinacion posible:
- * un expediente cuyo contenido real ya no coincide con el documento que se
- * entrego como su foto inmutable.
+ * The frozen report is generated when the case is closed. Allowing notes or
+ * evidence to be added afterwards produces the worst possible combination:
+ * a case whose real content no longer matches the document delivered as its
+ * immutable snapshot.
  */
 describe('un expediente cerrado no se instruye', () => {
   it('rechaza anadir una nota a un caso resuelto', async () => {

@@ -85,9 +85,9 @@ describe('createUpsertOrganizationFraudConfigUseCase', () => {
   });
 
   /**
-   * Los umbrales de riesgo y los plazos de SLA deciden qué se persigue y en
-   * cuánto tiempo: es política operativa. Quien administra al equipo la lee,
-   * no la reescribe (SoD, ver `shared/kernel/AccessTier.ts`).
+   * Risk thresholds and SLA deadlines decide what is pursued and in how much
+   * time: that is operational policy. Whoever administers the team reads it,
+   * does not rewrite it (SoD, see `shared/kernel/AccessTier.ts`).
    */
   it.each([
     ['ADMIN', () => createAuthContext({ userId: oid('admin-1'), organizationId: oid('org-1'), actorType: 'USER', roleId: 'ADMIN' })],

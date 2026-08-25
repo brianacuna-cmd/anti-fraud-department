@@ -47,7 +47,7 @@ export class InMemoryCaseRepository implements CaseRepository {
     return { items, total };
   }
 
-  /** Espeja el adaptador Mongo: mismo inquilino, no borrados, customerId OR bridgeUserId. */
+  /** Mirrors the Mongo adapter: same tenant, not deleted, customerId OR bridgeUserId. */
   async findByCustomerOrBridgeId(
     options: FindCaseByIdentityOptions,
     _tx?: Transaction,
@@ -74,15 +74,15 @@ export class InMemoryCaseRepository implements CaseRepository {
     });
 
     if (matches.length === 0) return null;
-    // El adaptador Mongo ordena por `created_at` descendente: gana el mas reciente.
+    // The Mongo adapter sorts by `created_at` descending: the newest wins.
     matches.sort((a, b) => toDate(b.createdAt).getTime() - toDate(a.createdAt).getTime());
     return matches[0]!;
   }
 
   /**
-   * Espeja el adaptador Mongo: mismo inquilino, no borrados, y basta compartir
-   * UN identificador. Reutiliza `entityIdentifiersOf` para que el fake y el
-   * dominio no puedan discrepar sobre que campos cuentan como identificador.
+   * Mirrors the Mongo adapter: same tenant, not deleted, and sharing ONE
+   * identifier is enough. Reuses `entityIdentifiersOf` so the fake and the
+   * domain cannot disagree on which fields count as an identifier.
    */
   async findByEntityIdentifiers(
     query: EntityIdentifierQuery,

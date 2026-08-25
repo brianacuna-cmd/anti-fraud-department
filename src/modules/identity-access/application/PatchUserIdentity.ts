@@ -40,8 +40,8 @@ export interface PatchUserIdentityDeps {
  */
 export function createPatchUserIdentityUseCase(deps: PatchUserIdentityDeps) {
   return async function patchUserIdentity(input: PatchUserIdentityInput): Promise<User> {
-    // role-authorization: un usuario siempre puede editar SU PROPIA identidad;
-    // editar a terceros exige ORGANIZATION o rol ADMIN.
+    // role-authorization: a user can always edit THEIR OWN identity;
+    // editing others requires ORGANIZATION or ADMIN role.
     const isSelf = input.auth.actorType === 'USER' && input.auth.userId === input.userId;
     if (!isSelf) {
       await requireUserRole(input.auth, deps.userRepositoryFactory, USER_MANAGE_ROLES, 'edit other users');

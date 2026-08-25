@@ -49,9 +49,9 @@ describe('TOKEN_SECRET', () => {
   });
 
   /**
-   * El caso que de verdad importa: el valor por defecto arranca sin quejarse y
-   * firma sesiones validas, asi que un despliegue puede estar meses en pie con
-   * un secreto que cualquiera puede leer en el repositorio.
+   * The case that actually matters: the default value starts without
+   * complaining and signs valid sessions, so a deployment can stand for
+   * months with a secret anyone can read in the repository.
    */
   it('throws in production when TOKEN_SECRET is still the development default', () => {
     expect(() =>
@@ -71,7 +71,7 @@ describe('TOKEN_SECRET', () => {
     ).not.toThrow();
   });
 
-  /** Fuera de produccion el valor por defecto es justo lo que se quiere. */
+  /** Outside production the default is exactly what you want. */
   it('ignores TOKEN_SECRET outside production', () => {
     expect(() =>
       assertAuthConfigSafeForProduction('development', 'session', 'disabled', DEV_TOKEN_SECRET),

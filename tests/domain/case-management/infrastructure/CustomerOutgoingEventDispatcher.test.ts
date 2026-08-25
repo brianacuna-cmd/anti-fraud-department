@@ -285,9 +285,9 @@ describe('CustomerOutgoingEventDispatcher — secreto de firma por inquilino (EV
   });
 
   /**
-   * La razon de la cache: una tanda toca pocos inquilinos y muchos eventos.
-   * Sin ella, entregar 50 sanciones del mismo inquilino son 50 lecturas de la
-   * misma fila de configuracion.
+   * Why the cache exists: a batch hits few tenants and many events. Without
+   * it, delivering 50 sanctions for the same tenant is 50 reads of the same
+   * config row.
    */
   it('lee la configuracion una vez por inquilino y no por evento', async () => {
     const fraudConfig = new InMemoryOrganizationFraudConfigRepository();

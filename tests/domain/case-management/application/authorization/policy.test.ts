@@ -52,9 +52,9 @@ describe('requireOperationalRole', () => {
   });
 
   /**
-   * El control de segregacion de funciones: ADMIN administra a las personas,
-   * no los expedientes. Si esta prueba se cae, una sola cuenta puede conceder
-   * permisos Y usarlos.
+   * The segregation-of-duties control: ADMIN administers people, not cases.
+   * If this test falls over, a single account can grant permissions AND use
+   * them.
    */
   it('rejects ADMIN as read-only, on every operational allow-list', () => {
     for (const allowed of [SUPERVISION_ROLES, CASE_WORK_ROLES]) {
@@ -85,8 +85,8 @@ describe('requireReadRole', () => {
   });
 
   /**
-   * La regresion que motivo todo esto: la organizacion llega SIEMPRE con
-   * `roleId: null`, asi que la guarda anterior le negaba hasta las lecturas.
+   * The regression that motivated all of this: the organization ALWAYS arrives
+   * with `roleId: null`, so the previous guard denied even reads.
    */
   it('allows the ORGANIZATION actor even though it carries no roleId', () => {
     expect(() => requireReadRole(ORGANIZATION, OVERSIGHT_READ_ROLES)).not.toThrow();

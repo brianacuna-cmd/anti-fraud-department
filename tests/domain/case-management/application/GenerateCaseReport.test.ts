@@ -50,8 +50,8 @@ function buildCase(organizationId = ORG_1): Case {
     customerId: 'customer-1',
     riskScore: createRiskScore(50),
     priority: 'MEDIUM',
-    // La regla de asignacion congela los expedientes huerfanos:
-    // sin responsable no se pueden trabajar.
+    // Assignment rule freezes orphan cases:
+    // without an owner they cannot be worked.
     assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   });
@@ -170,7 +170,7 @@ describe('createGenerateCaseReportUseCase', () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* El expediente congelado, completo                                           */
+/* The frozen case file, complete                                           */
 /* -------------------------------------------------------------------------- */
 
 describe('createGenerateCaseReportUseCase — full case file', () => {
@@ -308,7 +308,7 @@ describe('createGenerateCaseReportUseCase — full case file', () => {
     expect(snapshot.sla).toEqual({ dueDate: NOW, status: 'ON_TRACK', updatedAt: NOW });
   });
 
-  /** Perder el expediente por no poder poner un nombre seria peor. */
+  /** Losing the case because a name could not be put on it would be worse. */
   it('still freezes the file when the identity directory is down', async () => {
     const built = await seedFullCase();
     jest.spyOn(built.assignees, 'displayNames').mockRejectedValue(new Error('identity is down'));

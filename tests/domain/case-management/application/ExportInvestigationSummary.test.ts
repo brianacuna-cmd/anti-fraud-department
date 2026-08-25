@@ -175,7 +175,7 @@ describe('ExportInvestigationSummary (INV-014)', () => {
 
     const summary = await exportSummary({ auth: ANALYST, investigationId: INV_ID });
 
-    // Un informe ejecutivo se lee de arriba abajo: lo peor va primero.
+    // An executive report is read top to bottom: the worst goes first.
     expect(summary.cases.map((kase) => kase.caseId)).toEqual([high.id, low.id]);
   });
 
@@ -225,10 +225,10 @@ describe('ExportInvestigationSummary (INV-014)', () => {
     expect(summary.generatedAt).toBe(NOW);
   });
   /**
-   * El agujero que tapaba el PR #122: la expansión de INV-013 solo ve
-   * conexiones que existen como identificador compartido. Un vínculo hecho a
-   * mano puede no tener ninguno —dos expedientes atados por modus operandi—, y
-   * quedarse fuera del informe sería perder trabajo humano en silencio.
+   * The hole PR #122 closed: INV-013 expansion only sees connections that
+   * exist as a shared identifier. A hand-made link may have none — two cases
+   * tied by modus operandi — and leaving them out of the report would lose
+   * human work in silence.
    */
   it('incluye los expedientes vinculados a mano aunque no compartan ningún identificador', async () => {
     const { cases, investigations, exportSummary } = setup();
@@ -256,7 +256,7 @@ describe('ExportInvestigationSummary (INV-014)', () => {
     expect(byId.get(unrelated.id)?.origin).toBe('LINKED');
     expect(byId.get(unrelated.id)?.depth).toBe(0);
     expect(byId.get(root.id)?.origin).toBe('PRIMARY');
-    // La red sola no lo habría visto: no comparte cliente, correo ni wallet.
+    // The network alone would not have seen it: it shares no customer, email, or wallet.
     expect(summary.network.totalCases).toBe(1);
     expect(summary.totals.totalCases).toBe(2);
     expect(summary.totals.linkedCases).toBe(2);

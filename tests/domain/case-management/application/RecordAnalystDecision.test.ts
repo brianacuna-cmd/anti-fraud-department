@@ -66,8 +66,8 @@ function buildCase(overrides: { organizationId?: string; deletedAt?: typeof NOW 
     customerId: 'customer-1',
     riskScore: createRiskScore(70),
     priority: 'HIGH',
-    // La regla de asignacion congela los expedientes huerfanos:
-    // sin responsable no se pueden trabajar.
+    // Assignment rule freezes orphan cases:
+    // without an owner they cannot be worked.
     assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   });
@@ -112,8 +112,8 @@ function buildUseCase(seed?: Case) {
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
   const notificationSender = new InMemoryCaseManagementNotificationSender();
   const assigneeDirectory = new InMemoryAssigneeDirectory();
-  // Dos supervisores en el inquilino, uno de ellos el propio analista que
-  // firma las pruebas: sirve para comprobar que al solicitante no se le avisa.
+  // Two supervisors in the tenant, one of them the analyst who signs the
+  // tests: used to check that the requester is not notified.
   assigneeDirectory.allowRoleRecipients(ORG_1, 'SUPERVISOR', [SUPERVISOR_ID, ANALYST_ID]);
   const recordAnalystDecision = createRecordAnalystDecisionUseCase({
     cases,
@@ -263,18 +263,19 @@ describe('createRecordAnalystDecisionUseCase', () => {
   });
 
   /**
-   * ADMIN incluido: dictaminar es instruir el expediente, y quien administra
-   * al equipo no lo instruye (SoD, ver `shared/kernel/AccessTier.ts`).
+   * ADMIN included: recording a decision is instructing the case, and whoever
+   * administers the team does not instruct it (SoD, see `shared/kernel/AccessTier.ts`).
    */
   /* ---------------------------------------------------------------------- */
-  /* Cuatro ojos (ENF-002)                                                    */
+  /* Four eyes (ENF-002)                                                      */
   /* ---------------------------------------------------------------------- */
 
   /**
-   * La solicitud de doble firma tiene que nacer AQUI, con la sancion.
+   * The dual-control request has to be born HERE, with the sanction.
    *
-   * Antes se creaba perezosamente al aprobarla, lo que dejaba el control sin
-   * efecto: no habia nada que revisar hasta que alguien ya habia aprobado.
+   * Previously it was created lazily on approval, which left the control
+   * with no effect: there was nothing to review until someone had already
+   * approved.
    */
   it('opens a PENDING approval request alongside the sanction, in the same write', async () => {
     const { recordAnalystDecision, approvalRequests, enforcementActions } = buildUseCase(
@@ -301,7 +302,7 @@ describe('createRecordAnalystDecisionUseCase', () => {
     expect(enforcementActions.all()[0]?.status).toBe('PENDING');
   });
 
-  /** Avisar al solicitante seria ofrecerle algo que el agregado le va a negar. */
+  /** Notifying the requester would offer them something the aggregate will deny. */
   it('notifies the other supervisors, never the requester', async () => {
     const { recordAnalystDecision, notificationSender } = buildUseCase(
       buildCase({ status: 'IN_REVIEW' }),
@@ -331,8 +332,8 @@ describe('createRecordAnalystDecisionUseCase', () => {
   });
 
   /**
-   * REVIEW solo marca a un cliente para mirarlo con calma: no restringe nada,
-   * asi que exigirle doble firma solo llenaria la cola del supervisor de ruido.
+   * REVIEW only flags a customer for a closer look: it restricts nothing,
+   * so requiring dual control would only fill the supervisor queue with noise.
    */
   it('skips dual control for REVIEW, which restricts nothing', async () => {
     const { recordAnalystDecision, approvalRequests, notificationSender } = buildUseCase(

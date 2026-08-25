@@ -33,18 +33,18 @@ export abstract class MongoUnitOfWorkBase<TTransaction> {
   }
 
   /**
-   * Mongo rechaza `withTransaction` cuando el despliegue no es un replica set
-   * (codigo 20 / `IllegalOperation`). El trabajo en si no ha fallado, asi que
-   * se reintenta sin sesion en vez de tumbar la peticion.
+   * Mongo rejects `withTransaction` when the deployment is not a replica set
+   * (code 20 / `IllegalOperation`). The work itself has not failed, so we
+   * retry without a session instead of killing the request.
    *
-   * POR QUE AVISA EN VEZ DE HACERLO EN SILENCIO
+   * WHY WARN INSTEAD OF DOING IT SILENTLY
    *
-   * Este camino apaga la atomicidad. El outbox deja de escribirse en la misma
-   * transaccion que el dato, y una peticion que falle a medias puede dejar el
-   * expediente cambiado sin su evento, o al reves. El sistema sigue en pie y
-   * eso es lo que se busca en desarrollo, pero en produccion es una perdida de
-   * garantias que nadie deberia descubrir tres meses despues investigando por
-   * que faltan eventos: si pasa, tiene que verse en el log.
+   * This path turns atomicity off. The outbox is no longer written in the
+   * same transaction as the data, and a request that fails halfway can leave
+   * the case changed without its event, or the other way around. The system
+   * stays up, which is what we want in development, but in production it is
+   * a loss of guarantees nobody should discover three months later while
+   * investigating missing events: if it happens, it has to show up in the log.
    */
   private async fallbackIfUnsupported<T>(
     error: unknown,

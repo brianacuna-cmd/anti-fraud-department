@@ -94,9 +94,9 @@ describe('HttpOutgoingWebhookClient — firma de salida (EVT-003)', () => {
   });
 
   /**
-   * El fallo clasico de este tipo de firma: serializar el cuerpo dos veces, una
-   * para firmar y otra para enviar. Basta con que el orden de claves difiera
-   * para que el receptor rechace todo y nadie entienda por que.
+   * The classic failure of this kind of signature: serialize the body twice,
+   * once to sign and once to send. If key order differs, the receiver rejects
+   * everything and nobody understands why.
    */
   it('firma exactamente el cuerpo que se envia', async () => {
     const { calls, fetchImpl } = capture();

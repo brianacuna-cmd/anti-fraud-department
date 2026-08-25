@@ -25,8 +25,8 @@ describe('CHANNELS catalog', () => {
   });
 
   it('exposes only EMAIL as configurable, so the in-app inbox cannot be silenced', () => {
-    // Poder apagar la bandeja significaria que a un analista se le asigna un
-    // expediente sin constancia de que se le aviso.
+    // Being able to mute the inbox would mean an analyst is assigned a
+    // case with no record that they were notified.
     expect(CONFIGURABLE_CHANNELS).toEqual(['EMAIL']);
     expect(CONFIGURABLE_CHANNELS).not.toContain('IN_APP');
   });

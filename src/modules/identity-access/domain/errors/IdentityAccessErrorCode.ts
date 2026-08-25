@@ -1,6 +1,6 @@
 /**
  * Closed set of error codes owned by the `identity-access` module (design
- * D5, ESTRUCTURA_REPO.md §2: "lista cerrada por módulo"). Extending this
+ * D5, ESTRUCTURA_REPO.md §2: "closed list per module"). Extending this
  * union is a deliberate, explicit change — never an ad-hoc `throw new
  * Error(string)`.
  *

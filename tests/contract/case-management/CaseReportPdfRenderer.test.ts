@@ -61,16 +61,16 @@ describe('CaseReportPdfRenderer', () => {
     const pdf = await new CaseReportPdfRenderer().render(buildReport(FULL_SNAPSHOT));
 
     expect(isPdf(pdf)).toBe(true);
-    // Un PDF con solo la cabecera y ninguna sección ronda 1 kB; este lleva
-    // seis bloques con contenido.
+    // A PDF with only the header and no section is around 1 kB; this one
+    // carries six blocks with content.
     expect(pdf.byteLength).toBeGreaterThan(2000);
   });
 
   /**
-   * Un informe congela lo que HABÍA. Un snapshot de hace seis meses puede no
-   * tener la forma de hoy —una clave que aún no existía, un campo que cambió
-   * de tipo— y aun así tiene que poder imprimirse: es la pieza que se manda a
-   * un regulador, y fallar al abrirlo lo convierte en papel mojado.
+   * A report freezes what WAS. A snapshot from six months ago may not have
+   * today's shape — a key that did not exist yet, a field that changed type —
+   * and it still has to print: it is the piece sent to a regulator, and
+   * failing to open it turns it into wet paper.
    */
   it.each([
     ['vacío', {}],
@@ -97,7 +97,7 @@ describe('CaseReportPdfRenderer', () => {
     );
 
     expect(isPdf(pdf)).toBe(true);
-    // `/Type /Page` aparece una vez por página; con 400 notas hay varias.
+    // `/Type /Page` appears once per page; with 400 notes there are several.
     const pages = pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) ?? [];
     expect(pages.length).toBeGreaterThan(1);
   });

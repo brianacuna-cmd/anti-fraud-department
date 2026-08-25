@@ -193,8 +193,9 @@ describe('IngestFinturuCase (integration)', () => {
       }),
     });
 
-    // El payload cifrado no trae organizacion, asi que se pasa explicitamente
-    // igual que hace `finturuWebhookRouter` con `defaultOrganizationId`.
+    // The encrypted payload carries no organization, so it is passed
+    // explicitly the same way `finturuWebhookRouter` does with
+    // `defaultOrganizationId`.
     const result = await ingest({ rawPayload: decrypted, organizationId: '019d7e58aed0777318d11d4d' });
     expect(result.case.customerId).toBe('usr_encrypted_999');
     expect(result.case.priority).toBe('CRITICAL');

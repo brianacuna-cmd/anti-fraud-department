@@ -20,13 +20,14 @@ export interface VerifyAdminChallengeInput {
 }
 
 /**
- * La sesion emitida, mas la identidad del super admin que firmo el reto.
+ * The minted session, plus the identity of the super admin who signed the
+ * challenge.
  *
- * `adminOrganizationId`/`email` son aditivos y salen del agregado que este
- * caso de uso ya carga. Sin ellos, el transporte tenia que adivinar a quien
- * pertenecia el reto consultando Mongo por su cuenta —tomando "el primero con
- * una llave ACTIVA"—, de modo que con mas de un super admin el OTP de uno
- * podia acabar en el correo de otro.
+ * `adminOrganizationId`/`email` are additive and come from the aggregate
+ * this use case already loads. Without them, transport had to guess who
+ * the challenge belonged to by querying Mongo on its own — taking "the
+ * first with an ACTIVE key" — so with more than one super admin one
+ * person's OTP could land in another's inbox.
  */
 export interface VerifyAdminChallengeResult extends MintedSession {
   readonly adminOrganizationId: string;

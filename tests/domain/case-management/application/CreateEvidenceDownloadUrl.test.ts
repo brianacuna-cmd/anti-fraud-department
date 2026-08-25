@@ -46,7 +46,7 @@ function buildEvidence(organizationId = ORG_1, deleted = false): Evidence {
   return deleted ? evidence.softDelete(NOW) : evidence;
 }
 
-/** Almacén que sí sabe firmar, como el de S3. */
+/** Store that can actually sign, like the S3 one. */
 class SigningStore extends InMemoryEvidenceStore implements EvidenceStore {
   readonly requested: Array<{ key: string; ttl: number }> = [];
 
@@ -82,8 +82,8 @@ describe('CreateEvidenceDownloadUrl (INV-004)', () => {
   });
 
   it('falla explícitamente si el almacén no sabe firmar', async () => {
-    // El de filesystem no puede emitir nada que el navegador alcance sin pasar
-    // por la API. Inventar una URL seria peor que fallar.
+    // The filesystem store cannot issue anything the browser can reach without
+    // going through the API. Inventing a URL would be worse than failing.
     const { evidence, useCase } = setup(new InMemoryEvidenceStore());
     await evidence.save(buildEvidence());
 
@@ -108,7 +108,7 @@ describe('CreateEvidenceDownloadUrl (INV-004)', () => {
     await expect(useCase({ auth: ANALYST, evidenceId: EVIDENCE_ID })).rejects.toThrow(
       CaseManagementError,
     );
-    // Y sobre todo: no se firmo nada. Una URL emitida ya no pasa por aqui.
+    // And above all: nothing was signed. A URL already issued no longer comes through here.
     expect(store.requested).toEqual([]);
   });
 

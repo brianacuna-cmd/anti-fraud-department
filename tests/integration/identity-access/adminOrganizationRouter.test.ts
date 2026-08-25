@@ -202,8 +202,8 @@ function buildChallengeLoginApp(): {
 
   const router = adminOrganizationRouter({
     db,
-    // 3-step admin login: el router genera el OTP del paso 2 y lo envía por
-    // aquí — el FakeEmailSender lo captura para completar el flujo en tests.
+    // 3-step admin login: the router generates the step-2 OTP and sends it
+    // here — FakeEmailSender captures it so tests can complete the flow.
     emailSender,
     provisionAdminOrganization: createProvisionAdminOrganizationUseCase({
       admins,
@@ -350,11 +350,11 @@ describe('adminOrganizationRouter (e2e, in-memory repository)', () => {
 });
 
 /**
- * Completa los pasos 2 y 3 del login de admin de 3 pasos tras un
- * verify-challenge exitoso: extrae el OTP del último email capturado por el
- * FakeEmailSender, lo verifica (devuelve el secret TOTP de enrolamiento) y
- * responde el challenge TOTP con un código de otplib. Devuelve la respuesta
- * final con `{ accessToken, expiresAt }`.
+ * Completes steps 2 and 3 of the 3-step admin login after a successful
+ * verify-challenge: extracts the OTP from the last email captured by
+ * FakeEmailSender, verifies it (returns the enrollment TOTP secret) and
+ * answers the TOTP challenge with an otplib code. Returns the final
+ * response with `{ accessToken, expiresAt }`.
  */
 async function completeAdminMfaSteps(app: Express, emailSender: FakeEmailSender, challengeToken: string) {
   const otpMail = emailSender.sent[emailSender.sent.length - 1]!;
@@ -384,8 +384,8 @@ describe('PLATFORM_ADMIN challenge-login (e2e, super-admin-auth PR1)', () => {
       .post('/api/v1/admin-organizations/sessions')
       .send({ challengeId: challengeResponse.body.challengeId, signature });
 
-    // 3-step contract: la firma válida abre el paso OTP — el token de acceso
-    // solo se entrega tras OTP + TOTP.
+    // 3-step contract: a valid signature opens the OTP step — the access
+    // token is only delivered after OTP + TOTP.
     expect(sessionResponse.status).toBe(200);
     expect(sessionResponse.body.status).toBe('OTP_REQUIRED');
     expect(typeof sessionResponse.body.challengeToken).toBe('string');
@@ -435,7 +435,7 @@ describe('PLATFORM_ADMIN challenge-login (e2e, super-admin-auth PR1)', () => {
       .post('/api/v1/admin-organizations/sessions')
       .send({ challengeId, signature: validSignature });
 
-    // 3-step contract: la firma válida abre el paso OTP.
+    // 3-step contract: a valid signature opens the OTP step.
     expect(retryResponse.status).toBe(200);
     expect(retryResponse.body.status).toBe('OTP_REQUIRED');
     expect(typeof retryResponse.body.challengeToken).toBe('string');

@@ -207,8 +207,8 @@ describe('createReopenCaseUseCase (role-gated reopen + SLA reset)', () => {
   });
 
   /**
-   * Reabrir revive un expediente cerrado: es un acto de autoridad operativa,
-   * no de gobierno. ADMIN lo ve, no lo hace (SoD).
+   * Reopening revives a closed case: it is an operational-authority act, not
+   * governance. ADMIN sees it, does not do it (SoD).
    */
   it('rejects ADMIN as read-only', async () => {
     const { reopenCase } = buildUseCase(buildResolvedCase());
@@ -303,14 +303,13 @@ describe('createReopenCaseUseCase (role-gated reopen + SLA reset)', () => {
 });
 
 /*
- * Esta prueba existe por un fallo real: `ReopenCase` lanzaba
- * ORGANIZATION_FRAUD_CONFIG_NOT_FOUND cuando el inquilino no tenia
- * configuracion, mientras que ABRIR el mismo expediente caia a la ventana por
- * defecto sin quejarse. Un inquilino recien creado podia abrir casos y
- * cerrarlos, pero no reabrirlos.
+ * This test exists because of a real bug: `ReopenCase` threw
+ * ORGANIZATION_FRAUD_CONFIG_NOT_FOUND when the tenant had no config, while
+ * OPENING the same case fell back to the default window without complaining.
+ * A newly created tenant could open cases and close them, but not reopen them.
  *
- * Dos caminos que calculan el mismo plazo no pueden discrepar sobre si la
- * configuracion es obligatoria, y no habia ninguna prueba que lo sujetara.
+ * Two paths that compute the same deadline cannot disagree on whether config
+ * is mandatory, and there was no test pinning that.
  */
 describe('createReopenCaseUseCase sin configuracion antifraude', () => {
   it('reabre con la ventana por defecto en vez de fallar', async () => {
@@ -325,8 +324,8 @@ describe('createReopenCaseUseCase sin configuracion antifraude', () => {
     });
 
     expect(reopened.status).toBe('OPEN');
-    // Lo que importa no es el numero exacto sino que EXISTA un plazo: un
-    // expediente reabierto sin fecha limite es invisible al barrido de SLA.
+    // What matters is not the exact number but that a deadline EXISTS: a
+    // reopened case with no due date is invisible to the SLA sweep.
     expect(reopened.dueDate).not.toBeNull();
     expect(await h.slaTracking.findByCaseId(CASE_ID)).not.toBeNull();
   });

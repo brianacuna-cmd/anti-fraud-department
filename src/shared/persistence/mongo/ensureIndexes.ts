@@ -75,14 +75,13 @@ export async function ensureIndexes(db: Db): Promise<void> {
 
   await db.collection('cases').createIndex({ tags: 1 }, { name: 'case_tags_idx' });
 
-  // Grafo de entidades (INV-013) y deduplicacion de la ingesta (CASE-011):
-  // ambos buscan expedientes por identificador dentro de un inquilino. La
-  // expansion del grafo hace una consulta POR RONDA, asi que sin estos indices
-  // cada salto es un barrido completo de `cases` y el coste se multiplica por
-  // la profundidad pedida.
+  // Entity graph (INV-013) and ingest deduplication (CASE-011): both look up
+  // cases by identifier within a tenant. Graph expansion runs one query PER
+  // ROUND, so without these indexes each hop is a full scan of `cases` and
+  // the cost multiplies by the requested depth.
   //
-  // Van compuestos con `organization_id` delante porque ninguna consulta busca
-  // un identificador sin acotar el inquilino: el aislamiento no es opcional.
+  // They are compounded with `organization_id` first because no query looks
+  // up an identifier without scoping the tenant: isolation is not optional.
   await db
     .collection('cases')
     .createIndex({ organization_id: 1, customer_id: 1 }, { name: 'case_org_customer_idx' });
@@ -103,14 +102,14 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .collection('cases')
     .createIndex({ organization_id: 1, stripe_customer_id: 1 }, { name: 'case_org_stripe_customer_idx' });
 
-  // Panel de gobierno (`GET /metrics/overview`): la serie diaria de altas
-  // recorre `cases` por inquilino y fecha de creacion. Sin este indice, cada
-  // apertura del panel es un barrido completo de la coleccion.
+  // Governance dashboard (`GET /metrics/overview`): the daily-created series
+  // walks `cases` by tenant and creation date. Without this index, every
+  // dashboard open is a full collection scan.
   await db
     .collection('cases')
     .createIndex({ organization_id: 1, created_at: 1 }, { name: 'case_org_created_idx' });
 
-  // La misma serie, del lado de los cierres.
+  // The same series, on the closures side.
   await db
     .collection('resolutions')
     .createIndex({ organization_id: 1, created_at: 1 }, { name: 'resolutions_org_created_idx' });

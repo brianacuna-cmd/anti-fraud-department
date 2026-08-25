@@ -8,35 +8,36 @@ export interface ResolveToReportDeps {
 }
 
 /**
- * Al resolver un expediente, congela su informe.
+ * On resolving a case, freeze its report.
  *
- * POR QUÉ AUTOMÁTICO
+ * WHY AUTOMATIC
  *
- * El informe es la foto inmutable del expediente cerrado, y el momento en que
- * tiene sentido tomarla es exactamente el del cierre. Dejarlo como un botón
- * aparte producía expedientes resueltos sin informe —el estado más inútil de
- * todos: el caso ya no se trabaja, nadie va a volver a entrar, y el día que
- * haga falta el dossier resulta que no hay nada que empaquetar—.
+ * The report is the immutable snapshot of the closed case, and the moment
+ * it makes sense to take it is exactly at close. Leaving it as a separate
+ * button produced resolved cases with no report — the most useless state of
+ * all: the case is no longer worked, nobody will go back in, and the day
+ * the dossier is needed there is nothing to pack.
  *
- * POR QUÉ AQUÍ Y NO DENTRO DE `closeCase`
+ * WHY HERE AND NOT INSIDE `closeCase`
  *
- * `GenerateCaseReport` necesita catorce repositorios: cronología, notas,
- * investigaciones, resoluciones, sanciones, dictámenes, evidencia, solicitudes
- * de firma, SLA y directorio. Meter todo eso en `closeCase` lo convertiría en
- * un caso de uso que depende de medio módulo para hacer una transición de
- * estado. Los orquestadores del raíz de composición existen justamente para
- * esto — igual que `scoreToCaseOrchestrator` une puntuación y expedientes sin
- * que ninguno de los dos módulos conozca al otro.
+ * `GenerateCaseReport` needs fourteen repositories: timeline, notes,
+ * investigations, resolutions, enforcement, decisions, evidence, signature
+ * requests, SLA, and directory. Stuffing all of that into `closeCase` would
+ * turn it into a use case that depends on half the module just to make a
+ * state transition. Composition-root orchestrators exist for exactly this —
+ * same as `scoreToCaseOrchestrator` joins scoring and cases without either
+ * module knowing the other.
  *
- * POR QUÉ EL FALLO NO TUMBA EL CIERRE
+ * WHY FAILURE DOES NOT KILL THE CLOSE
  *
- * El informe se genera DESPUÉS de que la resolución haya confirmado. Si falla
- * —un repositorio caído, un dato inesperado— el expediente queda cerrado
- * igualmente y el informe se puede pedir a mano desde la ficha. La alternativa
- * es peor: que un problema al componer un PDF impida cerrar un caso de fraude.
+ * The report is generated AFTER the resolution has confirmed. If it fails
+ * — a downed repository, unexpected data — the case stays closed anyway
+ * and the report can be requested by hand from the case page. The
+ * alternative is worse: a problem composing a PDF blocking close of a
+ * fraud case.
  *
- * La contrapartida es que puede quedar un expediente resuelto sin informe. Es
- * visible: la guía de pasos lo marca como pendiente y ofrece generarlo.
+ * The trade-off is that a resolved case can be left without a report. It
+ * is visible: the step guide marks it pending and offers to generate it.
  */
 export function createResolveToReportOrchestrator(deps: ResolveToReportDeps) {
   const onError = deps.onReportError ?? defaultOnError;

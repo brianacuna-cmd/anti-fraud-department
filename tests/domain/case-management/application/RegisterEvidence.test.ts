@@ -39,8 +39,8 @@ function buildCase(organizationId = ORG_1): Case {
     customerId: 'customer-1',
     riskScore: createRiskScore(50),
     priority: 'MEDIUM',
-    // La regla de asignacion congela los expedientes huerfanos:
-    // sin responsable no se pueden trabajar.
+    // Assignment rule freezes orphan cases:
+    // without an owner they cannot be worked.
     assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   });
@@ -273,8 +273,8 @@ describe('escaneo antivirus al registrar evidencia (INV-015)', () => {
       }),
     ).rejects.toThrow();
 
-    // El intento es en si mismo informacion: alguien subio malware al
-    // expediente y eso tiene que quedar escrito aunque el fichero se rechace.
+    // The attempt itself is information: someone uploaded malware to the
+    // case and that has to be written even though the file is rejected.
     const entry = h.auditRecorder.all().find((event) => event.detail.rejected === true);
     expect(entry).toBeDefined();
     expect(entry!.detail).toMatchObject({ signature: 'Win.Trojan.Agent', filename: 'malo.exe' });

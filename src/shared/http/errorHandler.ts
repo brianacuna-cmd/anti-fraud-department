@@ -21,9 +21,9 @@ export function createErrorHandler(statusByCode: StatusByCode): ErrorRequestHand
       return;
     }
 
-    // Non-DomainError = defecto de programación: el cliente recibe el 500
-    // opaco, pero el stack DEBE quedar en el log del servidor o el error es
-    // indiagnosticable (nada más lo captura).
+    // Non-DomainError = programming defect: the client gets the opaque 500,
+    // but the stack MUST stay in the server log or the error is
+    // undiagnosable (nothing else catches it).
     console.error('[errorHandler] unhandled non-domain error:', err);
     res.status(500).json({
       error: { code: 'INTERNAL', message: 'Internal server error', metadata: {} },
