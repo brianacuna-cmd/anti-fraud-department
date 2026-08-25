@@ -58,6 +58,7 @@ export class MongoBulkScreeningJobRepository implements BulkScreeningJobReposito
       {
         $set: {
           status: job.status,
+          total_rows: job.totalRows,
           errors: job.errors,
           omitted: job.omitted,
           updated_at: toDate(job.updatedAt),

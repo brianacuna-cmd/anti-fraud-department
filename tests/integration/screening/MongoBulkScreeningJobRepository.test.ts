@@ -88,13 +88,14 @@ describe('MongoBulkScreeningJobRepository (integration, real Mongo)', () => {
     expect(found?.updatedAt).toBe(LATER);
   });
 
-  it('saveStatus persists status, errors, and updated_at', async () => {
-    const job = buildJob();
+  it('saveStatus persists status, errors, updated_at, and total_rows', async () => {
+    const job = buildJob({ totalRows: 50 });
     await repository.create(job);
 
     const completed = job
       .startProcessing(NOW)
       .appendError('Row 1: invalid wallet format')
+      .setTotalRows(75)
       .complete(LATER);
     await repository.saveStatus(completed);
 
@@ -102,6 +103,7 @@ describe('MongoBulkScreeningJobRepository (integration, real Mongo)', () => {
     expect(found?.status).toBe('COMPLETED');
     expect(found?.errors).toBe('Row 1: invalid wallet format');
     expect(found?.updatedAt).toBe(LATER);
+    expect(found?.totalRows).toBe(75);
   });
 
   it('(org,status) and (org,created_at) indexes exist on bulk_screening_jobs', async () => {
