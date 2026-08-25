@@ -1,5 +1,6 @@
 import type { WatchlistEntryId } from '../../../src/modules/screening/domain/model/value-objects/WatchlistEntryId.js';
 import type { WatchlistId } from '../../../src/modules/screening/domain/model/value-objects/WatchlistId.js';
+import { generateWatchlistId } from '../../../src/modules/screening/domain/model/value-objects/WatchlistId.js';
 import type { Instant } from '../../../src/shared/time/Instant.js';
 import type {
   WatchlistEntryIndexedFields,
@@ -22,9 +23,22 @@ interface FakeEntry {
  */
 export class InMemoryWatchlistEntryRepository implements WatchlistEntryRepository {
   private readonly byId = new Map<string, FakeEntry>();
+  readonly updates = new Map<string, WatchlistEntryIndexedFields>();
 
-  seed(entry: FakeEntry): void {
-    this.byId.set(String(entry.id), entry);
+  seed(entry: {
+    readonly id: WatchlistEntryId;
+    readonly name: string;
+    readonly watchlistId?: WatchlistId;
+    readonly status?: string;
+    readonly deletedAt?: Instant | null;
+  }): void {
+    this.byId.set(String(entry.id), {
+      id: entry.id,
+      watchlistId: entry.watchlistId ?? generateWatchlistId(),
+      name: entry.name,
+      status: entry.status ?? 'ACTIVE',
+      deletedAt: entry.deletedAt ?? null,
+    });
   }
 
   async findToIndex(id: WatchlistEntryId): Promise<WatchlistEntryToIndex | null> {
@@ -32,8 +46,8 @@ export class InMemoryWatchlistEntryRepository implements WatchlistEntryRepositor
     return entry ? { id: entry.id, name: entry.name } : null;
   }
 
-  async updateIndexedFields(_id: WatchlistEntryId, _fields: WatchlistEntryIndexedFields): Promise<void> {
-    // not exercised by the Slice A2 cascade test suite.
+  async updateIndexedFields(id: WatchlistEntryId, fields: WatchlistEntryIndexedFields): Promise<void> {
+    this.updates.set(String(id), fields);
   }
 
   async softDeleteAllByWatchlist(watchlistId: WatchlistId, now: Instant): Promise<void> {

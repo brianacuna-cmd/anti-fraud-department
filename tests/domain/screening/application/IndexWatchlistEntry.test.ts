@@ -1,13 +1,9 @@
 import { createIndexWatchlistEntryUseCase } from '../../../../src/modules/screening/application/IndexWatchlistEntry.js';
 import type { PhoneticEncoder } from '../../../../src/modules/screening/domain/ports/PhoneticEncoder.js';
 import type { NameNormalizer } from '../../../../src/modules/screening/domain/ports/NameNormalizer.js';
-import type {
-  WatchlistEntryIndexedFields,
-  WatchlistEntryRepository,
-  WatchlistEntryToIndex,
-} from '../../../../src/modules/screening/domain/ports/WatchlistEntryRepository.js';
 import { generateWatchlistEntryId } from '../../../../src/modules/screening/domain/model/value-objects/WatchlistEntryId.js';
 import { normalizeName } from '../../../../src/modules/screening/domain/ports/NameNormalizer.js';
+import { InMemoryWatchlistEntryRepository } from '../../../helpers/screening/InMemoryWatchlistEntryRepository.js';
 
 class FakePhoneticEncoder implements PhoneticEncoder {
   readonly calls: string[] = [];
@@ -19,23 +15,6 @@ class FakePhoneticEncoder implements PhoneticEncoder {
 }
 
 const realNormalizer: NameNormalizer = { normalize: normalizeName };
-
-class InMemoryWatchlistEntryRepository implements WatchlistEntryRepository {
-  private readonly entries = new Map<string, WatchlistEntryToIndex>();
-  readonly updates = new Map<string, WatchlistEntryIndexedFields>();
-
-  seed(entry: WatchlistEntryToIndex): void {
-    this.entries.set(entry.id, entry);
-  }
-
-  async findToIndex(id: string): Promise<WatchlistEntryToIndex | null> {
-    return this.entries.get(id) ?? null;
-  }
-
-  async updateIndexedFields(id: string, fields: WatchlistEntryIndexedFields): Promise<void> {
-    this.updates.set(id, fields);
-  }
-}
 
 describe('IndexWatchlistEntry (application use case)', () => {
   it('computes normalized_name via the shared NameNormalizer and persists it', async () => {
