@@ -9,7 +9,7 @@ import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEvent
 import { generateObjectIdHex } from '../../../../src/shared/kernel/ObjectIdHex.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/screening/infrastructure/PassthroughUnitOfWork.js';
 import { InMemoryAmlAlertRepository } from '../../../helpers/screening/InMemoryAmlAlertRepository.js';
-import { InMemoryAmlExpedienteTimelineRecorder } from '../../../helpers/screening/InMemoryAmlExpedienteTimelineRecorder.js';
+import { InMemoryAmlAlertTimelineRecorder } from '../../../helpers/screening/InMemoryAmlAlertTimelineRecorder.js';
 import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
@@ -36,7 +36,7 @@ function buildMatch(overrides: { name?: string; riskLevel?: string | null; entry
 
 function buildUseCase() {
   const amlAlertRepository = new InMemoryAmlAlertRepository();
-  const timelineRecorder = new InMemoryAmlExpedienteTimelineRecorder();
+  const timelineRecorder = new InMemoryAmlAlertTimelineRecorder();
   const outbox = new InMemoryOutboxEventRepository();
   const openAmlAlert = createOpenAmlAlertUseCase({
     amlAlertRepository,

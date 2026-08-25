@@ -1,12 +1,12 @@
 import { ObjectId } from 'mongodb';
 import { fromDate, toDate } from '../../../../../../../shared/time/Instant.js';
 import type {
-  AmlExpedienteTimelineEvent,
-  AmlExpedienteTimelineEventType,
-} from '../../../../../domain/ports/AmlExpedienteTimelineRecorder.js';
-import type { AmlExpedienteTimelineDocument } from '../documents/AmlExpedienteTimelineDocument.js';
+  AmlAlertTimelineEvent,
+  AmlAlertTimelineEventType,
+} from '../../../../../domain/ports/AmlAlertTimelineRecorder.js';
+import type { AmlAlertTimelineDocument } from '../documents/AmlAlertTimelineDocument.js';
 
-export function toDocument(event: AmlExpedienteTimelineEvent): AmlExpedienteTimelineDocument {
+export function toDocument(event: AmlAlertTimelineEvent): AmlAlertTimelineDocument {
   return {
     _id: new ObjectId(event.id),
     case_id: new ObjectId(event.caseId),
@@ -18,11 +18,11 @@ export function toDocument(event: AmlExpedienteTimelineEvent): AmlExpedienteTime
   };
 }
 
-export function toDomain(document: AmlExpedienteTimelineDocument): AmlExpedienteTimelineEvent {
+export function toDomain(document: AmlAlertTimelineDocument): AmlAlertTimelineEvent {
   return {
     id: document._id.toString(),
     caseId: document.case_id.toString(),
-    eventType: document.event_type as AmlExpedienteTimelineEventType,
+    eventType: document.event_type as AmlAlertTimelineEventType,
     previousValue: document.previous_value,
     newValue: document.new_value ?? '',
     createdBy: document.created_by,

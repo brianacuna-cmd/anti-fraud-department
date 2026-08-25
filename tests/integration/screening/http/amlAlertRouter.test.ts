@@ -24,7 +24,7 @@ import { createWatchlistId } from '../../../../src/modules/screening/domain/mode
 import { createMatchScore } from '../../../../src/modules/screening/domain/model/value-objects/MatchScore.js';
 import { createScreeningMatch } from '../../../../src/modules/screening/domain/model/entities/ScreeningMatch.js';
 import { InMemoryAmlAlertRepository } from '../../../helpers/screening/InMemoryAmlAlertRepository.js';
-import { InMemoryAmlExpedienteTimelineRecorder } from '../../../helpers/screening/InMemoryAmlExpedienteTimelineRecorder.js';
+import { InMemoryAmlAlertTimelineRecorder } from '../../../helpers/screening/InMemoryAmlAlertTimelineRecorder.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/screening/infrastructure/PassthroughUnitOfWork.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
@@ -67,7 +67,7 @@ class RecordingAuditRecorder implements AuditRecorder {
 
 function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
   const amlAlertRepository = new InMemoryAmlAlertRepository();
-  const timelineRecorder = new InMemoryAmlExpedienteTimelineRecorder();
+  const timelineRecorder = new InMemoryAmlAlertTimelineRecorder();
   const auditRecorder = new RecordingAuditRecorder();
   const getAmlAlert = createGetAmlAlertUseCase({ amlAlertRepository });
   const router = amlAlertRouter({

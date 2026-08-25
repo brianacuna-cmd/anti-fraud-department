@@ -8,7 +8,7 @@ import { createWatchlistId } from '../../../../src/modules/screening/domain/mode
 import { createMatchScore } from '../../../../src/modules/screening/domain/model/value-objects/MatchScore.js';
 import { createScreeningMatch } from '../../../../src/modules/screening/domain/model/entities/ScreeningMatch.js';
 import { InMemoryAmlAlertRepository } from '../../../helpers/screening/InMemoryAmlAlertRepository.js';
-import { InMemoryAmlExpedienteTimelineRecorder } from '../../../helpers/screening/InMemoryAmlExpedienteTimelineRecorder.js';
+import { InMemoryAmlAlertTimelineRecorder } from '../../../helpers/screening/InMemoryAmlAlertTimelineRecorder.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { generateObjectIdHex } from '../../../../src/shared/kernel/ObjectIdHex.js';
@@ -41,7 +41,7 @@ function buildAlert(): AmlAlert {
 describe('createGetAmlAlertTimelineUseCase', () => {
   it('returns oldest-first timeline rows keyed by the alert id', async () => {
     const amlAlertRepository = new InMemoryAmlAlertRepository();
-    const timelineRecorder = new InMemoryAmlExpedienteTimelineRecorder();
+    const timelineRecorder = new InMemoryAmlAlertTimelineRecorder();
     const alert = buildAlert();
     await amlAlertRepository.save(alert);
     await timelineRecorder.record({
@@ -77,7 +77,7 @@ describe('createGetAmlAlertTimelineUseCase', () => {
   it('throws when the alert is missing', async () => {
     const getAmlAlertTimeline = createGetAmlAlertTimelineUseCase({
       getAmlAlert: createGetAmlAlertUseCase({ amlAlertRepository: new InMemoryAmlAlertRepository() }),
-      timelineRecorder: new InMemoryAmlExpedienteTimelineRecorder(),
+      timelineRecorder: new InMemoryAmlAlertTimelineRecorder(),
     });
 
     await expect(

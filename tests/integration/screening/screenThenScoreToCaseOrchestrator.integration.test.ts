@@ -9,7 +9,7 @@ import { createAuthContext } from '../../../src/shared/kernel/AuthContext.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
 import { MongoAmlAlertRepository } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlAlertRepository.js';
-import { MongoAmlExpedienteTimelineRecorder } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlExpedienteTimelineRecorder.js';
+import { MongoAmlAlertTimelineRecorder } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlAlertTimelineRecorder.js';
 import { MongoUnitOfWork as ScreeningMongoUnitOfWork } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { MongoOutboxEventRepository } from '../../../src/shared/outbox/mongo/MongoOutboxEventRepository.js';
 import { MongoFallbackWatchlistCandidateRepository } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoFallbackWatchlistCandidateRepository.js';
@@ -100,7 +100,7 @@ describe('screenThenScoreToCaseOrchestrator (integration, real Mongo, fallback c
   function buildOrchestrator(scoreToCaseOrchestrator: (input: ScoreToCaseOrchestratorInput) => Promise<ScoreToCaseOrchestratorResult>) {
     const openAmlAlert = createOpenAmlAlertUseCase({
       amlAlertRepository: new MongoAmlAlertRepository(db),
-      timelineRecorder: new MongoAmlExpedienteTimelineRecorder(db),
+      timelineRecorder: new MongoAmlAlertTimelineRecorder(db),
       outbox: new MongoOutboxEventRepository(db),
       unitOfWork: new ScreeningMongoUnitOfWork(client),
       clock: new SystemClock(),

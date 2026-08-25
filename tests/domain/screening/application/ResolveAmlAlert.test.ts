@@ -9,7 +9,7 @@ import { createScreeningMatch } from '../../../../src/modules/screening/domain/m
 import type { AuditEvent, AuditRecorder } from '../../../../src/modules/screening/domain/ports/AuditRecorder.js';
 import type { Transaction } from '../../../../src/modules/screening/domain/ports/UnitOfWork.js';
 import { InMemoryAmlAlertRepository } from '../../../helpers/screening/InMemoryAmlAlertRepository.js';
-import { InMemoryAmlExpedienteTimelineRecorder } from '../../../helpers/screening/InMemoryAmlExpedienteTimelineRecorder.js';
+import { InMemoryAmlAlertTimelineRecorder } from '../../../helpers/screening/InMemoryAmlAlertTimelineRecorder.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/screening/infrastructure/PassthroughUnitOfWork.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
@@ -57,7 +57,7 @@ class FailingAuditRecorder implements AuditRecorder {
 
 function buildUseCase(auditRecorder: AuditRecorder = new RecordingAuditRecorder()) {
   const amlAlertRepository = new InMemoryAmlAlertRepository();
-  const timelineRecorder = new InMemoryAmlExpedienteTimelineRecorder();
+  const timelineRecorder = new InMemoryAmlAlertTimelineRecorder();
   const resolveAmlAlert = createResolveAmlAlertUseCase({
     amlAlertRepository,
     timelineRecorder,
