@@ -17,19 +17,7 @@ export interface CaseProps {
   readonly bridgeWallet: string | null;
   readonly stripeCustomerId: string | null;
   readonly finturuReference: Record<string, unknown> | null;
-  /**
-   * Por qué se abrió el expediente: regla que disparó, versión de sus
-   * condiciones, puntuación y aciertos.
-   *
-   * Viajaba dentro del difunto `finturuCacheSnapshot` y se quedó cuando ese
-   * campo desapareció, porque no es lo mismo: los datos del cliente se leen en
-   * vivo de Finturu y por eso dejaron de guardarse, pero esto lo produce
-   * NUESTRO motor en el instante de puntuar y no se puede recomponer después
-   * —la regla puede haberse retirado o reescrito—. Es la respuesta a «¿por qué
-   * existe este caso?», y sin ella el expediente no se sostiene ante quien lo
-   * audite.
-   */
-  readonly scoringEvidence: Record<string, unknown> | null;
+  readonly finturuCacheSnapshot: Record<string, unknown> | null;
   readonly idempotencyKey: string | null;
   readonly riskScore: RiskScore;
   readonly status: CaseStatus;
@@ -51,7 +39,7 @@ export interface CreateCaseInput {
   readonly bridgeWallet?: string | null;
   readonly stripeCustomerId?: string | null;
   readonly finturuReference?: Record<string, unknown> | null;
-  readonly scoringEvidence?: Record<string, unknown> | null;
+  readonly finturuCacheSnapshot?: Record<string, unknown> | null;
   readonly idempotencyKey?: string | null;
   readonly riskScore: RiskScore;
   readonly priority: CasePriority;
@@ -80,7 +68,7 @@ export class Case {
       bridgeWallet: input.bridgeWallet ?? null,
       stripeCustomerId: input.stripeCustomerId ?? null,
       finturuReference: input.finturuReference ?? null,
-      scoringEvidence: input.scoringEvidence ?? null,
+      finturuCacheSnapshot: input.finturuCacheSnapshot ?? null,
       idempotencyKey: input.idempotencyKey ?? null,
       riskScore: input.riskScore,
       status: 'OPEN',
@@ -127,12 +115,12 @@ export class Case {
     return this.props.stripeCustomerId;
   }
 
-  get scoringEvidence(): Record<string, unknown> | null {
-    return this.props.scoringEvidence;
-  }
-
   get finturuReference(): Record<string, unknown> | null {
     return this.props.finturuReference;
+  }
+
+  get finturuCacheSnapshot(): Record<string, unknown> | null {
+    return this.props.finturuCacheSnapshot;
   }
 
   get idempotencyKey(): string | null {
@@ -258,19 +246,8 @@ export class Case {
     });
   }
 
-  /**
-   * Refresca lo que el expediente sí guarda del cliente: los identificadores
-   * con los que se le sigue la pista y la valoración de riesgo.
-   *
-   * Se llamaba `updateFinturuSnapshot` y además guardaba el payload entero del
-   * proveedor en `finturuCacheSnapshot`. Ese campo desapareció: los datos del
-   * cliente se leen en vivo (`GetCaseCustomerSnapshot`) y se congelan al
-   * emitir el informe, no se acumulan en el expediente. Lo que queda —correo,
-   * usuario de Bridge, billetera, cliente de Stripe— no es una copia del
-   * cliente sino las CLAVES con las que el grafo de entidades conecta
-   * expedientes sin llamar a nadie.
-   */
-  refreshFromFinturu(input: {
+  updateFinturuSnapshot(input: {
+    readonly finturuCacheSnapshot: Record<string, unknown>;
     readonly riskScore?: RiskScore;
     readonly priority?: CasePriority;
     readonly customerEmail?: string | null;
@@ -281,6 +258,7 @@ export class Case {
   }): Case {
     return new Case({
       ...this.props,
+      finturuCacheSnapshot: input.finturuCacheSnapshot,
       riskScore: input.riskScore ?? this.props.riskScore,
       priority: input.priority ?? this.props.priority,
       customerEmail: input.customerEmail ?? this.props.customerEmail,

@@ -294,13 +294,13 @@ describe('POST /api/v1/risk-scores/process', () => {
     const stored = cases.all();
     expect(stored).toHaveLength(1);
     expect(stored[0]?.priority).toBe('HIGH');
-    expect(stored[0]?.scoringEvidence).toMatchObject({
+    expect(stored[0]?.finturuCacheSnapshot).toMatchObject({
       ruleId: rule.id,
       conditionsVersion: 4,
       riskScore: 80,
       hits: [{ id: 'h1' }],
     });
-    expect(stored[0]?.scoringEvidence?.event).not.toHaveProperty('rawPayload');
+    expect(stored[0]?.finturuCacheSnapshot?.event).not.toHaveProperty('rawPayload');
     expect(JSON.stringify(response.body)).not.toContain('do-not-echo');
   });
 
@@ -357,6 +357,6 @@ describe('POST /api/v1/risk-scores/process', () => {
     expect(created.body.riskScore).toBe(40);
     expect(created.body.priority).toBe('MEDIUM');
     expect(engine.calls).toHaveLength(0);
-    expect(cases.all()[0]?.scoringEvidence).toBeNull();
+    expect(cases.all()[0]?.finturuCacheSnapshot).toBeNull();
   });
 });

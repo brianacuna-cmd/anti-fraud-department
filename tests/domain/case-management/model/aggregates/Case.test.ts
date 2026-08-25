@@ -42,7 +42,6 @@ describe('Case.create', () => {
   it('stores a given idempotencyKey', () => {
     const kase = Case.create({
       id: createCaseId(oid('case-1')),
-      scoringEvidence: null,
       organizationId: oid('org-1'),
       customerId: 'customer-1',
       riskScore: createRiskScore(50),
@@ -79,7 +78,7 @@ describe('Case.rehydrate', () => {
       bridgeWallet: null,
       stripeCustomerId: null,
       finturuReference: null,
-      scoringEvidence: null,
+      finturuCacheSnapshot: null,
       idempotencyKey: 'idem-2',
       riskScore: createRiskScore(90),
       status: 'RESOLVED',

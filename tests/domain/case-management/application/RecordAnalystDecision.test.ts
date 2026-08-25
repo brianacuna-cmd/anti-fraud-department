@@ -84,7 +84,7 @@ function buildCase(overrides: { organizationId?: string; deletedAt?: typeof NOW 
       bridgeWallet: kase.bridgeWallet,
       stripeCustomerId: kase.stripeCustomerId,
       finturuReference: kase.finturuReference,
-      scoringEvidence: null,
+      finturuCacheSnapshot: kase.finturuCacheSnapshot,
       idempotencyKey: kase.idempotencyKey,
       riskScore: kase.riskScore,
       status: kase.status,

@@ -76,18 +76,6 @@ export class MongoCaseRepository implements CaseRepository {
   ): Promise<Case | null> {
     const { organizationId, customerId, bridgeUserId, statuses } = options;
 
-    /*
-     * Las condiciones sobre `finturu_cache_snapshot` son COMPATIBILIDAD
-     * HISTÓRICA y no se pueden quitar todavía.
-     *
-     * Ese campo dejó de escribirse cuando los datos del cliente pasaron a
-     * leerse en vivo, así que los expedientes nuevos se deduplican por
-     * `customer_id` y `bridge_user_id` a secas. Pero los que ya están en la
-     * colección sí lo tienen, y algunos guardan ahí el único `idUser` que
-     * conocemos de ellos: dejar de mirarlo abriría un expediente duplicado la
-     * próxima vez que ese cliente diera señales. Un documento sin el campo
-     * simplemente no casa con estas ramas.
-     */
     const conditions: Record<string, unknown>[] = [];
     if (customerId) {
       conditions.push({ customer_id: customerId });

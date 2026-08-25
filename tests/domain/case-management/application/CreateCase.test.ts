@@ -302,8 +302,8 @@ describe('createCreateCaseUseCase idempotent short-circuit (D2/D3)', () => {
   });
 });
 
-describe('createCreateCaseUseCase optional scoringEvidence', () => {
-  it('persists scoringEvidence and caller-supplied priority when provided (automated path)', async () => {
+describe('createCreateCaseUseCase optional finturuCacheSnapshot', () => {
+  it('persists finturuCacheSnapshot and caller-supplied priority when provided (automated path)', async () => {
     const { createCase, cases } = buildCreateCase();
     const snapshot = {
       event: { provider: 'stripe', caseCustomerId: 'cust-1' },
@@ -318,15 +318,15 @@ describe('createCreateCaseUseCase optional scoringEvidence', () => {
       customerId: 'customer-1',
       riskScore: 88,
       priority: 'CRITICAL',
-      scoringEvidence: snapshot,
+      finturuCacheSnapshot: snapshot,
     });
 
     expect(kase.priority).toBe('CRITICAL');
-    expect(kase.scoringEvidence).toEqual(snapshot);
-    expect(cases.all()[0]?.scoringEvidence).toEqual(snapshot);
+    expect(kase.finturuCacheSnapshot).toEqual(snapshot);
+    expect(cases.all()[0]?.finturuCacheSnapshot).toEqual(snapshot);
   });
 
-  it('leaves scoringEvidence null when omitted (manual path regression)', async () => {
+  it('leaves finturuCacheSnapshot null when omitted (manual path regression)', async () => {
     const { createCase, cases } = buildCreateCase();
 
     const kase = await createCase({
@@ -336,8 +336,8 @@ describe('createCreateCaseUseCase optional scoringEvidence', () => {
       priority: 'MEDIUM',
     });
 
-    expect(kase.scoringEvidence).toBeNull();
-    expect(cases.all()[0]?.scoringEvidence).toBeNull();
+    expect(kase.finturuCacheSnapshot).toBeNull();
+    expect(cases.all()[0]?.finturuCacheSnapshot).toBeNull();
     expect(kase.priority).toBe('MEDIUM');
   });
 });

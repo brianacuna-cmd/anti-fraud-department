@@ -16,7 +16,7 @@ export interface CaseDocument {
   readonly bridge_wallet: string | null;
   readonly stripe_customer_id: string | null;
   readonly finturu_reference: Record<string, unknown> | null;
-  readonly scoring_evidence: Record<string, unknown> | null;
+  readonly finturu_cache_snapshot: Record<string, unknown> | null;
   readonly idempotency_key: string | null;
   readonly risk_score: number;
   readonly status: string;

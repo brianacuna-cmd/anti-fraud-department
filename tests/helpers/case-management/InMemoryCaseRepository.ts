@@ -61,16 +61,15 @@ export class InMemoryCaseRepository implements CaseRepository {
       if (statuses !== undefined && statuses.length > 0 && !statuses.includes(kase.status)) {
         return false;
       }
-      /*
-       * El adaptador Mongo mira ADEMÁS dentro de `finturu_cache_snapshot`,
-       * pero solo por los expedientes anteriores a que ese campo dejara de
-       * guardarse: el agregado ya no lo expone, así que un caso construido en
-       * memoria nunca lo tiene. Aquí basta con los identificadores propios.
-       */
+      const snapshot = kase.finturuCacheSnapshot ?? {};
       const byCustomer =
-        customerId !== undefined && customerId !== null && kase.customerId === customerId;
+        customerId !== undefined &&
+        customerId !== null &&
+        (kase.customerId === customerId || String(snapshot.idUser ?? '') === customerId);
       const byBridge =
-        bridgeUserId !== undefined && bridgeUserId !== null && kase.bridgeUserId === bridgeUserId;
+        bridgeUserId !== undefined &&
+        bridgeUserId !== null &&
+        (kase.bridgeUserId === bridgeUserId || String(snapshot.idUserBridge ?? '') === bridgeUserId);
       return byCustomer || byBridge;
     });
 

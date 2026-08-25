@@ -81,7 +81,8 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
 
       if (existing) {
         // Update snapshot and reopen if closed
-        let updated = existing.refreshFromFinturu({
+        let updated = existing.updateFinturuSnapshot({
+          finturuCacheSnapshot: input.rawSnapshot,
           riskScore,
           priority,
           customerEmail: input.customerEmail ?? null,
@@ -156,6 +157,7 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
         bridgeWallet: input.bridgeWallet ?? null,
         stripeCustomerId: input.stripeCustomerId ?? null,
         finturuReference: null,
+        finturuCacheSnapshot: input.rawSnapshot,
         riskScore,
         priority,
         assignedTo,

@@ -178,16 +178,15 @@ import { createIngestFinturuCaseUseCase } from './modules/case-management/applic
 import { createInitializeCaseSlaService } from './modules/case-management/application/InitializeCaseSla.js';
 import { createSyncFinturuDataUseCase } from './modules/case-management/application/SyncFinturuData.js';
 import { createGetFinturuDirectoryUseCase } from './modules/case-management/application/GetFinturuDirectory.js';
-import { createGetCaseCustomerSnapshotUseCase } from './modules/case-management/application/GetCaseCustomerSnapshot.js';
+import { createSyncFinturuDirectoryUseCase } from './modules/case-management/application/SyncFinturuDirectory.js';
+import { DirectorySyncScheduler } from './modules/case-management/application/DirectorySyncScheduler.js';
 import { createOpenFraudCaseUseCase } from './modules/case-management/application/OpenFraudCaseFromCustomer.js';
 import {
   createLogOutboxPublisher,
   createPublishOutboxEventsUseCase,
 } from './modules/case-management/application/PublishOutboxEvents.js';
 import { FinturuApiClient } from './modules/case-management/infrastructure/adapters/outbound/finturu/FinturuApiClient.js';
-import { FinturuLiveDirectory } from './modules/case-management/infrastructure/adapters/outbound/finturu/FinturuLiveDirectory.js';
-import { createFinturuCustomerSnapshotAdapter } from './composition/finturuCustomerSnapshotAdapter.js';
-import { createFinturuCustomerDetail } from './modules/case-management/infrastructure/adapters/outbound/finturu/FinturuCustomerDetail.js';
+import { MongoFinturuDirectoryRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoFinturuDirectoryRepository.js';
 import { createOutboxPublishScheduler } from './modules/case-management/infrastructure/scheduler/OutboxPublishScheduler.js';
 import { finturuRouter } from './modules/case-management/infrastructure/adapters/inbound/http/finturuRouter.js';
 import { finturuWebhookRouter } from './modules/case-management/infrastructure/adapters/inbound/http/finturuWebhookRouter.js';
@@ -613,46 +612,10 @@ async function bootstrap(): Promise<void> {
     defaultOrganizationId: process.env.DEFAULT_ORGANIZATION_ID ?? '019d7e58aed0777318d11d4d',
   });
 
-  /*
-   * El directorio se compone EN VIVO y no se guarda en ninguna parte.
-   *
-   * Hasta aquí vivía en Mongo (`FinturuCustomers`): 1600 clientes con nombre,
-   * correo, teléfono, billeteras y movimientos, refrescados por un sync de
-   * varios minutos. La copia existía porque recorrer Bridge era lento; desde
-   * que Finturu lo sirve desde su base de datos la composición cuesta ~1,5 s,
-   * así que la copia solo aportaba una segunda residencia de datos personales.
-   *
-   * Cliente propio, con más paciencia que `finturuApiClient` (10 s, pensado
-   * para consultas interactivas de un solo cliente): aquí se piden cuatro
-   * listados completos, y el de transferencias ronda los 5 MB.
-   */
-  const finturuDirectoryClient = new FinturuApiClient({
-    baseUrl: process.env.FINTURU_API_URL ?? 'http://localhost:3001',
-    encryptionKey: process.env.FRAUD_DEPARTMENT_KEY,
-    timeoutMs: Number(process.env.FINTURU_DIRECTORY_TIMEOUT_MS ?? 60_000),
-  });
-
-  const finturuDirectory = new FinturuLiveDirectory({
-    client: finturuDirectoryClient,
-    clock,
-    ttlMs: Number(process.env.FINTURU_DIRECTORY_TTL_MS ?? 60_000),
-  });
-
-  /*
-   * Billeteras y movimientos de UN cliente, por sus rutas propias.
-   *
-   * Usa `finturuApiClient` (10 s) y no el del directorio (60 s): esto sirve
-   * peticiones interactivas de un solo cliente, donde rendirse rápido es lo
-   * correcto, no cuatro listados completos.
-   */
-  const finturuCustomerDetail = createFinturuCustomerDetail(finturuApiClient);
-
-  // La foto que congela cada informe sale del directorio en vivo para la
-  // identidad, y del detalle por cliente para billeteras y movimientos.
-  const customerSnapshots = createFinturuCustomerSnapshotAdapter(
-    finturuDirectory,
-    finturuCustomerDetail,
-  );
+  // El directorio se sirve desde una copia local: recorrer Bridge en vivo
+  // cuesta minutos. `syncFinturuDirectory` la refresca, `getFinturuDirectory`
+  // solo lee.
+  const finturuDirectory = new MongoFinturuDirectoryRepository(db);
 
   const getFinturuDirectory = createGetFinturuDirectoryUseCase({
     directory: finturuDirectory,
@@ -660,10 +623,25 @@ async function bootstrap(): Promise<void> {
     defaultOrganizationId: process.env.DEFAULT_ORGANIZATION_ID ?? '019d7e58aed0777318d11d4d',
   });
 
-  const getCaseCustomerSnapshot = createGetCaseCustomerSnapshotUseCase({
-    cases,
+  // Cliente aparte para el sync. `finturuApiClient` corta a los 10 s porque
+  // sirve peticiones interactivas, donde rendirse rapido es lo correcto; los
+  // listados completos que recorre el sync tardan minutos y necesitan
+  // paciencia, no reintentos.
+  const finturuSyncClient = new FinturuApiClient({
+    baseUrl: process.env.FINTURU_API_URL ?? 'http://localhost:3001',
+    encryptionKey: process.env.FRAUD_DEPARTMENT_KEY,
+    timeoutMs: Number(process.env.FINTURU_SYNC_TIMEOUT_MS ?? 600_000),
+  });
+
+  const syncFinturuDirectory = createSyncFinturuDirectoryUseCase({
+    finturuClient: finturuSyncClient,
     directory: finturuDirectory,
-    customerDetail: finturuCustomerDetail,
+    clock,
+  });
+
+  const directorySyncScheduler = new DirectorySyncScheduler({
+    syncDirectory: syncFinturuDirectory,
+    intervalMinutes: Number(process.env.FINTURU_DIRECTORY_SYNC_MINUTES ?? 360),
   });
 
   const openFraudCase = createOpenFraudCaseUseCase({
@@ -693,7 +671,7 @@ async function bootstrap(): Promise<void> {
   const caseManagementFinturuRouter = finturuRouter({
     syncFinturuData,
     getFinturuDirectory,
-    getCaseCustomerSnapshot,
+    directorySyncScheduler,
     openFraudCase,
     finturuClient: finturuApiClient,
   });
@@ -739,7 +717,6 @@ async function bootstrap(): Promise<void> {
     unitOfWork: caseManagementUnitOfWork,
     clock,
     generateCaseReportId,
-    customerSnapshots,
   });
 
   /**
@@ -1648,6 +1625,8 @@ async function bootstrap(): Promise<void> {
   slaSweepScheduler.start(SLA_SWEEP_INTERVAL_MS);
   console.log(`SLA sweep scheduler started (interval=${SLA_SWEEP_INTERVAL_MS}ms)`);
 
+  directorySyncScheduler.start();
+  console.log('Finturu directory sync scheduler started');
 
   outboxPublishScheduler.start(OUTBOX_PUBLISH_INTERVAL_MS);
   console.log(`Outbox publish scheduler started (interval=${OUTBOX_PUBLISH_INTERVAL_MS}ms)`);

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
 import type { createSyncFinturuDataUseCase } from '../../../../application/SyncFinturuData.js';
 import type { createGetFinturuDirectoryUseCase } from '../../../../application/GetFinturuDirectory.js';
-import type { createGetCaseCustomerSnapshotUseCase } from '../../../../application/GetCaseCustomerSnapshot.js';
+import type { DirectorySyncScheduler } from '../../../../application/DirectorySyncScheduler.js';
 import type { createOpenFraudCaseUseCase } from '../../../../application/OpenFraudCaseFromCustomer.js';
 import type { FinturuApiClient } from '../../outbound/finturu/FinturuApiClient.js';
 import { toCaseResponse } from './mappers/CaseHttpMapper.js';
@@ -10,7 +10,7 @@ import { toCaseResponse } from './mappers/CaseHttpMapper.js';
 export interface FinturuRouterDeps {
   readonly syncFinturuData?: ReturnType<typeof createSyncFinturuDataUseCase>;
   readonly getFinturuDirectory?: ReturnType<typeof createGetFinturuDirectoryUseCase>;
-  readonly getCaseCustomerSnapshot?: ReturnType<typeof createGetCaseCustomerSnapshotUseCase>;
+  readonly directorySyncScheduler?: DirectorySyncScheduler;
   readonly openFraudCase?: ReturnType<typeof createOpenFraudCaseUseCase>;
   readonly finturuClient?: FinturuApiClient;
 }
@@ -117,45 +117,38 @@ export function finturuRouter(deps: FinturuRouterDeps): Router {
       res.status(501).json({ message: 'Directory service is not enabled' });
       return;
     }
-    /*
-     * El padrón se compone en vivo y se filtra en memoria: Finturu devuelve
-     * `/customers` entero e ignora `search`, `limit` y `offset`, así que el
-     * total real, la búsqueda y el desplazamiento los resuelve
-     * `FinturuLiveDirectory`.
-     */
+    // Se lee de la copia local, así que hay total real, búsqueda y offset.
     const limit = req.query.limit ? Number(req.query.limit) : undefined;
     const offset = req.query.offset ? Number(req.query.offset) : undefined;
     const search = typeof req.query.search === 'string' ? req.query.search : undefined;
 
     const view = await deps.getFinturuDirectory({ auth, limit, offset, search });
+    const sync = deps.directorySyncScheduler?.status;
 
     res.status(200).json({
       customers: view.customers,
       total: view.total,
-      // Cuándo se compuso lo que se está viendo. Ya no hay un sync que pueda
-      // estar «en curso» ni fallar por su cuenta: si Finturu no responde, esta
-      // misma petición falla y el frontend lo trata como cualquier otro error.
       syncedAt: view.syncedAt,
+      // La pantalla necesita distinguir "todavía no hay datos" de "aún se
+      // están trayendo" para no mostrar un vacío que parece un error.
+      syncing: sync?.running ?? false,
+      syncError: sync?.lastError ?? null,
     });
   });
 
   /**
-   * Los datos del cliente del expediente, compuestos ahora.
-   *
-   * Es lo que la ficha leía de `case.finturuCacheSnapshot` antes de que ese
-   * campo dejara de guardarse. Ruta propia y no un campo más de `GET
-   * /cases/:id` a propósito: la lista de expedientes pide docenas de casos de
-   * golpe y ninguno necesita los movimientos del cliente; solo los necesita la
-   * ficha abierta, y solo cuando se abre.
+   * Fuerza un refresco. El directorio ya se mantiene solo; esto existe para
+   * operación y pruebas, no como parte del flujo normal. Responde en cuanto
+   * arranca porque el recorrido tarda minutos.
    */
-  router.get('/cases/:caseId/customer-snapshot', async (req, res) => {
-    const auth = requireAuthContext(req);
-    if (!deps.getCaseCustomerSnapshot) {
-      res.status(501).json({ message: 'Directory service is not enabled' });
+  router.post('/cases/directory/finturu/sync', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.directorySyncScheduler) {
+      res.status(501).json({ message: 'Directory sync is not enabled' });
       return;
     }
-    const view = await deps.getCaseCustomerSnapshot({ auth, caseId: req.params.caseId! });
-    res.status(200).json(view);
+    void deps.directorySyncScheduler.run();
+    res.status(202).json({ started: true });
   });
 
   router.post('/cases/open-from-customer', async (req, res) => {
