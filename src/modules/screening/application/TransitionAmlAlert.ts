@@ -25,7 +25,7 @@ export interface TransitionAmlAlertDeps {
 
 /**
  * Forward-path AML triage: OPEN → INVESTIGATING → RESOLVED|FALSE_POSITIVE.
- * Same transaction: persist the new estado + STATE_CHANGED timeline row
+ * Same transaction: persist the new status + STATE_CHANGED timeline row
  * keyed by the alert id (compliance inbox, not a fraud Case).
  */
 export function createTransitionAmlAlertUseCase(deps: TransitionAmlAlertDeps) {

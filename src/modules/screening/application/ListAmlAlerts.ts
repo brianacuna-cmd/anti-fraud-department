@@ -7,8 +7,8 @@ import { requireTenantContext } from './authorization/requireTenantContext.js';
 
 export interface ListAmlAlertsInput {
   readonly auth: AuthContext;
-  readonly estado?: readonly AmlAlertStatus[];
-  readonly severidad?: readonly AmlAlertSeverity[];
+  readonly status?: readonly AmlAlertStatus[];
+  readonly severity?: readonly AmlAlertSeverity[];
   readonly watchlistId?: string;
   readonly createdAfter?: Instant;
   readonly createdBefore?: Instant;
@@ -26,8 +26,8 @@ export function createListAmlAlertsUseCase(deps: ListAmlAlertsDeps) {
     const organizationId = requireTenantContext(input.auth);
     return deps.amlAlertRepository.list({
       organizationId,
-      estado: input.estado,
-      severidad: input.severidad,
+      status: input.status,
+      severity: input.severity,
       watchlistId: input.watchlistId,
       createdAfter: input.createdAfter,
       createdBefore: input.createdBefore,

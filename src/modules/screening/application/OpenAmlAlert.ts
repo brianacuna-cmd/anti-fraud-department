@@ -50,7 +50,7 @@ export interface OpenAmlAlertDeps {
 /**
  * Opens an AML expediente when similarity (`confidence`) meets the org's
  * configured alert threshold. Within ONE `unitOfWork.withTransaction`:
- * inserts `aml_alerts` (estado OPEN, calculated `severidad`), appends a
+ * inserts `aml_alerts` (status OPEN, calculated `severity`), appends a
  * `CASE_CREATED` `case_timeline` row keyed by the alert id, and emits an
  * `AML_ALERT_CREATED` `outbox_events` row. Idempotent on the alert natural
  * key (RF-6): a duplicate save skips timeline and outbox.
@@ -116,10 +116,10 @@ export function createOpenAmlAlertUseCase(deps: OpenAmlAlertDeps) {
             alert_id: String(alert.id),
             organization_id: organizationId,
             customer_id: alert.customerId,
-            estado: alert.status,
-            severidad: alert.severity,
-            confianza: alert.confidence,
-            tipo_alerta: alert.alertType,
+            status: alert.status,
+            severity: alert.severity,
+            confidence: alert.confidence,
+            alert_type: alert.alertType,
           },
           now,
         }),

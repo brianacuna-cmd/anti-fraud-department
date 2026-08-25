@@ -13,9 +13,9 @@ import type { ObjectId } from 'mongodb';
 export interface AmlAlertMatchedEntryDocument {
   readonly entry_id: ObjectId;
   readonly watchlist_id: ObjectId;
-  readonly nombre: string;
-  readonly documento: string | null;
-  readonly nivel_riesgo: string | null;
+  readonly name: string;
+  readonly document: string | null;
+  readonly risk_level: string | null;
   readonly match_field: string;
   readonly algorithm: string;
 }
@@ -24,12 +24,12 @@ export interface AmlAlertDocument {
   readonly _id: ObjectId;
   readonly organization_id: ObjectId;
   readonly customer_id: string;
-  readonly tipo_alerta: string;
-  readonly entidad_sospechosa: string;
-  readonly confianza: number;
-  readonly fuente_deteccion: string;
-  readonly estado: string;
-  readonly severidad: string;
+  readonly alert_type: string;
+  readonly suspected_entity: string;
+  readonly confidence: number;
+  readonly detection_source: string;
+  readonly status: string;
+  readonly severity: string;
   readonly matched_entry: AmlAlertMatchedEntryDocument;
   readonly case_id: ObjectId | null;
   readonly created_at: Date;

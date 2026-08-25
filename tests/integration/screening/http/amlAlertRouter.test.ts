@@ -122,7 +122,7 @@ describe('GET /api/v1/aml-alerts (compliance inbox)', () => {
     await amlAlertRepository.save(buildAlert(oid('inbox-open')));
     await amlAlertRepository.save(buildAlert(oid('inbox-other-org'), ORG_2));
 
-    const response = await request(app).get('/api/v1/aml-alerts').query({ estado: 'OPEN' });
+    const response = await request(app).get('/api/v1/aml-alerts').query({ status: 'OPEN' });
 
     expect(response.status).toBe(200);
     expect(response.body.total).toBe(1);
