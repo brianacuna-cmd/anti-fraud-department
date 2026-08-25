@@ -2,7 +2,7 @@ import { decryptFinturuPayload, isEncryptedPayload } from '../../inbound/http/Fi
 
 export interface FinturuCustomerDto {
   readonly idUserBridge?: string;
-  /** Presente cuando Bridge ya trae enlazado el cliente de Stripe. */
+  /** Present when Bridge already has the Stripe customer linked. */
   readonly idCustomer?: string;
   readonly idUser?: string;
   readonly name?: string;
@@ -37,13 +37,13 @@ export interface FinturuTransferDto {
 
 export interface FinturuStripeCustomerDto {
   readonly idCustomer?: string;
-  /** Stripe devuelve el identificador como `id` en algunos endpoints. */
+  /** Stripe returns the identifier as `id` on some endpoints. */
   readonly id?: string;
   readonly name?: string;
   readonly email?: string;
   readonly balance?: number;
   readonly currency?: string;
-  /** Correlacion cruzada: Finturu guarda aqui `idUser`/`idUserBridge`. */
+  /** Cross-correlation: Finturu stores `idUser`/`idUserBridge` here. */
   readonly metadata?: Record<string, unknown> | null;
 }
 
@@ -58,7 +58,7 @@ export interface FinturuStripeTransferDto {
 export interface FinturuApiClientOptions {
   readonly baseUrl: string;
   readonly encryptionKey?: string;
-  /** Corta la petición si la API de Finturu no responde. Por defecto 10 s. */
+  /** Cuts the request off if the Finturu API does not respond. Default 10 s. */
   readonly timeoutMs?: number;
 }
 
@@ -82,10 +82,11 @@ export class FinturuApiClient {
   }
 
   /**
-   * Nunca propaga el fallo: una API de Finturu caída degrada la respuesta a
-   * vacío en lugar de tumbar el endpoint. Pero SÍ deja rastro en el log y
-   * corta a los `timeoutMs`: sin ese corte una ruta que no responde deja la
-   * petición colgada indefinidamente y el frontend girando para siempre.
+   * Never propagates the failure: a down Finturu API degrades the reply to
+   * empty instead of taking the endpoint down. It DOES leave a trail in the
+   * log and cuts at `timeoutMs`: without that cutoff a route that does not
+   * respond leaves the request hanging indefinitely and the frontend spinning
+   * forever.
    */
   private async fetchEndpoint<T>(path: string): Promise<T> {
     const url = this.normalizeUrl(path);
@@ -127,9 +128,9 @@ export class FinturuApiClient {
   }
 
   /**
-   * Una página de clientes en lugar del padrón completo. La latencia de Bridge
-   * es proporcional al tamaño de página, así que pedir 10 tarda ~2 s frente a
-   * los más de dos minutos que cuesta recorrerlo entero.
+   * One page of customers instead of the full directory. Bridge latency is
+   * proportional to page size, so asking for 10 takes ~2 s versus the more
+   * than two minutes it takes to walk the whole thing.
    */
   async getCustomersPage(
     limit: number,

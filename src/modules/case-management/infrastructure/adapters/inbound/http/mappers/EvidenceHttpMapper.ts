@@ -11,10 +11,10 @@ export interface EvidenceDto {
   readonly sha256: string;
   readonly timestamp: { readonly token: string; readonly authority: string; readonly timestampedAt: string } | null;
   /**
-   * Veredicto del antivirus (INV-015). Se expone porque el panel tiene que
-   * poder distinguir "se analizo y estaba limpio" de "no lo miro nadie": si el
-   * front no puede verlo, el estado SKIPPED no existe para quien instruye el
-   * expediente y la honestidad del dato se queda dentro de la base.
+   * Antivirus verdict (INV-015). Exposed because the panel has to be able to
+   * tell "it was scanned and it was clean" from "nobody looked": if the front
+   * cannot see it, SKIPPED does not exist for whoever instructs the case and
+   * the honesty of the datum stays inside the database.
    */
   readonly scanStatus: ScanStatus;
   readonly uploadedBy: string;

@@ -1,9 +1,9 @@
 /**
- * Documento de `FinturuCustomers`: copia local del directorio de clientes.
+ * `FinturuCustomers` document: local copy of the customer directory.
  *
- * `_id` es el `IdUser` de origen en lugar de un ObjectId: la identidad la
- * define el sistema del que se copia, y usarla directamente hace el upsert del
- * sync idempotente sin necesitar una búsqueda previa.
+ * `_id` is the source `IdUser` instead of an ObjectId: identity is defined by
+ * the system being copied from, and using it directly makes the sync upsert
+ * idempotent without a prior lookup.
  */
 export interface FinturuCustomerDocument {
   readonly _id: string;
@@ -20,7 +20,7 @@ export interface FinturuCustomerDocument {
   readonly Transfers: readonly unknown[];
   readonly Stripe: Record<string, unknown> | null;
   readonly RiskScore: number;
-  /** Todos los campos buscables concatenados en minúsculas: una sola regex los cubre. */
+  /** All searchable fields concatenated in lowercase: a single regex covers them. */
   readonly SearchText: string;
   readonly SyncedAt: string;
 }

@@ -19,14 +19,14 @@ export const caseManagementErrorStatus: StatusByCode = {
   EVIDENCE_NOT_FOUND: 404,
   CASE_NOTE_NOT_FOUND: 404,
   APPROVAL_REQUEST_NOT_FOUND: 404,
-  // 403 y no 422: la peticion es valida, el actor no.
+  // 403 not 422: the request is valid, the actor is not.
   SELF_APPROVAL_FORBIDDEN: 403,
-  // 422 y no 400: la peticion esta bien formada, el fichero es el problema.
+  // 422 not 400: the request is well formed, the file is the problem.
   EVIDENCE_INFECTED: 422,
-  // 409 y no 403: no falta permiso, falta que alguien tenga el caso. Se
-  // resuelve asignandolo, no cambiando de usuario.
+  // 409 not 403: permission is not missing, someone having the case is.
+  // It is resolved by assigning it, not by switching users.
   CASE_NOT_ASSIGNED: 409,
-  // 409 igual que el anterior: no falta permiso, el expediente esta en un
-  // estado que no admite la accion.
+  // 409 same as the previous: permission is not missing, the case is in a
+  // state that does not admit the action.
   CASE_CLOSED: 409,
 };

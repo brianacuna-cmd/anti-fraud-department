@@ -14,8 +14,9 @@ export interface OrganizationFraudConfigResponseDto {
   readonly featureFlags: Readonly<Record<string, boolean>>;
   readonly outboundWebhookUrl: string | null;
   /**
-   * Si hay secreto de firma configurado. El valor NO sale: quien pueda leer la
-   * configuracion podria si no firmar entregas indistinguibles de las nuestras.
+   * Whether a signing secret is configured. The value does NOT leave: anyone
+   * who can read the config could otherwise sign deliveries indistinguishable
+   * from ours.
    */
   readonly outboundWebhookSecretSet: boolean;
   readonly createdAt: string;

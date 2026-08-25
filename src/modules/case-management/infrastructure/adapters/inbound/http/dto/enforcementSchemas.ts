@@ -22,10 +22,10 @@ export type RecordAnalystDecisionBody = z.infer<typeof recordAnalystDecisionSche
 /**
  * POST /cases/:caseId/enforcement-actions body (ENF-001).
  *
- * `analystDecisionId` es obligatorio y no opcional: una sancion sin veredicto
- * registrado es una restriccion sobre el dinero de alguien que nadie firmo.
- * Aqui se pide una medida ADICIONAL sobre un dictamen que ya existe, no se
- * abre una via para saltarselo.
+ * `analystDecisionId` is required and not optional: a sanction without a
+ * recorded verdict is a restriction on someone else's money that nobody
+ * signed. Here an ADDITIONAL measure is requested against a decision that
+ * already exists; it does not open a way to skip it.
  */
 export const requestEnforcementActionSchema = z.object({
   analystDecisionId: z.string().min(1),
@@ -44,8 +44,8 @@ export const reviewEnforcementActionSchema = z.object({
 export type ReviewEnforcementActionBody = z.infer<typeof reviewEnforcementActionSchema>;
 
 /**
- * Los CINCO estados del ciclo. `REVERTED` faltaba, asi que filtrar por el —el
- * unico modo de auditar que sanciones se deshicieron— devolvia un 400.
+ * The FIVE lifecycle statuses. `REVERTED` was missing, so filtering by it
+ * —the only way to audit which sanctions were undone— returned a 400.
  */
 const enforcementStatusEnum = z.enum([
   'PENDING',
@@ -60,7 +60,7 @@ const enforcementStatusEnum = z.enum([
  * context — not from the query string. Filter the history by entity
  * (`targetType`/`targetId`), lifecycle `status`, `actionType`, or `caseId`.
  */
-/** Cola de doble firma. Misma paginacion que el historial de sanciones. */
+/** Dual-control queue. Same pagination as the sanction history. */
 export const listApprovalRequestsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),

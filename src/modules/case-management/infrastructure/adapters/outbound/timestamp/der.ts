@@ -1,12 +1,12 @@
 /**
- * DER mínimo para RFC 3161: lo justo para armar un `TimeStampReq` y leer un
+ * Minimal DER for RFC 3161: just enough to build a `TimeStampReq` and read a
  * `TimeStampResp`.
  *
- * Se escribe a mano en vez de traer una librería de PKI porque la superficie
- * que hace falta es diminuta y perfectamente especificada —cuatro tipos y un
- * recorrido— mientras que cualquier paquete de ASN.1 completo mete miles de
- * líneas en el camino de una pieza de evidencia que puede acabar en un
- * juzgado. Aquí se lee entero en cinco minutos.
+ * It is written by hand instead of pulling in a PKI library because the
+ * surface needed is tiny and fully specified —four types and a walk— while
+ * any complete ASN.1 package dumps thousands of lines onto the path of a
+ * piece of evidence that may end up in court. Here the whole thing can be
+ * read in five minutes.
  */
 
 export const TAG_BOOLEAN = 0x01;
@@ -18,7 +18,7 @@ export const TAG_GENERALIZED_TIME = 0x18;
 export const TAG_SEQUENCE = 0x30;
 export const TAG_CONTEXT_0 = 0xa0;
 
-/** Longitud DER: corta (<128) o larga (0x80 | nº de bytes, big-endian). */
+/** DER length: short (<128) or long (0x80 | byte count, big-endian). */
 export function encodeLength(length: number): Buffer {
   if (length < 0x80) {
     return Buffer.from([length]);
@@ -41,12 +41,12 @@ export function encodeSequence(...parts: Buffer[]): Buffer {
 }
 
 /**
- * INTEGER a partir de bytes crudos.
+ * INTEGER from raw bytes.
  *
- * Se antepone 0x00 cuando el bit alto está puesto: DER codifica enteros en
- * complemento a dos, así que sin ese byte un nonce aleatorio que empiece por
- * 0x80 o más se transmitiría como número negativo y algunas TSA rechazan la
- * petición.
+ * 0x00 is prepended when the high bit is set: DER encodes integers in two's
+ * complement, so without that byte a random nonce that starts with 0x80 or
+ * higher would be transmitted as a negative number and some TSAs reject the
+ * request.
  */
 export function encodeInteger(value: Buffer): Buffer {
   let bytes = value;
@@ -73,15 +73,15 @@ export function encodeNull(): Buffer {
   return encodeTlv(TAG_NULL, Buffer.alloc(0));
 }
 
-/** OID de SHA-256 (2.16.840.1.101.3.4.2.1), ya codificado. */
+/** SHA-256 OID (2.16.840.1.101.3.4.2.1), already encoded. */
 export const OID_SHA256 = Buffer.from([0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01]);
 
 export interface Tlv {
   readonly tag: number;
-  /** Offset del primer byte del contenido. */
+  /** Offset of the first content byte. */
   readonly contentStart: number;
   readonly length: number;
-  /** Offset del primer byte DESPUÉS de este TLV. */
+  /** Offset of the first byte AFTER this TLV. */
   readonly end: number;
 }
 
@@ -94,10 +94,10 @@ export function readTlv(buffer: Buffer, offset: number): Tlv {
 
   if ((first & 0x80) === 0) {
     const end = offset + 2 + first;
-    // La forma corta tambien se valida: `subarray` de Node recorta en silencio
-    // cuando el rango se sale, asi que sin esta comprobacion una respuesta
-    // truncada se leeria como contenido valido pero incompleto — un sello
-    // parseado a medias en vez de un error.
+    // The short form is validated too: Node's `subarray` silently clips when
+    // the range overruns, so without this check a truncated reply would be
+    // read as valid but incomplete content — a half-parsed seal instead of
+    // an error.
     if (end > buffer.length) {
       throw new Error('truncated DER: content runs past the buffer');
     }
@@ -134,7 +134,7 @@ export function contentOf(buffer: Buffer, tlv: Tlv): Buffer {
   return buffer.subarray(tlv.contentStart, tlv.end);
 }
 
-/** Entero DER pequeño (status, versión). No sirve para seriales largos. */
+/** Small DER integer (status, version). Not for long serials. */
 export function readSmallInteger(buffer: Buffer, tlv: Tlv): number {
   const bytes = contentOf(buffer, tlv);
   let value = 0;
@@ -145,12 +145,11 @@ export function readSmallInteger(buffer: Buffer, tlv: Tlv): number {
 }
 
 /**
- * GeneralizedTime -> Date. Formato `YYYYMMDDHHMMSS[.fff]Z`.
+ * GeneralizedTime -> Date. Format `YYYYMMDDHHMMSS[.fff]Z`.
  *
- * RFC 3161 exige que `genTime` venga en UTC con la Z, así que no se contemplan
- * desplazamientos horarios: una TSA que mandara hora local estaría fuera de
- * especificación y aceptarla en silencio pondría en el expediente un sello con
- * la hora equivocada.
+ * RFC 3161 requires `genTime` in UTC with the Z, so time-zone offsets are not
+ * contemplated: a TSA that sent local time would be out of spec, and
+ * accepting it silently would put a seal with the wrong time on the case.
  */
 export function parseGeneralizedTime(raw: string): Date {
   const match = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\.(\d{1,3})\d*)?Z$/.exec(raw);

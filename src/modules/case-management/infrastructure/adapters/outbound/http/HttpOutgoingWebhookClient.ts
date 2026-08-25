@@ -15,7 +15,7 @@ export interface HttpOutgoingWebhookClientOptions {
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
-/** Cabecera de firma. El nombre es nuestro; el formato es el de Stripe. */
+/** Signing header. The name is ours; the format is Stripe's. */
 export const SIGNATURE_HEADER = 'x-finturu-signature';
 const SIGNATURE_SCHEME = 'v1';
 
@@ -23,29 +23,29 @@ const SIGNATURE_SCHEME = 'v1';
  * Production `OutgoingWebhookClient` — POSTs JSON payload to the tenant webhook URL.
  * Network/HTTP failures map to `{ ok: false }` (never throw) so the dispatcher can record attempts.
  *
- * EVT-003 — FIRMA DE SALIDA
+ * EVT-003 — OUTBOUND SIGNATURE
  *
- * Cuando el inquilino tiene secreto configurado, la entrega va firmada con
- * HMAC-SHA256 sobre `${t}.${cuerpo}` en la cabecera `x-finturu-signature`,
- * con el formato `t=<epoch>,v1=<hex>`.
+ * When the tenant has a secret configured, the delivery is signed with
+ * HMAC-SHA256 over `${t}.${body}` in the `x-finturu-signature` header,
+ * in the format `t=<epoch>,v1=<hex>`.
  *
- * POR QUE ESTE FORMATO Y NO UNO PROPIO
+ * WHY THIS FORMAT AND NOT A CUSTOM ONE
  *
- * Es exactamente el que `StripeHmacVerifier` ya verifica en la entrada. Quien
- * reciba esto casi seguro tiene codigo de Stripe funcionando, y darle un
- * esquema conocido es la diferencia entre que verifique la firma y que la
- * ignore porque implementarla era trabajo.
+ * It is exactly the one `StripeHmacVerifier` already verifies on the inbound
+ * side. Whoever receives this almost certainly has working Stripe code, and
+ * giving them a known scheme is the difference between them verifying the
+ * signature and ignoring it because implementing it was work.
  *
- * POR QUE EL TIMESTAMP VA DENTRO DE LO FIRMADO
+ * WHY THE TIMESTAMP GOES INSIDE WHAT IS SIGNED
  *
- * Sin el, una entrega capturada se puede reenviar indefinidamente y seguira
- * verificando. Firmar `t` junto al cuerpo permite al receptor rechazar lo
- * viejo — que es lo unico que convierte la firma en proteccion contra repeticion
- * y no solo en prueba de origen.
+ * Without it, a captured delivery can be replayed indefinitely and will keep
+ * verifying. Signing `t` together with the body lets the receiver reject
+ * stale ones — which is the only thing that turns the signature into replay
+ * protection and not just proof of origin.
  *
- * El cuerpo se serializa UNA vez y se firma ese string exacto. Serializarlo dos
- * veces (una para firmar, otra para enviar) es como se producen las firmas que
- * no verifican por una diferencia de orden de claves.
+ * The body is serialized ONCE and that exact string is signed. Serializing it
+ * twice (once to sign, once to send) is how signatures that fail to verify
+ * over a key-order difference are produced.
  */
 export class HttpOutgoingWebhookClient implements OutgoingWebhookClient {
   private readonly fetchImpl: typeof fetch;
