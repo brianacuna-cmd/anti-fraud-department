@@ -66,4 +66,21 @@ describe('createListWatchlistEntriesUseCase', () => {
       listWatchlistEntries({ auth: ANALYST, watchlistId: oid('nonexistent'), limit: 10, offset: 0 }),
     ).rejects.toMatchObject({ code: 'WATCHLIST_NOT_FOUND' });
   });
+
+  it('returns 404 when the parent watchlist is soft-deleted', async () => {
+    const { watchlistRepository, listWatchlistEntries } = buildUseCase();
+    const watchlist = Watchlist.create({
+      id: createWatchlistId(oid('watchlist-1')),
+      organizationId: ORG_1,
+      name: 'OFAC',
+      source: 'OFAC',
+      type: 'BLACKLIST',
+      now: NOW,
+    });
+    await watchlistRepository.create(watchlist.softDelete(NOW));
+
+    await expect(
+      listWatchlistEntries({ auth: ANALYST, watchlistId: oid('watchlist-1'), limit: 10, offset: 0 }),
+    ).rejects.toMatchObject({ code: 'WATCHLIST_NOT_FOUND' });
+  });
 });

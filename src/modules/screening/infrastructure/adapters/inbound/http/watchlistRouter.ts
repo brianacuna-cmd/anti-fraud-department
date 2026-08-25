@@ -138,6 +138,7 @@ export function watchlistRouter(deps: WatchlistRouterDeps): Router {
     const body = parseRequest(updateWatchlistEntrySchema, req.body);
     const entry = await deps.updateWatchlistEntry({
       auth,
+      watchlistId: req.params.id!,
       entryId: req.params.entryId!,
       name: body.name,
       entryType: body.entryType,
@@ -151,7 +152,11 @@ export function watchlistRouter(deps: WatchlistRouterDeps): Router {
 
   router.delete('/watchlists/:id/entries/:entryId', async (req, res) => {
     const auth = requireAuthContext(req);
-    const entry = await deps.deleteWatchlistEntry({ auth, entryId: req.params.entryId! });
+    const entry = await deps.deleteWatchlistEntry({
+      auth,
+      watchlistId: req.params.id!,
+      entryId: req.params.entryId!,
+    });
     res.status(200).json(toWatchlistEntryResponse(entry));
   });
 

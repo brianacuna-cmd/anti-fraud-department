@@ -1224,6 +1224,11 @@ async function bootstrap(): Promise<void> {
   // and screeningAuditRecorder wired for ResolveAmlAlert above.
   const watchlists = new MongoWatchlistRepository(db);
   const watchlistEntries = new MongoWatchlistEntryRepository(db);
+  const indexWatchlistEntry = createIndexWatchlistEntryUseCase({
+    watchlistEntryRepository: watchlistEntries,
+    nameNormalizer: referenceNameNormalizer,
+    phoneticEncoder: new TalismanPhoneticEncoder(),
+  });
   const watchlistsHttpRouter = watchlistRouter({
     createWatchlist: createCreateWatchlistUseCase({
       watchlistRepository: watchlists,
@@ -1254,11 +1259,7 @@ async function bootstrap(): Promise<void> {
       unitOfWork: screeningUnitOfWork,
       clock,
       generateWatchlistEntryId,
-      indexWatchlistEntry: createIndexWatchlistEntryUseCase({
-        watchlistEntryRepository: watchlistEntries,
-        nameNormalizer: referenceNameNormalizer,
-        phoneticEncoder: new TalismanPhoneticEncoder(),
-      }),
+      indexWatchlistEntry,
     }),
     listWatchlistEntries: createListWatchlistEntriesUseCase({
       watchlistRepository: watchlists,
@@ -1269,11 +1270,7 @@ async function bootstrap(): Promise<void> {
       auditRecorder: screeningAuditRecorder,
       unitOfWork: screeningUnitOfWork,
       clock,
-      indexWatchlistEntry: createIndexWatchlistEntryUseCase({
-        watchlistEntryRepository: watchlistEntries,
-        nameNormalizer: referenceNameNormalizer,
-        phoneticEncoder: new TalismanPhoneticEncoder(),
-      }),
+      indexWatchlistEntry,
     }),
     deleteWatchlistEntry: createDeleteWatchlistEntryUseCase({
       watchlistEntryRepository: watchlistEntries,

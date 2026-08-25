@@ -56,7 +56,12 @@ describe('createUpdateWatchlistEntryUseCase', () => {
     const { watchlistEntryRepository, auditRecorder, reindexCalls, updateWatchlistEntry } = buildUseCase();
     await watchlistEntryRepository.create(createEntry(ORG_1));
 
-    const updated = await updateWatchlistEntry({ auth: ANALYST, entryId: oid('entry-1'), riskLevel: 'HIGH' });
+    const updated = await updateWatchlistEntry({
+      auth: ANALYST,
+      watchlistId: oid('watchlist-1'),
+      entryId: oid('entry-1'),
+      riskLevel: 'HIGH',
+    });
 
     expect(updated.riskLevel).toBe('HIGH');
     expect(reindexCalls).toHaveLength(0);
@@ -68,7 +73,12 @@ describe('createUpdateWatchlistEntryUseCase', () => {
     const { watchlistEntryRepository, reindexCalls, updateWatchlistEntry } = buildUseCase();
     await watchlistEntryRepository.create(createEntry(ORG_1));
 
-    await updateWatchlistEntry({ auth: ANALYST, entryId: oid('entry-1'), name: 'John Smithe' });
+    await updateWatchlistEntry({
+      auth: ANALYST,
+      watchlistId: oid('watchlist-1'),
+      entryId: oid('entry-1'),
+      name: 'John Smithe',
+    });
 
     expect(reindexCalls).toHaveLength(1);
   });
@@ -78,7 +88,49 @@ describe('createUpdateWatchlistEntryUseCase', () => {
     await watchlistEntryRepository.create(createEntry(ORG_2));
 
     await expect(
-      updateWatchlistEntry({ auth: ANALYST, entryId: oid('entry-1'), riskLevel: 'LOW' }),
+      updateWatchlistEntry({ auth: ANALYST, watchlistId: oid('watchlist-1'), entryId: oid('entry-1'), riskLevel: 'LOW' }),
     ).rejects.toMatchObject({ code: 'WATCHLIST_ENTRY_NOT_FOUND' });
+  });
+
+  it('rejects update when the parent watchlist id does not match the entry', async () => {
+    const { watchlistEntryRepository, updateWatchlistEntry } = buildUseCase();
+    await watchlistEntryRepository.create(createEntry(ORG_1));
+
+    await expect(
+      updateWatchlistEntry({
+        auth: ANALYST,
+        watchlistId: oid('watchlist-other'),
+        entryId: oid('entry-1'),
+        riskLevel: 'HIGH',
+      }),
+    ).rejects.toMatchObject({ code: 'WATCHLIST_ENTRY_NOT_FOUND' });
+  });
+
+  it('rejects update of a REMOVED entry with WATCHLIST_ENTRY_NOT_FOUND', async () => {
+    const { watchlistEntryRepository, updateWatchlistEntry } = buildUseCase();
+    await watchlistEntryRepository.create(createEntry(ORG_1).softDelete(NOW));
+
+    await expect(
+      updateWatchlistEntry({
+        auth: ANALYST,
+        watchlistId: oid('watchlist-1'),
+        entryId: oid('entry-1'),
+        riskLevel: 'HIGH',
+      }),
+    ).rejects.toMatchObject({ code: 'WATCHLIST_ENTRY_NOT_FOUND' });
+  });
+
+  it('does not re-index when the submitted name is unchanged', async () => {
+    const { watchlistEntryRepository, reindexCalls, updateWatchlistEntry } = buildUseCase();
+    await watchlistEntryRepository.create(createEntry(ORG_1));
+
+    await updateWatchlistEntry({
+      auth: ANALYST,
+      watchlistId: oid('watchlist-1'),
+      entryId: oid('entry-1'),
+      name: 'Jon Smith',
+    });
+
+    expect(reindexCalls).toHaveLength(0);
   });
 });

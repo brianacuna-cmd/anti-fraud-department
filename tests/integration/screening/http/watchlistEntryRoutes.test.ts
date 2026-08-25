@@ -203,6 +203,23 @@ describe('GET /api/v1/watchlists/:id/entries', () => {
 
     expect(response.status).toBe(404);
   });
+
+  it('returns 404 when the parent watchlist is soft-deleted', async () => {
+    const { app, watchlistRepository } = buildApp();
+    const watchlist = Watchlist.create({
+      id: createWatchlistId(oid('watchlist-1')),
+      organizationId: ORG_1,
+      name: 'OFAC',
+      source: 'OFAC',
+      type: 'BLACKLIST',
+      now: NOW,
+    });
+    await watchlistRepository.create(watchlist.softDelete(NOW));
+
+    const response = await request(app).get(`/api/v1/watchlists/${oid('watchlist-1')}/entries`);
+
+    expect(response.status).toBe(404);
+  });
 });
 
 describe('PATCH /api/v1/watchlists/:id/entries/:entryId', () => {
@@ -243,6 +260,35 @@ describe('PATCH /api/v1/watchlists/:id/entries/:entryId', () => {
 
     expect(response.status).toBe(400);
   });
+
+  it('returns 404 when the parent watchlist id in the URL does not own the entry', async () => {
+    const { app, watchlistRepository, watchlistEntryRepository } = buildApp();
+    const watchlistId = createWatchlistId(oid('watchlist-1'));
+    const otherWatchlistId = createWatchlistId(oid('watchlist-other'));
+    const entryId = createWatchlistEntryId(oid('entry-1'));
+    await watchlistRepository.create(
+      Watchlist.create({ id: watchlistId, organizationId: ORG_1, name: 'OFAC', source: 'OFAC', type: 'BLACKLIST', now: NOW }),
+    );
+    await watchlistRepository.create(
+      Watchlist.create({
+        id: otherWatchlistId,
+        organizationId: ORG_1,
+        name: 'EU',
+        source: 'EU',
+        type: 'BLACKLIST',
+        now: NOW,
+      }),
+    );
+    await watchlistEntryRepository.create(
+      WatchlistEntry.create({ id: entryId, watchlistId, organizationId: ORG_1, entryType: 'PERSON', name: 'Alice', now: NOW }),
+    );
+
+    const response = await request(app)
+      .patch(`/api/v1/watchlists/${oid('watchlist-other')}/entries/${oid('entry-1')}`)
+      .send({ riskLevel: 'HIGH' });
+
+    expect(response.status).toBe(404);
+  });
 });
 
 describe('DELETE /api/v1/watchlists/:id/entries/:entryId', () => {
@@ -275,6 +321,35 @@ describe('DELETE /api/v1/watchlists/:id/entries/:entryId', () => {
     );
 
     const response = await request(app).delete(`/api/v1/watchlists/${oid('watchlist-1')}/entries/${oid('entry-1')}`);
+
+    expect(response.status).toBe(404);
+  });
+
+  it('returns 404 when the parent watchlist id in the URL does not own the entry', async () => {
+    const { app, watchlistRepository, watchlistEntryRepository } = buildApp();
+    const watchlistId = createWatchlistId(oid('watchlist-1'));
+    const otherWatchlistId = createWatchlistId(oid('watchlist-other'));
+    const entryId = createWatchlistEntryId(oid('entry-1'));
+    await watchlistRepository.create(
+      Watchlist.create({ id: watchlistId, organizationId: ORG_1, name: 'OFAC', source: 'OFAC', type: 'BLACKLIST', now: NOW }),
+    );
+    await watchlistRepository.create(
+      Watchlist.create({
+        id: otherWatchlistId,
+        organizationId: ORG_1,
+        name: 'EU',
+        source: 'EU',
+        type: 'BLACKLIST',
+        now: NOW,
+      }),
+    );
+    await watchlistEntryRepository.create(
+      WatchlistEntry.create({ id: entryId, watchlistId, organizationId: ORG_1, entryType: 'PERSON', name: 'Alice', now: NOW }),
+    );
+
+    const response = await request(app).delete(
+      `/api/v1/watchlists/${oid('watchlist-other')}/entries/${oid('entry-1')}`,
+    );
 
     expect(response.status).toBe(404);
   });

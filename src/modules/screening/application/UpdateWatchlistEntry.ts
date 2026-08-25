@@ -8,11 +8,13 @@ import type { WatchlistEntryRepository } from '../domain/ports/WatchlistEntryRep
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { UnitOfWork, Transaction } from '../domain/ports/UnitOfWork.js';
 import { createWatchlistEntryId } from '../domain/model/value-objects/WatchlistEntryId.js';
+import { createWatchlistId } from '../domain/model/value-objects/WatchlistId.js';
 import { watchlistEntryNotFound } from '../domain/errors/ScreeningError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 
 export interface UpdateWatchlistEntryInput {
   readonly auth: AuthContext;
+  readonly watchlistId: string;
   readonly entryId: string;
   readonly name?: string;
   readonly document?: string | null;
@@ -42,8 +44,14 @@ export function createUpdateWatchlistEntryUseCase(deps: UpdateWatchlistEntryDeps
     const entryId = createWatchlistEntryId(input.entryId);
 
     return deps.unitOfWork.withTransaction(async (tx) => {
+      const watchlistId = createWatchlistId(input.watchlistId);
       const existing = await deps.watchlistEntryRepository.findById(entryId, tx);
-      if (existing === null || existing.organizationId !== organizationId) {
+      if (
+        existing === null ||
+        existing.organizationId !== organizationId ||
+        existing.watchlistId !== watchlistId ||
+        existing.status === 'REMOVED'
+      ) {
         throw watchlistEntryNotFound(input.entryId);
       }
 

@@ -51,7 +51,11 @@ describe('createDeleteWatchlistEntryUseCase', () => {
     const { watchlistEntryRepository, auditRecorder, deleteWatchlistEntry } = buildUseCase();
     await watchlistEntryRepository.create(createEntry(ORG_1));
 
-    const deleted = await deleteWatchlistEntry({ auth: ANALYST, entryId: oid('entry-1') });
+    const deleted = await deleteWatchlistEntry({
+      auth: ANALYST,
+      watchlistId: oid('watchlist-1'),
+      entryId: oid('entry-1'),
+    });
 
     expect(deleted.status).toBe('REMOVED');
     expect(deleted.deletedAt).toBe(NOW);
@@ -64,7 +68,7 @@ describe('createDeleteWatchlistEntryUseCase', () => {
     await watchlistEntryRepository.create(createEntry(ORG_2));
 
     await expect(
-      deleteWatchlistEntry({ auth: ANALYST, entryId: oid('entry-1') }),
+      deleteWatchlistEntry({ auth: ANALYST, watchlistId: oid('watchlist-1'), entryId: oid('entry-1') }),
     ).rejects.toMatchObject({ code: 'WATCHLIST_ENTRY_NOT_FOUND' });
   });
 
@@ -72,10 +76,27 @@ describe('createDeleteWatchlistEntryUseCase', () => {
     const { watchlistEntryRepository, auditRecorder, deleteWatchlistEntry } = buildUseCase();
     await watchlistEntryRepository.create(createEntry(ORG_1));
 
-    await deleteWatchlistEntry({ auth: ANALYST, entryId: oid('entry-1') });
-    const retried = await deleteWatchlistEntry({ auth: ANALYST, entryId: oid('entry-1') });
+    await deleteWatchlistEntry({ auth: ANALYST, watchlistId: oid('watchlist-1'), entryId: oid('entry-1') });
+    const retried = await deleteWatchlistEntry({
+      auth: ANALYST,
+      watchlistId: oid('watchlist-1'),
+      entryId: oid('entry-1'),
+    });
 
     expect(retried.status).toBe('REMOVED');
     expect(auditRecorder.events).toHaveLength(1);
+  });
+
+  it('rejects deletion when the parent watchlist id does not match the entry', async () => {
+    const { watchlistEntryRepository, deleteWatchlistEntry } = buildUseCase();
+    await watchlistEntryRepository.create(createEntry(ORG_1));
+
+    await expect(
+      deleteWatchlistEntry({
+        auth: ANALYST,
+        watchlistId: oid('watchlist-other'),
+        entryId: oid('entry-1'),
+      }),
+    ).rejects.toMatchObject({ code: 'WATCHLIST_ENTRY_NOT_FOUND' });
   });
 });

@@ -26,7 +26,8 @@ export interface ListWatchlistEntriesDeps {
 
 /**
  * RF-7: tenant-scoped, paginated, filterable watchlist entry listing.
- * Parent watchlist must exist and belong to the caller's org (404 otherwise).
+ * Parent watchlist must exist, belong to the caller's org, and not be
+ * soft-deleted (404 otherwise — same guard as CreateWatchlistEntry).
  */
 export function createListWatchlistEntriesUseCase(deps: ListWatchlistEntriesDeps) {
   return async function listWatchlistEntries(input: ListWatchlistEntriesInput): Promise<WatchlistEntryListResult> {
@@ -34,7 +35,7 @@ export function createListWatchlistEntriesUseCase(deps: ListWatchlistEntriesDeps
     const watchlistId = createWatchlistId(input.watchlistId);
 
     const watchlist = await deps.watchlistRepository.findById(watchlistId);
-    if (watchlist === null || watchlist.organizationId !== organizationId) {
+    if (watchlist === null || watchlist.organizationId !== organizationId || watchlist.deletedAt !== null) {
       throw watchlistNotFound(input.watchlistId);
     }
 
