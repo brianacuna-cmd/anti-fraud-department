@@ -36,7 +36,7 @@ describe('createSetNotificationPreferenceUseCase', () => {
 
     const result = await setPreference({
       auth: ORG_1_USER,
-      alertType: 'RIESGO_CRITICO',
+      alertType: 'CRITICAL_RISK',
       channel: 'EMAIL',
       enabled: false,
     });
@@ -46,7 +46,7 @@ describe('createSetNotificationPreferenceUseCase', () => {
     const stored = await repository.findOne(
       createOrganizationId(oid('org-1')),
       createUserId(oid('user-1')),
-      createAlertType('RIESGO_CRITICO'),
+      createAlertType('CRITICAL_RISK'),
       createNotificationChannel('EMAIL'),
     );
     expect(stored?.enabled).toBe(false);
@@ -56,14 +56,14 @@ describe('createSetNotificationPreferenceUseCase', () => {
     const repository = new InMemoryNotificationPreferenceRepository();
     const { setPreference, auditRecorder } = buildUseCase(repository);
 
-    await setPreference({ auth: ORG_1_USER, alertType: 'RIESGO_CRITICO', channel: 'EMAIL', enabled: false });
+    await setPreference({ auth: ORG_1_USER, alertType: 'CRITICAL_RISK', channel: 'EMAIL', enabled: false });
 
     const calls = auditRecorder.calls();
     expect(calls).toHaveLength(1);
     expect(calls[0].tx).toBeDefined();
     expect(calls[0].event.action).toBe('NOTIFICATION_PREFERENCE_UPDATED');
     expect(calls[0].event.resource).toBe('notificationPreferences');
-    expect(calls[0].event.resourceId).toBe('RIESGO_CRITICO:EMAIL');
+    expect(calls[0].event.resourceId).toBe('CRITICAL_RISK:EMAIL');
   });
 
   it('reactivates a previously deactivated alert type, advancing updatedAt', async () => {
@@ -72,7 +72,7 @@ describe('createSetNotificationPreferenceUseCase', () => {
       NotificationPreference.create({
         organizationId: createOrganizationId(oid('org-1')),
         userId: createUserId(oid('user-1')),
-        alertType: createAlertType('SLA_POR_VENCER'),
+        alertType: createAlertType('SLA_DUE_SOON'),
         channel: createNotificationChannel('EMAIL'),
         enabled: false,
         now: CREATED_AT,
@@ -82,7 +82,7 @@ describe('createSetNotificationPreferenceUseCase', () => {
 
     const result = await setPreference({
       auth: ORG_1_USER,
-      alertType: 'SLA_POR_VENCER',
+      alertType: 'SLA_DUE_SOON',
       channel: 'EMAIL',
       enabled: true,
     });
@@ -97,7 +97,7 @@ describe('createSetNotificationPreferenceUseCase', () => {
       NotificationPreference.create({
         organizationId: createOrganizationId(oid('org-1')),
         userId: createUserId(oid('user-1')),
-        alertType: createAlertType('SLA_POR_VENCER'),
+        alertType: createAlertType('SLA_DUE_SOON'),
         channel: createNotificationChannel('EMAIL'),
         enabled: false,
         now: CREATED_AT,
@@ -107,7 +107,7 @@ describe('createSetNotificationPreferenceUseCase', () => {
 
     const result = await setPreference({
       auth: ORG_1_USER,
-      alertType: 'SLA_POR_VENCER',
+      alertType: 'SLA_DUE_SOON',
       channel: 'EMAIL',
       enabled: false,
     });
@@ -123,7 +123,7 @@ describe('createSetNotificationPreferenceUseCase', () => {
     auditRecorder.forceFailure(new Error('audit backend unavailable'));
 
     await expect(
-      setPreference({ auth: ORG_1_USER, alertType: 'RIESGO_CRITICO', channel: 'EMAIL', enabled: false }),
+      setPreference({ auth: ORG_1_USER, alertType: 'CRITICAL_RISK', channel: 'EMAIL', enabled: false }),
     ).rejects.toThrow('audit backend unavailable');
   });
 
@@ -135,7 +135,7 @@ describe('createSetNotificationPreferenceUseCase', () => {
 
     expect.assertions(4);
     try {
-      await setPreference({ auth: platformAdmin, alertType: 'RIESGO_CRITICO', channel: 'EMAIL', enabled: false });
+      await setPreference({ auth: platformAdmin, alertType: 'CRITICAL_RISK', channel: 'EMAIL', enabled: false });
     } catch (error) {
       expect(error).toBeInstanceOf(NotificationsError);
       expect((error as InstanceType<typeof NotificationsError>).code).toBe('FORBIDDEN_CROSS_TENANT');
@@ -150,7 +150,7 @@ describe('createSetNotificationPreferenceUseCase', () => {
 
     await setPreference({
       auth: ORG_1_USER,
-      alertType: 'RIESGO_CRITICO',
+      alertType: 'CRITICAL_RISK',
       channel: 'EMAIL',
       enabled: false,
       // @ts-expect-error — userId is not part of the input contract; verifying it is ignored if present
@@ -160,14 +160,14 @@ describe('createSetNotificationPreferenceUseCase', () => {
     const spoofed = await repository.findOne(
       createOrganizationId(oid('org-1')),
       createUserId(oid('user-2')),
-      createAlertType('RIESGO_CRITICO'),
+      createAlertType('CRITICAL_RISK'),
       createNotificationChannel('EMAIL'),
     );
     expect(spoofed).toBeNull();
     const real = await repository.findOne(
       createOrganizationId(oid('org-1')),
       createUserId(oid('user-1')),
-      createAlertType('RIESGO_CRITICO'),
+      createAlertType('CRITICAL_RISK'),
       createNotificationChannel('EMAIL'),
     );
     expect(real?.enabled).toBe(false);
@@ -191,7 +191,7 @@ describe('createSetNotificationPreferenceUseCase', () => {
     const { setPreference, auditRecorder } = buildUseCase(repository);
 
     await expect(
-      setPreference({ auth: ORG_1_USER, alertType: 'RIESGO_CRITICO', channel: 'SMS', enabled: false }),
+      setPreference({ auth: ORG_1_USER, alertType: 'CRITICAL_RISK', channel: 'SMS', enabled: false }),
     ).rejects.toMatchObject({ code: 'UNKNOWN_CHANNEL' });
     expect(upsertSpy).not.toHaveBeenCalled();
     expect(auditRecorder.all()).toHaveLength(0);

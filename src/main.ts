@@ -984,7 +984,7 @@ async function bootstrap(): Promise<void> {
     clock,
   });
   // casemgmt-notifications-sla-sweep PR2 (Slice 13): advances due
-  // `CaseSlaTracking` rows and sends SLA_POR_VENCER via the same
+  // `CaseSlaTracking` rows and sends SLA_DUE_SOON via the same
   // `caseManagementNotificationSender` adapter used by `ReassignCase`.
   const sweepSlaTracking = createSweepSlaTrackingUseCase({
     slaTracking: caseSlaTracking,

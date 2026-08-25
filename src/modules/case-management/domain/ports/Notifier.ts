@@ -3,7 +3,7 @@ import type { Transaction } from './UnitOfWork.js';
 export interface CaseNotification {
   readonly organizationId: string;
   readonly recipientUserId: string;
-  /** Tipo del catalogo cerrado de `notifications` (p. ej. CASO_ASIGNADO). */
+  /** Tipo del catalogo cerrado de `notifications` (p. ej. CASE_ASSIGNED). */
   readonly alertType: string;
   readonly title: string;
   readonly body: string;

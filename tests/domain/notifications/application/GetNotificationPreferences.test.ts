@@ -25,10 +25,10 @@ describe('createGetNotificationPreferencesUseCase', () => {
     const matrix = await getPreferences({ auth: ORG_1_USER });
 
     expect(matrix).toEqual([
-      { alertType: 'CASO_ASIGNADO', channel: 'EMAIL', enabled: true },
-      { alertType: 'SLA_POR_VENCER', channel: 'EMAIL', enabled: true },
-      { alertType: 'APROBACION_PENDIENTE', channel: 'EMAIL', enabled: true },
-      { alertType: 'RIESGO_CRITICO', channel: 'EMAIL', enabled: true },
+      { alertType: 'CASE_ASSIGNED', channel: 'EMAIL', enabled: true },
+      { alertType: 'SLA_DUE_SOON', channel: 'EMAIL', enabled: true },
+      { alertType: 'APPROVAL_PENDING', channel: 'EMAIL', enabled: true },
+      { alertType: 'CRITICAL_RISK', channel: 'EMAIL', enabled: true },
     ]);
   });
 
@@ -38,7 +38,7 @@ describe('createGetNotificationPreferencesUseCase', () => {
       NotificationPreference.create({
         organizationId: createOrganizationId(oid('org-1')),
         userId: createUserId(oid('user-1')),
-        alertType: createAlertType('SLA_POR_VENCER'),
+        alertType: createAlertType('SLA_DUE_SOON'),
         channel: createNotificationChannel('EMAIL'),
         enabled: false,
         now: NOW,
@@ -48,9 +48,9 @@ describe('createGetNotificationPreferencesUseCase', () => {
 
     const matrix = await getPreferences({ auth: ORG_1_USER });
 
-    const slaEntry = matrix.find((entry) => entry.alertType === 'SLA_POR_VENCER');
+    const slaEntry = matrix.find((entry) => entry.alertType === 'SLA_DUE_SOON');
     expect(slaEntry?.enabled).toBe(false);
-    const others = matrix.filter((entry) => entry.alertType !== 'SLA_POR_VENCER');
+    const others = matrix.filter((entry) => entry.alertType !== 'SLA_DUE_SOON');
     expect(others.every((entry) => entry.enabled === true)).toBe(true);
   });
 

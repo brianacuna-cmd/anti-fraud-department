@@ -37,13 +37,13 @@ describe('createSendNotificationUseCase', () => {
     await sendNotification({
       organizationId: ORG_1,
       recipientUserId: USER_1,
-      alertType: 'CASO_ASIGNADO',
+      alertType: 'CASE_ASSIGNED',
       context: { caseId: oid('case-1') },
     });
 
     const rows = notifications.all();
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.alertType).toBe('CASO_ASIGNADO');
+    expect(rows[0]?.alertType).toBe('CASE_ASSIGNED');
     expect(rows[0]?.recipientUserId).toBe(USER_1);
     expect(rows[0]?.channel).toBe('EMAIL');
   });
@@ -54,7 +54,7 @@ describe('createSendNotificationUseCase', () => {
       NotificationPreference.create({
         organizationId: ORG_1,
         userId: USER_1,
-        alertType: 'CASO_ASIGNADO',
+        alertType: 'CASE_ASSIGNED',
         channel: 'EMAIL',
         enabled: false,
         now: NOW,
@@ -64,7 +64,7 @@ describe('createSendNotificationUseCase', () => {
     await sendNotification({
       organizationId: ORG_1,
       recipientUserId: USER_1,
-      alertType: 'CASO_ASIGNADO',
+      alertType: 'CASE_ASSIGNED',
       context: {},
     });
 
@@ -77,7 +77,7 @@ describe('createSendNotificationUseCase', () => {
       NotificationPreference.create({
         organizationId: ORG_1,
         userId: USER_1,
-        alertType: 'CASO_ASIGNADO',
+        alertType: 'CASE_ASSIGNED',
         channel: 'EMAIL',
         enabled: true,
         now: NOW,
@@ -87,7 +87,7 @@ describe('createSendNotificationUseCase', () => {
     await sendNotification({
       organizationId: ORG_1,
       recipientUserId: USER_1,
-      alertType: 'CASO_ASIGNADO',
+      alertType: 'CASE_ASSIGNED',
       context: {},
     });
 
@@ -120,7 +120,7 @@ describe('createSendNotificationUseCase', () => {
     const tx = {} as Transaction;
 
     await sendNotification(
-      { organizationId: ORG_1, recipientUserId: USER_1, alertType: 'CASO_ASIGNADO', context: {} },
+      { organizationId: ORG_1, recipientUserId: USER_1, alertType: 'CASE_ASSIGNED', context: {} },
       tx,
     );
 
@@ -134,7 +134,7 @@ describe('createSendNotificationUseCase', () => {
     await sendNotification({
       organizationId: ORG_1,
       recipientUserId: USER_1,
-      alertType: 'RIESGO_CRITICO',
+      alertType: 'CRITICAL_RISK',
       context: {},
     });
 
@@ -169,7 +169,7 @@ describe('createSendNotificationUseCase — email delivery (optional emailSender
     await sendNotification({
       organizationId: ORG_1,
       recipientUserId: USER_1,
-      alertType: 'CASO_ASIGNADO',
+      alertType: 'CASE_ASSIGNED',
       context: { caseId: oid('case-1') },
     });
 
@@ -178,7 +178,7 @@ describe('createSendNotificationUseCase — email delivery (optional emailSender
     expect(sent[0]).toMatchObject({
       organizationId: ORG_1,
       recipientUserId: USER_1,
-      alertType: 'CASO_ASIGNADO',
+      alertType: 'CASE_ASSIGNED',
     });
   });
 
@@ -193,7 +193,7 @@ describe('createSendNotificationUseCase — email delivery (optional emailSender
       NotificationPreference.create({
         organizationId: ORG_1,
         userId: USER_1,
-        alertType: 'CASO_ASIGNADO',
+        alertType: 'CASE_ASSIGNED',
         channel: 'EMAIL',
         enabled: false,
         now: NOW,
@@ -203,7 +203,7 @@ describe('createSendNotificationUseCase — email delivery (optional emailSender
     await sendNotification({
       organizationId: ORG_1,
       recipientUserId: USER_1,
-      alertType: 'CASO_ASIGNADO',
+      alertType: 'CASE_ASSIGNED',
       context: {},
     });
 
@@ -226,7 +226,7 @@ describe('createSendNotificationUseCase — email delivery (optional emailSender
       sendNotification({
         organizationId: ORG_1,
         recipientUserId: USER_1,
-        alertType: 'CASO_ASIGNADO',
+        alertType: 'CASE_ASSIGNED',
         context: {},
       }),
     ).resolves.toBeUndefined();

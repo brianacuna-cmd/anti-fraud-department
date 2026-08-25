@@ -49,7 +49,7 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
     const desired = NotificationPreference.create({
       organizationId: createOrganizationId(oid('org-1')),
       userId: createUserId(oid('user-1')),
-      alertType: 'CASO_ASIGNADO',
+      alertType: 'CASE_ASSIGNED',
       channel: 'EMAIL',
       enabled: false,
       now: NOW,
@@ -64,7 +64,7 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
     const raw = await db.collection<NotificationPreferenceDocument>('notification_preferences').findOne({
       organization_id: new ObjectId(oid('org-1')),
       user_id: new ObjectId(oid('user-1')),
-      alert_type: 'CASO_ASIGNADO',
+      alert_type: 'CASE_ASSIGNED',
       channel: 'EMAIL',
     });
     expect(raw).not.toBeNull();
@@ -76,7 +76,7 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
     const first = NotificationPreference.create({
       organizationId: createOrganizationId(oid('org-1')),
       userId: createUserId(oid('user-1')),
-      alertType: 'SLA_POR_VENCER',
+      alertType: 'SLA_DUE_SOON',
       channel: 'EMAIL',
       enabled: true,
       now: NOW,
@@ -86,7 +86,7 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
     const second = NotificationPreference.create({
       organizationId: createOrganizationId(oid('org-1')),
       userId: createUserId(oid('user-1')),
-      alertType: 'SLA_POR_VENCER',
+      alertType: 'SLA_DUE_SOON',
       channel: 'EMAIL',
       enabled: false,
       now: LATER,
@@ -108,7 +108,7 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
         NotificationPreference.create({
           organizationId: createOrganizationId(oid('org-1')),
           userId: createUserId(oid('user-1')),
-          alertType: 'APROBACION_PENDIENTE',
+          alertType: 'APPROVAL_PENDING',
           channel: 'EMAIL',
           enabled: false,
           now: NOW,
@@ -121,7 +121,7 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
         NotificationPreference.create({
           organizationId: createOrganizationId(oid('org-2')),
           userId: createUserId(oid('user-2')),
-          alertType: 'RIESGO_CRITICO',
+          alertType: 'CRITICAL_RISK',
           channel: 'EMAIL',
           enabled: false,
           now: NOW,
@@ -133,7 +133,7 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
     const rows = await repository.findByUser(createOrganizationId(oid('org-1')), createUserId(oid('user-1')));
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.alertType).toBe('APROBACION_PENDIENTE');
+    expect(rows[0]?.alertType).toBe('APPROVAL_PENDING');
   });
 
   it('rejects a duplicate (organizationId, userId, alertType, channel) key with a real E11000 (notification_preference_user_alert_channel_unique)', async () => {
@@ -141,7 +141,7 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
       _id: new ObjectId(),
       organization_id: new ObjectId(oid('org-1')),
       user_id: new ObjectId(oid('user-dup')),
-      alert_type: 'RIESGO_CRITICO',
+      alert_type: 'CRITICAL_RISK',
       channel: 'EMAIL',
       enabled: true,
       created_at: toDate(NOW),
@@ -153,7 +153,7 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
         _id: new ObjectId(),
         organization_id: new ObjectId(oid('org-1')),
         user_id: new ObjectId(oid('user-dup')),
-        alert_type: 'RIESGO_CRITICO',
+        alert_type: 'CRITICAL_RISK',
         channel: 'EMAIL',
         enabled: false,
         created_at: toDate(NOW),
@@ -168,7 +168,7 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
       NotificationPreference.create({
         organizationId: createOrganizationId(oid('org-concurrency')),
         userId: createUserId(oid('user-concurrency')),
-        alertType: 'CASO_ASIGNADO',
+        alertType: 'CASE_ASSIGNED',
         channel: 'EMAIL',
         enabled,
         now,
@@ -184,5 +184,46 @@ describe('MongoNotificationPreferenceRepository (integration, real replica-set M
       .find({ organization_id: new ObjectId(oid('org-concurrency')), user_id: new ObjectId(oid('user-concurrency')) })
       .toArray();
     expect(rows).toHaveLength(1);
+  });
+
+  it('findOne and upsert read a legacy Spanish alert_type row and persist English', async () => {
+    await db.collection<NotificationPreferenceDocument>('notification_preferences').insertOne({
+      _id: new ObjectId(),
+      organization_id: new ObjectId(oid('org-legacy')),
+      user_id: new ObjectId(oid('user-legacy')),
+      alert_type: 'CASO_ASIGNADO',
+      channel: 'EMAIL',
+      enabled: true,
+      created_at: toDate(NOW),
+      updated_at: toDate(NOW),
+    });
+
+    const found = await repository.findOne(
+      createOrganizationId(oid('org-legacy')),
+      createUserId(oid('user-legacy')),
+      'CASE_ASSIGNED',
+      'EMAIL',
+    );
+    expect(found?.alertType).toBe('CASE_ASSIGNED');
+    expect(found?.enabled).toBe(true);
+
+    const unitOfWork = new MongoUnitOfWork(client);
+    const desired = NotificationPreference.create({
+      organizationId: createOrganizationId(oid('org-legacy')),
+      userId: createUserId(oid('user-legacy')),
+      alertType: 'CASE_ASSIGNED',
+      channel: 'EMAIL',
+      enabled: false,
+      now: LATER,
+    });
+    await unitOfWork.withTransaction((tx) => repository.upsert(desired, tx));
+
+    const rows = await db
+      .collection('notification_preferences')
+      .find({ organization_id: new ObjectId(oid('org-legacy')), user_id: new ObjectId(oid('user-legacy')) })
+      .toArray();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.alert_type).toBe('CASE_ASSIGNED');
+    expect(rows[0]?.enabled).toBe(false);
   });
 });

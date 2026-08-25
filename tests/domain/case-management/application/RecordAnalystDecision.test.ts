@@ -321,7 +321,7 @@ describe('createRecordAnalystDecisionUseCase', () => {
     const sent = notificationSender.all();
     expect(sent).toHaveLength(1);
     expect(sent[0]?.recipientUserId).toBe(SUPERVISOR_ID);
-    expect(sent[0]?.alertType).toBe('APROBACION_PENDIENTE');
+    expect(sent[0]?.alertType).toBe('APPROVAL_PENDING');
     expect(sent[0]?.context).toMatchObject({
       caseId: CASE_ID,
       approvalRequestId: result.approvalRequest!.id,
