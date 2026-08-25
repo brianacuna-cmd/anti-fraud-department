@@ -60,10 +60,18 @@ export function finturuRouter(deps: FinturuRouterDeps): Router {
     res.status(200).json(data);
   });
 
+  /*
+   * Estas dos responden 502 cuando el cliente devuelve `null`, en vez de un
+   * `[]` que el panel no puede distinguir de "no tiene ninguna". Finturu tiene
+   * hoy comentadas ambas rutas (`/customer/:id/virtual-accounts` y
+   * `/customer/:id/ach-history` dan 404), así que hasta que las reimplemente
+   * el expediente debe decir "no disponible" y no inventarse un cero.
+   */
   router.get('/cases/providers/bridge/virtual-accounts/:idUserBridge', async (req, res) => {
     requireAuthContext(req);
     if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
     const data = await deps.finturuClient.getVirtualAccounts(req.params.idUserBridge!);
+    if (data === null) return res.status(502).json({ message: 'Virtual accounts are not available upstream' });
     res.status(200).json(data);
   });
 
@@ -71,6 +79,7 @@ export function finturuRouter(deps: FinturuRouterDeps): Router {
     requireAuthContext(req);
     if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
     const data = await deps.finturuClient.getAchHistory(req.params.idUserBridge!);
+    if (data === null) return res.status(502).json({ message: 'ACH history is not available upstream' });
     res.status(200).json(data);
   });
 

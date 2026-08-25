@@ -82,12 +82,16 @@ export class FinturuApiClient {
   }
 
   /**
-   * Nunca propaga el fallo: una API de Finturu caída degrada la respuesta a
-   * vacío en lugar de tumbar el endpoint. Pero SÍ deja rastro en el log y
+   * Nunca propaga el fallo: una API de Finturu caída degrada la respuesta al
+   * `fallback` en lugar de tumbar el endpoint. Pero SÍ deja rastro en el log y
    * corta a los `timeoutMs`: sin ese corte una ruta que no responde deja la
    * petición colgada indefinidamente y el frontend girando para siempre.
+   *
+   * El `fallback` es parametrizable porque `[]` miente en los listados que hoy
+   * no existen aguas arriba: un 404 se veía en pantalla como un "0" tan firme
+   * como un cero real. Esos pasan `null` para poder decir "no disponible".
    */
-  private async fetchEndpoint<T>(path: string): Promise<T> {
+  private async fetchEndpoint<T>(path: string, fallback: T = [] as unknown as T): Promise<T> {
     const url = this.normalizeUrl(path);
     try {
       const res = await fetch(url, {
@@ -100,14 +104,14 @@ export class FinturuApiClient {
 
       if (!res.ok) {
         console.warn(`[finturu] ${res.status} en GET ${url}`);
-        return [] as unknown as T;
+        return fallback;
       }
 
       const body = await res.json();
       if (isEncryptedPayload(body)) {
         if (!this.encryptionKey) {
           console.warn(`[finturu] respuesta cifrada en GET ${url} pero falta FRAUD_DEPARTMENT_KEY`);
-          return [] as unknown as T;
+          return fallback;
         }
         return decryptFinturuPayload(body, this.encryptionKey) as T;
       }
@@ -117,7 +121,7 @@ export class FinturuApiClient {
         ? `sin respuesta en ${this.timeoutMs} ms`
         : (error as Error).message;
       console.warn(`[finturu] GET ${url} falló: ${reason}`);
-      return [] as unknown as T;
+      return fallback;
     }
   }
 
@@ -186,14 +190,20 @@ export class FinturuApiClient {
     return Array.isArray(res) ? res : [];
   }
 
-  async getVirtualAccounts(idUserBridge: string): Promise<readonly unknown[]> {
-    const res = await this.fetchEndpoint<unknown>(`/customer/${encodeURIComponent(idUserBridge)}/virtual-accounts`);
-    return Array.isArray(res) ? res : [];
+  /**
+   * `null` = no se pudo consultar. Hoy Finturu tiene comentadas las rutas de
+   * cuentas virtuales y de historial ACH (responden 404), y devolver `[]` las
+   * pintaba como "este cliente no tiene ninguna" — una afirmación que nadie ha
+   * comprobado. El panel distingue ese `null` y muestra "No disponible".
+   */
+  async getVirtualAccounts(idUserBridge: string): Promise<readonly unknown[] | null> {
+    const res = await this.fetchEndpoint<unknown>(`/customer/${encodeURIComponent(idUserBridge)}/virtual-accounts`, null);
+    return Array.isArray(res) ? res : null;
   }
 
-  async getAchHistory(idUserBridge: string): Promise<readonly unknown[]> {
-    const res = await this.fetchEndpoint<unknown>(`/customer/${encodeURIComponent(idUserBridge)}/ach-history`);
-    return Array.isArray(res) ? res : [];
+  async getAchHistory(idUserBridge: string): Promise<readonly unknown[] | null> {
+    const res = await this.fetchEndpoint<unknown>(`/customer/${encodeURIComponent(idUserBridge)}/ach-history`, null);
+    return Array.isArray(res) ? res : null;
   }
 
   async getCustomerBridgeTransfers(idUserBridge: string): Promise<readonly unknown[]> {

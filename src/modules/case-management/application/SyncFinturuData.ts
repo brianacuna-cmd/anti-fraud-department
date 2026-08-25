@@ -25,16 +25,7 @@ export interface SyncFinturuDataDeps {
   readonly defaultOrganizationId?: string;
 }
 
-/**
- * Lee una clave de correlacion de un objeto sin contrato (`metadata` de Stripe,
- * `source`/`destination` de un transfer). Devuelve `null` si falta, para que el
- * llamante nunca compare `undefined` contra un Set.
- *
- * Acepta numero ademas de texto: el padron de Finturu tipa el MISMO campo como
- * numero en unos payloads y como cadena en otros, y descartar la variante
- * numerica dejaria sin correlacionar a la mitad de los clientes.
- */
-function readKey(bag: Record<string, unknown> | undefined, key: string): string | null {
+function readExactKey(bag: Record<string, unknown> | undefined, key: string): string | null {
   const value = bag?.[key];
   if (typeof value === 'string') {
     const trimmed = value.trim();
@@ -44,6 +35,32 @@ function readKey(bag: Record<string, unknown> | undefined, key: string): string 
     return String(value);
   }
   return null;
+}
+
+/** `bridgeWalletId` -> `bridge_wallet_id`. */
+function toSnakeCase(key: string): string {
+  return key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+}
+
+/**
+ * Lee una clave de correlacion de un objeto sin contrato (`metadata` de Stripe,
+ * `source`/`destination` de un transfer). Devuelve `null` si falta, para que el
+ * llamante nunca compare `undefined` contra un Set.
+ *
+ * Acepta numero ademas de texto: el padron de Finturu tipa el MISMO campo como
+ * numero en unos payloads y como cadena en otros, y descartar la variante
+ * numerica dejaria sin correlacionar a la mitad de los clientes.
+ *
+ * Y prueba tambien la variante `snake_case`: Finturu normaliza a camelCase la
+ * capa exterior del transfer (`idTransfer`, `clientReferenceId`) pero reenvia
+ * `source`/`destination` tal cual llegan de Bridge, donde las claves son
+ * `bridge_wallet_id`, `from_address` y `to_address`. Buscar solo en camelCase
+ * hacia que NINGUN transfer casara con su cliente: el directorio guardaba
+ * `transfers: []` para todo el padron y la pestana Movimientos salia vacia.
+ */
+function readKey(bag: Record<string, unknown> | undefined, key: string): string | null {
+  const snake = toSnakeCase(key);
+  return readExactKey(bag, key) ?? (snake === key ? null : readExactKey(bag, snake));
 }
 
 export function createSyncFinturuDataUseCase(deps: SyncFinturuDataDeps) {
@@ -119,7 +136,10 @@ export function createSyncFinturuDataUseCase(deps: SyncFinturuDataDeps) {
 
       // Filter transfers strictly matching this user
       const userTransfers = transfers.filter((t: FinturuTransferDto) => {
-        if (bridgeUserId && t.onBehalfOf && t.onBehalfOf === bridgeUserId) return true;
+        // Bridge lo llama `on_behalf_of` y el mapeo de Finturu no lo renombra,
+        // asi que leerlo solo como `onBehalfOf` no encontraba nunca al titular.
+        const onBehalfOf = t.onBehalfOf ?? readKey(t as unknown as Record<string, unknown>, 'onBehalfOf');
+        if (bridgeUserId && onBehalfOf && onBehalfOf === bridgeUserId) return true;
 
         const sourceWallet = readKey(t.source, 'bridgeWalletId');
         const destinationWallet = readKey(t.destination, 'bridgeWalletId');
