@@ -1,11 +1,14 @@
 import type { Db } from 'mongodb';
 import { toDate, type Instant } from '../../time/Instant.js';
-import type { RolDocument } from '../../../modules/identity-access/infrastructure/adapters/outbound/mongo/documents/RolDocument.js';
+import type { RoleDocument } from '../../../modules/identity-access/infrastructure/adapters/outbound/mongo/documents/RoleDocument.js';
 
 interface RoleSeed {
   readonly id: string;
   readonly name: string;
 }
+
+const LEGACY_COLLECTION_NAME = 'rol';
+const COLLECTION_NAME = 'roles';
 
 /** Fixed role catalog (design "1. `Rol` collection + idempotent seed", user-roles). */
 const ROLE_SEED: readonly RoleSeed[] = [
@@ -16,15 +19,19 @@ const ROLE_SEED: readonly RoleSeed[] = [
 ];
 
 /**
- * Seeds the fixed `Rol` catalog, idempotently. Per-row upsert with
+ * Seeds the fixed role catalog, idempotently. Per-row upsert with
  * `$setOnInsert` (CreatedAt/DeletedAt, written only on first insert) +
  * `$set` (RoleName/Status, re-asserted on every run so a manually-toggled
  * Status self-heals back to ACTIVE). Deliberately NOT `replaceOne` — that
  * would churn `CreatedAt` on every re-run. Safe to call on every bootstrap
  * (`ensureIndexes.ts` precedent).
+ *
+ * If a legacy `rol` collection exists and `roles` does not, it is renamed
+ * in place so existing catalog rows are kept.
  */
 export async function ensureRoles(db: Db, now: Instant): Promise<void> {
-  const collection = db.collection<RolDocument>('rol');
+  await renameLegacyRolCollection(db);
+  const collection = db.collection<RoleDocument>(COLLECTION_NAME);
   await Promise.all(
     ROLE_SEED.map((role) =>
       collection.updateOne(
@@ -37,4 +44,13 @@ export async function ensureRoles(db: Db, now: Instant): Promise<void> {
       ),
     ),
   );
+}
+
+async function renameLegacyRolCollection(db: Db): Promise<void> {
+  const existing = await db.listCollections({ name: { $in: [LEGACY_COLLECTION_NAME, COLLECTION_NAME] } }).toArray();
+  const hasLegacy = existing.some((collection) => collection.name === LEGACY_COLLECTION_NAME);
+  const hasCanonical = existing.some((collection) => collection.name === COLLECTION_NAME);
+  if (hasLegacy && !hasCanonical) {
+    await db.collection(LEGACY_COLLECTION_NAME).rename(COLLECTION_NAME);
+  }
 }

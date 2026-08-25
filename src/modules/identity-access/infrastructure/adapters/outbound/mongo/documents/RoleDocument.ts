@@ -1,9 +1,9 @@
 /**
- * Mongo document shape for the `rol` collection. `_id` is a fixed catalog id
+ * Mongo document shape for the `roles` collection. `_id` is a fixed catalog id
  * (`ADMIN`/`SUPERVISOR`/`ANALYST`/`AUDITOR`) — never an `ObjectId`.
  */
 
-export interface RolDocument {
+export interface RoleDocument {
   readonly _id: string;
   readonly role_name: string;
   readonly status: string;

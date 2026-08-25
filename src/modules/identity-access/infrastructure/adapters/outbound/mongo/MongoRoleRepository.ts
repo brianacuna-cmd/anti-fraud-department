@@ -2,10 +2,10 @@ import type { Collection, Db } from 'mongodb';
 import type { RoleId } from '../../../../domain/model/value-objects/RoleId.js';
 import { isAssignableUserRole } from '../../../../domain/model/value-objects/RoleId.js';
 import type { RoleRepository, RoleView } from '../../../../domain/ports/RoleRepository.js';
-import type { RolDocument } from './documents/RolDocument.js';
-import { toDomain } from './mappers/RolDocumentMapper.js';
+import type { RoleDocument } from './documents/RoleDocument.js';
+import { toDomain } from './mappers/RoleDocumentMapper.js';
 
-const COLLECTION_NAME = 'rol';
+const COLLECTION_NAME = 'roles';
 
 /**
  * Mongo adapter for `RoleRepository` (design "3. `RoleRepository` port"),
@@ -15,10 +15,10 @@ const COLLECTION_NAME = 'rol';
  * the `RoleId` VO layer.
  */
 export class MongoRoleRepository implements RoleRepository {
-  private readonly collection: Collection<RolDocument>;
+  private readonly collection: Collection<RoleDocument>;
 
   constructor(db: Db) {
-    this.collection = db.collection<RolDocument>(COLLECTION_NAME);
+    this.collection = db.collection<RoleDocument>(COLLECTION_NAME);
   }
 
   async findById(id: RoleId): Promise<RoleView | null> {
