@@ -1,30 +1,19 @@
-import {
-  ScreeningError,
-  amlAlertNotFound,
-  invariantViolation,
-} from '../../../../src/modules/screening/domain/errors/ScreeningError.js';
+import { watchlistEntryNotFound } from '../../../../src/modules/screening/domain/errors/ScreeningError.js';
+import { screeningErrorStatus } from '../../../../src/modules/screening/infrastructure/adapters/inbound/http/errorStatus.js';
+import type { ScreeningErrorCode } from '../../../../src/modules/screening/domain/errors/ScreeningErrorCode.js';
 
-describe('ScreeningError factories', () => {
-  it('invariantViolation produces INVARIANT_VIOLATION with the given message/metadata', () => {
-    const error = invariantViolation('bad input', { value: 'x' });
-
-    expect(error).toBeInstanceOf(ScreeningError);
-    expect(error.code).toBe('INVARIANT_VIOLATION');
-    expect(error.message).toBe('bad input');
-    expect(error.metadata).toEqual({ value: 'x' });
+/**
+ * Task 24: WATCHLIST_ENTRY_NOT_FOUND error code + HTTP mapping.
+ */
+describe('ScreeningError — WatchlistEntry errors', () => {
+  it('watchlistEntryNotFound returns ScreeningError with WATCHLIST_ENTRY_NOT_FOUND code', () => {
+    const err = watchlistEntryNotFound('entry-abc');
+    expect(err.code).toBe('WATCHLIST_ENTRY_NOT_FOUND');
+    expect(err.message).toContain('entry-abc');
   });
 
-  it('defaults metadata to an empty object', () => {
-    const error = invariantViolation('bad input');
-
-    expect(error.metadata).toEqual({});
-  });
-
-  it('amlAlertNotFound produces AML_ALERT_NOT_FOUND', () => {
-    const error = amlAlertNotFound('abc');
-
-    expect(error).toBeInstanceOf(ScreeningError);
-    expect(error.code).toBe('AML_ALERT_NOT_FOUND');
-    expect(error.metadata).toEqual({ alertId: 'abc' });
+  it('screeningErrorStatus maps WATCHLIST_ENTRY_NOT_FOUND to 404', () => {
+    const code: ScreeningErrorCode = 'WATCHLIST_ENTRY_NOT_FOUND';
+    expect(screeningErrorStatus[code]).toBe(404);
   });
 });

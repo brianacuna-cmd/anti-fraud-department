@@ -56,3 +56,13 @@ export function watchlistNameTaken(name: string): ScreeningError {
     name,
   });
 }
+
+/**
+ * Both "no such id" and "belongs to another organization" resolve to the
+ * same 404 (spec RNF-1: never leak cross-tenant existence).
+ */
+export function watchlistEntryNotFound(entryId: string): ScreeningError {
+  return new ScreeningError('WATCHLIST_ENTRY_NOT_FOUND', `WatchlistEntry "${entryId}" was not found`, {
+    entryId,
+  });
+}

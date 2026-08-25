@@ -12,4 +12,5 @@ export const screeningErrorStatus: StatusByCode = {
   AML_ALERT_NOT_FOUND: 404,
   WATCHLIST_NOT_FOUND: 404,
   WATCHLIST_NAME_TAKEN: 409,
+  WATCHLIST_ENTRY_NOT_FOUND: 404,
 };
