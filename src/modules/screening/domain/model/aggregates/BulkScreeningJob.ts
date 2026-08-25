@@ -101,6 +101,11 @@ export class BulkScreeningJob {
     return this.with({ status: 'FAILED', updatedAt: now });
   }
 
+  /** Updates `totalRows` — called by the worker once after streaming the full CSV. */
+  setTotalRows(n: number): BulkScreeningJob {
+    return this.with({ totalRows: n });
+  }
+
   /**
    * Appends a row error message. Capped at 16 384 characters total.
    * When the cap is exceeded, appends `... N more errors` and stops

@@ -66,3 +66,24 @@ export function watchlistEntryNotFound(entryId: string): ScreeningError {
     entryId,
   });
 }
+
+/**
+ * Both "no such id" and "belongs to another organization" resolve to the
+ * same 404 (RNF-BS-1: never leak cross-tenant existence).
+ */
+export function bulkScreeningJobNotFound(jobId: string): ScreeningError {
+  return new ScreeningError(
+    'BULK_SCREENING_JOB_NOT_FOUND',
+    `BulkScreeningJob "${jobId}" was not found`,
+    { jobId },
+  );
+}
+
+/** CSV header row does not contain the required `customer_id` column. */
+export function csvHeaderInvalid(filePath: string): ScreeningError {
+  return new ScreeningError(
+    'CSV_HEADER_INVALID',
+    `CSV file "${filePath}" does not contain required "customer_id" column`,
+    { filePath },
+  );
+}
