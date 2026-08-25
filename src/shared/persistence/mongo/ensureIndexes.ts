@@ -345,4 +345,18 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db
     .collection('organization_screening_config')
     .createIndex({ organization_id: 1 }, { unique: true, name: 'org_screening_config_unique' });
+
+  // bulk_screening_jobs (Slice A, design D7, RNF-BS-1): org-scoped status
+  // polling (GET /bulk-screening-jobs/:id) and org-scoped listing by creation
+  // date. Both are compounded with organization_id first for tenant isolation.
+  await db
+    .collection('bulk_screening_jobs')
+    .createIndex({ organization_id: 1, status: 1 }, { name: 'bulk_screening_jobs_org_status_idx' });
+
+  await db
+    .collection('bulk_screening_jobs')
+    .createIndex(
+      { organization_id: 1, created_at: -1 },
+      { name: 'bulk_screening_jobs_org_created_idx' },
+    );
 }

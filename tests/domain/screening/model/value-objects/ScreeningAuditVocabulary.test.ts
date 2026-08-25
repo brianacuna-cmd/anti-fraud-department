@@ -7,7 +7,7 @@ import type { ScreeningAuditAction, ScreeningAuditResource } from '../../../../.
  * before it reaches `screeningAuditRecorderAdapter`.
  */
 describe('ScreeningAuditVocabulary', () => {
-  it('accepts the watchlist actions in the closed union', () => {
+  it('accepts all screening actions in the closed union', () => {
     const actions: readonly ScreeningAuditAction[] = [
       'RESOLVE_AML_ALERT',
       'CREATE_WATCHLIST',
@@ -16,12 +16,20 @@ describe('ScreeningAuditVocabulary', () => {
       'CREATE_WATCHLIST_ENTRY',
       'UPDATE_WATCHLIST_ENTRY',
       'DELETE_WATCHLIST_ENTRY',
+      'SUBMIT_BULK_SCREENING_JOB',
+      'COMPLETE_BULK_SCREENING_JOB',
+      'FAIL_BULK_SCREENING_JOB',
     ];
-    expect(actions).toHaveLength(7);
+    expect(actions).toHaveLength(10);
   });
 
-  it('accepts the watchlist resources in the closed union', () => {
-    const resources: readonly ScreeningAuditResource[] = ['aml_alert', 'watchlist', 'watchlist_entry'];
-    expect(resources).toHaveLength(3);
+  it('accepts all screening resources in the closed union', () => {
+    const resources: readonly ScreeningAuditResource[] = [
+      'aml_alert',
+      'watchlist',
+      'watchlist_entry',
+      'bulk_screening_job',
+    ];
+    expect(resources).toHaveLength(4);
   });
 });

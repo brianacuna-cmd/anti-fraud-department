@@ -9,6 +9,13 @@ export type ScreeningAuditAction =
   | 'DELETE_WATCHLIST'
   | 'CREATE_WATCHLIST_ENTRY'
   | 'UPDATE_WATCHLIST_ENTRY'
-  | 'DELETE_WATCHLIST_ENTRY';
+  | 'DELETE_WATCHLIST_ENTRY'
+  | 'SUBMIT_BULK_SCREENING_JOB'
+  | 'COMPLETE_BULK_SCREENING_JOB'
+  | 'FAIL_BULK_SCREENING_JOB';
 
-export type ScreeningAuditResource = 'aml_alert' | 'watchlist' | 'watchlist_entry';
+export type ScreeningAuditResource =
+  | 'aml_alert'
+  | 'watchlist'
+  | 'watchlist_entry'
+  | 'bulk_screening_job';
