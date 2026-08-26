@@ -236,6 +236,17 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { name: 'outbox_published_ttl_idx', expireAfterSeconds: 604800, partialFilterExpression: { status: 'PUBLISHED' } },
   );
 
+  // dead_letter_queue: operator inspection (newest exhausted first per tenant)
+  // and per-aggregate tracing of lost events. No TTL — silent expiry is worse
+  // than a growing collection. Uniqueness on event id comes from `_id`.
+  await db
+    .collection('dead_letter_queue')
+    .createIndex({ organization_id: 1, exhausted_at: -1 }, { name: 'dlq_org_exhausted_idx' });
+
+  await db
+    .collection('dead_letter_queue')
+    .createIndex({ aggregate_id: 1, created_at: 1 }, { name: 'dlq_aggregate_created_idx' });
+
   // watchlist_entries (screening): blocking-layer lookups for the
   // non-Atlas fallback candidate repository (RF-2) — compound status
   // filter, exact document/wallet lookups, and phonetic/normalized-name
