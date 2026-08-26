@@ -18,3 +18,31 @@ export const createRoutingRuleSchema = z
   .strict();
 
 export type CreateRoutingRuleBody = z.infer<typeof createRoutingRuleSchema>;
+
+/**
+ * POST /case-routing-rules/priority-mapping body. One row per priority; the
+ * JDM graph is generated server-side (`CreatePriorityAssignmentRule.ts`),
+ * so this schema validates the simple mapping shape, not a JDM graph.
+ */
+export const createPriorityAssignmentRuleSchema = z
+  .object({
+    name: z.string().min(1),
+    mappings: z
+      .array(
+        z
+          .object({
+            priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']),
+            target: z
+              .object({
+                type: z.enum(['USER', 'ROLE']),
+                id: z.string().min(1),
+              })
+              .strict(),
+          })
+          .strict(),
+      )
+      .min(1),
+  })
+  .strict();
+
+export type CreatePriorityAssignmentRuleBody = z.infer<typeof createPriorityAssignmentRuleSchema>;

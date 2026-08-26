@@ -9,6 +9,7 @@ import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { caseManagementErrorStatus } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/errorStatus.js';
 import { routingRuleRouter } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/routingRuleRouter.js';
 import { createCreateRoutingRuleUseCase } from '../../../../src/modules/case-management/application/CreateRoutingRule.js';
+import { createCreatePriorityAssignmentRuleUseCase } from '../../../../src/modules/case-management/application/CreatePriorityAssignmentRule.js';
 import { createListRoutingRulesUseCase } from '../../../../src/modules/case-management/application/ListRoutingRules.js';
 import { createGetRoutingRuleUseCase } from '../../../../src/modules/case-management/application/GetRoutingRule.js';
 import { createActivateRoutingRuleUseCase } from '../../../../src/modules/case-management/application/ActivateRoutingRule.js';
@@ -39,6 +40,7 @@ function buildApp(actorPerRequest: () => AuthContext, clockNow: typeof NOW = NOW
     clock,
     generateCaseRoutingRuleId,
   });
+  const createPriorityAssignmentRule = createCreatePriorityAssignmentRuleUseCase({ createRoutingRule });
   const listRoutingRules = createListRoutingRulesUseCase({ routingRules });
   const getRoutingRule = createGetRoutingRuleUseCase({ routingRules });
   const activateRoutingRule = createActivateRoutingRuleUseCase({
@@ -62,6 +64,7 @@ function buildApp(actorPerRequest: () => AuthContext, clockNow: typeof NOW = NOW
   api.use(
     routingRuleRouter({
       createRoutingRule,
+      createPriorityAssignmentRule,
       listRoutingRules,
       getRoutingRule,
       activateRoutingRule,
@@ -99,6 +102,50 @@ describe('routingRuleRouter (HTTP)', () => {
     expect(response.body.targetUserId).toBe('auto-user');
     expect(routingRules.all()).toHaveLength(1);
     expect(auditRecorder.all()[0]?.action).toBe('CREATE_ROUTING_RULE');
+  });
+
+  it('POST /case-routing-rules/priority-mapping builds the JDM and persists an INACTIVE draft with null rule-level targets', async () => {
+    const { app, routingRules, auditRecorder } = buildApp(() =>
+      createAuthContext({
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
+        roleId: 'SUPERVISOR',
+      }),
+    );
+
+    const response = await request(app)
+      .post('/api/v1/case-routing-rules/priority-mapping')
+      .send({
+        name: 'priority-routing',
+        mappings: [
+          { priority: 'CRITICAL', target: { type: 'ROLE', id: 'SUPERVISOR' } },
+          { priority: 'HIGH', target: { type: 'USER', id: oid('analyst-1') } },
+        ],
+      })
+      .expect(201);
+
+    expect(response.body.status).toBe('INACTIVE');
+    expect(response.body.name).toBe('priority-routing');
+    expect(response.body.targetRoleId).toBeNull();
+    expect(response.body.targetUserId).toBeNull();
+    expect(routingRules.all()).toHaveLength(1);
+    expect(auditRecorder.all()[0]?.action).toBe('CREATE_ROUTING_RULE');
+  });
+
+  it('rejects an empty mappings list on the priority-mapping endpoint', async () => {
+    const { app, routingRules } = buildApp(() =>
+      createAuthContext({
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
+        roleId: 'SUPERVISOR',
+      }),
+    );
+
+    await request(app)
+      .post('/api/v1/case-routing-rules/priority-mapping')
+      .send({ name: 'empty', mappings: [] })
+      .expect(400);
+    expect(routingRules.all()).toHaveLength(0);
   });
 
   it('rejects invalid JDM without persisting', async () => {

@@ -4,7 +4,10 @@ import type { CaseRepository } from '../domain/ports/CaseRepository.js';
 import type { TimelineRecorder } from '../domain/ports/TimelineRecorder.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
+import type { AssigneeDirectory } from '../domain/ports/AssigneeDirectory.js';
+import type { CaseRoutingRuleRepository } from '../domain/ports/CaseRoutingRuleRepository.js';
 import type { InitializeCaseSlaService } from './InitializeCaseSla.js';
+import type { RouteCaseInput } from './RouteCase.js';
 import type { OutboxEventRepository } from '../../../shared/outbox/OutboxEventRepository.js';
 import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
 import type { CaseId } from '../domain/model/value-objects/CaseId.js';
@@ -15,7 +18,9 @@ import { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
 import { createRiskScore } from '../domain/model/value-objects/RiskScore.js';
 import { createCasePriority } from '../domain/model/value-objects/CasePriority.js';
 import { createAssignedTo, type AssignedTo } from '../domain/model/value-objects/AssignedTo.js';
+import { forbiddenCrossTenant, noActiveRoutingRule } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
+import { requireAssignmentRole } from './authorization/policy.js';
 
 export interface OpenFraudCaseInput {
   readonly auth: AuthContext;
@@ -44,6 +49,15 @@ export interface OpenFraudCaseDeps {
   readonly generateOutboxEventId: () => OutboxEventId;
   readonly auditRecorder: AuditRecorder;
   readonly initializeCaseSla: InitializeCaseSlaService;
+  readonly assigneeDirectory: AssigneeDirectory;
+  readonly routingRules: CaseRoutingRuleRepository;
+  /**
+   * T1 auto-routing (CASE-002), tried when nobody picked an assignee by
+   * hand. Injected as the composed `RouteCase` use case, same pattern as
+   * `CreateCase.ts` — this use case stays decoupled from routing's own deps
+   * (rules repo, ZEN engine).
+   */
+  readonly routeCase: (input: RouteCaseInput) => Promise<Case>;
 }
 
 export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
@@ -57,6 +71,22 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
     let assignedTo: AssignedTo | null = null;
     if (input.assignedTo?.id && input.assignedTo?.type) {
       assignedTo = createAssignedTo(input.assignedTo.type, input.assignedTo.id);
+      const isSelf =
+        assignedTo.type === 'USER' &&
+        input.auth.actorType === 'USER' &&
+        assignedTo.id === input.auth.userId;
+      if (!isSelf) {
+        // Assigning someone ELSE at creation is still distributing work, not
+        // self-service: same door as `ReassignCase` (`CASE_ASSIGN_ROLES`,
+        // ADMIN only), and the target must actually belong to this org and
+        // be ACTIVE — otherwise the case looks assigned but no one is really
+        // accountable for it.
+        requireAssignmentRole(input.auth);
+        const inOrg = await deps.assigneeDirectory.belongsToOrganization(organizationId, assignedTo);
+        if (!inOrg) {
+          throw forbiddenCrossTenant('assignee does not belong to the case organization');
+        }
+      }
     } else if (input.autoAssignToMe && input.auth.actorType === 'USER' && input.auth.userId) {
       // Only a USER actor has a "me" to assign to. For ORGANIZATION,
       // `auth.userId` carries the organization id (the resolver fills it
@@ -80,6 +110,18 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
         },
         tx,
       );
+
+      // Nobody picked an assignee AND the case (new or reopened) has none
+      // today: without at least one active routing rule to try, this would
+      // silently open an orphan case that only an ADMIN/organization login
+      // can ever find and assign by hand. Checked BEFORE writing anything.
+      const wouldBeUnassigned = assignedTo === null && (existing === null || existing.assignedTo === null);
+      if (wouldBeUnassigned) {
+        const activeRules = await deps.routingRules.findActiveByOrganization(organizationId, tx);
+        if (activeRules.length === 0) {
+          throw noActiveRoutingRule(organizationId);
+        }
+      }
 
       if (existing) {
         // Update snapshot and reopen if closed
@@ -134,6 +176,16 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
             createdAt: now,
           });
           await deps.timelineRecorder.record(assignEvent, tx);
+        } else if (existing.assignedTo === null) {
+          // Never had an owner and nobody picked one now: give auto-routing
+          // (CASE-002) the same chance a brand-new case gets.
+          updated = await deps.routeCase({
+            kase: updated,
+            tx,
+            createdBy: null,
+            actorType: input.auth.actorType,
+            ipAddress: input.auth.ipAddress,
+          });
         }
 
         return updated;
@@ -150,7 +202,7 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
         tx,
       });
 
-      const kase = Case.create({
+      let kase = Case.create({
         id: caseId,
         organizationId,
         customerId: input.customerId,
@@ -192,6 +244,18 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
           createdAt: now,
         });
         await deps.timelineRecorder.record(assignEvent, tx);
+      } else {
+        // T1 auto-routing (CASE-002): nobody picked an assignee by hand —
+        // give the org's active routing rules a chance, same engine
+        // `RouteCase` uses on the Finturu-ingest path. `createdBy: null`
+        // because the rule, not a person, chose the assignee.
+        kase = await deps.routeCase({
+          kase,
+          tx,
+          createdBy: null,
+          actorType: input.auth.actorType,
+          ipAddress: input.auth.ipAddress,
+        });
       }
 
       // Record Audit Log

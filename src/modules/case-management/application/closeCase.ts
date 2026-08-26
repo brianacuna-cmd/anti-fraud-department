@@ -49,6 +49,14 @@ export interface CloseCaseConfig {
   readonly stopSla?: boolean;
   /** When set, emit an `outbox_events` row of this type in the same transaction. */
   readonly outboxEventType?: string;
+  /**
+   * Extra invariant check run right after `assertAssigned`, before the
+   * status transition. Only `ResolveCase` supplies one (workflow-step
+   * gating: a decision on file, and enforcement resolved when the decision
+   * was `FRAUD_CONFIRMED`) — `ArchiveCase` does not, so its behavior is
+   * unchanged.
+   */
+  readonly assertBeforeTransition?: (existing: Case, tx: Transaction) => Promise<void>;
 }
 
 /**
@@ -76,6 +84,9 @@ export function closeCase(deps: CloseCaseDeps, config: CloseCaseConfig) {
       }
       // Without an assignee the case is frozen. See `AssignmentGate`.
       assertAssigned(existing);
+      if (config.assertBeforeTransition !== undefined) {
+        await config.assertBeforeTransition(existing, tx);
+      }
 
       const now = deps.clock.now();
       const previousStatus = existing.status;

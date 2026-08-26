@@ -47,7 +47,8 @@ async function buildApp() {
       // without an owner they cannot be worked.
       assignedTo: createAssignedTo('USER', oid('analyst-1')),
       now: NOW,
-    }),
+      // Instruction (notes/evidence) comes after review. See `WorkflowStepGate`.
+    }).transitionTo('IN_REVIEW', NOW),
   );
   const investigations = new InMemoryInvestigationRepository();
   const evidence = new InMemoryEvidenceRepository();

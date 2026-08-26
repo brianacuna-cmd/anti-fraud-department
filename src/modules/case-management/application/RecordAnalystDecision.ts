@@ -1,6 +1,8 @@
 import type { AuthContext } from '../../../shared/kernel/AuthContext.js';
 import type { Clock } from '../../../shared/time/Clock.js';
 import type { CaseRepository } from '../domain/ports/CaseRepository.js';
+import type { CaseNoteRepository } from '../domain/ports/CaseNoteRepository.js';
+import type { EvidenceRepository } from '../domain/ports/EvidenceRepository.js';
 import type { AnalystDecisionRepository } from '../domain/ports/AnalystDecisionRepository.js';
 import type { EnforcementActionRepository } from '../domain/ports/EnforcementActionRepository.js';
 import type { ApprovalRequestRepository } from '../domain/ports/ApprovalRequestRepository.js';
@@ -25,6 +27,7 @@ import { createAnalystDecisionType } from '../domain/model/value-objects/Analyst
 import { createEnforcementActionType } from '../domain/model/value-objects/EnforcementActionType.js';
 import { assertAssigned } from '../domain/services/AssignmentGate.js';
 import { assertNotClosed } from '../domain/services/ClosedCaseGate.js';
+import { assertInstructed } from '../domain/services/WorkflowStepGate.js';
 import {
   caseNotFound,
   forbiddenCrossTenant,
@@ -59,6 +62,8 @@ export interface RecordAnalystDecisionResult {
 
 export interface RecordAnalystDecisionDeps {
   readonly cases: CaseRepository;
+  readonly notes: CaseNoteRepository;
+  readonly evidence: EvidenceRepository;
   readonly decisions: AnalystDecisionRepository;
   readonly enforcementActions: EnforcementActionRepository;
   readonly approvalRequests: ApprovalRequestRepository;
@@ -114,6 +119,12 @@ export function createRecordAnalystDecisionUseCase(deps: RecordAnalystDecisionDe
       assertAssigned(existing);
       // A closed case is not worked. See `ClosedCaseGate`.
       assertNotClosed(existing);
+      // A verdict with nothing behind it is not a verdict. See `WorkflowStepGate`.
+      const [notes, evidence] = await Promise.all([
+        deps.notes.listByCaseId(existing.id, tx),
+        deps.evidence.listByCaseId(existing.id, tx),
+      ]);
+      assertInstructed(existing, notes.length > 0 || evidence.length > 0);
 
       const now = deps.clock.now();
       const decision = AnalystDecision.create({

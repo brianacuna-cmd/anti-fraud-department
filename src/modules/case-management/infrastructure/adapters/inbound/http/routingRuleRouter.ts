@@ -1,16 +1,18 @@
 import { Router } from 'express';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
 import type { createCreateRoutingRuleUseCase } from '../../../../application/CreateRoutingRule.js';
+import type { createCreatePriorityAssignmentRuleUseCase } from '../../../../application/CreatePriorityAssignmentRule.js';
 import type { createListRoutingRulesUseCase } from '../../../../application/ListRoutingRules.js';
 import type { createGetRoutingRuleUseCase } from '../../../../application/GetRoutingRule.js';
 import type { createActivateRoutingRuleUseCase } from '../../../../application/ActivateRoutingRule.js';
 import type { createDeactivateRoutingRuleUseCase } from '../../../../application/DeactivateRoutingRule.js';
-import { createRoutingRuleSchema } from './dto/routingRuleSchemas.js';
+import { createRoutingRuleSchema, createPriorityAssignmentRuleSchema } from './dto/routingRuleSchemas.js';
 import { toRoutingRuleResponse } from './mappers/RoutingRuleHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
 
 export interface RoutingRuleRouterDeps {
   readonly createRoutingRule: ReturnType<typeof createCreateRoutingRuleUseCase>;
+  readonly createPriorityAssignmentRule: ReturnType<typeof createCreatePriorityAssignmentRuleUseCase>;
   readonly listRoutingRules: ReturnType<typeof createListRoutingRulesUseCase>;
   readonly getRoutingRule: ReturnType<typeof createGetRoutingRuleUseCase>;
   readonly activateRoutingRule: ReturnType<typeof createActivateRoutingRuleUseCase>;
@@ -34,6 +36,17 @@ export function routingRuleRouter(deps: RoutingRuleRouterDeps): Router {
       conditionsVersion: body.conditionsVersion,
       targetRoleId: body.targetRoleId,
       targetUserId: body.targetUserId,
+    });
+    res.status(201).json(toRoutingRuleResponse(rule));
+  });
+
+  router.post('/case-routing-rules/priority-mapping', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(createPriorityAssignmentRuleSchema, req.body);
+    const rule = await deps.createPriorityAssignmentRule({
+      auth,
+      name: body.name,
+      mappings: body.mappings,
     });
     res.status(201).json(toRoutingRuleResponse(rule));
   });

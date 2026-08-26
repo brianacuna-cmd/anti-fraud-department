@@ -26,6 +26,12 @@ describe('caseManagementErrorStatus', () => {
       EVIDENCE_INFECTED: 422,
       CASE_NOT_ASSIGNED: 409,
       CASE_CLOSED: 409,
+      CASE_NOT_REVIEWED: 409,
+      CASE_NOT_INSTRUCTED: 409,
+      CASE_NOT_DECIDED: 409,
+      CASE_ENFORCEMENT_PENDING: 409,
+      CASE_NOT_RESOLVED_FOR_REPORT: 409,
+      NO_ACTIVE_ROUTING_RULE: 409,
     });
   });
 

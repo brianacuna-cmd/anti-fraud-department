@@ -33,7 +33,7 @@ const ANALYST = createAuthContext({ userId: oid('analyst-1'), organizationId: OR
 const nullTsa: TimestampAuthority = { requestTimestamp: async () => null };
 
 function buildCase(organizationId = ORG_1): Case {
-  return Case.create({
+  const kase = Case.create({
     id: createCaseId(oid('case-1')),
     organizationId,
     customerId: 'customer-1',
@@ -44,6 +44,8 @@ function buildCase(organizationId = ORG_1): Case {
     assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   });
+  // Instruction (notes/evidence) comes after review. See `WorkflowStepGate`.
+  return kase.transitionTo('IN_REVIEW', NOW);
 }
 
 function build(tsa: TimestampAuthority = nullTsa, malwareScanner = new FakeMalwareScanner()) {
@@ -169,6 +171,23 @@ describe('createRegisterEvidenceUseCase', () => {
     await expect(
       h.registerEvidence({ auth: ANALYST, caseId: oid('case-1'), filename: 'x', contentType: 'text/plain', bytes: Buffer.from('x') }),
     ).rejects.toMatchObject({ code: 'FORBIDDEN_CROSS_TENANT' });
+  });
+
+  it('throws CASE_NOT_REVIEWED for a case still OPEN', async () => {
+    const h = build();
+    const open = Case.create({
+      id: createCaseId(oid('case-1')),
+      organizationId: ORG_1,
+      customerId: 'customer-1',
+      riskScore: createRiskScore(50),
+      priority: 'MEDIUM',
+      assignedTo: createAssignedTo('USER', oid('analyst-1')),
+      now: NOW,
+    });
+    await h.cases.save(open);
+    await expect(
+      h.registerEvidence({ auth: ANALYST, caseId: oid('case-1'), filename: 'x', contentType: 'text/plain', bytes: Buffer.from('x') }),
+    ).rejects.toMatchObject({ code: 'CASE_NOT_REVIEWED' });
   });
 });
 
