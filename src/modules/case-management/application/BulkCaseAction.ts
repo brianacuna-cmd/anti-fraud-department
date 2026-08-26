@@ -22,6 +22,8 @@ import {
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
+import { assertAssigned } from '../domain/services/AssignmentGate.js';
+import { assertNotClosed } from '../domain/services/ClosedCaseGate.js';
 
 const MAX_BULK_CASES = 100;
 
@@ -192,6 +194,12 @@ function applyChangePriority(
   priority: CasePriority,
   now: Instant,
 ): AppliedChange | null {
+  // Mirrors the single-case path (`UpdateCasePriorityTags`): a bulk relabel
+  // is still a priority/tag change, and the domain gates that block it on a
+  // closed or unassigned case do not stop applying just because it went
+  // through the batch endpoint instead of the per-case one.
+  assertAssigned(existing);
+  assertNotClosed(existing);
   if (existing.priority === priority) {
     return null;
   }
@@ -213,6 +221,8 @@ function applyAddTags(
   tags: readonly string[],
   now: Instant,
 ): AppliedChange | null {
+  assertAssigned(existing);
+  assertNotClosed(existing);
   const previousTags = [...existing.tags];
   const merged = normalizeTags([...previousTags, ...tags]);
   if (merged.length === previousTags.length) {

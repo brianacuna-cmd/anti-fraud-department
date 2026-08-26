@@ -23,6 +23,7 @@ import { caseRouter } from '../../../../src/modules/case-management/infrastructu
 import { createCreateCaseUseCase } from '../../../../src/modules/case-management/application/CreateCase.js';
 import { createCalculateSlaUseCase } from '../../../../src/modules/case-management/application/CalculateSla.js';
 import { createRouteCaseUseCase } from '../../../../src/modules/case-management/application/RouteCase.js';
+import { AllowAllAssigneeDirectory } from '../../../helpers/case-management/AllowAllAssigneeDirectory.js';
 import { createReassignCaseUseCase } from '../../../../src/modules/case-management/application/ReassignCase.js';
 import { createListCasesUseCase } from '../../../../src/modules/case-management/application/ListCases.js';
 import { createGetCaseUseCase } from '../../../../src/modules/case-management/application/GetCase.js';
@@ -165,6 +166,7 @@ function buildApp(actorPerRequest: () => AuthContext, engine: RiskScoringEngine,
     timelineRecorder,
     auditRecorder: caseAuditRecorder,
     fraudConfig,
+    assigneeDirectory: new AllowAllAssigneeDirectory(),
     clock,
     generateTimelineEventId,
   });

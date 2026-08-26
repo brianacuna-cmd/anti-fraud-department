@@ -49,7 +49,16 @@ export type CaseManagementAuditAction =
    * confirmation with the team (design open point: "Enums de EventType/Action
    * ... confirmar los nombres exactos").
    */
-  | 'ROUTING_RULE_EVALUATION_FAILED';
+  | 'ROUTING_RULE_EVALUATION_FAILED'
+  /**
+   * A rule matched and resolved a target, but that target does not belong
+   * to the organization or is not `ACTIVE` (deleted/suspended/disabled
+   * user, or a role that is not assignable). Same "skip, don't assign,
+   * don't abort case creation" treatment as `ROUTING_RULE_EVALUATION_FAILED`
+   * — the difference is WHAT failed: the JDM ran fine, the target it
+   * pointed to just cannot receive a case.
+   */
+  | 'ROUTING_RULE_TARGET_INVALID';
 
 export type CaseManagementAuditResource =
   | 'case'

@@ -18,6 +18,7 @@ import { MongoCaseRoutingRuleRepository } from '../../../src/modules/case-manage
 import { MongoOrganizationFraudConfigRepository } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoOrganizationFraudConfigRepository.js';
 import { MongoCaseSlaTrackingRepository } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseSlaTrackingRepository.js';
 import { ZenRoutingEngine } from '../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
+import { AllowAllAssigneeDirectory } from '../../helpers/case-management/AllowAllAssigneeDirectory.js';
 import type { AuditEvent, AuditRecorder } from '../../../src/modules/case-management/domain/ports/AuditRecorder.js';
 import type { Transaction } from '../../../src/modules/case-management/domain/ports/UnitOfWork.js';
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
@@ -163,6 +164,7 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
       timelineRecorder,
       auditRecorder,
       fraudConfig,
+      assigneeDirectory: new AllowAllAssigneeDirectory(),
       clock,
       generateTimelineEventId,
     });

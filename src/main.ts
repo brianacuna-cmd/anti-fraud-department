@@ -566,6 +566,7 @@ async function bootstrap(): Promise<void> {
   const approvalRequests = new MongoApprovalRequestRepository(db);
   const analystDecisions = new MongoAnalystDecisionRepository(db);
   const enforcementActions = new MongoEnforcementActionRepository(db);
+  const assigneeDirectory = createIdentityAssigneeDirectory(userRepositoryFactory, roleRepository);
   const routeCase = createRouteCaseUseCase({
     cases,
     routingRules: caseRoutingRules,
@@ -573,6 +574,7 @@ async function bootstrap(): Promise<void> {
     timelineRecorder: caseTimelineRecorder,
     auditRecorder: caseManagementAuditRecorder,
     fraudConfig: organizationFraudConfig,
+    assigneeDirectory,
     clock,
     generateTimelineEventId,
   });
@@ -583,7 +585,6 @@ async function bootstrap(): Promise<void> {
     clock,
     generateCaseSlaTrackingId,
   });
-  const assigneeDirectory = createIdentityAssigneeDirectory(userRepositoryFactory, roleRepository);
   const createCase = createCreateCaseUseCase({
     cases,
     timelineRecorder: caseTimelineRecorder,

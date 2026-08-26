@@ -3,6 +3,7 @@ import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js'
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { createActivateRoutingRuleUseCase } from '../../../../src/modules/case-management/application/ActivateRoutingRule.js';
 import { createRouteCaseUseCase } from '../../../../src/modules/case-management/application/RouteCase.js';
+import { AllowAllAssigneeDirectory } from '../../../helpers/case-management/AllowAllAssigneeDirectory.js';
 import { CaseManagementError } from '../../../../src/modules/case-management/domain/errors/CaseManagementError.js';
 import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
 import { CaseRoutingRule } from '../../../../src/modules/case-management/domain/model/aggregates/CaseRoutingRule.js';
@@ -230,6 +231,7 @@ describe('ActivateRoutingRule', () => {
       timelineRecorder: new InMemoryTimelineRecorder(),
       auditRecorder: new InMemoryCaseManagementAuditRecorder(),
       fraudConfig,
+      assigneeDirectory: new AllowAllAssigneeDirectory(),
       clock: new FixedClock(LATER),
       generateTimelineEventId,
     });

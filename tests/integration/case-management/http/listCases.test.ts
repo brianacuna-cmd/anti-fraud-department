@@ -39,6 +39,7 @@ import { InMemoryCaseRoutingRuleRepository } from '../../../helpers/case-managem
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
 import { InMemoryCaseSlaTrackingRepository } from '../../../helpers/case-management/InMemoryCaseSlaTrackingRepository.js';
 import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
+import { AllowAllAssigneeDirectory } from '../../../helpers/case-management/AllowAllAssigneeDirectory.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 import { generateCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
@@ -93,6 +94,7 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
     timelineRecorder,
     auditRecorder,
     fraudConfig,
+    assigneeDirectory: new AllowAllAssigneeDirectory(),
     clock,
     generateTimelineEventId,
   });
