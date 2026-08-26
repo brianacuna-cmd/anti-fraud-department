@@ -24,6 +24,11 @@ export interface DeadLetterEventProps {
 export class DeadLetterEvent {
   private constructor(private readonly props: DeadLetterEventProps) {}
 
+  /** Reconstitutes a `DeadLetterEvent` from persisted props (used by the Mongo mapper). */
+  static rehydrate(props: DeadLetterEventProps): DeadLetterEvent {
+    return new DeadLetterEvent(props);
+  }
+
   /**
    * Builds a `DeadLetterEvent` from an already-exhausted `OutboxEvent`
    * (i.e. one whose `markExhausted` was already called, so `lastError` is set
