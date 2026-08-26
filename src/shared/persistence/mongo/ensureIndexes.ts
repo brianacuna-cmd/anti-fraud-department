@@ -359,4 +359,24 @@ export async function ensureIndexes(db: Db): Promise<void> {
       { organization_id: 1, created_at: -1 },
       { name: 'bulk_screening_jobs_org_created_idx' },
     );
+
+  // watchlist_entries (wallet-rescreen, PR2, D7): compound ESR index for the
+  // keyset delta scan — equality on org+type+status, range on updated_at.
+  // `watchlist_id: {$in:[...]}` stays a residual filter; BLACKLIST is the
+  // dominant subset so selectivity loss from omitting it from the key is small.
+  await db
+    .collection('watchlist_entries')
+    .createIndex(
+      { organization_id: 1, entry_type: 1, status: 1, updated_at: 1 },
+      { name: 'watchlist_entries_org_type_status_updated_idx' },
+    );
+
+  // screening_watermarks (wallet-rescreen, PR2, D2): unique per (org, job_name)
+  // enforces the per-job singleton; last-write-wins upsert relies on this key.
+  await db
+    .collection('screening_watermarks')
+    .createIndex(
+      { organization_id: 1, job_name: 1 },
+      { unique: true, name: 'screening_watermark_org_job_unique' },
+    );
 }
