@@ -34,4 +34,10 @@ export type CaseManagementErrorCode =
    * The case is closed and therefore is no longer worked. It is resolved by
    * reopening it, not by changing user or retrying.
    */
-  | 'CASE_CLOSED';
+  | 'CASE_CLOSED'
+  /**
+   * No `dead_letter_queue` row exists for the given id. Returned by inspect
+   * and requeue when the caller references a row that was never created or
+   * was already deleted by a prior successful requeue.
+   */
+  | 'DLQ_EVENT_NOT_FOUND';

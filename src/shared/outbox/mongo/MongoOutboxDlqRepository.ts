@@ -1,6 +1,8 @@
 import { type ClientSession, type Collection, type Db } from 'mongodb';
 import type { DeadLetterEvent } from '../DeadLetterEvent.js';
-import type { OutboxDlqRepository } from '../OutboxDlqRepository.js';
+import type { DlqListQuery, OutboxDlqRepository } from '../OutboxDlqRepository.js';
+import type { OutboxEventId } from '../OutboxEventId.js';
+import type { CursorPage } from '../../http/pagination.js';
 import { isDuplicateKeyError } from '../../persistence/mongo/duplicateKey.js';
 import type { DeadLetterEventDocument } from './DeadLetterEventDocument.js';
 import { toDocument } from './DeadLetterEventDocumentMapper.js';
@@ -37,5 +39,23 @@ export class MongoOutboxDlqRepository implements OutboxDlqRepository {
       }
       throw err;
     }
+  }
+
+  // PR2: read + delete methods — stubs satisfy the TypeScript port contract;
+  // real implementations land in the Mongo adapter PR.
+  async findMany(query: DlqListQuery): Promise<CursorPage<DeadLetterEvent>> {
+    void query;
+    throw new Error('MongoOutboxDlqRepository.findMany: not implemented — PR2');
+  }
+
+  async findById(id: OutboxEventId): Promise<DeadLetterEvent | null> {
+    void id;
+    throw new Error('MongoOutboxDlqRepository.findById: not implemented — PR2');
+  }
+
+  async delete(id: OutboxEventId, tx?: unknown): Promise<void> {
+    void id;
+    void tx;
+    throw new Error('MongoOutboxDlqRepository.delete: not implemented — PR2');
   }
 }

@@ -195,3 +195,11 @@ export function caseClosed(caseId: string, status: string): CaseManagementError 
     { caseId, status },
   );
 }
+
+export function dlqEventNotFound(dlqEventId: string): CaseManagementError {
+  return new CaseManagementError(
+    'DLQ_EVENT_NOT_FOUND',
+    `no dead-letter event with id "${dlqEventId}" was found`,
+    { dlqEventId },
+  );
+}
