@@ -188,6 +188,8 @@ import {
   type OutboxPublisher,
 } from './modules/case-management/application/PublishOutboxEvents.js';
 import { createKafkaOutboxPublisher } from './modules/case-management/infrastructure/adapters/outbound/kafka/KafkaOutboxPublisher.js';
+import { createOutboxRetryPolicy } from './shared/outbox/OutboxRetryPolicy.js';
+import { UnimplementedOutboxDlqRepository } from './shared/outbox/UnimplementedOutboxDlqRepository.js';
 import { FinturuApiClient } from './modules/case-management/infrastructure/adapters/outbound/finturu/FinturuApiClient.js';
 import { MongoFinturuDirectoryRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoFinturuDirectoryRepository.js';
 import { createOutboxPublishScheduler } from './modules/case-management/infrastructure/scheduler/OutboxPublishScheduler.js';
@@ -716,10 +718,15 @@ async function bootstrap(): Promise<void> {
   // The other end of the outbox: events enter in the same transaction as
   // the case — the hard part, the one that guarantees they are not lost —
   // but without a relay they sat in PENDING indefinitely.
+  // PR 2 replaces UnimplementedOutboxDlqRepository with MongoOutboxDlqRepository.
+  const outboxRetryPolicy = createOutboxRetryPolicy(process.env);
   const publishOutboxEvents = createPublishOutboxEventsUseCase({
     outbox: outboxEvents,
     publisher: await resolveOutboxPublisher(),
     clock,
+    dlq: new UnimplementedOutboxDlqRepository(),
+    unitOfWork: caseManagementUnitOfWork,
+    retryPolicy: outboxRetryPolicy,
   });
 
   const outboxPublishScheduler = createOutboxPublishScheduler({ publishOutboxEvents });
