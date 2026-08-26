@@ -185,7 +185,9 @@ import { createOpenFraudCaseUseCase } from './modules/case-management/applicatio
 import {
   createLogOutboxPublisher,
   createPublishOutboxEventsUseCase,
+  type OutboxPublisher,
 } from './modules/case-management/application/PublishOutboxEvents.js';
+import { createKafkaOutboxPublisher } from './modules/case-management/infrastructure/adapters/outbound/kafka/KafkaOutboxPublisher.js';
 import { FinturuApiClient } from './modules/case-management/infrastructure/adapters/outbound/finturu/FinturuApiClient.js';
 import { MongoFinturuDirectoryRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoFinturuDirectoryRepository.js';
 import { createOutboxPublishScheduler } from './modules/case-management/infrastructure/scheduler/OutboxPublishScheduler.js';
@@ -419,6 +421,25 @@ const OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS = Number(
  */
 const SLA_SWEEP_INTERVAL_MS = Number(process.env.SLA_SWEEP_INTERVAL_MS ?? 60_000);
 const OUTBOX_PUBLISH_INTERVAL_MS = Number(process.env.OUTBOX_PUBLISH_INTERVAL_MS ?? 60_000);
+const KAFKA_BROKERS = optionalEnv('KAFKA_BROKERS');
+const KAFKA_OUTBOX_TOPIC = process.env.KAFKA_OUTBOX_TOPIC ?? 'outbox.events';
+
+async function resolveOutboxPublisher(): Promise<OutboxPublisher> {
+  const kafkaBrokers = KAFKA_BROKERS?.split(',')
+    .map((broker) => broker.trim())
+    .filter((broker) => broker.length > 0);
+  if (kafkaBrokers === undefined || kafkaBrokers.length === 0) {
+    console.log('Outbox publisher: log (set KAFKA_BROKERS to enable Kafka)');
+    return createLogOutboxPublisher();
+  }
+  const publisher = await createKafkaOutboxPublisher({
+    brokers: kafkaBrokers,
+    topic: KAFKA_OUTBOX_TOPIC,
+  });
+  console.log(`Outbox publisher: kafka topic=${KAFKA_OUTBOX_TOPIC} brokers=${kafkaBrokers.join(',')}`);
+  return publisher;
+}
+
 /**
  * screening-watchlist-matcher Slice 7 (design "KEY DECISION — Atlas Search
  * testability"): selects the blocking-layer candidate adapter.
@@ -697,7 +718,7 @@ async function bootstrap(): Promise<void> {
   // but without a relay they sat in PENDING indefinitely.
   const publishOutboxEvents = createPublishOutboxEventsUseCase({
     outbox: outboxEvents,
-    publisher: createLogOutboxPublisher(),
+    publisher: await resolveOutboxPublisher(),
     clock,
   });
 
