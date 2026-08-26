@@ -149,14 +149,43 @@ export class MongoWatchlistEntryRepository implements WatchlistEntryRepository {
   }
 
   /**
-   * Keyset delta scan — implemented in PR2 (`MongoWatchlistEntryRepository`
-   * persistence slice). Stub preserved here so the port contract compiles
-   * while PR1 (port contracts only) is in review.
+   * Keyset delta scan for the wallet-rescreen job (D1, D3, D7).
    *
-   * @throws Will be replaced by the real keyset cursor query in PR2.
+   * Filters: ACTIVE WALLET entries, org-scoped, watchlist_id $in, deleted_at
+   * null, updated_at strictly after `updatedSince` (or from epoch when null).
+   * Keyset cursor on `(updated_at, _id)` ASC prevents row skips under
+   * concurrent writes — unlike skip/offset, which drifts.
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async listActiveWalletEntriesUpdatedSince(_query: WalletEntryDeltaQuery, _tx?: Transaction): Promise<readonly WatchlistEntry[]> {
-    throw new Error('listActiveWalletEntriesUpdatedSince: not yet implemented — see PR2');
+  async listActiveWalletEntriesUpdatedSince(query: WalletEntryDeltaQuery, tx?: Transaction): Promise<readonly WatchlistEntry[]> {
+    const session = toSession(tx);
+
+    const baseFilter: Record<string, unknown> = {
+      organization_id: new ObjectId(query.organizationId),
+      entry_type: 'WALLET',
+      status: 'ACTIVE',
+      deleted_at: null,
+      watchlist_id: { $in: query.watchlistIds.map((id) => new ObjectId(id)) },
+      ...(query.updatedSince !== null ? { updated_at: { $gt: toDate(query.updatedSince) } } : {}),
+    };
+
+    const filter: Filter<WatchlistEntryDocument> = (
+      query.after
+        ? {
+            ...baseFilter,
+            $or: [
+              { updated_at: { $gt: toDate(query.after.updatedAt) } },
+              { updated_at: toDate(query.after.updatedAt), _id: { $gt: new ObjectId(query.after.id) } },
+            ],
+          }
+        : baseFilter
+    ) as Filter<WatchlistEntryDocument>;
+
+    const documents = await this.collection
+      .find(filter, { session })
+      .sort({ updated_at: 1, _id: 1 })
+      .limit(query.limit)
+      .toArray();
+
+    return documents.map(toDomain);
   }
 }
