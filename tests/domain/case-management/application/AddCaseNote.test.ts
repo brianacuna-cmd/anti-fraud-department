@@ -28,7 +28,7 @@ const ANALYST = createAuthContext({
 });
 
 function buildCase(organizationId = ORG_1): Case {
-  return Case.create({
+  const kase = Case.create({
     id: createCaseId(oid('case-1')),
     organizationId,
     customerId: 'customer-1',
@@ -39,6 +39,8 @@ function buildCase(organizationId = ORG_1): Case {
     assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   });
+  // Instruction (notes/evidence) comes after review. See `WorkflowStepGate`.
+  return kase.transitionTo('IN_REVIEW', NOW);
 }
 
 function build() {
@@ -131,3 +133,23 @@ function toProps(kase: Case) {
     ...kase.toProps(),
   };
 }
+
+describe('la instruccion viene despues de la revision', () => {
+  it('rechaza anadir una nota a un caso todavia OPEN (CASE_NOT_REVIEWED)', async () => {
+    const { addCaseNote, cases } = build();
+    const open = Case.create({
+      id: createCaseId(oid('case-1')),
+      organizationId: ORG_1,
+      customerId: 'customer-1',
+      riskScore: createRiskScore(50),
+      priority: 'MEDIUM',
+      assignedTo: createAssignedTo('USER', oid('analyst-1')),
+      now: NOW,
+    });
+    await cases.save(open);
+
+    await expect(
+      addCaseNote({ auth: ANALYST, caseId: oid('case-1'), body: 'demasiado pronto' }),
+    ).rejects.toMatchObject({ code: 'CASE_NOT_REVIEWED' });
+  });
+});

@@ -195,3 +195,64 @@ export function caseClosed(caseId: string, status: string): CaseManagementError 
     { caseId, status },
   );
 }
+
+/**
+ * Instruction (notes, evidence) requires the case to already be `IN_REVIEW`.
+ * Named after the step it is missing, like `caseNotAssigned`/`caseClosed`.
+ */
+export function caseNotReviewed(caseId: string): CaseManagementError {
+  return new CaseManagementError(
+    'CASE_NOT_REVIEWED',
+    'the case has not entered review yet: start the review before adding notes or evidence',
+    { caseId },
+  );
+}
+
+/** A decision needs at least one note or one piece of evidence behind it. */
+export function caseNotInstructed(caseId: string): CaseManagementError {
+  return new CaseManagementError(
+    'CASE_NOT_INSTRUCTED',
+    'the case has no notes or evidence yet: instruct it before recording a decision',
+    { caseId },
+  );
+}
+
+/** Closing a case requires at least one analyst decision on file. */
+export function caseNotDecided(caseId: string): CaseManagementError {
+  return new CaseManagementError(
+    'CASE_NOT_DECIDED',
+    'the case has no analyst decision yet: record one before resolving',
+    { caseId },
+  );
+}
+
+/** A FRAUD_CONFIRMED decision exists with no enforcement action requested yet. */
+export function caseEnforcementPending(caseId: string): CaseManagementError {
+  return new CaseManagementError(
+    'CASE_ENFORCEMENT_PENDING',
+    'the case has a fraud-confirmed decision with no enforcement action requested yet',
+    { caseId },
+  );
+}
+
+/** The report/dossier freezes the full case file — the case must be closed first. */
+export function caseNotResolvedForReport(caseId: string): CaseManagementError {
+  return new CaseManagementError(
+    'CASE_NOT_RESOLVED_FOR_REPORT',
+    'the case is not resolved yet: resolve or archive it before generating its report',
+    { caseId },
+  );
+}
+
+/**
+ * No assignee was chosen and there is no active routing rule to fall back
+ * on: creating the case now would leave it permanently orphaned. The
+ * message names both ways out because either one resolves it.
+ */
+export function noActiveRoutingRule(organizationId: string): CaseManagementError {
+  return new CaseManagementError(
+    'NO_ACTIVE_ROUTING_RULE',
+    'no assignee was chosen and the organization has no active routing rule: pick an assignee or configure one first',
+    { organizationId },
+  );
+}

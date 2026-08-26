@@ -14,6 +14,7 @@ import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-manag
 import { InMemoryCaseRoutingRuleRepository } from '../../../helpers/case-management/InMemoryCaseRoutingRuleRepository.js';
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
 import { InMemoryCaseSlaTrackingRepository } from '../../../helpers/case-management/InMemoryCaseSlaTrackingRepository.js';
+import { AllowAllAssigneeDirectory } from '../../../helpers/case-management/AllowAllAssigneeDirectory.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate, toDate } from '../../../../src/shared/time/Instant.js';
@@ -76,6 +77,7 @@ function buildCreateCase(options: { seedConfig?: boolean; slaMinutes?: { low: nu
     timelineRecorder,
     auditRecorder,
     fraudConfig,
+    assigneeDirectory: new AllowAllAssigneeDirectory(),
     clock,
     generateTimelineEventId,
   });
@@ -257,6 +259,7 @@ describe('createCreateCaseUseCase idempotent short-circuit (D2/D3)', () => {
       timelineRecorder,
       auditRecorder,
       fraudConfig,
+      assigneeDirectory: new AllowAllAssigneeDirectory(),
       clock,
       generateTimelineEventId,
     });

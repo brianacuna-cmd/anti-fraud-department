@@ -34,4 +34,41 @@ export type CaseManagementErrorCode =
    * The case is closed and therefore is no longer worked. It is resolved by
    * reopening it, not by changing user or retrying.
    */
-  | 'CASE_CLOSED';
+  | 'CASE_CLOSED'
+  /**
+   * Notes and evidence require the case to have entered `IN_REVIEW` first
+   * (`StartReview`). Instruction is the step after review, not before it.
+   */
+  | 'CASE_NOT_REVIEWED'
+  /**
+   * A decision cannot be recorded before the case has at least one note or
+   * one piece of evidence: a verdict with nothing behind it is not a
+   * verdict, it is a guess.
+   */
+  | 'CASE_NOT_INSTRUCTED'
+  /**
+   * A case cannot be resolved before at least one analyst decision was
+   * recorded on it — closing with no verdict on file is exactly the file
+   * that cannot be defended later.
+   */
+  | 'CASE_NOT_DECIDED'
+  /**
+   * A `FRAUD_CONFIRMED` decision was recorded but no enforcement action was
+   * ever requested for it. Resolving now would close the case as decided
+   * fraud with no sanction on record.
+   */
+  | 'CASE_ENFORCEMENT_PENDING'
+  /**
+   * The case report/dossier freezes the FULL case file, resolution
+   * included — generating it before the case is closed would freeze a
+   * story that has not finished yet.
+   */
+  | 'CASE_NOT_RESOLVED_FOR_REPORT'
+  /**
+   * A case is about to be created/reopened with no assignee (nobody picked
+   * one, and there is no auto-routing to fall back on) AND the organization
+   * has zero ACTIVE `CaseRoutingRule`s. Rejected instead of silently opening
+   * an orphan case that only an ADMIN/organization login can ever discover
+   * and assign by hand.
+   */
+  | 'NO_ACTIVE_ROUTING_RULE';

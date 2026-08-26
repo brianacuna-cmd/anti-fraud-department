@@ -21,6 +21,7 @@ import type { CaseReportId } from '../domain/model/value-objects/CaseReportId.js
 import { CaseReport as CaseReportAggregate } from '../domain/model/aggregates/CaseReport.js';
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { caseNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
+import { assertReadyForReport } from '../domain/services/WorkflowStepGate.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
 
@@ -70,7 +71,9 @@ export interface GenerateCaseReportDeps {
  *   immutable document.
  *
  * Any operational actor can generate it; the case must belong to their
- * organization and not be deleted. The snapshot is built from the domain
+ * organization, not be deleted, and already be RESOLVED/ARCHIVED — a report
+ * is the frozen record of a case that finished, not a mid-work snapshot
+ * (`WorkflowStepGate.assertReadyForReport`). The snapshot is built from the domain
  * getters (without importing HTTP mappers — eslint boundaries) and is then
  * frozen: the case keeps changing, the report does not.
  */
@@ -88,6 +91,8 @@ export function createGenerateCaseReportUseCase(deps: GenerateCaseReportDeps) {
       if (kase.organizationId !== organizationId) {
         throw forbiddenCrossTenant('case does not belong to the actor organization');
       }
+      // The report freezes the FULL case file, resolution included. See `WorkflowStepGate`.
+      assertReadyForReport(kase);
 
       const [
         timeline,
