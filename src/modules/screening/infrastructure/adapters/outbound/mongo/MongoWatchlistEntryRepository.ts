@@ -7,6 +7,7 @@ import type { Instant } from '../../../../../../shared/time/Instant.js';
 import { toDate } from '../../../../../../shared/time/Instant.js';
 import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
 import type {
+  WalletEntryDeltaQuery,
   WatchlistEntryIndexedFields,
   WatchlistEntryListQuery,
   WatchlistEntryListResult,
@@ -145,5 +146,17 @@ export class MongoWatchlistEntryRepository implements WatchlistEntryRepository {
       .limit(query.limit)
       .toArray();
     return { items: documents.map(toDomain), total };
+  }
+
+  /**
+   * Keyset delta scan — implemented in PR2 (`MongoWatchlistEntryRepository`
+   * persistence slice). Stub preserved here so the port contract compiles
+   * while PR1 (port contracts only) is in review.
+   *
+   * @throws Will be replaced by the real keyset cursor query in PR2.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async listActiveWalletEntriesUpdatedSince(_query: WalletEntryDeltaQuery, _tx?: Transaction): Promise<readonly WatchlistEntry[]> {
+    throw new Error('listActiveWalletEntriesUpdatedSince: not yet implemented — see PR2');
   }
 }
