@@ -112,6 +112,84 @@ export function finturuRouter(deps: FinturuRouterDeps): Router {
     res.status(200).json(data);
   });
 
+  router.get('/cases/providers/stripe/connected-accounts', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
+    const limit = Number(req.query.limit) || 50;
+    const offset = Number(req.query.offset) || 0;
+    const data = await deps.finturuClient.getStripeConnectedAccounts(limit, offset);
+    res.status(200).json(data);
+  });
+
+  router.get('/cases/providers/stripe/connected-account/:idUserBridge', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
+    const data = await deps.finturuClient.getStripeConnectedAccount(req.params.idUserBridge!);
+    res.status(200).json(data);
+  });
+
+  router.get('/cases/providers/stripe/connected-account/:providerId/status', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
+    const data = await deps.finturuClient.getStripeConnectedAccountStatus(req.params.providerId!);
+    res.status(200).json(data);
+  });
+
+  router.get('/cases/providers/stripe/connected-account/:providerId/balance', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
+    const data = await deps.finturuClient.getStripeConnectedAccountBalance(req.params.providerId!);
+    res.status(200).json(data);
+  });
+
+  router.get('/cases/providers/stripe/connected-account/:providerId/charges', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
+    const limit = Number(req.query.limit) || 10;
+    const startingAfter = typeof req.query.startingAfter === 'string' ? req.query.startingAfter : undefined;
+    const data = await deps.finturuClient.getStripeConnectedAccountCharges(req.params.providerId!, limit, startingAfter);
+    res.status(200).json(data);
+  });
+
+  router.get('/cases/providers/stripe/connected-account/:providerId/charge/:chargeId', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
+    const data = await deps.finturuClient.getStripeConnectedAccountChargeDetail(
+      req.params.providerId!,
+      req.params.chargeId!,
+    );
+    res.status(200).json(data);
+  });
+
+  const pagedQuery = (req: any) => ({
+    limit: Number(req.query.limit) || 10,
+    startingAfter: typeof req.query.startingAfter === 'string' ? req.query.startingAfter : undefined,
+  });
+
+  router.get('/cases/providers/stripe/connected-account/:providerId/disputes', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
+    const { limit, startingAfter } = pagedQuery(req);
+    const data = await deps.finturuClient.getStripeConnectedAccountDisputes(req.params.providerId!, limit, startingAfter);
+    res.status(200).json(data);
+  });
+
+  router.get('/cases/providers/stripe/connected-account/:providerId/fraud-warnings', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
+    const { limit, startingAfter } = pagedQuery(req);
+    const data = await deps.finturuClient.getStripeConnectedAccountFraudWarnings(req.params.providerId!, limit, startingAfter);
+    res.status(200).json(data);
+  });
+
+  router.get('/cases/providers/stripe/connected-account/:providerId/payouts', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
+    const { limit, startingAfter } = pagedQuery(req);
+    const data = await deps.finturuClient.getStripeConnectedAccountPayouts(req.params.providerId!, limit, startingAfter);
+    res.status(200).json(data);
+  });
+
   router.get('/cases/directory/finturu', async (req, res) => {
     const auth = requireAuthContext(req);
     if (!deps.getFinturuDirectory) {
