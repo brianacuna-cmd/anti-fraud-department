@@ -41,6 +41,27 @@ export interface WatchlistEntryListResult {
   readonly total: number;
 }
 
+/**
+ * Keyset-cursor query for the wallet-rescreen delta scan (D1, D3).
+ *
+ * Two-step resolution: the use case first resolves BLACKLIST watchlist ids via
+ * `WatchlistRepository.list`, then passes those ids here so the adapter can
+ * filter on the `watchlist_entries_org_type_status_updated_idx` compound index
+ * without a `$lookup`.
+ *
+ * `updatedSince: null` triggers a full backfill from epoch (WALLET_RESCREEN_BACKFILL=true).
+ * `after` enables keyset pagination on `(updatedAt, id)` ASC — stable under
+ * concurrent writes, unlike skip/offset (D3).
+ */
+export interface WalletEntryDeltaQuery {
+  readonly organizationId: string;
+  readonly watchlistIds: readonly WatchlistId[];
+  /** Include only entries updated strictly after this timestamp. `null` = epoch (full backfill). */
+  readonly updatedSince: Instant | null;
+  readonly limit: number;
+  readonly after?: { readonly updatedAt: Instant; readonly id: WatchlistEntryId };
+}
+
 export interface WatchlistEntryRepository {
   /** Fetches the minimal fields (id + raw name) needed to (re)compute indexed fields. */
   findToIndex(id: WatchlistEntryId, tx?: Transaction): Promise<WatchlistEntryToIndex | null>;
@@ -61,4 +82,12 @@ export interface WatchlistEntryRepository {
   save(entry: WatchlistEntry, tx?: Transaction): Promise<void>;
   findById(id: WatchlistEntryId, tx?: Transaction): Promise<WatchlistEntry | null>;
   list(query: WatchlistEntryListQuery, tx?: Transaction): Promise<WatchlistEntryListResult>;
+
+  /**
+   * Wallet-rescreen delta scan (R3, R6): returns ACTIVE WALLET entries whose
+   * `updated_at` is strictly greater than `query.updatedSince` (or all entries
+   * when `updatedSince` is `null`), scoped to `query.watchlistIds`.
+   * Results are sorted ASC by `(updatedAt, id)` for stable keyset pagination.
+   */
+  listActiveWalletEntriesUpdatedSince(query: WalletEntryDeltaQuery, tx?: Transaction): Promise<readonly WatchlistEntry[]>;
 }
