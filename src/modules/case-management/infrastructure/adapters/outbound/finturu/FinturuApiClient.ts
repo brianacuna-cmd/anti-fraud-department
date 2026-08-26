@@ -226,4 +226,96 @@ export class FinturuApiClient {
     const res = await this.fetchEndpoint<unknown>('/stripe/transfers');
     return Array.isArray(res) ? (res as FinturuStripeTransferDto[]) : [];
   }
+
+  async getStripeConnectedAccounts(
+    limit: number,
+    offset: number,
+  ): Promise<{ items: readonly Record<string, unknown>[]; total: number }> {
+    const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    const res = await this.fetchEndpoint<Record<string, unknown>>(`/stripe/connected-accounts?${query.toString()}`);
+    return {
+      items: Array.isArray(res?.items) ? (res.items as Record<string, unknown>[]) : [],
+      total: typeof res?.total === 'number' ? res.total : 0,
+    };
+  }
+
+  /**
+   * El endpoint responde `{ connectAccount, platformCustomer }`, no la
+   * cuenta pelada: sin desenvolver, un objeto `{ connectAccount: null, ... }`
+   * es igual de "verdadero" que uno con cuenta real, y el panel mostraba
+   * "Habilitada" para cualquier cliente cuya consulta respondiera bien,
+   * tuviera o no cuenta Stripe.
+   */
+  async getStripeConnectedAccount(idUserBridge: string): Promise<Record<string, unknown> | null> {
+    const res = await this.fetchEndpoint<Record<string, unknown>>(
+      `/stripe/connected-account?idUserBridge=${encodeURIComponent(idUserBridge)}`,
+    );
+    const connectAccount = res && typeof res === 'object' && !Array.isArray(res) ? res.connectAccount : null;
+    return connectAccount && typeof connectAccount === 'object' && !Array.isArray(connectAccount)
+      ? (connectAccount as Record<string, unknown>)
+      : null;
+  }
+
+  async getStripeConnectedAccountStatus(providerId: string): Promise<Record<string, unknown> | null> {
+    const res = await this.fetchEndpoint<Record<string, unknown>>(
+      `/stripe/connected-account/${encodeURIComponent(providerId)}/status`,
+    );
+    return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
+  }
+
+  async getStripeConnectedAccountBalance(providerId: string): Promise<Record<string, unknown> | null> {
+    const res = await this.fetchEndpoint<Record<string, unknown>>(
+      `/stripe/connected-account/${encodeURIComponent(providerId)}/balance`,
+    );
+    return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
+  }
+
+  async getStripeConnectedAccountCharges(
+    providerId: string,
+    limit = 10,
+    startingAfter?: string,
+  ): Promise<Record<string, unknown> | null> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (startingAfter) query.set('startingAfter', startingAfter);
+    const res = await this.fetchEndpoint<Record<string, unknown>>(
+      `/stripe/connected-account/${encodeURIComponent(providerId)}/charges?${query.toString()}`,
+    );
+    return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
+  }
+
+  async getStripeConnectedAccountChargeDetail(
+    providerId: string,
+    chargeId: string,
+  ): Promise<Record<string, unknown> | null> {
+    const res = await this.fetchEndpoint<Record<string, unknown>>(
+      `/stripe/connected-account/${encodeURIComponent(providerId)}/charge/${encodeURIComponent(chargeId)}`,
+    );
+    return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
+  }
+
+  private async getStripeConnectedAccountPagedList(
+    resource: 'disputes' | 'fraud-warnings' | 'payouts',
+    providerId: string,
+    limit = 10,
+    startingAfter?: string,
+  ): Promise<Record<string, unknown> | null> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (startingAfter) query.set('startingAfter', startingAfter);
+    const res = await this.fetchEndpoint<Record<string, unknown>>(
+      `/stripe/connected-account/${encodeURIComponent(providerId)}/${resource}?${query.toString()}`,
+    );
+    return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
+  }
+
+  async getStripeConnectedAccountDisputes(providerId: string, limit = 10, startingAfter?: string) {
+    return this.getStripeConnectedAccountPagedList('disputes', providerId, limit, startingAfter);
+  }
+
+  async getStripeConnectedAccountFraudWarnings(providerId: string, limit = 10, startingAfter?: string) {
+    return this.getStripeConnectedAccountPagedList('fraud-warnings', providerId, limit, startingAfter);
+  }
+
+  async getStripeConnectedAccountPayouts(providerId: string, limit = 10, startingAfter?: string) {
+    return this.getStripeConnectedAccountPagedList('payouts', providerId, limit, startingAfter);
+  }
 }
