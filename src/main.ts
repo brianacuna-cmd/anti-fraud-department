@@ -32,7 +32,7 @@ import { AesGcmSessionTokenService } from './modules/identity-access/infrastruct
 import { NodeAdminKeyPairGenerator } from './modules/identity-access/infrastructure/adapters/outbound/crypto/NodeAdminKeyPairGenerator.js';
 import { NodeAdminSignatureVerifier } from './modules/identity-access/infrastructure/adapters/outbound/crypto/NodeAdminSignatureVerifier.js';
 import { MongoAdminChallengeRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoAdminChallengeRepository.js';
-import { generateOrganizationId } from './modules/identity-access/domain/model/value-objects/OrganizationId.js';
+import { generateOrganizationId, createOrganizationId } from './modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { generateUserId } from './modules/identity-access/domain/model/value-objects/UserId.js';
 import { generateAdminOrganizationId } from './modules/identity-access/domain/model/value-objects/AdminOrganizationId.js';
 import { generateAdminKeyId } from './modules/identity-access/domain/model/value-objects/AdminKeyId.js';
@@ -77,6 +77,7 @@ import { createPasswordCredential } from './modules/identity-access/domain/model
 import { MongoAuditLogRepository } from './modules/audit/infrastructure/adapters/outbound/mongo/MongoAuditLogRepository.js';
 import { createRecordAuditLogUseCase } from './modules/audit/application/RecordAuditLog.js';
 import { generateAuditLogId } from './modules/audit/domain/model/value-objects/AuditLogId.js';
+import { createAuthContext } from './shared/kernel/AuthContext.js';
 import { createAuditRecorderAdapter } from './composition/auditRecorderAdapter.js';
 import { createNotificationsAuditRecorderAdapter } from './composition/notificationsAuditRecorderAdapter.js';
 import { createCaseManagementNotificationSenderAdapter } from './composition/caseManagementNotificationSenderAdapter.js';
@@ -184,7 +185,9 @@ import { createOpenFraudCaseUseCase } from './modules/case-management/applicatio
 import {
   createLogOutboxPublisher,
   createPublishOutboxEventsUseCase,
+  type OutboxPublisher,
 } from './modules/case-management/application/PublishOutboxEvents.js';
+import { createKafkaOutboxPublisher } from './modules/case-management/infrastructure/adapters/outbound/kafka/KafkaOutboxPublisher.js';
 import { FinturuApiClient } from './modules/case-management/infrastructure/adapters/outbound/finturu/FinturuApiClient.js';
 import { MongoFinturuDirectoryRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoFinturuDirectoryRepository.js';
 import { createOutboxPublishScheduler } from './modules/case-management/infrastructure/scheduler/OutboxPublishScheduler.js';
@@ -303,6 +306,11 @@ import { selectVerifier } from './modules/ingest/infrastructure/adapters/outboun
 import { mapProviderEnvelope } from './modules/ingest/infrastructure/adapters/outbound/mapping/mapProviderEnvelope.js';
 import { MongoInboundWebhookSecretRepository } from './modules/ingest/infrastructure/adapters/outbound/mongo/MongoInboundWebhookSecretRepository.js';
 import { MongoProviderIngestEventRepository } from './modules/ingest/infrastructure/adapters/outbound/mongo/MongoProviderIngestEventRepository.js';
+import { MongoScreeningWatermarkRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoScreeningWatermarkRepository.js';
+import { createRescreenWalletSanctionsUseCase } from './modules/screening/application/RescreenWalletSanctions.js';
+import { createWalletSanctionsRescreenScheduler } from './modules/screening/application/WalletSanctionsRescreenScheduler.js';
+import { createFinturuWalletSource } from './composition/finturuWalletSource.js';
+import { createWalletRescreenCaseLinker } from './composition/walletRescreenCaseLinker.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const MONGO_URI = process.env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/?replicaSet=rs0';
@@ -414,6 +422,25 @@ const OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS = Number(
  */
 const SLA_SWEEP_INTERVAL_MS = Number(process.env.SLA_SWEEP_INTERVAL_MS ?? 60_000);
 const OUTBOX_PUBLISH_INTERVAL_MS = Number(process.env.OUTBOX_PUBLISH_INTERVAL_MS ?? 60_000);
+const KAFKA_BROKERS = optionalEnv('KAFKA_BROKERS');
+const KAFKA_OUTBOX_TOPIC = process.env.KAFKA_OUTBOX_TOPIC ?? 'outbox.events';
+
+async function resolveOutboxPublisher(): Promise<OutboxPublisher> {
+  const kafkaBrokers = KAFKA_BROKERS?.split(',')
+    .map((broker) => broker.trim())
+    .filter((broker) => broker.length > 0);
+  if (kafkaBrokers === undefined || kafkaBrokers.length === 0) {
+    console.log('Outbox publisher: log (set KAFKA_BROKERS to enable Kafka)');
+    return createLogOutboxPublisher();
+  }
+  const publisher = await createKafkaOutboxPublisher({
+    brokers: kafkaBrokers,
+    topic: KAFKA_OUTBOX_TOPIC,
+  });
+  console.log(`Outbox publisher: kafka topic=${KAFKA_OUTBOX_TOPIC} brokers=${kafkaBrokers.join(',')}`);
+  return publisher;
+}
+
 /**
  * screening-watchlist-matcher Slice 7 (design "KEY DECISION — Atlas Search
  * testability"): selects the blocking-layer candidate adapter.
@@ -425,6 +452,11 @@ const OUTBOX_PUBLISH_INTERVAL_MS = Number(process.env.OUTBOX_PUBLISH_INTERVAL_MS
  * design's migration plan — revert = leave this env unset.
  */
 const SCREENING_MATCH_BACKEND = process.env.SCREENING_MATCH_BACKEND ?? 'index';
+/** Kill-switch: scheduler only starts when explicitly set to 'true' (default off). */
+const WALLET_RESCREEN_ENABLED = process.env.WALLET_RESCREEN_ENABLED === 'true';
+/** When true the first run scans all history; default false seeds watermark to now. */
+const WALLET_RESCREEN_BACKFILL = process.env.WALLET_RESCREEN_BACKFILL === 'true';
+const DEFAULT_ORGANIZATION_ID = process.env.DEFAULT_ORGANIZATION_ID ?? '019d7e58aed0777318d11d4d';
 
 async function bootstrap(): Promise<void> {
   // Fail-closed (design D4, D6): AUTH_MODE=trusted-header trusts client
@@ -691,7 +723,7 @@ async function bootstrap(): Promise<void> {
   // but without a relay they sat in PENDING indefinitely.
   const publishOutboxEvents = createPublishOutboxEventsUseCase({
     outbox: outboxEvents,
-    publisher: createLogOutboxPublisher(),
+    publisher: await resolveOutboxPublisher(),
     clock,
   });
 
@@ -1746,6 +1778,37 @@ async function bootstrap(): Promise<void> {
       : 'PLATFORM_ADMIN auth: disabled until identity-access-super-admin-auth ships a real admin login',
   );
 
+  // wallet-sanctions-rescreen PR4 (D4/D5/D8): composition bridges + scheduler.
+  // Screening application layer must not import case-management; bridges live here.
+  const walletRescreenAuth = createAuthContext({
+    userId: 'system:wallet-rescreen',
+    organizationId: DEFAULT_ORGANIZATION_ID,
+    actorType: 'ORGANIZATION',
+  });
+  const walletWatermarkRepository = new MongoScreeningWatermarkRepository(db);
+  const walletSource = createFinturuWalletSource(finturuDirectory);
+  const walletCaseLinker = createWalletRescreenCaseLinker(cases);
+  const rescreenWalletSanctions = createRescreenWalletSanctionsUseCase({
+    clock,
+    watchlistRepository: watchlists,
+    watchlistEntryRepository: watchlistEntries,
+    watermarkRepository: walletWatermarkRepository,
+    walletSource,
+    openAmlAlert,
+    amlAlertRepository: amlAlerts,
+    unitOfWork: screeningUnitOfWork,
+    isOrganizationActive: async (id: string) => {
+      const org = await organizations.findById(createOrganizationId(id));
+      return org?.status === 'ACTIVE';
+    },
+    caseLinker: walletCaseLinker,
+    backfill: WALLET_RESCREEN_BACKFILL,
+  });
+  const walletRescreenScheduler = createWalletSanctionsRescreenScheduler({
+    runRescreen: () => rescreenWalletSanctions({ auth: walletRescreenAuth }),
+    clock,
+  });
+
   customerOutgoingEventDispatcher.start(OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS);
   console.log(
     `Customer outgoing webhook dispatcher started (interval=${OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS}ms)`,
@@ -1756,6 +1819,13 @@ async function bootstrap(): Promise<void> {
 
   directorySyncScheduler.start();
   console.log('Finturu directory sync scheduler started');
+
+  if (WALLET_RESCREEN_ENABLED) {
+    walletRescreenScheduler.start();
+    console.log('Wallet sanctions rescreen scheduler started (daily 00:00 America/Bogota)');
+  } else {
+    console.log('Wallet sanctions rescreen scheduler disabled (WALLET_RESCREEN_ENABLED not set)');
+  }
 
   outboxPublishScheduler.start(OUTBOX_PUBLISH_INTERVAL_MS);
   console.log(`Outbox publish scheduler started (interval=${OUTBOX_PUBLISH_INTERVAL_MS}ms)`);

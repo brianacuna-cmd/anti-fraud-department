@@ -4,6 +4,7 @@ import { generateWatchlistId } from '../../../src/modules/screening/domain/model
 import type { Instant } from '../../../src/shared/time/Instant.js';
 import type { Transaction } from '../../../src/modules/screening/domain/ports/UnitOfWork.js';
 import type {
+  WalletEntryDeltaQuery,
   WatchlistEntryIndexedFields,
   WatchlistEntryListQuery,
   WatchlistEntryListResult,
@@ -125,6 +126,36 @@ export class InMemoryWatchlistEntryRepository implements WatchlistEntryRepositor
       items: filtered.slice(query.offset, query.offset + query.limit).map((e) => e.aggregate!),
       total: filtered.length,
     };
+  }
+
+  async listActiveWalletEntriesUpdatedSince(query: WalletEntryDeltaQuery, _tx?: Transaction): Promise<readonly WatchlistEntry[]> {
+    const watchlistIdSet = new Set(query.watchlistIds.map(String));
+    return [...this.byId.values()]
+      .filter((e) => e.aggregate !== undefined)
+      .filter((e) => e.aggregate!.organizationId === query.organizationId)
+      .filter((e) => watchlistIdSet.has(String(e.watchlistId)))
+      .filter((e) => e.aggregate!.status === 'ACTIVE')
+      .filter((e) => e.aggregate!.entryType === 'WALLET')
+      .filter((e) => {
+        if (query.updatedSince === null) return true;
+        return (e.aggregate!.updatedAt as string) > (query.updatedSince as string);
+      })
+      .filter((e) => {
+        if (!query.after) return true;
+        const ua = e.aggregate!.updatedAt as string;
+        const qa = query.after.updatedAt as string;
+        if (ua > qa) return true;
+        if (ua === qa) return (String(e.aggregate!.id) > String(query.after.id));
+        return false;
+      })
+      .sort((a, b) => {
+        const ua = a.aggregate!.updatedAt as string;
+        const ub = b.aggregate!.updatedAt as string;
+        if (ua !== ub) return ua < ub ? -1 : 1;
+        return String(a.aggregate!.id) < String(b.aggregate!.id) ? -1 : 1;
+      })
+      .slice(0, query.limit)
+      .map((e) => e.aggregate!);
   }
 
   all(): FakeEntry[] {

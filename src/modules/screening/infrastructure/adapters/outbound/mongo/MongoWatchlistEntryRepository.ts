@@ -7,6 +7,7 @@ import type { Instant } from '../../../../../../shared/time/Instant.js';
 import { toDate } from '../../../../../../shared/time/Instant.js';
 import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
 import type {
+  WalletEntryDeltaQuery,
   WatchlistEntryIndexedFields,
   WatchlistEntryListQuery,
   WatchlistEntryListResult,
@@ -145,5 +146,46 @@ export class MongoWatchlistEntryRepository implements WatchlistEntryRepository {
       .limit(query.limit)
       .toArray();
     return { items: documents.map(toDomain), total };
+  }
+
+  /**
+   * Keyset delta scan for the wallet-rescreen job (D1, D3, D7).
+   *
+   * Filters: ACTIVE WALLET entries, org-scoped, watchlist_id $in, deleted_at
+   * null, updated_at strictly after `updatedSince` (or from epoch when null).
+   * Keyset cursor on `(updated_at, _id)` ASC prevents row skips under
+   * concurrent writes — unlike skip/offset, which drifts.
+   */
+  async listActiveWalletEntriesUpdatedSince(query: WalletEntryDeltaQuery, tx?: Transaction): Promise<readonly WatchlistEntry[]> {
+    const session = toSession(tx);
+
+    const baseFilter: Record<string, unknown> = {
+      organization_id: new ObjectId(query.organizationId),
+      entry_type: 'WALLET',
+      status: 'ACTIVE',
+      deleted_at: null,
+      watchlist_id: { $in: query.watchlistIds.map((id) => new ObjectId(id)) },
+      ...(query.updatedSince !== null ? { updated_at: { $gt: toDate(query.updatedSince) } } : {}),
+    };
+
+    const filter: Filter<WatchlistEntryDocument> = (
+      query.after
+        ? {
+            ...baseFilter,
+            $or: [
+              { updated_at: { $gt: toDate(query.after.updatedAt) } },
+              { updated_at: toDate(query.after.updatedAt), _id: { $gt: new ObjectId(query.after.id) } },
+            ],
+          }
+        : baseFilter
+    ) as Filter<WatchlistEntryDocument>;
+
+    const documents = await this.collection
+      .find(filter, { session })
+      .sort({ updated_at: 1, _id: 1 })
+      .limit(query.limit)
+      .toArray();
+
+    return documents.map(toDomain);
   }
 }
