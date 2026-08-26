@@ -29,4 +29,6 @@ export const caseManagementErrorStatus: StatusByCode = {
   // 409 same as the previous: permission is not missing, the case is in a
   // state that does not admit the action.
   CASE_CLOSED: 409,
+  // 404: the DLQ row was never created or was already consumed by a prior requeue.
+  DLQ_EVENT_NOT_FOUND: 404,
 };
