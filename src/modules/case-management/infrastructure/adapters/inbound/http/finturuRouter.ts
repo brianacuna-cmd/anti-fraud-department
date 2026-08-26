@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
 import type { createSyncFinturuDataUseCase } from '../../../../application/SyncFinturuData.js';
 import type { createGetFinturuDirectoryUseCase } from '../../../../application/GetFinturuDirectory.js';
@@ -161,7 +161,7 @@ export function finturuRouter(deps: FinturuRouterDeps): Router {
     res.status(200).json(data);
   });
 
-  const pagedQuery = (req: any) => ({
+  const pagedQuery = (req: Request) => ({
     limit: Number(req.query.limit) || 10,
     startingAfter: typeof req.query.startingAfter === 'string' ? req.query.startingAfter : undefined,
   });
