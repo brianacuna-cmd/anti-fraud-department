@@ -79,6 +79,16 @@ export type CaseManagementErrorCode =
    */
   | 'DLQ_EVENT_NOT_FOUND'
   /**
+   * No `customer_webhook_subscriptions` row exists for the given id (or it
+   * belongs to another organization — same 404 so existence is not leaked).
+   */
+  | 'WEBHOOK_SUBSCRIPTION_NOT_FOUND'
+  /**
+   * Unique `(organization_id, url)` collision, including inactive rows.
+   * Reactivate the existing row via PATCH instead of inserting a duplicate.
+   */
+  | 'WEBHOOK_SUBSCRIPTION_URL_TAKEN'
+  /**
    * The assignee exists and belongs to the tenant, but sits in the
    * governance plane (ADMIN or AUDITOR) and therefore never works cases.
    */
