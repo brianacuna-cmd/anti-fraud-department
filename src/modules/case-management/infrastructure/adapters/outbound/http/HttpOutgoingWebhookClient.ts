@@ -9,53 +9,38 @@ export interface HttpOutgoingWebhookClientOptions {
   /** Injectable fetch for tests; defaults to global `fetch`. */
   readonly fetchImpl?: typeof fetch;
   readonly timeoutMs?: number;
-  /** Injectable clock for tests; defaults to `Date.now`. Seconds since epoch. */
-  readonly nowSeconds?: () => number;
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
-/** Signing header. The name is ours; the format is Stripe's. */
-export const SIGNATURE_HEADER = 'x-finturu-signature';
-const SIGNATURE_SCHEME = 'v1';
+/** Ticket name `X-Signature-SHA256`; Node/Express see lowercase. */
+export const SIGNATURE_HEADER = 'x-signature-sha256';
 
 /**
  * Production `OutgoingWebhookClient` — POSTs JSON payload to the tenant webhook URL.
  * Network/HTTP failures map to `{ ok: false }` (never throw) so the dispatcher can record attempts.
  *
- * EVT-003 — OUTBOUND SIGNATURE
+ * When the tenant has a secret configured, the delivery is signed with HMAC-SHA256
+ * of the exact POSTed JSON body. The header is `x-signature-sha256` and the value
+ * is lowercase hex. There is no timestamp in the MAC.
  *
- * When the tenant has a secret configured, the delivery is signed with
- * HMAC-SHA256 over `${t}.${body}` in the `x-finturu-signature` header,
- * in the format `t=<epoch>,v1=<hex>`.
- *
- * WHY THIS FORMAT AND NOT A CUSTOM ONE
- *
- * It is exactly the one `StripeHmacVerifier` already verifies on the inbound
- * side. Whoever receives this almost certainly has working Stripe code, and
- * giving them a known scheme is the difference between them verifying the
- * signature and ignoring it because implementing it was work.
- *
- * WHY THE TIMESTAMP GOES INSIDE WHAT IS SIGNED
- *
- * Without it, a captured delivery can be replayed indefinitely and will keep
- * verifying. Signing `t` together with the body lets the receiver reject
- * stale ones — which is the only thing that turns the signature into replay
- * protection and not just proof of origin.
+ * Replay defense is receiver idempotency on `enforcement_action_id`. Dispatcher
+ * retries of the same payload produce the same MAC.
  *
  * The body is serialized ONCE and that exact string is signed. Serializing it
  * twice (once to sign, once to send) is how signatures that fail to verify
  * over a key-order difference are produced.
+ *
+ * Missing or empty secret: the JSON body is still POSTed and the signature
+ * header is omitted (not fail-closed).
  */
 export class HttpOutgoingWebhookClient implements OutgoingWebhookClient {
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
-  private readonly nowSeconds: () => number;
 
   constructor(options: HttpOutgoingWebhookClientOptions = {}) {
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    this.nowSeconds = options.nowSeconds ?? (() => Math.floor(Date.now() / 1000));
   }
 
   async post(input: OutgoingWebhookPostInput): Promise<OutgoingWebhookPostResult> {
@@ -87,10 +72,7 @@ export class HttpOutgoingWebhookClient implements OutgoingWebhookClient {
     if (secret === null || secret.length === 0) {
       return {};
     }
-    const timestamp = this.nowSeconds();
-    const signature = createHmac('sha256', secret)
-      .update(`${timestamp}.${body}`, 'utf8')
-      .digest('hex');
-    return { [SIGNATURE_HEADER]: `t=${timestamp},${SIGNATURE_SCHEME}=${signature}` };
+    const signature = createHmac('sha256', secret).update(body, 'utf8').digest('hex');
+    return { [SIGNATURE_HEADER]: signature };
   }
 }
