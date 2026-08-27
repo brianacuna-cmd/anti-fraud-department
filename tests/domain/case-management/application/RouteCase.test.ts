@@ -16,6 +16,9 @@ import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMem
 import { InMemoryCaseRoutingRuleRepository } from '../../../helpers/case-management/InMemoryCaseRoutingRuleRepository.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
+import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
+import { AllowAllAssigneeDirectory } from '../../../helpers/case-management/AllowAllAssigneeDirectory.js';
+import type { AssigneeDirectory } from '../../../../src/modules/case-management/domain/ports/AssigneeDirectory.js';
 import { OrganizationFraudConfig } from '../../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
 import { generateOrganizationFraudConfigId } from '../../../../src/modules/case-management/domain/model/value-objects/OrganizationFraudConfigId.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
@@ -110,6 +113,7 @@ function buildUseCase(
   engine: RoutingEngine,
   rules: CaseRoutingRule[],
   fraudConfigSeed?: OrganizationFraudConfig,
+  assigneeDirectory: AssigneeDirectory = new AllowAllAssigneeDirectory(),
 ) {
   const cases = new InMemoryCaseRepository();
   const timelineRecorder = new InMemoryTimelineRecorder();
@@ -127,6 +131,7 @@ function buildUseCase(
     timelineRecorder,
     auditRecorder,
     fraudConfig,
+    assigneeDirectory,
     clock: new FixedClock(NOW),
     generateTimelineEventId,
   });
@@ -330,6 +335,70 @@ describe('createRouteCaseUseCase (T1 auto-routing)', () => {
       const result = await routeCase({ kase: buildCase(), ...ROUTE });
 
       expect(result.assignedTo).toEqual({ type: 'USER', id: 'user-9' });
+    });
+  });
+
+  describe('target validation', () => {
+    it('skips a rule whose resolved target does not belong to the organization, leaving the case unassigned', async () => {
+      const engine = new ScriptedRoutingEngine([{ targetUserId: 'ghost-user', targetRoleId: null }]);
+      const directory = new InMemoryAssigneeDirectory(); // nothing allowed
+      const { routeCase, cases, timelineRecorder } = buildUseCase(
+        engine,
+        [buildRule()],
+        undefined,
+        directory,
+      );
+
+      const result = await routeCase({ kase: buildCase(), ...ROUTE });
+
+      expect(result.assignedTo).toBeNull();
+      expect(cases.all()).toHaveLength(0);
+      expect(timelineRecorder.all()).toHaveLength(0);
+    });
+
+    it('audits the skipped rule as ROUTING_RULE_TARGET_INVALID', async () => {
+      const engine = new ScriptedRoutingEngine([{ targetUserId: 'ghost-user', targetRoleId: null }]);
+      const rule = buildRule({ name: 'stale-rule', conditionsVersion: 5 });
+      const directory = new InMemoryAssigneeDirectory();
+      const { routeCase, auditRecorder } = buildUseCase(engine, [rule], undefined, directory);
+
+      await routeCase({ kase: buildCase(), ...ROUTE });
+
+      const events = auditRecorder.all();
+      expect(events).toHaveLength(1);
+      expect(events[0]?.action).toBe('ROUTING_RULE_TARGET_INVALID');
+      expect(events[0]?.resource).toBe('rule');
+      expect(events[0]?.resourceId).toBe(rule.id);
+      expect(events[0]?.detail).toMatchObject({
+        ruleName: 'stale-rule',
+        conditionsVersion: 5,
+        assignedToType: 'USER',
+        assignedToId: 'ghost-user',
+      });
+    });
+
+    it('still routes from a later rule whose target IS valid when an earlier rule points at an invalid one', async () => {
+      const engine = new ScriptedRoutingEngine([
+        { targetUserId: 'ghost-user', targetRoleId: null },
+        { targetUserId: 'real-user', targetRoleId: null },
+      ]);
+      const directory = new InMemoryAssigneeDirectory();
+      directory.allow(ORG, { type: 'USER', id: 'real-user' });
+      const { routeCase } = buildUseCase(engine, [buildRule(), buildRule()], undefined, directory);
+
+      const result = await routeCase({ kase: buildCase(), ...ROUTE });
+
+      expect(result.assignedTo).toEqual({ type: 'USER', id: 'real-user' });
+    });
+
+    it('does not fall back to a deactivated/foreign role either: ROLE targets are validated the same way', async () => {
+      const engine = new ScriptedRoutingEngine([{ targetUserId: null, targetRoleId: 'retired-role' }]);
+      const directory = new InMemoryAssigneeDirectory();
+      const { routeCase } = buildUseCase(engine, [buildRule()], undefined, directory);
+
+      const result = await routeCase({ kase: buildCase(), ...ROUTE });
+
+      expect(result.assignedTo).toBeNull();
     });
   });
 });

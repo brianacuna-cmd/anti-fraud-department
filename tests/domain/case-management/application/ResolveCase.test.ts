@@ -2,15 +2,20 @@ import { oid } from '../../../support/oid.js';
 import { createResolveCaseUseCase } from '../../../../src/modules/case-management/application/ResolveCase.js';
 import { createArchiveCaseUseCase } from '../../../../src/modules/case-management/application/ArchiveCase.js';
 import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
+import { AnalystDecision } from '../../../../src/modules/case-management/domain/model/aggregates/AnalystDecision.js';
 import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { createAssignedTo } from '../../../../src/modules/case-management/domain/model/value-objects/AssignedTo.js';
 import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
+import { createAnalystDecisionType } from '../../../../src/modules/case-management/domain/model/value-objects/AnalystDecisionType.js';
+import { generateAnalystDecisionId } from '../../../../src/modules/case-management/domain/model/value-objects/AnalystDecisionId.js';
 import { generateResolutionId } from '../../../../src/modules/case-management/domain/model/value-objects/ResolutionId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
 import { InMemoryResolutionRepository } from '../../../helpers/case-management/InMemoryResolutionRepository.js';
+import { InMemoryAnalystDecisionRepository } from '../../../helpers/case-management/InMemoryAnalystDecisionRepository.js';
+import { InMemoryEnforcementActionRepository } from '../../../helpers/case-management/InMemoryEnforcementActionRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
@@ -42,12 +47,16 @@ function buildCase(organizationId = ORG_1): Case {
 function build() {
   const cases = new InMemoryCaseRepository();
   const resolutions = new InMemoryResolutionRepository();
+  const decisions = new InMemoryAnalystDecisionRepository();
+  const enforcementActions = new InMemoryEnforcementActionRepository();
   const timelineRecorder = new InMemoryTimelineRecorder();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
   const outbox = new InMemoryOutboxEventRepository();
   const deps = {
     cases,
     resolutions,
+    decisions,
+    enforcementActions,
     timelineRecorder,
     auditRecorder,
     unitOfWork: new PassthroughUnitOfWork(),
@@ -60,6 +69,8 @@ function build() {
   return {
     cases,
     resolutions,
+    decisions,
+    enforcementActions,
     timelineRecorder,
     auditRecorder,
     outbox,
@@ -68,10 +79,30 @@ function build() {
   };
 }
 
+/** Resolving requires a decision on file. See `WorkflowStepGate.assertDecided`. */
+async function seedDecision(
+  decisions: InMemoryAnalystDecisionRepository,
+  decisionType: 'FALSE_POSITIVE' | 'FRAUD_CONFIRMED' | 'INCONCLUSIVE' = 'FALSE_POSITIVE',
+): Promise<void> {
+  await decisions.save(
+    AnalystDecision.create({
+      id: generateAnalystDecisionId(),
+      caseId: createCaseId(oid('case-1')),
+      organizationId: ORG_1,
+      decision: createAnalystDecisionType(decisionType),
+      confidence: 80,
+      comment: 'instructed verdict',
+      createdBy: oid('analyst-1'),
+      now: NOW,
+    }),
+  );
+}
+
 describe('createResolveCaseUseCase', () => {
   it('resolves an IN_REVIEW case: status RESOLVED + resolution row + STATE_CHANGED timeline + RESOLVE_CASE audit', async () => {
-    const { cases, resolutions, timelineRecorder, auditRecorder, resolveCase } = build();
+    const { cases, resolutions, decisions, timelineRecorder, auditRecorder, resolveCase } = build();
     await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
+    await seedDecision(decisions);
 
     const resolved = await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legitimate' });
 
@@ -89,8 +120,9 @@ describe('createResolveCaseUseCase', () => {
   });
 
   it('stops the SLA (clears dueDate) and emits a CASE_RESOLVED outbox event in the same tx', async () => {
-    const { cases, outbox, resolveCase } = build();
+    const { cases, outbox, decisions, resolveCase } = build();
     await cases.save(buildCase().transitionTo('IN_REVIEW', NOW).withDueDate(NOW, NOW));
+    await seedDecision(decisions);
 
     const resolved = await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legit' });
 
@@ -105,13 +137,39 @@ describe('createResolveCaseUseCase', () => {
     expect(events[0]?.payload).toMatchObject({ case_id: oid('case-1'), closure_type: 'RESOLVED' });
   });
 
-  it('rejects resolving straight from OPEN with INVALID_TRANSITION (review gate)', async () => {
+  /**
+   * An OPEN case can never have a decision on file (recording one requires
+   * `assertInstructed`, which requires a note/evidence, which requires
+   * review first) — so `assertDecided` now rejects before the transition
+   * table even gets a chance to. Still the same root cause (never reviewed),
+   * just reported at the step that actually explains it to the caller.
+   */
+  it('rejects resolving straight from OPEN with CASE_NOT_DECIDED (review + decide gates, in order)', async () => {
     const { cases, resolveCase } = build();
     await cases.save(buildCase());
 
     await expect(
       resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x' }),
-    ).rejects.toMatchObject({ code: 'INVALID_TRANSITION' });
+    ).rejects.toMatchObject({ code: 'CASE_NOT_DECIDED' });
+  });
+
+  it('rejects resolving an IN_REVIEW case with no decision yet (CASE_NOT_DECIDED)', async () => {
+    const { cases, resolveCase } = build();
+    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
+
+    await expect(
+      resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x' }),
+    ).rejects.toMatchObject({ code: 'CASE_NOT_DECIDED' });
+  });
+
+  it('rejects resolving a FRAUD_CONFIRMED case with no enforcement action requested (CASE_ENFORCEMENT_PENDING)', async () => {
+    const { cases, decisions, resolveCase } = build();
+    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
+    await seedDecision(decisions, 'FRAUD_CONFIRMED');
+
+    await expect(
+      resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x' }),
+    ).rejects.toMatchObject({ code: 'CASE_ENFORCEMENT_PENDING' });
   });
 
   it('rejects a non-supervisor with FORBIDDEN_ROLE', async () => {
@@ -141,8 +199,9 @@ describe('createResolveCaseUseCase', () => {
 
 describe('createArchiveCaseUseCase', () => {
   it('archives a RESOLVED case (RESOLVED -> ARCHIVED) and appends a second resolution row', async () => {
-    const { cases, resolutions, auditRecorder, resolveCase, archiveCase } = build();
+    const { cases, resolutions, decisions, auditRecorder, resolveCase, archiveCase } = build();
     await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
+    await seedDecision(decisions);
     await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legit' });
 
     const archived = await archiveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'filed' });
@@ -154,8 +213,9 @@ describe('createArchiveCaseUseCase', () => {
   });
 
   it('does NOT emit an outbox event on archive (only resolve does)', async () => {
-    const { cases, outbox, resolveCase, archiveCase } = build();
+    const { cases, outbox, decisions, resolveCase, archiveCase } = build();
     await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
+    await seedDecision(decisions);
     await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legit' });
     await archiveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'filed' });
 

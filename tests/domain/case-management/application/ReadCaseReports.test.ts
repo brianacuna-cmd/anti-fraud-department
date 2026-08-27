@@ -60,6 +60,7 @@ function build() {
 
 async function seedCaseWithReport(h: ReturnType<typeof build>) {
   await h.cases.save(
+    // The report requires the case closed. See `WorkflowStepGate.assertReadyForReport`.
     Case.create({
       id: createCaseId(oid('case-1')),
       organizationId: ORG_1,
@@ -67,7 +68,9 @@ async function seedCaseWithReport(h: ReturnType<typeof build>) {
       riskScore: createRiskScore(50),
       priority: 'MEDIUM',
       now: NOW,
-    }),
+    })
+      .transitionTo('IN_REVIEW', NOW)
+      .transitionTo('RESOLVED', NOW),
   );
   return h.generateCaseReport({ auth: ANALYST, caseId: oid('case-1') });
 }

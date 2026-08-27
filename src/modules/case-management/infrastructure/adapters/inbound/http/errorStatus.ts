@@ -29,6 +29,16 @@ export const caseManagementErrorStatus: StatusByCode = {
   // 409 same as the previous: permission is not missing, the case is in a
   // state that does not admit the action.
   CASE_CLOSED: 409,
+  // 409 same family: the case is not (yet) in the state the workflow step
+  // requires. See `WorkflowStepGate`.
+  CASE_NOT_REVIEWED: 409,
+  CASE_NOT_INSTRUCTED: 409,
+  CASE_NOT_DECIDED: 409,
+  CASE_ENFORCEMENT_PENDING: 409,
+  CASE_NOT_RESOLVED_FOR_REPORT: 409,
+  // 409: the request is valid, but creating/reopening the case unassigned
+  // right now would leave it with no path to ever getting assigned.
+  NO_ACTIVE_ROUTING_RULE: 409,
   // 404: the DLQ row was never created or was already consumed by a prior requeue.
   DLQ_EVENT_NOT_FOUND: 404,
 };

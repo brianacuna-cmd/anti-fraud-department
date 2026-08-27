@@ -38,18 +38,19 @@ export const SUPERVISION_ROLES: readonly string[] = [ROLE_SUPERVISOR];
 /**
  * Distribute work: assign and reassign cases.
  *
- * `ADMIN` ONLY. Work distribution is a decision of whoever administers
- * people, not of whoever does the work: an analyst does not pick their
- * load and a supervisor does not keep the cases they prefer.
+ * `ADMIN` ONLY (plus the `ORGANIZATION` actor — see `requireAssignmentRole`).
+ * Work distribution is a decision of whoever administers people, not of
+ * whoever does the work: an analyst does not pick their load and a
+ * supervisor does not keep the cases they prefer.
  *
  * Together with `AssignmentGate` this defines the department flow: cases
  * come in, automatic routing distributes them when a rule matches, and
- * whatever is left orphaned waits for ADMIN to assign it. Nobody works a
- * case they were not given.
+ * whatever is left orphaned waits for ADMIN (or the tenant owner) to
+ * assign it. Nobody works a case they were not given.
  *
- * THE COST, stated: without an available ADMIN, unassigned cases stay
- * frozen. That is not a side effect; it is the direct consequence of
- * distribution being a single door.
+ * THE COST, stated: without an available ADMIN or the tenant owner,
+ * unassigned cases stay frozen. That is not a side effect; it is the
+ * direct consequence of distribution being a single door.
  */
 export const CASE_ASSIGN_ROLES: readonly string[] = [ROLE_ADMIN];
 
@@ -62,8 +63,18 @@ export const CASE_ASSIGN_ROLES: readonly string[] = [ROLE_ADMIN];
  * Putting this exception in its own guard — instead of opening a hole in
  * the other — is what keeps something that actually works a case from
  * slipping through tomorrow.
+ *
+ * `ORGANIZATION` also passes. A tenant is not required to have a USER row
+ * with `roleId: 'ADMIN'` — many small orgs run with just the tenant-owner
+ * login — and that owner is unambiguously the one accountable for
+ * distributing work in that org. Requiring a separate ADMIN user to exist
+ * before a single case can ever be assigned would leave a brand-new tenant
+ * permanently frozen with no way out.
  */
 export function requireAssignmentRole(auth: AuthContext): void {
+  if (auth.actorType === 'ORGANIZATION') {
+    return;
+  }
   if (
     auth.actorType !== 'USER' ||
     auth.roleId === null ||

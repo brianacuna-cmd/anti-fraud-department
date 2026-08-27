@@ -19,6 +19,7 @@ import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { createInvestigationId } from '../domain/model/value-objects/InvestigationId.js';
 import { assertAssigned } from '../domain/services/AssignmentGate.js';
 import { assertNotClosed } from '../domain/services/ClosedCaseGate.js';
+import { assertReviewStarted } from '../domain/services/WorkflowStepGate.js';
 import {
   caseNotFound,
   forbiddenCrossTenant,
@@ -77,6 +78,8 @@ export function createRegisterEvidenceUseCase(deps: RegisterEvidenceDeps) {
     assertAssigned(kase);
     // A closed case is not worked. See `ClosedCaseGate`.
     assertNotClosed(kase);
+    // Instruction comes after review. See `WorkflowStepGate`.
+    assertReviewStarted(kase);
 
     let investigationId = null;
     if (input.investigationId !== undefined && input.investigationId !== null) {

@@ -27,6 +27,18 @@ const ANALYST = createAuthContext({
   // Repartir trabajo es del ADMIN: el analista ya no elige su carga.
   roleId: 'ADMIN',
 });
+const SUPERVISOR_NO_ADMIN = createAuthContext({
+  userId: oid('sup-1'),
+  organizationId: ORG_1,
+  actorType: 'USER',
+  roleId: 'SUPERVISOR',
+});
+// El dueño del tenant: no toda organización tiene un usuario ADMIN creado.
+const ORG_ACTOR = createAuthContext({
+  userId: ORG_1,
+  organizationId: ORG_1,
+  actorType: 'ORGANIZATION',
+});
 const CASE_ID = createCaseId(oid('case-1'));
 
 function buildCase(overrides: { organizationId?: string; assignedTo?: AssignedTo | null; deletedAt?: typeof NOW | null } = {}): Case {
@@ -264,5 +276,37 @@ describe('createReassignCaseUseCase (manual reassign)', () => {
         assignedToId: oid('analyst-2'),
       }),
     ).rejects.toMatchObject({ code: 'CASE_NOT_FOUND' } satisfies Partial<CaseManagementError>);
+  });
+
+  describe('la organización dueña del tenant también puede repartir trabajo', () => {
+    it('permite a la ORGANIZACIÓN reasignar un caso sin necesidad de un usuario ADMIN', async () => {
+      const target = createAssignedTo('USER', oid('analyst-2'));
+      const { reassignCase, cases } = buildUseCase(buildCase(), [target]);
+
+      const result = await reassignCase({
+        auth: ORG_ACTOR,
+        caseId: CASE_ID,
+        assignedToType: 'USER',
+        assignedToId: oid('analyst-2'),
+      });
+
+      expect(result.assignedTo).toEqual({ type: 'USER', id: oid('analyst-2') });
+      expect(cases.all()[0]?.assignedTo).toEqual({ type: 'USER', id: oid('analyst-2') });
+    });
+
+    it('sigue rechazando a un SUPERVISOR (no es ADMIN ni la organización) con FORBIDDEN_ROLE', async () => {
+      const target = createAssignedTo('USER', oid('analyst-2'));
+      const { reassignCase, cases } = buildUseCase(buildCase(), [target]);
+
+      await expect(
+        reassignCase({
+          auth: SUPERVISOR_NO_ADMIN,
+          caseId: CASE_ID,
+          assignedToType: 'USER',
+          assignedToId: oid('analyst-2'),
+        }),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN_ROLE' } satisfies Partial<CaseManagementError>);
+      expect(cases.all()[0]?.assignedTo).toBeNull();
+    });
   });
 });

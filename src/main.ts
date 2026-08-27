@@ -211,6 +211,7 @@ import { createExecuteEnforcementActionUseCase } from './modules/case-management
 import { createRevertEnforcementActionUseCase } from './modules/case-management/application/RevertEnforcementAction.js';
 import { createListEnforcementActionsUseCase } from './modules/case-management/application/ListEnforcementActions.js';
 import { createCreateRoutingRuleUseCase } from './modules/case-management/application/CreateRoutingRule.js';
+import { createCreatePriorityAssignmentRuleUseCase } from './modules/case-management/application/CreatePriorityAssignmentRule.js';
 import { createListRoutingRulesUseCase } from './modules/case-management/application/ListRoutingRules.js';
 import { createGetRoutingRuleUseCase } from './modules/case-management/application/GetRoutingRule.js';
 import { createActivateRoutingRuleUseCase } from './modules/case-management/application/ActivateRoutingRule.js';
@@ -604,6 +605,7 @@ async function bootstrap(): Promise<void> {
   const approvalRequests = new MongoApprovalRequestRepository(db);
   const analystDecisions = new MongoAnalystDecisionRepository(db);
   const enforcementActions = new MongoEnforcementActionRepository(db);
+  const assigneeDirectory = createIdentityAssigneeDirectory(userRepositoryFactory, roleRepository);
   const routeCase = createRouteCaseUseCase({
     cases,
     routingRules: caseRoutingRules,
@@ -611,6 +613,7 @@ async function bootstrap(): Promise<void> {
     timelineRecorder: caseTimelineRecorder,
     auditRecorder: caseManagementAuditRecorder,
     fraudConfig: organizationFraudConfig,
+    assigneeDirectory,
     clock,
     generateTimelineEventId,
   });
@@ -621,7 +624,6 @@ async function bootstrap(): Promise<void> {
     clock,
     generateCaseSlaTrackingId,
   });
-  const assigneeDirectory = createIdentityAssigneeDirectory(userRepositoryFactory, roleRepository);
   const createCase = createCreateCaseUseCase({
     cases,
     timelineRecorder: caseTimelineRecorder,
@@ -717,6 +719,9 @@ async function bootstrap(): Promise<void> {
     generateOutboxEventId,
     auditRecorder: caseManagementAuditRecorder,
     initializeCaseSla,
+    assigneeDirectory,
+    routingRules: caseRoutingRules,
+    routeCase,
   });
 
   // Hoisted so both PublishOutboxEvents (DLQ insert) and the three DLQ admin
@@ -875,6 +880,8 @@ async function bootstrap(): Promise<void> {
         generateTimelineEventId,
         outbox: outboxEvents,
         generateOutboxEventId,
+        decisions: analystDecisions,
+        enforcementActions,
       }),
       generateCaseReport,
     }),
@@ -1068,6 +1075,8 @@ async function bootstrap(): Promise<void> {
   const enforcementHttpRouter = enforcementRouter({
     recordAnalystDecision: createRecordAnalystDecisionUseCase({
       cases,
+      notes: caseNotes,
+      evidence,
       decisions: analystDecisions,
       enforcementActions,
       approvalRequests,
@@ -1156,6 +1165,15 @@ async function bootstrap(): Promise<void> {
       unitOfWork: caseManagementUnitOfWork,
       clock,
       generateCaseRoutingRuleId,
+    }),
+    createPriorityAssignmentRule: createCreatePriorityAssignmentRuleUseCase({
+      createRoutingRule: createCreateRoutingRuleUseCase({
+        routingRules: caseRoutingRules,
+        auditRecorder: caseManagementAuditRecorder,
+        unitOfWork: caseManagementUnitOfWork,
+        clock,
+        generateCaseRoutingRuleId,
+      }),
     }),
     listRoutingRules: createListRoutingRulesUseCase({ routingRules: caseRoutingRules }),
     getRoutingRule: createGetRoutingRuleUseCase({ routingRules: caseRoutingRules }),

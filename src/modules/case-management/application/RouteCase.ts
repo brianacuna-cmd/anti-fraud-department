@@ -3,6 +3,7 @@ import type { Clock } from '../../../shared/time/Clock.js';
 import type { Case } from '../domain/model/aggregates/Case.js';
 import type { CaseRoutingRule } from '../domain/model/aggregates/CaseRoutingRule.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
+import type { AssigneeDirectory } from '../domain/ports/AssigneeDirectory.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { CaseRepository } from '../domain/ports/CaseRepository.js';
 import type { CaseRoutingRuleRepository } from '../domain/ports/CaseRoutingRuleRepository.js';
@@ -34,6 +35,15 @@ export interface RouteCaseDeps {
   readonly timelineRecorder: TimelineRecorder;
   readonly auditRecorder: AuditRecorder;
   readonly fraudConfig: OrganizationFraudConfigRepository;
+  /**
+   * Same directory `ReassignCase`/`BulkCaseAction` use to reject an assignee
+   * that does not belong to the organization or is not `ACTIVE`. Without
+   * this, a rule pointing at a deleted/deactivated/foreign user or role
+   * assigned the case anyway — silently, with no error and no audit trail
+   * of the failure — which is worse than not auto-routing at all: the case
+   * LOOKS assigned but no one is actually accountable for it.
+   */
+  readonly assigneeDirectory: AssigneeDirectory;
   readonly clock: Clock;
   readonly generateTimelineEventId: () => TimelineEventId;
 }
@@ -52,7 +62,11 @@ export interface RouteCaseDeps {
  * Rule isolation: a rule whose JDM fails to compile or evaluate is SKIPPED
  * (audited as `ROUTING_RULE_EVALUATION_FAILED`) instead of propagating, which
  * would roll back the enclosing `CreateCase` transaction and make a single
- * malformed rule block all case creation for that organization.
+ * malformed rule block all case creation for that organization. The same
+ * applies to a rule whose resolved target does not belong to the
+ * organization or is not `ACTIVE` (audited as `ROUTING_RULE_TARGET_INVALID`):
+ * skipped, not assigned — the next rule still gets a chance, and a case
+ * never ends up "assigned" to someone who cannot actually work it.
  *
  * Provenance: the winning rule's id, name and `conditionsVersion` land in the
  * `REASSIGN_CASE` audit row's detail, so an assignment can always be traced
@@ -84,6 +98,30 @@ export function createRouteCaseUseCase(deps: RouteCaseDeps) {
       }
       const assignedTo = resolveAssignment(outcome.evaluation, rule);
       if (assignedTo === null) {
+        continue;
+      }
+
+      const targetValid = await deps.assigneeDirectory.belongsToOrganization(organizationId, assignedTo);
+      if (!targetValid) {
+        await deps.auditRecorder.record(
+          {
+            organizationId,
+            actorType: input.actorType,
+            actorId: input.createdBy,
+            action: 'ROUTING_RULE_TARGET_INVALID',
+            resource: 'rule',
+            resourceId: rule.id,
+            detail: {
+              caseId: input.kase.id,
+              ruleName: rule.name,
+              conditionsVersion: rule.conditionsVersion,
+              assignedToType: assignedTo.type,
+              assignedToId: assignedTo.id,
+            },
+            ipAddress: input.ipAddress,
+          },
+          input.tx,
+        );
         continue;
       }
 

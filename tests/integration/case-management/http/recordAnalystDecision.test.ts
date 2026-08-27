@@ -36,9 +36,13 @@ import { generateApprovalRequestId } from '../../../../src/modules/case-manageme
 import { generateCustomerOutgoingEventId } from '../../../../src/modules/case-management/domain/model/value-objects/CustomerOutgoingEventId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
+import { CaseNote } from '../../../../src/modules/case-management/domain/model/aggregates/CaseNote.js';
 import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { createAssignedTo } from '../../../../src/modules/case-management/domain/model/value-objects/AssignedTo.js';
 import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
+import { generateCaseNoteId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseNoteId.js';
+import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InMemoryCaseNoteRepository.js';
+import { InMemoryEvidenceRepository } from '../../../helpers/case-management/InMemoryEvidenceRepository.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ORG_1 = oid('org-1');
@@ -59,6 +63,8 @@ const AUDITOR = createAuthContext({
 
 function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
   const cases = new InMemoryCaseRepository();
+  const notes = new InMemoryCaseNoteRepository();
+  const evidence = new InMemoryEvidenceRepository();
   const decisions = new InMemoryAnalystDecisionRepository();
   const enforcementActions = new InMemoryEnforcementActionRepository();
   const approvalRequests = new InMemoryApprovalRequestRepository();
@@ -87,6 +93,8 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
     }),
     recordAnalystDecision: createRecordAnalystDecisionUseCase({
       cases,
+      notes,
+      evidence,
       decisions,
       enforcementActions,
       approvalRequests,
@@ -155,12 +163,12 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
     errorHandler: createErrorHandler(caseManagementErrorStatus),
   });
 
-  return { app, cases, decisions, enforcementActions, timelineRecorder, auditRecorder };
+  return { app, cases, notes, decisions, enforcementActions, timelineRecorder, auditRecorder };
 }
 
 describe('enforcementRouter POST /cases/:caseId/decisions', () => {
   it('records FRAUD_CONFIRMED and returns decision + PENDING enforcement action', async () => {
-    const { app, cases, decisions, enforcementActions, timelineRecorder, auditRecorder } = buildApp();
+    const { app, cases, notes, decisions, enforcementActions, timelineRecorder, auditRecorder } = buildApp();
     await cases.save(
       Case.create({
         id: CASE_ID,
@@ -173,6 +181,17 @@ describe('enforcementRouter POST /cases/:caseId/decisions', () => {
         assignedTo: createAssignedTo('USER', oid('analyst-1')),
         now: NOW,
       }).transitionTo('IN_REVIEW', NOW),
+    );
+    // A verdict needs something behind it. See `WorkflowStepGate.assertInstructed`.
+    await notes.save(
+      CaseNote.create({
+        id: generateCaseNoteId(),
+        caseId: CASE_ID,
+        organizationId: ORG_1,
+        authorId: oid('analyst-1'),
+        body: 'instructing note',
+        now: NOW,
+      }),
     );
 
     const res = await request(app)
@@ -200,7 +219,7 @@ describe('enforcementRouter POST /cases/:caseId/decisions', () => {
   });
 
   it('records FALSE_POSITIVE with null enforcementAction', async () => {
-    const { app, cases, enforcementActions } = buildApp();
+    const { app, cases, notes, enforcementActions } = buildApp();
     await cases.save(
       Case.create({
         id: CASE_ID,
@@ -211,6 +230,17 @@ describe('enforcementRouter POST /cases/:caseId/decisions', () => {
         // Assignment rule freezes orphan cases:
         // without an owner they cannot be worked.
         assignedTo: createAssignedTo('USER', oid('analyst-1')),
+        now: NOW,
+      }).transitionTo('IN_REVIEW', NOW),
+    );
+    // A verdict needs something behind it. See `WorkflowStepGate.assertInstructed`.
+    await notes.save(
+      CaseNote.create({
+        id: generateCaseNoteId(),
+        caseId: CASE_ID,
+        organizationId: ORG_1,
+        authorId: oid('analyst-1'),
+        body: 'instructing note',
         now: NOW,
       }),
     );

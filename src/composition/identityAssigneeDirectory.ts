@@ -89,6 +89,15 @@ async function roleDisplayName(
   }
 }
 
+/**
+ * `findById` only checks that the user exists and belongs to the tenant —
+ * it deliberately still resolves deactivated users (`userDisplayName` above
+ * needs that, to label a timeline entry for someone who has since been
+ * suspended). Assignment is different: a case handed to a SUSPENDED/INACTIVE/
+ * DISABLED user is not "assigned to someone who can't work it", it is
+ * assigned to no one, silently. `ACTIVE` is the only status that can receive
+ * a case.
+ */
 async function userBelongsToOrganization(
   userRepositoryFactory: UserRepositoryFactory,
   organizationId: string,
@@ -98,7 +107,7 @@ async function userBelongsToOrganization(
     const organizationIdBranded = createOrganizationId(organizationId);
     const userId = createUserId(userIdRaw);
     const user = await userRepositoryFactory.forTenant(organizationIdBranded).findById(userId);
-    return user !== null;
+    return user !== null && user.status === 'ACTIVE';
   } catch {
     return false;
   }
