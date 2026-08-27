@@ -10,6 +10,7 @@ import type {
   FinturuDirectoryEntry,
   FinturuDirectoryRepository,
 } from '../domain/ports/FinturuDirectoryRepository.js';
+import { readKey } from './finturuCorrelationKeys.js';
 
 export interface SyncFinturuDirectoryResult {
   readonly total: number;
@@ -23,26 +24,6 @@ export interface SyncFinturuDirectoryDeps {
   readonly clock: Clock;
 }
 
-/**
- * Reads a correlation key from an untyped object (Stripe `metadata`,
- * a transfer's `source`/`destination`). Returns `null` if missing, so the
- * caller never compares `undefined` against a Set.
- *
- * Accepts a number as well as text: Finturu's register types the SAME field
- * as a number in some payloads and as a string in others, and discarding the
- * numeric variant would leave half the customers uncorrelated.
- */
-function readKey(bag: Record<string, unknown> | undefined, key: string): string | null {
-  const value = bag?.[key];
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  }
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return String(value);
-  }
-  return null;
-}
 
 function riskFor(status: string | undefined, transfers: readonly FinturuTransferDto[]): number {
   let score = 40;
@@ -131,7 +112,10 @@ export function createSyncFinturuDirectoryUseCase(deps: SyncFinturuDirectoryDeps
       );
 
       const userTransfers = transfers.filter((t) => {
-        if (bridgeUserId && t.onBehalfOf === bridgeUserId) return true;
+        // Bridge lo llama `on_behalf_of` y el mapeo de Finturu no lo renombra,
+        // asi que leerlo solo como `onBehalfOf` no encontraba nunca al titular.
+        const onBehalfOf = t.onBehalfOf ?? readKey(t as Record<string, unknown>, 'onBehalfOf');
+        if (bridgeUserId && onBehalfOf === bridgeUserId) return true;
 
         const sourceWallet = readKey(t.source, 'bridgeWalletId');
         const destinationWallet = readKey(t.destination, 'bridgeWalletId');

@@ -12,6 +12,9 @@ export class AllowAllAssigneeDirectory implements AssigneeDirectory {
   async belongsToOrganization(): Promise<boolean> {
     return true;
   }
+  async canWorkCases(): Promise<boolean> {
+    return true;
+  }
   async listRoleRecipients(): Promise<readonly string[]> {
     return [];
   }

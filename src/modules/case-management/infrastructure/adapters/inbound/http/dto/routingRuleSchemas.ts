@@ -46,3 +46,25 @@ export const createPriorityAssignmentRuleSchema = z
   .strict();
 
 export type CreatePriorityAssignmentRuleBody = z.infer<typeof createPriorityAssignmentRuleSchema>;
+
+/**
+ * POST /case-routing-rules/simulate body — the decision editor's dry run.
+ *
+ * `case` is the context `ZenRoutingEngine` puts in front of the graph, field
+ * for field: testing against a different shape would give false confidence.
+ */
+export const simulateRoutingRuleSchema = z
+  .object({
+    conditions: jdmGraphSchema,
+    case: z
+      .object({
+        riskScore: z.number().int().min(0).max(100),
+        status: z.string().min(1),
+        priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']),
+        tags: z.array(z.string()).default([]),
+      })
+      .strict(),
+  })
+  .strict();
+
+export type SimulateRoutingRuleBody = z.infer<typeof simulateRoutingRuleSchema>;

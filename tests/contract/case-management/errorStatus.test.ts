@@ -37,6 +37,7 @@ describe('caseManagementErrorStatus', () => {
       DLQ_EVENT_NOT_FOUND: 404,
       WEBHOOK_SUBSCRIPTION_NOT_FOUND: 404,
       WEBHOOK_SUBSCRIPTION_URL_TAKEN: 409,
+      ASSIGNEE_CANNOT_WORK_CASES: 422,
     });
   });
 

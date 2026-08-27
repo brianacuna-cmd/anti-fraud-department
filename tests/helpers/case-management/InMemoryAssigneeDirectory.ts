@@ -6,6 +6,7 @@ export class InMemoryAssigneeDirectory implements AssigneeDirectory {
   private readonly members = new Map<string, Set<string>>();
   private readonly roleRecipients = new Map<string, string[]>();
   private readonly names = new Map<string, string>();
+  private readonly governance = new Set<string>();
 
   allow(organizationId: string, assignedTo: AssignedTo): void {
     const key = `${assignedTo.type}:${assignedTo.id}`;
@@ -22,6 +23,24 @@ export class InMemoryAssigneeDirectory implements AssigneeDirectory {
   /** Registra el nombre legible de un asignatario (`${type}:${id}` → nombre). */
   nameFor(organizationId: string, assignedTo: AssignedTo, name: string): void {
     this.names.set(`${organizationId}:${assignedTo.type}:${assignedTo.id}`, name);
+  }
+
+  /**
+   * Marca a un asignatario como gobierno (ADMIN/AUDITOR): existe, es del
+   * inquilino, y aun así no instruye expedientes.
+   */
+  denyCaseWork(organizationId: string, assignedTo: AssignedTo): void {
+    this.governance.add(`${organizationId}:${assignedTo.type}:${assignedTo.id}`);
+  }
+
+  /**
+   * Permisivo por defecto a propósito: la inmensa mayoría de las pruebas que
+   * asignan un caso están comprobando otra cosa, y obligarlas a declarar el
+   * rol del destinatario solo añadiría ruido. Quien prueba ESTA regla marca
+   * al destinatario con `denyCaseWork`.
+   */
+  async canWorkCases(organizationId: string, assignedTo: AssignedTo): Promise<boolean> {
+    return !this.governance.has(`${organizationId}:${assignedTo.type}:${assignedTo.id}`);
   }
 
   async belongsToOrganization(organizationId: string, assignedTo: AssignedTo): Promise<boolean> {

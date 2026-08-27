@@ -16,6 +16,8 @@ import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMem
 import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
 import { InMemoryCaseSlaTrackingRepository } from '../../../helpers/case-management/InMemoryCaseSlaTrackingRepository.js';
+import { OrganizationFraudConfig } from '../../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
+import { generateOrganizationFraudConfigId } from '../../../../src/modules/case-management/domain/model/value-objects/OrganizationFraudConfigId.js';
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
 import { InMemoryCaseRoutingRuleRepository } from '../../../helpers/case-management/InMemoryCaseRoutingRuleRepository.js';
 import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
@@ -72,7 +74,9 @@ const ANALYST = createAuthContext({
  * only fires when the org has ZERO active rules. Pass `seedActiveRule:
  * false` to test that guard, or a `routingEngine` to test an actual match.
  */
-function build(options: { seedActiveRule?: boolean; routingEngine?: RoutingEngine } = {}) {
+function build(
+  options: { seedActiveRule?: boolean; seedFraudConfig?: boolean; routingEngine?: RoutingEngine } = {},
+) {
   const cases = new InMemoryCaseRepository();
   const outbox = new InMemoryOutboxEventRepository();
   const slaTracking = new InMemoryCaseSlaTrackingRepository();
@@ -81,6 +85,29 @@ function build(options: { seedActiveRule?: boolean; routingEngine?: RoutingEngin
   const timelineRecorder = new InMemoryTimelineRecorder();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
   const clock = new FixedClock(NOW);
+  /*
+   * Sembrada: abrir a mano exige que el inquilino tenga configuración
+   * antifraude. Sin ella el caso nacería con un plazo que nadie acordó.
+   */
+  const fraudConfig = new InMemoryOrganizationFraudConfigRepository();
+  if (options.seedFraudConfig !== false) {
+    fraudConfig.seed(
+      OrganizationFraudConfig.create({
+        id: generateOrganizationFraudConfigId(),
+        organizationId: ORG,
+        slaLowMinutes: 240,
+        slaMediumMinutes: 120,
+        slaHighMinutes: 60,
+        slaCriticalMinutes: 30,
+        riskThresholdLow: 25,
+        riskThresholdMedium: 50,
+        riskThresholdHigh: 75,
+        riskThresholdCritical: 90,
+        featureFlags: {},
+        now: NOW,
+      }),
+    );
+  }
 
   if (options.seedActiveRule !== false) {
     void routingRules.save(
@@ -117,9 +144,10 @@ function build(options: { seedActiveRule?: boolean; routingEngine?: RoutingEngin
     generateTimelineEventId,
     generateOutboxEventId,
     auditRecorder,
+    fraudConfig,
     initializeCaseSla: createInitializeCaseSlaService({
       slaTracking,
-      fraudConfig: new InMemoryOrganizationFraudConfigRepository(),
+      fraudConfig,
       generateCaseSlaTrackingId,
     }),
     assigneeDirectory,
@@ -127,7 +155,7 @@ function build(options: { seedActiveRule?: boolean; routingEngine?: RoutingEngin
     routeCase,
   });
 
-  return { openFraudCase, cases, assigneeDirectory, routingRules };
+  return { openFraudCase, cases, assigneeDirectory, routingRules, fraudConfig };
 }
 
 describe('createOpenFraudCaseUseCase — asignación manual al crear', () => {
@@ -318,5 +346,56 @@ describe('createOpenFraudCaseUseCase — auto-routing (CASE-002) cuando nadie el
 
     expect(result.assignedTo).toEqual({ type: 'USER', id: oid('an-2') });
     expect(cases.all()[0]?.assignedTo).toEqual({ type: 'USER', id: oid('an-2') });
+  });
+});
+
+/**
+ * Añadidos del fork: el departamento tiene que estar configurado, y el
+ * expediente solo puede recaer en quien lo instruye.
+ */
+describe('createOpenFraudCaseUseCase — requisitos de apertura del fork', () => {
+  const AUDITOR_ID = oid('auditor-1');
+
+  it('rechaza abrir el caso si la organización no tiene configuración antifraude', async () => {
+    const { openFraudCase, cases } = build({ seedFraudConfig: false });
+
+    await expect(
+      openFraudCase({ auth: ANALYST, customerId: 'customer-1', autoAssignToMe: true, rawSnapshot: {} }),
+    ).rejects.toMatchObject({ code: 'ORGANIZATION_FRAUD_CONFIG_NOT_FOUND' });
+
+    /* Se comprueba antes de escribir: no queda un expediente a medias. */
+    expect(cases.all()).toHaveLength(0);
+  });
+
+  /*
+   * ADMIN administra personas y AUDITOR fiscaliza: ninguno instruye. Un
+   * expediente en su bandeja no lo trabaja nadie y rompe la segregación de
+   * funciones sobre la que se apoya el resto de la política de acceso.
+   */
+  it('rechaza a un asignatario del plano de gobierno', async () => {
+    const { openFraudCase, assigneeDirectory, cases } = build();
+    assigneeDirectory.allow(ORG, { type: 'USER', id: AUDITOR_ID });
+    assigneeDirectory.denyCaseWork(ORG, { type: 'USER', id: AUDITOR_ID });
+
+    await expect(
+      openFraudCase({
+        auth: ADMIN,
+        customerId: 'customer-1',
+        assignedTo: { type: 'USER', id: AUDITOR_ID },
+        rawSnapshot: {},
+      }),
+    ).rejects.toMatchObject({ code: 'ASSIGNEE_CANNOT_WORK_CASES' });
+
+    expect(cases.all()).toHaveLength(0);
+  });
+
+  /* Cubre también «asignármelo a mí»: un ADMIN no puede quedarse el caso. */
+  it('rechaza la autoasignación de quien no instruye', async () => {
+    const { openFraudCase, assigneeDirectory } = build();
+    assigneeDirectory.denyCaseWork(ORG, { type: 'USER', id: oid('admin-1') });
+
+    await expect(
+      openFraudCase({ auth: ADMIN, customerId: 'customer-1', autoAssignToMe: true, rawSnapshot: {} }),
+    ).rejects.toMatchObject({ code: 'ASSIGNEE_CANNOT_WORK_CASES' });
   });
 });
