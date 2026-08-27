@@ -2,9 +2,10 @@ export interface OutgoingWebhookPostInput {
   readonly url: string;
   readonly payload: Readonly<Record<string, unknown>>;
   /**
-   * Tenant secret used to sign the delivery. `null` = unsigned, which is
-   * what exists for integrations prior to EVT-003; the receiver then cannot
-   * distinguish our sends from anyone else's who knows their URL.
+   * Tenant secret used to HMAC-SHA256 the POSTed JSON body (`x-signature-sha256`).
+   * `null` or empty = unsigned: the JSON is still posted and the signature
+   * header is omitted. Replay defense is receiver idempotency on
+   * `enforcement_action_id`.
    */
   readonly secret?: string | null;
 }

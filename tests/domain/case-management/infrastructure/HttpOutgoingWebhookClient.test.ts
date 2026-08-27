@@ -1,6 +1,9 @@
 import { createHmac } from 'node:crypto';
-import { StripeHmacVerifier } from '../../../../src/modules/ingest/infrastructure/adapters/outbound/crypto/StripeHmacVerifier.js';
 import { HttpOutgoingWebhookClient, SIGNATURE_HEADER } from '../../../../src/modules/case-management/infrastructure/adapters/outbound/http/HttpOutgoingWebhookClient.js';
+
+function hmacHex(secret: string, body: string): string {
+  return createHmac('sha256', secret).update(body, 'utf8').digest('hex');
+}
 
 describe('HttpOutgoingWebhookClient', () => {
   it('POSTs JSON and returns ok for 2xx responses', async () => {
@@ -53,7 +56,7 @@ describe('HttpOutgoingWebhookClient', () => {
   });
 });
 
-describe('HttpOutgoingWebhookClient — firma de salida (EVT-003)', () => {
+describe('HttpOutgoingWebhookClient — outbound signature', () => {
   const SECRET = 's'.repeat(48);
 
   function capture() {
@@ -65,18 +68,31 @@ describe('HttpOutgoingWebhookClient — firma de salida (EVT-003)', () => {
     return { calls, fetchImpl };
   }
 
-  it('no firma cuando el inquilino no tiene secreto', async () => {
+  it('omits x-signature-sha256 when the tenant has no secret', async () => {
     const { calls, fetchImpl } = capture();
     const client = new HttpOutgoingWebhookClient({ fetchImpl });
 
     await client.post({ url: 'https://hooks.example/x', payload: { a: 1 } });
 
-    expect(calls[0]?.init?.headers).toEqual({ 'content-type': 'application/json' });
+    const headers = calls[0]?.init?.headers as Record<string, string>;
+    expect(headers).toEqual({ 'content-type': 'application/json' });
+    expect(headers['x-signature-sha256']).toBeUndefined();
   });
 
-  it('firma HMAC-SHA256 sobre `${t}.${cuerpo}` con el formato t=,v1=', async () => {
+  it('omits x-signature-sha256 when the secret is empty', async () => {
     const { calls, fetchImpl } = capture();
-    const client = new HttpOutgoingWebhookClient({ fetchImpl, nowSeconds: () => 1_770_000_000 });
+    const client = new HttpOutgoingWebhookClient({ fetchImpl });
+
+    await client.post({ url: 'https://hooks.example/x', payload: { a: 1 }, secret: '' });
+
+    const headers = calls[0]?.init?.headers as Record<string, string>;
+    expect(headers).toEqual({ 'content-type': 'application/json' });
+    expect(headers['x-signature-sha256']).toBeUndefined();
+  });
+
+  it('sets x-signature-sha256 to HMAC-SHA256 hex of the exact POSTed JSON body', async () => {
+    const { calls, fetchImpl } = capture();
+    const client = new HttpOutgoingWebhookClient({ fetchImpl });
 
     await client.post({
       url: 'https://hooks.example/x',
@@ -86,111 +102,79 @@ describe('HttpOutgoingWebhookClient — firma de salida (EVT-003)', () => {
 
     const headers = calls[0]?.init?.headers as Record<string, string>;
     const body = calls[0]?.init?.body as string;
-    const expected = createHmac('sha256', SECRET)
-      .update(`1770000000.${body}`, 'utf8')
-      .digest('hex');
-
-    expect(headers[SIGNATURE_HEADER]).toBe(`t=1770000000,v1=${expected}`);
+    expect(SIGNATURE_HEADER).toBe('x-signature-sha256');
+    expect(headers[SIGNATURE_HEADER]).toBe(hmacHex(SECRET, body));
+    expect(headers[SIGNATURE_HEADER]).not.toMatch(/t=/);
   });
 
-  /**
-   * The classic failure of this kind of signature: serialize the body twice,
-   * once to sign and once to send. If key order differs, the receiver rejects
-   * everything and nobody understands why.
-   */
-  it('firma exactamente el cuerpo que se envia', async () => {
+  it('signs the same JSON bytes that are POSTed', async () => {
     const { calls, fetchImpl } = capture();
-    const client = new HttpOutgoingWebhookClient({ fetchImpl, nowSeconds: () => 1_770_000_000 });
+    const client = new HttpOutgoingWebhookClient({ fetchImpl });
 
     await client.post({
       url: 'https://hooks.example/x',
-      payload: { z: 'ultimo', a: 'primero', anidado: { b: 2 } },
+      payload: { z: 'last', a: 'first', nested: { b: 2 } },
       secret: SECRET,
     });
 
     const headers = calls[0]?.init?.headers as Record<string, string>;
     const sentBody = calls[0]?.init?.body as string;
-    const signature = headers[SIGNATURE_HEADER]!.split('v1=')[1];
-    const recomputed = createHmac('sha256', SECRET)
-      .update(`1770000000.${sentBody}`, 'utf8')
-      .digest('hex');
-
-    expect(signature).toBe(recomputed);
+    expect(sentBody).toBe(JSON.stringify({ z: 'last', a: 'first', nested: { b: 2 } }));
+    expect(headers[SIGNATURE_HEADER]).toBe(hmacHex(SECRET, sentBody));
   });
 
-  it('un secreto vacio se trata como ausente, no como secreto ""', async () => {
+  it('does not send x-finturu-signature or a t=,v1= envelope', async () => {
     const { calls, fetchImpl } = capture();
     const client = new HttpOutgoingWebhookClient({ fetchImpl });
 
-    await client.post({ url: 'https://hooks.example/x', payload: { a: 1 }, secret: '' });
-
-    expect(calls[0]?.init?.headers).toEqual({ 'content-type': 'application/json' });
-  });
-});
-
-/**
- * La afirmacion del comentario del cliente -"el formato es el de Stripe"- no
- * vale nada sin esto. Si el formato se desvia, quien reciba nuestros envios con
- * codigo de Stripe los rechazara en silencio y el canal quedara mudo.
- *
- * Se verifica bajo el nombre de cabecera que espera el verificador: lo que se
- * comprueba aqui es el FORMATO de la firma, no como se llama la cabecera.
- */
-describe('firma de salida ↔ StripeHmacVerifier (ida y vuelta)', () => {
-  it('lo que firmamos lo acepta el mismo verificador que usamos en la entrada', async () => {
-    const SECRET = 'r'.repeat(48);
-    const now = Math.floor(Date.now() / 1000);
-    let sent: { body: string; header: string } | null = null;
-
-    const fetchImpl: typeof fetch = async (_input, init) => {
-      const headers = init?.headers as Record<string, string>;
-      sent = { body: init?.body as string, header: headers[SIGNATURE_HEADER]! };
-      return new Response(null, { status: 200 });
-    };
-
-    const client = new HttpOutgoingWebhookClient({ fetchImpl, nowSeconds: () => now });
     await client.post({
       url: 'https://hooks.example/x',
-      payload: { enforcement_action_id: 'a1', action: 'BLOCK' },
+      payload: { enforcement_action_id: 'a1' },
       secret: SECRET,
     });
 
-    const delivered = sent as unknown as { body: string; header: string };
-    const accepted = new StripeHmacVerifier().verify(
-      Buffer.from(delivered.body, 'utf8'),
-      { 'stripe-signature': delivered.header },
-      SECRET,
-    );
-
-    expect(accepted).toBe(true);
+    const headers = calls[0]?.init?.headers as Record<string, string>;
+    expect(headers['x-finturu-signature']).toBeUndefined();
+    expect(headers[SIGNATURE_HEADER]).not.toMatch(/^t=\d+,v1=/);
+    expect(Object.keys(headers).filter((name) => name.toLowerCase().includes('signature'))).toEqual([
+      SIGNATURE_HEADER,
+    ]);
   });
 
-  it('y lo rechaza si el cuerpo cambia despues de firmar', async () => {
-    const SECRET = 'r'.repeat(48);
-    const now = Math.floor(Date.now() / 1000);
-    let sent: { body: string; header: string } | null = null;
+  it('fails verification when the body is tampered after signing', async () => {
+    const { calls, fetchImpl } = capture();
+    const client = new HttpOutgoingWebhookClient({ fetchImpl });
 
-    const fetchImpl: typeof fetch = async (_input, init) => {
-      const headers = init?.headers as Record<string, string>;
-      sent = { body: init?.body as string, header: headers[SIGNATURE_HEADER]! };
-      return new Response(null, { status: 200 });
-    };
-
-    const client = new HttpOutgoingWebhookClient({ fetchImpl, nowSeconds: () => now });
     await client.post({
       url: 'https://hooks.example/x',
       payload: { action: 'BLOCK' },
       secret: SECRET,
     });
 
-    const delivered = sent as unknown as { body: string; header: string };
-    const tampered = delivered.body.replace('BLOCK', 'UNBLOCK');
-    const accepted = new StripeHmacVerifier().verify(
-      Buffer.from(tampered, 'utf8'),
-      { 'stripe-signature': delivered.header },
-      SECRET,
-    );
+    const headers = calls[0]?.init?.headers as Record<string, string>;
+    const body = calls[0]?.init?.body as string;
+    const header = headers[SIGNATURE_HEADER];
+    expect(header).toBe(hmacHex(SECRET, body));
+    const tampered = body.replace('BLOCK', 'UNBLOCK');
+    expect(tampered).not.toBe(body);
+    expect(hmacHex(SECRET, tampered)).not.toBe(header);
+  });
 
-    expect(accepted).toBe(false);
+  it('produces an identical MAC for the same payload and secret', async () => {
+    const { calls, fetchImpl } = capture();
+    const client = new HttpOutgoingWebhookClient({ fetchImpl });
+    const payload = { enforcement_action_id: 'a1', action: 'BLOCK' };
+
+    await client.post({ url: 'https://hooks.example/x', payload, secret: SECRET });
+    await client.post({ url: 'https://hooks.example/x', payload, secret: SECRET });
+
+    expect(calls).toHaveLength(2);
+    const firstBody = calls[0]?.init?.body as string;
+    const secondBody = calls[1]?.init?.body as string;
+    const firstHeader = (calls[0]?.init?.headers as Record<string, string>)[SIGNATURE_HEADER];
+    const secondHeader = (calls[1]?.init?.headers as Record<string, string>)[SIGNATURE_HEADER];
+    expect(firstBody).toBe(secondBody);
+    expect(firstHeader).toBe(hmacHex(SECRET, firstBody));
+    expect(firstHeader).toBe(secondHeader);
   });
 });
