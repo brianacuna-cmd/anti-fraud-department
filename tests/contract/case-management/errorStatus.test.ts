@@ -3,6 +3,8 @@ import {
   caseNotFound,
   forbiddenRole,
   selfApprovalForbidden,
+  webhookSubscriptionNotFound,
+  webhookSubscriptionUrlTaken,
 } from '../../../src/modules/case-management/domain/errors/CaseManagementError.js';
 import type { CaseManagementErrorCode } from '../../../src/modules/case-management/domain/errors/CaseManagementErrorCode.js';
 
@@ -33,6 +35,8 @@ describe('caseManagementErrorStatus', () => {
       CASE_NOT_RESOLVED_FOR_REPORT: 409,
       NO_ACTIVE_ROUTING_RULE: 409,
       DLQ_EVENT_NOT_FOUND: 404,
+      WEBHOOK_SUBSCRIPTION_NOT_FOUND: 404,
+      WEBHOOK_SUBSCRIPTION_URL_TAKEN: 409,
     });
   });
 
@@ -62,5 +66,17 @@ describe('caseManagementErrorStatus', () => {
       roleId: 'ANALYST',
       allowed: ['SUPERVISOR', 'ADMIN'],
     });
+  });
+
+  it('maps webhook subscription not-found and url-taken factories', () => {
+    const missing = webhookSubscriptionNotFound('sub-1');
+    expect(missing.code).toBe('WEBHOOK_SUBSCRIPTION_NOT_FOUND' satisfies CaseManagementErrorCode);
+    expect(missing.metadata).toEqual({ subscriptionId: 'sub-1' });
+    expect(caseManagementErrorStatus[missing.code]).toBe(404);
+
+    const taken = webhookSubscriptionUrlTaken('https://hooks.example.com/a');
+    expect(taken.code).toBe('WEBHOOK_SUBSCRIPTION_URL_TAKEN' satisfies CaseManagementErrorCode);
+    expect(taken.metadata).toEqual({ url: 'https://hooks.example.com/a' });
+    expect(caseManagementErrorStatus[taken.code]).toBe(409);
   });
 });

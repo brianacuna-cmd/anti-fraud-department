@@ -166,6 +166,7 @@ import { generateOutboxEventId } from './shared/outbox/OutboxEventId.js';
 import { createSweepSlaTrackingUseCase } from './modules/case-management/application/SweepSlaTracking.js';
 import { createSlaSweepScheduler } from './modules/case-management/infrastructure/scheduler/SlaSweepScheduler.js';
 import { MongoCaseRoutingRuleRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRoutingRuleRepository.js';
+import { MongoCustomerWebhookSubscriptionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCustomerWebhookSubscriptionRepository.js';
 import { MongoOrganizationFraudConfigRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoOrganizationFraudConfigRepository.js';
 import { MongoCaseSlaTrackingRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseSlaTrackingRepository.js';
 import { ZenRoutingEngine } from './modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
@@ -216,7 +217,13 @@ import { createListRoutingRulesUseCase } from './modules/case-management/applica
 import { createGetRoutingRuleUseCase } from './modules/case-management/application/GetRoutingRule.js';
 import { createActivateRoutingRuleUseCase } from './modules/case-management/application/ActivateRoutingRule.js';
 import { createDeactivateRoutingRuleUseCase } from './modules/case-management/application/DeactivateRoutingRule.js';
+import { createCreateWebhookSubscriptionUseCase } from './modules/case-management/application/CreateWebhookSubscription.js';
+import { createListWebhookSubscriptionUseCase } from './modules/case-management/application/ListWebhookSubscription.js';
+import { createGetWebhookSubscriptionUseCase } from './modules/case-management/application/GetWebhookSubscription.js';
+import { createUpdateWebhookSubscriptionUseCase } from './modules/case-management/application/UpdateWebhookSubscription.js';
+import { createDeleteWebhookSubscriptionUseCase } from './modules/case-management/application/DeleteWebhookSubscription.js';
 import { organizationFraudConfigRouter } from './modules/case-management/infrastructure/adapters/inbound/http/organizationFraudConfigRouter.js';
+import { webhookSubscriptionRouter } from './modules/case-management/infrastructure/adapters/inbound/http/webhookSubscriptionRouter.js';
 import { enforcementRouter } from './modules/case-management/infrastructure/adapters/inbound/http/enforcementRouter.js';
 import { approvalRequestRouter } from './modules/case-management/infrastructure/adapters/inbound/http/approvalRequestRouter.js';
 import { createReviewApprovalRequestUseCase } from './modules/case-management/application/ReviewApprovalRequest.js';
@@ -237,6 +244,7 @@ import { generateEnforcementActionId } from './modules/case-management/domain/mo
 import { generateApprovalRequestId } from './modules/case-management/domain/model/value-objects/ApprovalRequestId.js';
 import { generateCustomerOutgoingEventId } from './modules/case-management/domain/model/value-objects/CustomerOutgoingEventId.js';
 import { generateCaseRoutingRuleId } from './modules/case-management/domain/model/value-objects/CaseRoutingRuleId.js';
+import { generateCustomerWebhookSubscriptionId } from './modules/case-management/domain/model/value-objects/CustomerWebhookSubscriptionId.js';
 import { MongoRiskScoringRuleRepository } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoRiskScoringRuleRepository.js';
 import { MongoUnitOfWork as RiskAssessmentMongoUnitOfWork } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { ZenRiskScoringEngine } from './modules/risk-assessment/infrastructure/adapters/outbound/zen/ZenRiskScoringEngine.js';
@@ -594,6 +602,7 @@ async function bootstrap(): Promise<void> {
   // the same transaction as the new case. `fraudConfig` backs the per-tenant
   // `featureFlags.autoRouting` opt-out.
   const caseRoutingRules = new MongoCaseRoutingRuleRepository(db);
+  const customerWebhookSubscriptions = new MongoCustomerWebhookSubscriptionRepository(db);
   const caseRoutingEngine = new ZenRoutingEngine();
   const organizationFraudConfig = new MongoOrganizationFraudConfigRepository(db);
   const caseSlaTracking = new MongoCaseSlaTrackingRepository(db);
@@ -957,6 +966,32 @@ async function bootstrap(): Promise<void> {
     upsertOrganizationFraudConfig: createUpsertOrganizationFraudConfigUseCase({
       repository: organizationFraudConfig,
       clock,
+    }),
+  });
+  const webhookSubscriptionHttpRouter = webhookSubscriptionRouter({
+    createWebhookSubscription: createCreateWebhookSubscriptionUseCase({
+      subscriptions: customerWebhookSubscriptions,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateCustomerWebhookSubscriptionId,
+    }),
+    listWebhookSubscription: createListWebhookSubscriptionUseCase({
+      subscriptions: customerWebhookSubscriptions,
+    }),
+    getWebhookSubscription: createGetWebhookSubscriptionUseCase({
+      subscriptions: customerWebhookSubscriptions,
+    }),
+    updateWebhookSubscription: createUpdateWebhookSubscriptionUseCase({
+      subscriptions: customerWebhookSubscriptions,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+    }),
+    deleteWebhookSubscription: createDeleteWebhookSubscriptionUseCase({
+      subscriptions: customerWebhookSubscriptions,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
     }),
   });
   const evidenceStore: EvidenceStore =
@@ -1748,6 +1783,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(evidenceHttpRouter);
   identityAccessRouter.use(noteHttpRouter);
   identityAccessRouter.use(organizationFraudConfigHttpRouter);
+  identityAccessRouter.use(webhookSubscriptionHttpRouter);
   identityAccessRouter.use(enforcementHttpRouter);
   identityAccessRouter.use(approvalRequestHttpRouter);
   identityAccessRouter.use(routingRuleHttpRouter);
