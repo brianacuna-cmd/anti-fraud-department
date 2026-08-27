@@ -98,9 +98,10 @@ function mappedStripe(
   const currency =
     typeof moneySource.currency === 'string' ? moneySource.currency.toUpperCase() : '';
 
-  const nombre = readOptionalStringPath(moneySource, ['billing_details', 'name']);
-  const documento = readOptionalStringPath(moneySource, ['metadata', 'documento']);
-  const entryType = inferSubjectEntryType(nombre, documento, undefined);
+  const name = readOptionalStringPath(moneySource, ['billing_details', 'name']);
+  // Merchants supply this Stripe metadata key; it is an external contract, not our identifier.
+  const document = readOptionalStringPath(moneySource, ['metadata', 'documento']);
+  const entryType = inferSubjectEntryType(name, document, undefined);
 
   return {
     status: 'mapped',
@@ -115,7 +116,7 @@ function mappedStripe(
       eventId,
       providerEventId: eventId,
       rawPayload: payload,
-      subjectIdentity: { nombre, documento, entryType },
+      subjectIdentity: { name, document, entryType },
     }),
   };
 }

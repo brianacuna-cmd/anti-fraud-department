@@ -34,7 +34,7 @@ const SWEEP_CLAIM_LIMIT = 100;
 
 /**
  * Background sweep (Slice 13, design D6): advances each due `CaseSlaTracking`
- * row by one status hop and sends `SLA_POR_VENCER` once per status.
+ * row by one status hop and sends `SLA_DUE_SOON` once per status.
  * Multi-instance safe: `claimDueForSweep` takes an exclusive per-row lease,
  * so concurrent sweep instances never process the same due row twice
  * (mirrors the outbox `claimPending`).
@@ -91,7 +91,7 @@ export function createSweepSlaTrackingUseCase(deps: SweepSlaTrackingDeps) {
                 {
                   organizationId: kase.organizationId,
                   recipientUserId,
-                  alertType: 'SLA_POR_VENCER',
+                  alertType: 'SLA_DUE_SOON',
                   context: { caseId: advanced.caseId, dueDate: advanced.dueDate, status: advanced.status },
                 },
                 tx,

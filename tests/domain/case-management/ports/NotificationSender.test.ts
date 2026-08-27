@@ -13,12 +13,12 @@ describe('NotificationSender port (structural twin of AuditRecorder)', () => {
     await sender.send({
       organizationId: 'org-1',
       recipientUserId: 'user-1',
-      alertType: 'CASO_ASIGNADO',
+      alertType: 'CASE_ASSIGNED',
       context: { caseId: 'case-1' },
     });
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.request.alertType).toBe('CASO_ASIGNADO');
+    expect(calls[0]?.request.alertType).toBe('CASE_ASSIGNED');
     expect(calls[0]?.tx).toBeUndefined();
   });
 });

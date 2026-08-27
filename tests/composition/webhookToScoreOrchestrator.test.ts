@@ -146,12 +146,12 @@ describe('webhookToScoreOrchestrator', () => {
         riskSignals: { stripeRiskScore: 68 },
         createdAt: NOW,
         providerEventId: 'evt_charge_succeeded',
-        subjectIdentity: { nombre: 'John Doe', documento: '123456789' },
+        subjectIdentity: { name: 'John Doe', document: '123456789' },
       }),
       ingestEventId: INGEST_ID,
     });
 
-    expect(calls[0]?.event.subjectIdentity).toEqual({ nombre: 'John Doe', documento: '123456789' });
+    expect(calls[0]?.event.subjectIdentity).toEqual({ name: 'John Doe', document: '123456789' });
   });
 
   it('omits subjectIdentity on the CanonicalRiskEvent when absent from the IngestedPaymentEvent', async () => {

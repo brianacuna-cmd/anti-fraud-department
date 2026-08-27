@@ -260,9 +260,9 @@ describe('userRouter (e2e, in-memory repository)', () => {
       .send({ email: 'alice@example.com', password: 'Passw0rd1', firstName: 'Alice', lastName: 'Smith', role: 'ANALYST' });
 
     expect(response.status).toBe(403);
-    // Este fork mete `requireUserRole` delante del gate de solo-organizacion,
-    // asi que un actor USER se rechaza por su rol —un 403 mas concreto— antes
-    // de llegar a la comprobacion de inquilino.
+    // This fork puts `requireUserRole` in front of the organization-only
+    // gate, so a USER actor is rejected by role — a more specific 403 —
+    // before reaching the tenant check.
     expect(response.body.error.code).toBe('FORBIDDEN_ROLE');
   });
 
@@ -396,9 +396,9 @@ describe('userRouter (e2e, in-memory repository)', () => {
       .send({ role: 'SUPERVISOR' });
 
     expect(response.status).toBe(403);
-    // Este fork mete `requireUserRole` delante del gate de solo-organizacion,
-    // asi que un actor USER se rechaza por su rol —un 403 mas concreto— antes
-    // de llegar a la comprobacion de inquilino.
+    // This fork puts `requireUserRole` in front of the organization-only
+    // gate, so a USER actor is rejected by role — a more specific 403 —
+    // before reaching the tenant check.
     expect(response.body.error.code).toBe('FORBIDDEN_ROLE');
   });
 
@@ -595,9 +595,9 @@ describe('userRouter (e2e, in-memory repository)', () => {
         .post('/api/v1/users/me/password')
         .send({ currentPassword: 'OldPassw0rd', newPassword: 'NewPassw0rd' });
 
-      // `requireAuthContext` lanza `UnauthenticatedError`: con un resolver de
-      // sesion real, un token ausente/expirado/revocado deja la request sin
-      // contexto y eso es un 401, no un fallo de cableado.
+      // `requireAuthContext` throws `UnauthenticatedError`: with a real
+      // session resolver, a missing/expired/revoked token leaves the request
+      // without context and that is a 401, not a wiring failure.
       expect(response.status).toBe(401);
     });
   });
@@ -746,9 +746,9 @@ describe('userRouter (e2e, in-memory repository)', () => {
       // No AuthContext was ever attached (self-expired token resolves to
       // null) — `requireScopedAuthContext` throws the wiring error, which
       // Express 5 forwards to the generic error handler.
-      // `requireAuthContext` lanza `UnauthenticatedError`: con un resolver de
-      // sesion real, un token ausente/expirado/revocado deja la request sin
-      // contexto y eso es un 401, no un fallo de cableado.
+      // `requireAuthContext` throws `UnauthenticatedError`: with a real
+      // session resolver, a missing/expired/revoked token leaves the request
+      // without context and that is a 401, not a wiring failure.
       expect(response.status).toBe(401);
     });
   });

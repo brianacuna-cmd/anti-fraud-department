@@ -19,21 +19,29 @@ export const caseManagementErrorStatus: StatusByCode = {
   EVIDENCE_NOT_FOUND: 404,
   CASE_NOTE_NOT_FOUND: 404,
   APPROVAL_REQUEST_NOT_FOUND: 404,
-  // 403 y no 422: la peticion es valida, el actor no.
+  // 403 not 422: the request is valid, the actor is not.
   SELF_APPROVAL_FORBIDDEN: 403,
-  // 422 y no 400: la peticion esta bien formada, el fichero es el problema.
+  // 422 not 400: the request is well formed, the file is the problem.
   EVIDENCE_INFECTED: 422,
-  // 409 y no 403: no falta permiso, falta que alguien tenga el caso. Se
-  // resuelve asignandolo, no cambiando de usuario.
+  // 409 not 403: permission is not missing, someone having the case is.
+  // It is resolved by assigning it, not by switching users.
   CASE_NOT_ASSIGNED: 409,
-  // 409 igual que el anterior: no falta permiso, el expediente esta en un
-  // estado que no admite la accion.
+  // 409 same as the previous: permission is not missing, the case is in a
+  // state that does not admit the action.
   CASE_CLOSED: 409,
-  // 409 y no 400: la peticion es correcta, lo que falta es configuracion del
-  // inquilino. Se resuelve en «Reglas» y «Ajustes antifraude», no cambiando
-  // el cuerpo de la peticion.
-  CASE_INTAKE_NOT_CONFIGURED: 409,
-  // 422 y no 403: la peticion esta bien formada y quien la hace tiene
-  // permiso; el problema es a QUIEN se quiere asignar.
+  // 409 same family: the case is not (yet) in the state the workflow step
+  // requires. See `WorkflowStepGate`.
+  CASE_NOT_REVIEWED: 409,
+  CASE_NOT_INSTRUCTED: 409,
+  CASE_NOT_DECIDED: 409,
+  CASE_ENFORCEMENT_PENDING: 409,
+  CASE_NOT_RESOLVED_FOR_REPORT: 409,
+  // 409: the request is valid, but creating/reopening the case unassigned
+  // right now would leave it with no path to ever getting assigned.
+  NO_ACTIVE_ROUTING_RULE: 409,
+  // 404: the DLQ row was never created or was already consumed by a prior requeue.
+  DLQ_EVENT_NOT_FOUND: 404,
+  // 422 and not 403: the request is well formed and the caller does have
+  // permission; the problem is WHO it is being assigned to.
   ASSIGNEE_CANNOT_WORK_CASES: 422,
 };

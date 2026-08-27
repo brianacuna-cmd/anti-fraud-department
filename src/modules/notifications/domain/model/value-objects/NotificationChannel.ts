@@ -4,25 +4,25 @@ import { unknownChannel } from '../../errors/NotificationsError.js';
  * Closed catalog of notification channels (design D2). Not branded — a
  * closed enum, not an opaque id.
  *
- * `IN_APP` es la bandeja dentro del panel; `EMAIL` sale del sistema. Se
- * modelan como canales distintos y no como un unico "notificar" porque el
- * usuario decide por separado: querer ver un aviso al abrir el panel no
- * implica querer un correo por cada uno.
+ * `IN_APP` is the inbox inside the dashboard; `EMAIL` leaves the system.
+ * They are modeled as distinct channels rather than a single "notify"
+ * because the user decides separately: wanting to see an alert when
+ * opening the panel does not imply wanting an email for each one.
  */
 export type NotificationChannel = 'EMAIL' | 'IN_APP';
 
-/** Catalogo completo, usado para validar. */
+/** Full catalog, used for validation. */
 export const CHANNELS = ['EMAIL', 'IN_APP'] as const;
 
 /**
- * Canales que el usuario puede apagar.
+ * Channels the user can turn off.
  *
- * `IN_APP` queda deliberadamente FUERA: la bandeja del panel entrega siempre.
- * Poder silenciarla significaria que a un analista se le asigna un expediente
- * y no queda constancia de que se le aviso — un agujero de responsabilidad en
- * un departamento antifraude, donde "no me enteré" tiene que ser verificable.
- * El correo si es configurable, porque es el canal intrusivo y el que la gente
- * quiere acotar.
+ * `IN_APP` is deliberately LEFT OUT: the dashboard inbox always delivers.
+ * Being able to mute it would mean an analyst is assigned a case with no
+ * record that they were notified — an accountability hole in an antifraud
+ * department, where "I didn't hear about it" has to be verifiable. Email
+ * is configurable, because it is the intrusive channel and the one people
+ * want to bound.
  */
 export const CONFIGURABLE_CHANNELS = ['EMAIL'] as const;
 

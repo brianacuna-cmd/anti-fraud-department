@@ -66,7 +66,7 @@ describe('calculateAmlAlertSeverity', () => {
     ).toBe('CRITICAL');
   });
 
-  it('keeps the confidence band when nivelRiesgo is missing or unknown', () => {
+  it('keeps the confidence band when riskLevel is missing or unknown', () => {
     expect(
       calculateAmlAlertSeverity(createMatchScore(55), DEFAULT_CONFIDENCE_THRESHOLDS, null),
     ).toBe('MEDIUM');

@@ -117,6 +117,38 @@ export class OutboxEvent {
   }
 
   /**
+   * Publish failed but the event has not exhausted its retry budget.
+   * Keeps `PENDING` so `findPending` picks it up again once `nextRetryAt` is due.
+   * `lockedUntil` is cleared so no stale claim blocks the next sweep.
+   */
+  scheduleRetry(nextRetryAt: Instant): OutboxEvent {
+    return new OutboxEvent({
+      ...this.props,
+      status: 'PENDING',
+      publishAttempts: this.props.publishAttempts + 1,
+      nextRetryAt,
+      lockedUntil: null,
+    });
+  }
+
+  /**
+   * Publish failed and the event has exhausted its retry budget.
+   * Returns a `FAILED` value used only to build a `DeadLetterEvent`; the
+   * relay immediately deletes this row from `outbox_events` rather than
+   * persisting the FAILED status.
+   */
+  markExhausted(reason: string): OutboxEvent {
+    return new OutboxEvent({
+      ...this.props,
+      status: 'FAILED',
+      lastError: reason,
+      publishAttempts: this.props.publishAttempts + 1,
+      nextRetryAt: null,
+      lockedUntil: null,
+    });
+  }
+
+  /**
    * El relay consiguio entregar el evento. `lastError` se limpia: un evento
    * publicado no arrastra el motivo de un intento anterior fallido.
    */

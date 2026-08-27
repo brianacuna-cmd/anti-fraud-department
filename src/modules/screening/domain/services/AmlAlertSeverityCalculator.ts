@@ -19,7 +19,7 @@ const RANK: Readonly<Record<AmlAlertSeverity, number>> = {
 
 /**
  * Severity band from confidence vs the org's alert/signal thresholds.
- * Returns `null` below `alertThreshold` (caller must not open an expediente).
+ * Returns `null` below `alertThreshold` (caller must not open an alert).
  * ALERT_ONLY → MEDIUM; ALERT_AND_SIGNAL → HIGH. Never hardcodes 50/70.
  */
 export function severityFromConfidence(
@@ -35,7 +35,7 @@ export function severityFromConfidence(
   return 'MEDIUM';
 }
 
-/** Parses a watchlist `nivel_riesgo` column when it already is an AmlAlertSeverity. */
+/** Parses a watchlist `risk_level` column when it already is an AmlAlertSeverity. */
 export function parseRiskLevel(value: string | null): AmlAlertSeverity | null {
   if (value === null) {
     return null;
@@ -57,7 +57,7 @@ export function maxSeverity(a: AmlAlertSeverity, b: AmlAlertSeverity | null): Am
 }
 
 /**
- * Calculated expediente severity: the higher of the confidence band and the
+ * Calculated alert severity: the higher of the confidence band and the
  * matched entry's `riskLevel` (when that value is a known severity).
  * `null` means similarity is below the configured alert threshold.
  */

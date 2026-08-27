@@ -9,7 +9,7 @@ import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEvent
 import { generateObjectIdHex } from '../../../../src/shared/kernel/ObjectIdHex.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/screening/infrastructure/PassthroughUnitOfWork.js';
 import { InMemoryAmlAlertRepository } from '../../../helpers/screening/InMemoryAmlAlertRepository.js';
-import { InMemoryAmlExpedienteTimelineRecorder } from '../../../helpers/screening/InMemoryAmlExpedienteTimelineRecorder.js';
+import { InMemoryAmlAlertTimelineRecorder } from '../../../helpers/screening/InMemoryAmlAlertTimelineRecorder.js';
 import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
@@ -36,7 +36,7 @@ function buildMatch(overrides: { name?: string; riskLevel?: string | null; entry
 
 function buildUseCase() {
   const amlAlertRepository = new InMemoryAmlAlertRepository();
-  const timelineRecorder = new InMemoryAmlExpedienteTimelineRecorder();
+  const timelineRecorder = new InMemoryAmlAlertTimelineRecorder();
   const outbox = new InMemoryOutboxEventRepository();
   const openAmlAlert = createOpenAmlAlertUseCase({
     amlAlertRepository,
@@ -52,7 +52,7 @@ function buildUseCase() {
 }
 
 describe('createOpenAmlAlertUseCase', () => {
-  it('does nothing when confianza is below the configured alert threshold', async () => {
+  it('does nothing when confidence is below the configured alert threshold', async () => {
     const { openAmlAlert, amlAlertRepository, timelineRecorder, outbox } = buildUseCase();
 
     const result = await openAmlAlert({
@@ -97,13 +97,13 @@ describe('createOpenAmlAlertUseCase', () => {
     expect(events[0]?.aggregateType).toBe('aml_alerts');
     expect(events[0]?.aggregateId).toBe(String(result.alert?.id));
     expect(events[0]?.payload).toMatchObject({
-      estado: 'OPEN',
-      severidad: 'HIGH',
-      confianza: 82,
+      status: 'OPEN',
+      severity: 'HIGH',
+      confidence: 82,
     });
   });
 
-  it('calculates MEDIUM severity for ALERT_ONLY confianza when the entry has no higher nivelRiesgo', async () => {
+  it('calculates MEDIUM severity for ALERT_ONLY confidence when the entry has no higher riskLevel', async () => {
     const { openAmlAlert } = buildUseCase();
 
     const result = await openAmlAlert({

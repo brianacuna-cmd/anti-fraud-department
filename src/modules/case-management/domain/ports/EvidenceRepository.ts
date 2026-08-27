@@ -5,7 +5,7 @@ import type { Transaction } from './UnitOfWork.js';
 
 /**
  * Outbound port for `evidence` metadata (append-only; the blob lives in
- * `EvidenceStore`). `listByCaseId` backs the ficha; `findById` backs the
+ * `EvidenceStore`). `listByCaseId` backs the case file; `findById` backs the
  * detail + download endpoints (tenant gate applied by the use case).
  */
 export interface EvidenceRepository {

@@ -68,12 +68,12 @@ export function createCreateOrganizationWithAdminUseCase(deps: CreateOrganizatio
 
       const now = deps.clock.now();
       const credential = await deps.passwordHasher.hash(input.adminPassword);
-      // Bootstrap de credenciales propias de la organización (design D36,
-      // la "Phase 7" pendiente): sin esto la organización queda con
-      // Email/PasswordHash null y `POST /auth/organizations/login` nunca
-      // puede resolverla. Se usan las mismas credenciales del formulario —
-      // el mismo email entra por el tier ORGANIZATION (sin slug) o por el
-      // tier USER (con slug) según la pantalla que se elija.
+      // Bootstrap of the organization's own credentials (design D36, the
+      // pending "Phase 7"): without this the organization is left with
+      // Email/PasswordHash null and `POST /auth/organizations/login` can
+      // never resolve it. The same form credentials are reused — the same
+      // email enters via the ORGANIZATION tier (no slug) or the USER tier
+      // (with slug) depending on which screen is chosen.
       const organization = Organization.create({
         id: deps.generateOrganizationId(),
         name: input.name,

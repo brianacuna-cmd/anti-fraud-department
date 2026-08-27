@@ -15,6 +15,7 @@ import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { caseNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
 import { assertAssigned } from '../domain/services/AssignmentGate.js';
 import { assertNotClosed } from '../domain/services/ClosedCaseGate.js';
+import { assertReviewStarted } from '../domain/services/WorkflowStepGate.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
 
@@ -56,10 +57,12 @@ export function createAddCaseNoteUseCase(deps: AddCaseNoteDeps) {
       if (kase.organizationId !== organizationId) {
         throw forbiddenCrossTenant('case does not belong to the actor organization');
       }
-      // Sin responsable el expediente esta congelado. Ver `AssignmentGate`.
+      // Without an assignee the case is frozen. See `AssignmentGate`.
       assertAssigned(kase);
-      // Un expediente cerrado no se instruye. Ver `ClosedCaseGate`.
+      // A closed case is not worked. See `ClosedCaseGate`.
       assertNotClosed(kase);
+      // Instruction comes after review. See `WorkflowStepGate`.
+      assertReviewStarted(kase);
 
       const now = deps.clock.now();
       const note = CaseNoteAggregate.create({

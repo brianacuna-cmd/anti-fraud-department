@@ -1,12 +1,12 @@
 import type { AmlAlert } from '../../../../../domain/model/aggregates/AmlAlert.js';
-import type { AmlExpedienteTimelineEvent } from '../../../../../domain/ports/AmlExpedienteTimelineRecorder.js';
+import type { AmlAlertTimelineEvent } from '../../../../../domain/ports/AmlAlertTimelineRecorder.js';
 
 export interface AmlAlertMatchedEntryDto {
   readonly entryId: string;
   readonly watchlistId: string;
-  readonly nombre: string;
-  readonly documento: string | null;
-  readonly nivelRiesgo: string | null;
+  readonly name: string;
+  readonly document: string | null;
+  readonly riskLevel: string | null;
   readonly matchField: string;
   readonly algorithm: string;
 }
@@ -15,12 +15,12 @@ export interface AmlAlertResponseDto {
   readonly id: string;
   readonly organizationId: string;
   readonly customerId: string;
-  readonly tipoAlerta: string;
-  readonly entidadSospechosa: string;
-  readonly confianza: number;
-  readonly fuenteDeteccion: string;
-  readonly estado: string;
-  readonly severidad: string;
+  readonly alertType: string;
+  readonly suspectedEntity: string;
+  readonly confidence: number;
+  readonly detectionSource: string;
+  readonly status: string;
+  readonly severity: string;
   readonly matchedEntry: AmlAlertMatchedEntryDto;
   readonly caseId: string | null;
   readonly createdAt: string;
@@ -41,18 +41,18 @@ export function toAmlAlertResponse(alert: AmlAlert): AmlAlertResponseDto {
     id: String(alert.id),
     organizationId: alert.organizationId,
     customerId: alert.customerId,
-    tipoAlerta: alert.alertType,
-    entidadSospechosa: alert.suspectedEntity,
-    confianza: alert.confidence,
-    fuenteDeteccion: alert.detectionSource,
-    estado: alert.status,
-    severidad: alert.severity,
+    alertType: alert.alertType,
+    suspectedEntity: alert.suspectedEntity,
+    confidence: alert.confidence,
+    detectionSource: alert.detectionSource,
+    status: alert.status,
+    severity: alert.severity,
     matchedEntry: {
       entryId: String(alert.matchedEntry.entryId),
       watchlistId: String(alert.matchedEntry.watchlistId),
-      nombre: alert.matchedEntry.name,
-      documento: alert.matchedEntry.document,
-      nivelRiesgo: alert.matchedEntry.riskLevel,
+      name: alert.matchedEntry.name,
+      document: alert.matchedEntry.document,
+      riskLevel: alert.matchedEntry.riskLevel,
       matchField: alert.matchedEntry.matchField,
       algorithm: alert.matchedEntry.algorithm,
     },
@@ -63,7 +63,7 @@ export function toAmlAlertResponse(alert: AmlAlert): AmlAlertResponseDto {
 }
 
 export function toAmlAlertTimelineEventResponse(
-  event: AmlExpedienteTimelineEvent,
+  event: AmlAlertTimelineEvent,
 ): AmlAlertTimelineEventDto {
   return {
     id: event.id,

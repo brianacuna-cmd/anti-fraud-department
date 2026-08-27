@@ -41,14 +41,14 @@ export interface AuthRouterDeps {
    */
   readonly issueOrganizationSession: ReturnType<typeof createIssueOrganizationSessionUseCase>;
   /**
-   * Verificación de credenciales de ORGANIZATION para el paso 1 del login.
+   * ORGANIZATION credential check for step 1 of login.
    *
-   * OBLIGATORIA a propósito. Mientras fue opcional, `main.ts` dejó de
-   * inyectarla sin que nada lo advirtiera: el paso 1 respondía
-   * `OTP_REQUIRED` a cualquier email —enviándole un correo— y las
-   * credenciales no se comprobaban hasta el paso 3. Una guarda de seguridad
-   * que se desactiva sola cuando falta su dependencia es peor que no
-   * tenerla, así que ahora olvidarla es un error de compilación.
+   * REQUIRED on purpose. While it was optional, `main.ts` stopped injecting
+   * it with nothing warning: step 1 answered `OTP_REQUIRED` to any email
+   * — sending them mail — and credentials were not checked until step 3.
+   * A security gate that silently disables itself when its dependency is
+   * missing is worse than not having it, so forgetting it is now a compile
+   * error.
    */
   readonly authenticateOrganization: ReturnType<typeof createAuthenticateActorUseCase>;
   /** Step 2, challenge path (design "IssueSession flow"). */
@@ -65,15 +65,15 @@ export interface AuthRouterDeps {
    */
   readonly refreshSession: ReturnType<typeof createRefreshSessionUseCase>;
   /**
-   * OBLIGATORIA: por aqui sale el OTP del paso 1 del login de organizacion.
-   * Mientras fue opcional, `main.ts` dejo de inyectarla y el flujo respondia
-   * `OTP_REQUIRED` sin enviar nada, dejando al usuario esperando un codigo
-   * que nunca salio.
+   * REQUIRED: organization-login step 1 OTP goes out through here. While it
+   * was optional, `main.ts` stopped injecting it and the flow answered
+   * `OTP_REQUIRED` without sending anything, leaving the user waiting for a
+   * code that never left.
    */
   readonly emailSender: EmailSender;
   /**
-   * OBLIGATORIA: los pasos 2 y 3 leen y persisten el secreto TOTP. Sin ella el
-   * enrolamiento no se guarda y cada login vuelve a pedir el QR.
+   * REQUIRED: steps 2 and 3 read and persist the TOTP secret. Without it
+   * enrollment is not saved and every login asks for the QR again.
    */
   readonly db: Db;
 }
@@ -121,10 +121,11 @@ export function authRouter(deps: AuthRouterDeps): Router {
 
   // Organization 3-step 2FA pending state & enrolled TOTP secrets
   /**
-   * El OTP caduca y admite un número acotado de intentos. Sin lo primero un
-   * código seguía siendo válido indefinidamente; sin lo segundo, seis dígitos
-   * son forzables probando. Al agotarse los intentos se descarta el pendiente
-   * entero, así que hay que volver a autenticarse desde el paso 1.
+   * The OTP expires and admits a bounded number of attempts. Without the
+   * first, a code stayed valid indefinitely; without the second, six digits
+   * are brute-forceable by trying. When attempts are exhausted the whole
+   * pending login is discarded, so the user must authenticate again from
+   * step 1.
    */
   const ORG_OTP_TTL_MS = 10 * 60 * 1000;
   const ORG_OTP_MAX_ATTEMPTS = 5;
@@ -145,11 +146,11 @@ export function authRouter(deps: AuthRouterDeps): Router {
   router.post('/auth/organizations/login', async (req, res) => {
     const body = parseRequest(organizationsLoginSchema, req.body);
 
-    // La contraseña se verifica AQUÍ, antes de nada. Antes solo se guardaba y
-    // no se comprobaba hasta el paso 3, así que una credencial inválida
-    // avanzaba a la pantalla de OTP y disparaba un correo: el rechazo llegaba
-    // dos pasos tarde y cualquiera podía provocar envíos a esa dirección.
-    // Lanza `invalidCredentials` (401), igual que el login de usuario.
+    // Password is verified HERE, before anything else. Previously it was
+    // only stored and not checked until step 3, so an invalid credential
+    // advanced to the OTP screen and triggered an email: rejection arrived
+    // two steps late and anyone could provoke sends to that address.
+    // Throws `invalidCredentials` (401), same as user login.
     await deps.authenticateOrganization({
       email: body.email,
       password: body.password,
@@ -169,9 +170,9 @@ export function authRouter(deps: AuthRouterDeps): Router {
       attempts: 0,
     });
 
-    // No se espera al envio: la respuesta no debe depender de la latencia del
-    // proveedor de correo. Pero el fallo SI se registra — tragarselo dejaba al
-    // usuario esperando un codigo que nunca salio, sin rastro de por que.
+    // Do not await the send: the response must not depend on the mail
+    // provider's latency. But failure IS logged — swallowing it left the
+    // user waiting for a code that never left, with no trace of why.
     void deps.emailSender
       .send({
         from: 'fraud@backendstudio.tech',
@@ -204,17 +205,18 @@ export function authRouter(deps: AuthRouterDeps): Router {
 
     if (pending.otp !== body.otp) {
       pending.attempts += 1;
-      // Agotados los intentos se invalida el pendiente: si no, cada 401 dejaba
-      // el mismo código vivo para el siguiente intento, sin coste alguno.
+      // Exhausted attempts invalidate the pending login: otherwise every 401
+      // left the same live code for the next try, at no cost.
       if (pending.attempts >= ORG_OTP_MAX_ATTEMPTS) pendingOrgLogins.delete(emailKey);
       res.status(401).json({ message: 'Código OTP de Email incorrecto o expirado' });
       return;
     }
 
-    // Secreto TOTP ya enrolado, si lo hay. Nombres en snake_case: la migracion
-    // a `organizations`/`users` dejo atras las colecciones PascalCase, y estas
-    // consultas se quedaron apuntando a las viejas — nunca encontraban nada, de
-    // modo que cada login repetia el alta en vez de retar al factor existente.
+    // Already-enrolled TOTP secret, if any. snake_case names: the migration
+    // to `organizations`/`users` left the PascalCase collections behind, and
+    // these queries kept pointing at the old ones — they never found
+    // anything, so every login repeated enrollment instead of challenging
+    // the existing factor.
     let existingSecret: string | null = null;
     {
       const pattern = `^${emailKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
@@ -282,9 +284,9 @@ export function authRouter(deps: AuthRouterDeps): Router {
       return;
     }
 
-    // Persiste el secreto TOTP recien enrolado. `updated_at` va como Date, no
-    // como cadena ISO: el resto del esquema lo tipa asi, y guardarlo como texto
-    // rompia a cualquier lector que lo tratara como fecha.
+    // Persist the newly enrolled TOTP secret. `updated_at` goes as Date, not
+    // as an ISO string: the rest of the schema types it that way, and storing
+    // it as text broke any reader that treated it as a date.
     {
       const pattern = `^${matchedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
       const emailFilter = { email: { $regex: pattern, $options: 'i' } };
@@ -294,8 +296,8 @@ export function authRouter(deps: AuthRouterDeps): Router {
         .collection('organizations')
         .updateOne(emailFilter, { $set: { mfa_secret: matchedCreds.totpSecret, updated_at: now } });
 
-      // El usuario administrador refleja el mismo factor, para que su ficha
-      // muestre MFA activo.
+      // The admin user mirrors the same factor, so their record shows MFA
+      // as active.
       await deps.db.collection('users').updateMany(emailFilter, {
         $set: { 'mfa.secret': matchedCreds.totpSecret, 'mfa.enabled': true, updated_at: now },
       });

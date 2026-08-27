@@ -1,8 +1,8 @@
 import type { AuthContext } from '../../../shared/kernel/AuthContext.js';
 import type {
-  AmlExpedienteTimelineEvent,
-  AmlExpedienteTimelineRecorder,
-} from '../domain/ports/AmlExpedienteTimelineRecorder.js';
+  AmlAlertTimelineEvent,
+  AmlAlertTimelineRecorder,
+} from '../domain/ports/AmlAlertTimelineRecorder.js';
 import type { createGetAmlAlertUseCase } from './GetAmlAlert.js';
 
 export interface GetAmlAlertTimelineInput {
@@ -12,14 +12,14 @@ export interface GetAmlAlertTimelineInput {
 
 export interface GetAmlAlertTimelineDeps {
   readonly getAmlAlert: ReturnType<typeof createGetAmlAlertUseCase>;
-  readonly timelineRecorder: AmlExpedienteTimelineRecorder;
+  readonly timelineRecorder: AmlAlertTimelineRecorder;
 }
 
 /** Oldest-first timeline of one AML alert. Reuses GetAmlAlert tenant gates. */
 export function createGetAmlAlertTimelineUseCase(deps: GetAmlAlertTimelineDeps) {
   return async function getAmlAlertTimeline(
     input: GetAmlAlertTimelineInput,
-  ): Promise<AmlExpedienteTimelineEvent[]> {
+  ): Promise<AmlAlertTimelineEvent[]> {
     const alert = await deps.getAmlAlert(input);
     return deps.timelineRecorder.listByAlertId(String(alert.id));
   };

@@ -8,27 +8,27 @@ import { createInvestigationId } from '../domain/model/value-objects/Investigati
 import { investigationNotFound, forbiddenCrossTenant, invariantViolation } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 
-/** Rondas de expansión por defecto: la entidad, quien la toca, y quien toca a esos. */
+/** Default expansion rounds: the entity, who touches it, and who touches those. */
 export const DEFAULT_GRAPH_DEPTH = 3;
 
 /**
- * Techo duro de profundidad. Cada ronda multiplica el frente, así que dejar
- * que el cliente pida 50 es regalarle un modo de tumbar el proceso desde una
+ * Hard depth ceiling. Each round multiplies the frontier, so letting the
+ * client ask for 50 would gift them a way to take the process down from a
  * query string.
  */
 export const MAX_GRAPH_DEPTH = 5;
 
 /**
- * Expedientes que se traen por ronda. Junto con `MAX_GRAPH_NODES` acota el
- * coste: sin esto, un identificador compartido por medio inquilino convierte
- * la ronda siguiente en un escaneo de la colección entera.
+ * Cases fetched per round. Together with `MAX_GRAPH_NODES` it bounds the
+ * cost: without this, an identifier shared by half the tenant turns the
+ * next round into a scan of the entire collection.
  */
 export const CASES_PER_ROUND = 200;
 
 export interface BuildEntityNetworkGraphInput {
   readonly auth: AuthContext;
   readonly investigationId: string;
-  /** Rondas de expansión. Por defecto `DEFAULT_GRAPH_DEPTH`; tope `MAX_GRAPH_DEPTH`. */
+  /** Expansion rounds. Defaults to `DEFAULT_GRAPH_DEPTH`; cap is `MAX_GRAPH_DEPTH`. */
   readonly maxDepth?: number;
 }
 
@@ -40,18 +40,18 @@ export interface BuildEntityNetworkGraphDeps {
 /**
  * INV-013 — Entity Network Graph Builder.
  *
- * Construye la red de una investigación profunda: parte del sujeto
- * (`subjectType`/`subjectId`) y se expande en anchura por los identificadores
- * que los expedientes comparten, alternando identificador → expedientes que lo
- * citan → identificadores nuevos de esos expedientes.
+ * Builds the network of a deep investigation: starts from the subject
+ * (`subjectType`/`subjectId`) and expands breadth-first through the
+ * identifiers that cases share, alternating identifier → cases that cite
+ * it → new identifiers from those cases.
  *
- * Las guardas son las mismas que `GetInvestigation` —tenant, 404 si no existe,
- * 403 si es de otra organización— porque el grafo no es un dato nuevo sino una
- * vista de expedientes que el actor ya podía leer. Lo que sí se respeta es el
- * aislamiento: la expansión pasa siempre `organizationId`, así que una red que
- * cruce inquilinos se corta en el borde. Es deliberado, aunque la wallet sea
- * literalmente la misma: la alternativa filtra a un tenant la existencia de
- * expedientes de otro.
+ * The gates are the same as `GetInvestigation` —tenant, 404 if it does not
+ * exist, 403 if it belongs to another organization— because the graph is not
+ * new data but a view of cases the actor could already read. What is
+ * respected is isolation: expansion always passes `organizationId`, so a
+ * network that would cross tenants is cut at the edge. That is deliberate,
+ * even if the wallet is literally the same: the alternative would leak to
+ * one tenant the existence of another tenant's cases.
  */
 export function createBuildEntityNetworkGraphUseCase(deps: BuildEntityNetworkGraphDeps) {
   return async function buildEntityNetworkGraph(
@@ -85,9 +85,10 @@ export function createBuildEntityNetworkGraphUseCase(deps: BuildEntityNetworkGra
         limit: CASES_PER_ROUND,
       });
       frontier = builder.absorb(cases, round);
-      // Frente vacío = la red se agotó. Parar aquí deja `truncated` en false,
-      // que es la diferencia entre "esto es toda la red" y "esto es lo que
-      // cupo": sin el corte, el bucle gastaría rondas y el resultado mentiría.
+      // Empty frontier = the network is exhausted. Stopping here leaves
+      // `truncated` as false, which is the difference between "this is the
+      // whole network" and "this is what fit": without the cut, the loop
+      // would spend rounds and the result would lie.
       if (frontier.length === 0) {
         break;
       }

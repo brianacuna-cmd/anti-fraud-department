@@ -43,17 +43,17 @@ export class SessionTokenAuthContextResolver implements AuthContextResolver {
     private readonly sessionTokenService: SessionTokenService,
     private readonly sessionRepository: SessionRepository,
     /**
-     * Necesario para poblar `AuthContext.roleId`.
+     * Needed to populate `AuthContext.roleId`.
      *
-     * Sin el, el rol llega siempre `null` y toda guarda de case-management
-     * (`requireRole`) rechaza a cualquiera con `role "null" is not authorized`
-     * — reabrir, exportar, acciones por lote, reglas de enrutamiento,
-     * cumplimiento y aprobaciones quedaban inaccesibles por sesion real. Las
-     * pruebas no lo veian porque construyen el `AuthContext` a mano.
+     * Without it, role always arrives `null` and every case-management guard
+     * (`requireRole`) rejects anyone with `role "null" is not authorized`
+     * — reopen, export, bulk actions, routing rules, compliance, and
+     * approvals were unreachable over a real session. Tests did not see
+     * this because they build the `AuthContext` by hand.
      *
-     * Se resuelve por peticion contra el repositorio, nunca desde el token: un
-     * cambio de rol tiene que surtir efecto sin esperar a que caduque la
-     * sesion.
+     * Resolved per request against the repository, never from the token: a
+     * role change has to take effect without waiting for the session to
+     * expire.
      */
     private readonly userRepositoryFactory: UserRepositoryFactory,
   ) {}
@@ -130,12 +130,12 @@ export class SessionTokenAuthContextResolver implements AuthContextResolver {
   }
 
   /**
-   * Rol del usuario que firma la peticion.
+   * Role of the user signing the request.
    *
-   * Solo el actor USER tiene rol: la ORGANIZACION es dueña del inquilino y el
-   * PLATFORM_ADMIN es el operador global, y ambos pasan las guardas por su
-   * `actorType`, no por un `roleId`. Un usuario que ya no exista devuelve
-   * `null`, que las guardas rechazan — que es lo correcto.
+   * Only the USER actor has a role: ORGANIZATION owns the tenant and
+   * PLATFORM_ADMIN is the global operator, and both pass guards by their
+   * `actorType`, not by a `roleId`. A user that no longer exists returns
+   * `null`, which the guards reject — which is correct.
    */
   private async resolveRoleId(
     actorType: string,

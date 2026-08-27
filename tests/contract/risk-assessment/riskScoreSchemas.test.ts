@@ -24,8 +24,8 @@ describe('calculateRiskScoreSchema subjectIdentity', () => {
     const result = calculateRiskScoreSchema.safeParse({
       ...BASE_BODY,
       subjectIdentity: {
-        nombre: 'John Smith',
-        documento: '123456',
+        name: 'John Smith',
+        document: '123456',
         walletAddress: '0xabc',
         entryType: 'PERSON',
       },
@@ -34,8 +34,8 @@ describe('calculateRiskScoreSchema subjectIdentity', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.subjectIdentity).toEqual({
-        nombre: 'John Smith',
-        documento: '123456',
+        name: 'John Smith',
+        document: '123456',
         walletAddress: '0xabc',
         entryType: 'PERSON',
       });
@@ -45,7 +45,7 @@ describe('calculateRiskScoreSchema subjectIdentity', () => {
   it('accepts a subjectIdentity with only some fields present', () => {
     const result = calculateRiskScoreSchema.safeParse({
       ...BASE_BODY,
-      subjectIdentity: { nombre: 'John Smith' },
+      subjectIdentity: { name: 'John Smith' },
     });
 
     expect(result.success).toBe(true);
@@ -63,7 +63,7 @@ describe('calculateRiskScoreSchema subjectIdentity', () => {
   it('rejects an unknown key nested inside subjectIdentity (.strict())', () => {
     const result = calculateRiskScoreSchema.safeParse({
       ...BASE_BODY,
-      subjectIdentity: { nombre: 'John Smith', extra: 'nope' },
+      subjectIdentity: { name: 'John Smith', extra: 'nope' },
     });
 
     expect(result.success).toBe(false);

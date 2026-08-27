@@ -18,7 +18,7 @@ export interface ListUsersDeps {
 /** Tenant Isolation on List (user-lifecycle spec): never leaks another org's users. */
 export function createListUsersUseCase(deps: ListUsersDeps) {
   return async function listUsers(input: ListUsersInput): Promise<UserListPage> {
-    // role-authorization: ANALYST no lista al equipo — solo ve /users/me.
+    // role-authorization: ANALYST does not list the team — they only see /users/me.
     await requireUserRole(input.auth, deps.userRepositoryFactory, USER_READ_ROLES, 'list users');
     const repository = deps.userRepositoryFactory.forTenant(createOrganizationId(requireTenantContext(input.auth)));
     return repository.list(input.limit, input.cursor);

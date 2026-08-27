@@ -2,7 +2,7 @@ import { decryptFinturuPayload, isEncryptedPayload } from '../../inbound/http/Fi
 
 export interface FinturuCustomerDto {
   readonly idUserBridge?: string;
-  /** Presente cuando Bridge ya trae enlazado el cliente de Stripe. */
+  /** Present when Bridge already has the Stripe customer linked. */
   readonly idCustomer?: string;
   readonly idUser?: string;
   readonly name?: string;
@@ -37,13 +37,13 @@ export interface FinturuTransferDto {
 
 export interface FinturuStripeCustomerDto {
   readonly idCustomer?: string;
-  /** Stripe devuelve el identificador como `id` en algunos endpoints. */
+  /** Stripe returns the identifier as `id` on some endpoints. */
   readonly id?: string;
   readonly name?: string;
   readonly email?: string;
   readonly balance?: number;
   readonly currency?: string;
-  /** Correlacion cruzada: Finturu guarda aqui `idUser`/`idUserBridge`. */
+  /** Cross-correlation: Finturu stores `idUser`/`idUserBridge` here. */
   readonly metadata?: Record<string, unknown> | null;
 }
 
@@ -58,7 +58,7 @@ export interface FinturuStripeTransferDto {
 export interface FinturuApiClientOptions {
   readonly baseUrl: string;
   readonly encryptionKey?: string;
-  /** Corta la petición si la API de Finturu no responde. Por defecto 10 s. */
+  /** Cuts the request off if the Finturu API does not respond. Default 10 s. */
   readonly timeoutMs?: number;
 }
 
@@ -82,14 +82,15 @@ export class FinturuApiClient {
   }
 
   /**
-   * Nunca propaga el fallo: una API de Finturu caída degrada la respuesta al
-   * `fallback` en lugar de tumbar el endpoint. Pero SÍ deja rastro en el log y
-   * corta a los `timeoutMs`: sin ese corte una ruta que no responde deja la
-   * petición colgada indefinidamente y el frontend girando para siempre.
+   * Never propagates the failure: a down Finturu API degrades the reply to
+   * `fallback` instead of taking the endpoint down. It DOES leave a trail in
+   * the log and cuts at `timeoutMs`: without that cutoff a route that does not
+   * respond leaves the request hanging indefinitely and the frontend spinning
+   * forever.
    *
-   * El `fallback` es parametrizable porque `[]` miente en los listados que hoy
-   * no existen aguas arriba: un 404 se veía en pantalla como un "0" tan firme
-   * como un cero real. Esos pasan `null` para poder decir "no disponible".
+   * `fallback` is a parameter because `[]` lies on the listings that do not
+   * exist upstream yet: a 404 showed on screen as a "0" as confident as a real
+   * zero. Those pass `null` so they can say "not available" instead.
    */
   private async fetchEndpoint<T>(path: string, fallback: T = [] as unknown as T): Promise<T> {
     const url = this.normalizeUrl(path);
@@ -120,7 +121,7 @@ export class FinturuApiClient {
       const reason = error instanceof Error && error.name === 'TimeoutError'
         ? `sin respuesta en ${this.timeoutMs} ms`
         : (error as Error).message;
-      console.warn(`[finturu] GET ${url} falló: ${reason}`);
+      console.warn(`[finturu] GET ${url} failed: ${reason}`);
       return fallback;
     }
   }
@@ -131,9 +132,9 @@ export class FinturuApiClient {
   }
 
   /**
-   * Una página de clientes en lugar del padrón completo. La latencia de Bridge
-   * es proporcional al tamaño de página, así que pedir 10 tarda ~2 s frente a
-   * los más de dos minutos que cuesta recorrerlo entero.
+   * One page of customers instead of the full directory. Bridge latency is
+   * proportional to page size, so asking for 10 takes ~2 s versus the more
+   * than two minutes it takes to walk the whole thing.
    */
   async getCustomersPage(
     limit: number,
@@ -191,10 +192,10 @@ export class FinturuApiClient {
   }
 
   /**
-   * `null` = no se pudo consultar. Hoy Finturu tiene comentadas las rutas de
-   * cuentas virtuales y de historial ACH (responden 404), y devolver `[]` las
-   * pintaba como "este cliente no tiene ninguna" — una afirmación que nadie ha
-   * comprobado. El panel distingue ese `null` y muestra "No disponible".
+   * `null` = could not be queried. Finturu currently has the virtual-accounts
+   * and ACH-history routes commented out (they answer 404), and returning `[]`
+   * painted them as "this customer has none" — a claim nobody verified. The
+   * panel tells that `null` apart and shows "Not available".
    */
   async getVirtualAccounts(idUserBridge: string): Promise<readonly unknown[] | null> {
     const res = await this.fetchEndpoint<unknown>(`/customer/${encodeURIComponent(idUserBridge)}/virtual-accounts`, null);
@@ -234,5 +235,97 @@ export class FinturuApiClient {
   async getStripeTransfers(): Promise<readonly FinturuStripeTransferDto[]> {
     const res = await this.fetchEndpoint<unknown>('/stripe/transfers');
     return Array.isArray(res) ? (res as FinturuStripeTransferDto[]) : [];
+  }
+
+  async getStripeConnectedAccounts(
+    limit: number,
+    offset: number,
+  ): Promise<{ items: readonly Record<string, unknown>[]; total: number }> {
+    const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    const res = await this.fetchEndpoint<Record<string, unknown>>(`/stripe/connected-accounts?${query.toString()}`);
+    return {
+      items: Array.isArray(res?.items) ? (res.items as Record<string, unknown>[]) : [],
+      total: typeof res?.total === 'number' ? res.total : 0,
+    };
+  }
+
+  /**
+   * El endpoint responde `{ connectAccount, platformCustomer }`, no la
+   * cuenta pelada: sin desenvolver, un objeto `{ connectAccount: null, ... }`
+   * es igual de "verdadero" que uno con cuenta real, y el panel mostraba
+   * "Habilitada" para cualquier cliente cuya consulta respondiera bien,
+   * tuviera o no cuenta Stripe.
+   */
+  async getStripeConnectedAccount(idUserBridge: string): Promise<Record<string, unknown> | null> {
+    const res = await this.fetchEndpoint<Record<string, unknown>>(
+      `/stripe/connected-account?idUserBridge=${encodeURIComponent(idUserBridge)}`,
+    );
+    const connectAccount = res && typeof res === 'object' && !Array.isArray(res) ? res.connectAccount : null;
+    return connectAccount && typeof connectAccount === 'object' && !Array.isArray(connectAccount)
+      ? (connectAccount as Record<string, unknown>)
+      : null;
+  }
+
+  async getStripeConnectedAccountStatus(providerId: string): Promise<Record<string, unknown> | null> {
+    const res = await this.fetchEndpoint<Record<string, unknown>>(
+      `/stripe/connected-account/${encodeURIComponent(providerId)}/status`,
+    );
+    return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
+  }
+
+  async getStripeConnectedAccountBalance(providerId: string): Promise<Record<string, unknown> | null> {
+    const res = await this.fetchEndpoint<Record<string, unknown>>(
+      `/stripe/connected-account/${encodeURIComponent(providerId)}/balance`,
+    );
+    return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
+  }
+
+  async getStripeConnectedAccountCharges(
+    providerId: string,
+    limit = 10,
+    startingAfter?: string,
+  ): Promise<Record<string, unknown> | null> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (startingAfter) query.set('startingAfter', startingAfter);
+    const res = await this.fetchEndpoint<Record<string, unknown>>(
+      `/stripe/connected-account/${encodeURIComponent(providerId)}/charges?${query.toString()}`,
+    );
+    return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
+  }
+
+  async getStripeConnectedAccountChargeDetail(
+    providerId: string,
+    chargeId: string,
+  ): Promise<Record<string, unknown> | null> {
+    const res = await this.fetchEndpoint<Record<string, unknown>>(
+      `/stripe/connected-account/${encodeURIComponent(providerId)}/charge/${encodeURIComponent(chargeId)}`,
+    );
+    return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
+  }
+
+  private async getStripeConnectedAccountPagedList(
+    resource: 'disputes' | 'fraud-warnings' | 'payouts',
+    providerId: string,
+    limit = 10,
+    startingAfter?: string,
+  ): Promise<Record<string, unknown> | null> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (startingAfter) query.set('startingAfter', startingAfter);
+    const res = await this.fetchEndpoint<Record<string, unknown>>(
+      `/stripe/connected-account/${encodeURIComponent(providerId)}/${resource}?${query.toString()}`,
+    );
+    return res && typeof res === 'object' && !Array.isArray(res) ? res : null;
+  }
+
+  async getStripeConnectedAccountDisputes(providerId: string, limit = 10, startingAfter?: string) {
+    return this.getStripeConnectedAccountPagedList('disputes', providerId, limit, startingAfter);
+  }
+
+  async getStripeConnectedAccountFraudWarnings(providerId: string, limit = 10, startingAfter?: string) {
+    return this.getStripeConnectedAccountPagedList('fraud-warnings', providerId, limit, startingAfter);
+  }
+
+  async getStripeConnectedAccountPayouts(providerId: string, limit = 10, startingAfter?: string) {
+    return this.getStripeConnectedAccountPagedList('payouts', providerId, limit, startingAfter);
   }
 }

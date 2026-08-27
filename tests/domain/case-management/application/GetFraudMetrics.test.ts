@@ -72,8 +72,8 @@ describe('createGetFraudMetricsUseCase', () => {
   });
 
   /**
-   * El panel es justo lo que el plano de gobierno SI puede hacer, ahora que
-   * no opera sobre expedientes.
+   * The dashboard is exactly what the governance plane CAN do, now that it
+   * does not operate on cases.
    */
   it.each([
     ['ADMIN', () => actor('ADMIN')],
@@ -96,9 +96,9 @@ describe('createGetFraudMetricsUseCase', () => {
   });
 
   /**
-   * PLATFORM_ADMIN no tiene inquilino, asi que no hay panel que ensenarle.
-   * Cae en la guarda de rol antes que en la de inquilino —llega sin
-   * `roleId`— y ese orden da igual: lo importante es que no se consulte nada.
+   * PLATFORM_ADMIN has no tenant, so there is no dashboard to show them.
+   * They hit the role guard before the tenant guard — they arrive without
+   * `roleId` — and that order does not matter: the point is nothing is queried.
    */
   it('rejects PLATFORM_ADMIN before touching the reader', async () => {
     const { getFraudMetrics, metrics } = buildUseCase();
@@ -135,8 +135,8 @@ describe('createGetFraudMetricsUseCase', () => {
   });
 
   /**
-   * Sin esto la barra de cada responsable se rotula con un ObjectId en
-   * hexadecimal, que no dice quién tiene los expedientes encima.
+   * Without this each owner's bar is labelled with a hexadecimal ObjectId,
+   * which does not say who has the cases on their plate.
    */
   it('names the assignees, and leaves an unresolved one null instead of inventing a name', async () => {
     const { getFraudMetrics } = buildUseCase([

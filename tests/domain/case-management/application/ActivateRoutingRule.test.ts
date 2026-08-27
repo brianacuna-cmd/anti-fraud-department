@@ -1,9 +1,9 @@
 import { oid } from '../../../support/oid.js';
-import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { createActivateRoutingRuleUseCase } from '../../../../src/modules/case-management/application/ActivateRoutingRule.js';
 import { createRouteCaseUseCase } from '../../../../src/modules/case-management/application/RouteCase.js';
+import { AllowAllAssigneeDirectory } from '../../../helpers/case-management/AllowAllAssigneeDirectory.js';
 import { CaseManagementError } from '../../../../src/modules/case-management/domain/errors/CaseManagementError.js';
 import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
 import { CaseRoutingRule } from '../../../../src/modules/case-management/domain/model/aggregates/CaseRoutingRule.js';
@@ -78,9 +78,6 @@ class ScriptedRoutingEngine implements RoutingEngine {
     return this.queue.shift() ?? { targetUserId: null, targetRoleId: null };
   }
 }
-
-/** Permisiva: estas pruebas comprueban otra cosa. */
-const assigneeDirectory = new InMemoryAssigneeDirectory();
 
 describe('ActivateRoutingRule', () => {
   it('activates a draft without deactivating sibling ACTIVE rules (non-exclusive)', async () => {
@@ -234,7 +231,7 @@ describe('ActivateRoutingRule', () => {
       timelineRecorder: new InMemoryTimelineRecorder(),
       auditRecorder: new InMemoryCaseManagementAuditRecorder(),
       fraudConfig,
-      assigneeDirectory,
+      assigneeDirectory: new AllowAllAssigneeDirectory(),
       clock: new FixedClock(LATER),
       generateTimelineEventId,
     });

@@ -19,6 +19,7 @@ import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { createInvestigationId } from '../domain/model/value-objects/InvestigationId.js';
 import { assertAssigned } from '../domain/services/AssignmentGate.js';
 import { assertNotClosed } from '../domain/services/ClosedCaseGate.js';
+import { assertReviewStarted } from '../domain/services/WorkflowStepGate.js';
 import {
   caseNotFound,
   forbiddenCrossTenant,
@@ -73,10 +74,12 @@ export function createRegisterEvidenceUseCase(deps: RegisterEvidenceDeps) {
     if (kase.organizationId !== organizationId) {
       throw forbiddenCrossTenant('case does not belong to the actor organization');
     }
-    // Sin responsable el expediente esta congelado. Ver `AssignmentGate`.
+    // Without an assignee the case is frozen. See `AssignmentGate`.
     assertAssigned(kase);
-    // Un expediente cerrado no se instruye. Ver `ClosedCaseGate`.
+    // A closed case is not worked. See `ClosedCaseGate`.
     assertNotClosed(kase);
+    // Instruction comes after review. See `WorkflowStepGate`.
+    assertReviewStarted(kase);
 
     let investigationId = null;
     if (input.investigationId !== undefined && input.investigationId !== null) {
@@ -95,11 +98,11 @@ export function createRegisterEvidenceUseCase(deps: RegisterEvidenceDeps) {
     const sha256 = createHash('sha256').update(input.bytes).digest('hex');
     const storageKey = `${organizationId}/${caseId}/${evidenceId}`;
 
-    // INV-015: escanear ANTES de tocar el almacen. Si el fichero esta
-    // infectado no se guarda en ningun sitio, asi que no hay nada que limpiar
-    // despues — y no queda una copia de malware en el bucket de evidencias
-    // esperando a que alguien la descargue. La entrada de auditoria del
-    // rechazo se escribe igual: el intento es en si mismo informacion.
+    // INV-015: scan BEFORE touching the store. If the file is infected it is
+    // not saved anywhere, so there is nothing to clean up afterwards — and no
+    // copy of malware is left in the evidence bucket waiting for someone to
+    // download it. The audit row for the rejection is still written: the
+    // attempt itself is information.
     const verdict = await deps.malwareScanner.scan(input.bytes, input.filename);
     if (verdict.status === 'INFECTED') {
       await deps.auditRecorder.record({

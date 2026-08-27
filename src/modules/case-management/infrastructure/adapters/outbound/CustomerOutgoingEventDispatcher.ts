@@ -9,9 +9,9 @@ export interface CustomerOutgoingEventDispatcherDeps {
   readonly outgoingEvents: CustomerOutgoingEventRepository;
   readonly webhookClient: OutgoingWebhookClient;
   /**
-   * De donde sale el secreto de firma de cada inquilino (EVT-003). Opcional
-   * para no romper montajes existentes: sin el, las entregas salen sin firmar
-   * igual que antes.
+   * Where each tenant's signing secret comes from (EVT-003). Optional so
+   * existing mounts are not broken: without it, deliveries go unsigned just
+   * as before.
    */
   readonly fraudConfig?: OrganizationFraudConfigRepository;
   readonly clock: Clock;
@@ -55,8 +55,8 @@ export function createCustomerOutgoingEventDispatcher(deps: CustomerOutgoingEven
     const claimed = await deps.outgoingEvents.claimPending(now, claimLimit);
     let sent = 0;
     let failed = 0;
-    // Una tanda toca pocos inquilinos y muchos eventos: sin cache esto seria
-    // una consulta de configuracion por evento entregado.
+    // A batch touches few tenants and many events: without a cache this would
+    // be a config lookup per delivered event.
     const secrets = new Map<string, string | null>();
 
     for (const event of claimed) {
@@ -92,13 +92,14 @@ export function createCustomerOutgoingEventDispatcher(deps: CustomerOutgoingEven
   }
 
   /**
-   * El fallo al leer la configuracion NO tumba la entrega: se manda sin firma.
+   * Failure to read the config does NOT take the delivery down: it is sent
+   * unsigned.
    *
-   * Es discutible y va en esta direccion a proposito. Estas entregas son
-   * levantamientos y aplicaciones de sancion sobre clientes reales; pararlas
-   * porque una lectura de configuracion fallo deja restricciones puestas mas
-   * tiempo del debido. El receptor que exija firma rechazara el envio y este
-   * volvera a intentarse con el backoff normal.
+   * It is debatable and this direction is on purpose. These deliveries are
+   * lifts and applications of sanctions on real customers; stopping them
+   * because a config read failed leaves restrictions in place longer than
+   * they should be. A receiver that requires a signature will reject the
+   * send and it will be retried with the normal backoff.
    */
   async function resolveSecret(
     cache: Map<string, string | null>,

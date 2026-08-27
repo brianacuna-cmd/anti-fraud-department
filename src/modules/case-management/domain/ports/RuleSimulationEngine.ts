@@ -1,6 +1,6 @@
 import type { CaseRoutingContext } from './RoutingEngine.js';
 
-/** Una parada del recorrido: qué entró en un nodo y qué salió de él. */
+/** One stop along the run: what went into a node and what came out of it. */
 export interface RuleTrace {
   readonly id: string;
   readonly name: string;
@@ -11,7 +11,7 @@ export interface RuleTrace {
   readonly order: number;
 }
 
-/** Resultado crudo de una evaluación, sin plegar. */
+/** Raw evaluation result, unfolded. */
 export interface RuleSimulation {
   readonly performance: string;
   readonly result: unknown;
@@ -19,11 +19,11 @@ export interface RuleSimulation {
 }
 
 /**
- * Puerto de ensayo en seco, separado de `RoutingEngine` a propósito.
+ * Dry-run port, deliberately separate from `RoutingEngine`.
  *
- * `RoutingEngine` pliega a los dos destinos, que es lo único que `RouteCase`
- * necesita. Quien está DIBUJANDO la regla necesita el recorrido nodo a nodo,
- * y eso no tiene por qué cargarlo el camino caliente.
+ * `RoutingEngine` folds down to the two targets, which is all `RouteCase`
+ * needs. Whoever is DRAWING the rule needs the node-by-node run instead, and
+ * the hot path has no business carrying that.
  */
 export interface RuleSimulationEngine {
   simulate(

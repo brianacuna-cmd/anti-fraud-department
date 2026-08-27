@@ -12,7 +12,13 @@ import { generateTimelineEventId } from '../../../../src/modules/case-management
 import { createAnalystDecisionId } from '../../../../src/modules/case-management/domain/model/value-objects/AnalystDecisionId.js';
 import { createEnforcementActionId } from '../../../../src/modules/case-management/domain/model/value-objects/EnforcementActionId.js';
 import { createEnforcementActionType } from '../../../../src/modules/case-management/domain/model/value-objects/EnforcementActionType.js';
+import { CaseNote } from '../../../../src/modules/case-management/domain/model/aggregates/CaseNote.js';
+import { Evidence } from '../../../../src/modules/case-management/domain/model/aggregates/Evidence.js';
+import { generateCaseNoteId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseNoteId.js';
+import { generateEvidenceId } from '../../../../src/modules/case-management/domain/model/value-objects/EvidenceId.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
+import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InMemoryCaseNoteRepository.js';
+import { InMemoryEvidenceRepository } from '../../../helpers/case-management/InMemoryEvidenceRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
 import { InMemoryAnalystDecisionRepository } from '../../../helpers/case-management/InMemoryAnalystDecisionRepository.js';
@@ -66,8 +72,8 @@ function buildCase(overrides: { organizationId?: string; deletedAt?: typeof NOW 
     customerId: 'customer-1',
     riskScore: createRiskScore(70),
     priority: 'HIGH',
-    // La regla de asignacion congela los expedientes huerfanos:
-    // sin responsable no se pueden trabajar.
+    // Assignment rule freezes orphan cases:
+    // without an owner they cannot be worked.
     assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   });
@@ -100,11 +106,26 @@ function buildCase(overrides: { organizationId?: string; deletedAt?: typeof NOW 
   return kase;
 }
 
-function buildUseCase(seed?: Case) {
+function buildUseCase(seed?: Case, options: { instructed?: boolean } = {}) {
   const cases = new InMemoryCaseRepository();
   if (seed !== undefined) {
     void cases.save(seed);
   }
+  const notes = new InMemoryCaseNoteRepository();
+  // A verdict needs something behind it. See `WorkflowStepGate.assertInstructed`.
+  if (options.instructed !== false) {
+    void notes.save(
+      CaseNote.create({
+        id: generateCaseNoteId(),
+        caseId: CASE_ID,
+        organizationId: ORG_1,
+        authorId: ANALYST_ID,
+        body: 'instructing note',
+        now: NOW,
+      }),
+    );
+  }
+  const evidence = new InMemoryEvidenceRepository();
   const decisions = new InMemoryAnalystDecisionRepository();
   const enforcementActions = new InMemoryEnforcementActionRepository();
   const approvalRequests = new InMemoryApprovalRequestRepository();
@@ -112,11 +133,13 @@ function buildUseCase(seed?: Case) {
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
   const notificationSender = new InMemoryCaseManagementNotificationSender();
   const assigneeDirectory = new InMemoryAssigneeDirectory();
-  // Dos supervisores en el inquilino, uno de ellos el propio analista que
-  // firma las pruebas: sirve para comprobar que al solicitante no se le avisa.
+  // Two supervisors in the tenant, one of them the analyst who signs the
+  // tests: used to check that the requester is not notified.
   assigneeDirectory.allowRoleRecipients(ORG_1, 'SUPERVISOR', [SUPERVISOR_ID, ANALYST_ID]);
   const recordAnalystDecision = createRecordAnalystDecisionUseCase({
     cases,
+    notes,
+    evidence,
     decisions,
     enforcementActions,
     approvalRequests,
@@ -134,6 +157,8 @@ function buildUseCase(seed?: Case) {
   return {
     recordAnalystDecision,
     cases,
+    notes,
+    evidence,
     decisions,
     enforcementActions,
     approvalRequests,
@@ -263,18 +288,19 @@ describe('createRecordAnalystDecisionUseCase', () => {
   });
 
   /**
-   * ADMIN incluido: dictaminar es instruir el expediente, y quien administra
-   * al equipo no lo instruye (SoD, ver `shared/kernel/AccessTier.ts`).
+   * ADMIN included: recording a decision is instructing the case, and whoever
+   * administers the team does not instruct it (SoD, see `shared/kernel/AccessTier.ts`).
    */
   /* ---------------------------------------------------------------------- */
-  /* Cuatro ojos (ENF-002)                                                    */
+  /* Four eyes (ENF-002)                                                      */
   /* ---------------------------------------------------------------------- */
 
   /**
-   * La solicitud de doble firma tiene que nacer AQUI, con la sancion.
+   * The dual-control request has to be born HERE, with the sanction.
    *
-   * Antes se creaba perezosamente al aprobarla, lo que dejaba el control sin
-   * efecto: no habia nada que revisar hasta que alguien ya habia aprobado.
+   * Previously it was created lazily on approval, which left the control
+   * with no effect: there was nothing to review until someone had already
+   * approved.
    */
   it('opens a PENDING approval request alongside the sanction, in the same write', async () => {
     const { recordAnalystDecision, approvalRequests, enforcementActions } = buildUseCase(
@@ -301,7 +327,7 @@ describe('createRecordAnalystDecisionUseCase', () => {
     expect(enforcementActions.all()[0]?.status).toBe('PENDING');
   });
 
-  /** Avisar al solicitante seria ofrecerle algo que el agregado le va a negar. */
+  /** Notifying the requester would offer them something the aggregate will deny. */
   it('notifies the other supervisors, never the requester', async () => {
     const { recordAnalystDecision, notificationSender } = buildUseCase(
       buildCase({ status: 'IN_REVIEW' }),
@@ -321,7 +347,7 @@ describe('createRecordAnalystDecisionUseCase', () => {
     const sent = notificationSender.all();
     expect(sent).toHaveLength(1);
     expect(sent[0]?.recipientUserId).toBe(SUPERVISOR_ID);
-    expect(sent[0]?.alertType).toBe('APROBACION_PENDIENTE');
+    expect(sent[0]?.alertType).toBe('APPROVAL_PENDING');
     expect(sent[0]?.context).toMatchObject({
       caseId: CASE_ID,
       approvalRequestId: result.approvalRequest!.id,
@@ -331,8 +357,8 @@ describe('createRecordAnalystDecisionUseCase', () => {
   });
 
   /**
-   * REVIEW solo marca a un cliente para mirarlo con calma: no restringe nada,
-   * asi que exigirle doble firma solo llenaria la cola del supervisor de ruido.
+   * REVIEW only flags a customer for a closer look: it restricts nothing,
+   * so requiring dual control would only fill the supervisor queue with noise.
    */
   it('skips dual control for REVIEW, which restricts nothing', async () => {
     const { recordAnalystDecision, approvalRequests, notificationSender } = buildUseCase(
@@ -431,6 +457,56 @@ describe('createRecordAnalystDecisionUseCase', () => {
     ).rejects.toMatchObject({
       code: 'CASE_NOT_FOUND',
     } satisfies Partial<CaseManagementError>);
+  });
+
+  it('rejects a decision on a case with no notes or evidence yet (CASE_NOT_INSTRUCTED)', async () => {
+    const { recordAnalystDecision, decisions } = buildUseCase(buildCase({ status: 'IN_REVIEW' }), {
+      instructed: false,
+    });
+
+    await expect(
+      recordAnalystDecision({
+        auth: ANALYST,
+        caseId: CASE_ID,
+        decision: 'FALSE_POSITIVE',
+        confidence: 40,
+        comment: 'too early',
+      }),
+    ).rejects.toMatchObject({ code: 'CASE_NOT_INSTRUCTED' });
+    expect(decisions.all()).toHaveLength(0);
+  });
+
+  it('allows the decision once evidence (not just a note) is on file', async () => {
+    const { recordAnalystDecision, evidence, decisions } = buildUseCase(buildCase({ status: 'IN_REVIEW' }), {
+      instructed: false,
+    });
+    await evidence.save(
+      Evidence.register({
+        id: generateEvidenceId(),
+        caseId: CASE_ID,
+        investigationId: null,
+        organizationId: ORG_1,
+        filename: 'x.pdf',
+        contentType: 'application/pdf',
+        byteSize: 3,
+        sha256: 'abc',
+        storageKey: 'org/case/evidence',
+        timestamp: null,
+        scanStatus: 'CLEAN',
+        uploadedBy: ANALYST_ID,
+        now: NOW,
+      }),
+    );
+
+    await recordAnalystDecision({
+      auth: ANALYST,
+      caseId: CASE_ID,
+      decision: 'FALSE_POSITIVE',
+      confidence: 40,
+      comment: 'now instructed',
+    });
+
+    expect(decisions.all()).toHaveLength(1);
   });
 
   it('rejects cross-tenant access', async () => {

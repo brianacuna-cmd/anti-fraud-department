@@ -39,7 +39,7 @@ const BASE_RESULT: ScoreToCaseOrchestratorResult = {
 };
 
 describe('createScreenThenScoreToCaseOrchestrator', () => {
-  it('enriches riskSignals with a NEW CanonicalRiskEvent when riskSignal is present (confianza >= 70)', async () => {
+  it('enriches riskSignals with a NEW CanonicalRiskEvent when riskSignal is present (confidence >= 70)', async () => {
     const event = buildEvent();
     let receivedEvent: CanonicalRiskEvent | undefined;
     const process = createScreenThenScoreToCaseOrchestrator({
@@ -61,7 +61,7 @@ describe('createScreenThenScoreToCaseOrchestrator', () => {
     const result = await process({
       auth: AUTH,
       event,
-      screening: { customerId: 'cust-1', entryType: 'PERSON', nombre: 'John Doe' },
+      screening: { customerId: 'cust-1', entryType: 'PERSON', name: 'John Doe' },
     });
 
     expect(result).toEqual(BASE_RESULT);
@@ -76,7 +76,7 @@ describe('createScreenThenScoreToCaseOrchestrator', () => {
     expect(event.riskSignals).toEqual({ providerRiskScore: 80 });
   });
 
-  it('passes the ORIGINAL event through unchanged when riskSignal is null (confianza in [50,70) or discard)', async () => {
+  it('passes the ORIGINAL event through unchanged when riskSignal is null (confidence in [50,70) or discard)', async () => {
     const event = buildEvent();
     let receivedEvent: CanonicalRiskEvent | undefined;
     const screenCalls: ScreenSubjectAgainstWatchlistInput[] = [];
@@ -94,7 +94,7 @@ describe('createScreenThenScoreToCaseOrchestrator', () => {
     const result = await process({
       auth: AUTH,
       event,
-      screening: { customerId: 'cust-1', entryType: 'PERSON', nombre: 'John Doe' },
+      screening: { customerId: 'cust-1', entryType: 'PERSON', name: 'John Doe' },
     });
 
     expect(result.opened).toBe(false);
@@ -114,7 +114,7 @@ describe('createScreenThenScoreToCaseOrchestrator', () => {
     await process({
       auth: AUTH,
       event: buildEvent(),
-      screening: { customerId: 'cust-1', entryType: 'PERSON', nombre: 'John Doe' },
+      screening: { customerId: 'cust-1', entryType: 'PERSON', name: 'John Doe' },
     });
 
     expect(scoreToCaseOrchestrator).toHaveBeenCalledTimes(1);

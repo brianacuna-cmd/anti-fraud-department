@@ -12,6 +12,7 @@ import { caseRouter } from '../../../../src/modules/case-management/infrastructu
 import { createCreateCaseUseCase } from '../../../../src/modules/case-management/application/CreateCase.js';
 import { createCalculateSlaUseCase } from '../../../../src/modules/case-management/application/CalculateSla.js';
 import { createRouteCaseUseCase } from '../../../../src/modules/case-management/application/RouteCase.js';
+import { AllowAllAssigneeDirectory } from '../../../helpers/case-management/AllowAllAssigneeDirectory.js';
 import { createReassignCaseUseCase } from '../../../../src/modules/case-management/application/ReassignCase.js';
 import { createListCasesUseCase } from '../../../../src/modules/case-management/application/ListCases.js';
 import { createGetCaseUseCase } from '../../../../src/modules/case-management/application/GetCase.js';
@@ -19,6 +20,8 @@ import { createGetCaseTimelineUseCase } from '../../../../src/modules/case-manag
 import { createAddCaseNoteUseCase } from '../../../../src/modules/case-management/application/AddCaseNote.js';
 import { createListCaseNotesUseCase } from '../../../../src/modules/case-management/application/ListCaseNotes.js';
 import { InMemoryResolutionRepository } from '../../../helpers/case-management/InMemoryResolutionRepository.js';
+import { InMemoryAnalystDecisionRepository } from '../../../helpers/case-management/InMemoryAnalystDecisionRepository.js';
+import { InMemoryEnforcementActionRepository } from '../../../helpers/case-management/InMemoryEnforcementActionRepository.js';
 import { generateResolutionId } from '../../../../src/modules/case-management/domain/model/value-objects/ResolutionId.js';
 import { createResolveCaseUseCase } from '../../../../src/modules/case-management/application/ResolveCase.js';
 import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
@@ -77,8 +80,8 @@ function buildResolvedCase(deleted = false): Case {
     customerId: 'customer-1',
     riskScore: createRiskScore(40),
     priority: 'MEDIUM',
-    // La regla de asignacion congela los expedientes huerfanos:
-    // sin responsable no se pueden trabajar.
+    // Assignment rule freezes orphan cases:
+    // without an owner they cannot be worked.
     assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   })
@@ -141,13 +144,13 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
   );
 
   const routeCase = createRouteCaseUseCase({
-    assigneeDirectory,
     cases,
     routingRules,
     routingEngine: new ZenRoutingEngine(),
     timelineRecorder,
     auditRecorder,
     fraudConfig,
+    assigneeDirectory: new AllowAllAssigneeDirectory(),
     clock,
     generateTimelineEventId,
   });
@@ -188,7 +191,10 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
     listCaseNotes: createListCaseNotesUseCase({ cases, notes: caseNotes }),
     resolveCase: createResolveCaseUseCase({
       outbox: new InMemoryOutboxEventRepository(),
-      generateOutboxEventId, cases, resolutions, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
+      generateOutboxEventId, cases, resolutions, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId,
+      decisions: new InMemoryAnalystDecisionRepository(),
+      enforcementActions: new InMemoryEnforcementActionRepository(),
+    }),
     archiveCase: createArchiveCaseUseCase({ cases, resolutions, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
     startReview: createStartReviewUseCase({ cases, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateTimelineEventId }),
     reopenCase: createReopenCaseUseCase({
@@ -240,9 +246,6 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
 
   return { app, cases, slaTracking, timelineRecorder, auditRecorder };
 }
-
-/** Permisiva: estas pruebas comprueban otra cosa. */
-const assigneeDirectory = new InMemoryAssigneeDirectory();
 
 describe('caseRouter POST /cases/:caseId/reopen', () => {
   it('reopens a RESOLVED case for SUPERVISOR and resets dueDate', async () => {
@@ -331,8 +334,8 @@ describe('caseRouter PATCH /cases/:caseId/priority-tags', () => {
       riskScore: createRiskScore(40),
       priority: 'MEDIUM',
       tags: ['fraud'],
-      // La regla de asignacion congela los expedientes huerfanos:
-      // sin responsable no se pueden trabajar.
+      // Assignment rule freezes orphan cases:
+      // without an owner they cannot be worked.
       assignedTo: createAssignedTo('USER', oid('analyst-1')),
       now: NOW,
     }).withDueDate(OLD_DUE, NOW);
@@ -408,8 +411,8 @@ describe('caseRouter POST /cases/bulk-action', () => {
       riskScore: createRiskScore(40),
       priority,
       tags: ['fraud'],
-      // La regla de asignacion congela los expedientes huerfanos:
-      // sin responsable no se pueden trabajar.
+      // Assignment rule freezes orphan cases:
+      // without an owner they cannot be worked.
       assignedTo: createAssignedTo('USER', oid('analyst-1')),
       now: NOW,
     });

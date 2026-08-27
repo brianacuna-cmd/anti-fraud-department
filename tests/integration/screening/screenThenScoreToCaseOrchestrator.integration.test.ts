@@ -9,7 +9,7 @@ import { createAuthContext } from '../../../src/shared/kernel/AuthContext.js';
 import { fromDate } from '../../../src/shared/time/Instant.js';
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
 import { MongoAmlAlertRepository } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlAlertRepository.js';
-import { MongoAmlExpedienteTimelineRecorder } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlExpedienteTimelineRecorder.js';
+import { MongoAmlAlertTimelineRecorder } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoAmlAlertTimelineRecorder.js';
 import { MongoUnitOfWork as ScreeningMongoUnitOfWork } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { MongoOutboxEventRepository } from '../../../src/shared/outbox/mongo/MongoOutboxEventRepository.js';
 import { MongoFallbackWatchlistCandidateRepository } from '../../../src/modules/screening/infrastructure/adapters/outbound/mongo/MongoFallbackWatchlistCandidateRepository.js';
@@ -46,28 +46,28 @@ function buildEntry(overrides: Partial<WatchlistEntryDocument> = {}): WatchlistE
     _id: new ObjectId(oid(`entry-${Math.random()}`)),
     watchlist_id: new ObjectId(oid('watchlist-1')),
     organization_id: new ObjectId(oid('org-1')),
-    tipo_entrada: 'PERSON',
-    nombre: 'John Smith',
-    nombre_normalizado: 'john smith',
+    entry_type: 'PERSON',
+    name: 'John Smith',
+    normalized_name: 'john smith',
     phonetic_keys: ['JN', 'SM0'],
-    documento: null,
+    document: null,
     wallet_address: null,
-    nivel_riesgo: 'HIGH',
-    pais: 'US',
-    estado: 'ACTIVE',
+    risk_level: 'HIGH',
+    country: 'US',
+    status: 'ACTIVE',
     deleted_at: null,
     ...overrides,
   };
 }
 
-function buildEvent(nombre: string | undefined): CanonicalRiskEvent {
+function buildEvent(name: string | undefined): CanonicalRiskEvent {
   return {
     provider: 'stripe',
     providerEventType: 'CHARGEBACK',
     caseCustomerId: oid('customer-1'),
     amountCents: 2500,
     currency: 'USD',
-    riskSignals: nombre !== undefined ? { providerRiskScore: 10, nombre } : { providerRiskScore: 10 },
+    riskSignals: name !== undefined ? { providerRiskScore: 10, name } : { providerRiskScore: 10 },
     createdAt: NOW,
   };
 }
@@ -100,7 +100,7 @@ describe('screenThenScoreToCaseOrchestrator (integration, real Mongo, fallback c
   function buildOrchestrator(scoreToCaseOrchestrator: (input: ScoreToCaseOrchestratorInput) => Promise<ScoreToCaseOrchestratorResult>) {
     const openAmlAlert = createOpenAmlAlertUseCase({
       amlAlertRepository: new MongoAmlAlertRepository(db),
-      timelineRecorder: new MongoAmlExpedienteTimelineRecorder(db),
+      timelineRecorder: new MongoAmlAlertTimelineRecorder(db),
       outbox: new MongoOutboxEventRepository(db),
       unitOfWork: new ScreeningMongoUnitOfWork(client),
       clock: new SystemClock(),
@@ -117,7 +117,7 @@ describe('screenThenScoreToCaseOrchestrator (integration, real Mongo, fallback c
     return createScreenThenScoreToCaseOrchestrator({ screenSubject, scoreToCaseOrchestrator });
   }
 
-  it('confianza >= 70: persists an AmlAlert AND enriches riskSignals passed to scoring (camelCase)', async () => {
+  it('confidence >= 70: persists an AmlAlert AND enriches riskSignals passed to scoring (camelCase)', async () => {
     await db.collection<WatchlistEntryDocument>('watchlist_entries').insertOne(buildEntry());
 
     let receivedEvent: CanonicalRiskEvent | undefined;
@@ -130,7 +130,7 @@ describe('screenThenScoreToCaseOrchestrator (integration, real Mongo, fallback c
     await process({
       auth: AUTH,
       event: originalEvent,
-      screening: { customerId: oid('customer-1'), entryType: 'PERSON', nombre: 'John Smith' },
+      screening: { customerId: oid('customer-1'), entryType: 'PERSON', name: 'John Smith' },
     });
 
     expect(receivedEvent).not.toBe(originalEvent);
@@ -141,8 +141,8 @@ describe('screenThenScoreToCaseOrchestrator (integration, real Mongo, fallback c
 
     const alerts = await db.collection('aml_alerts').find({ customer_id: oid('customer-1') }).toArray();
     expect(alerts).toHaveLength(1);
-    expect(alerts[0]?.estado).toBe('OPEN');
-    expect(alerts[0]?.severidad).toBe('HIGH');
+    expect(alerts[0]?.status).toBe('OPEN');
+    expect(alerts[0]?.severity).toBe('HIGH');
 
     const timeline = await db.collection('case_timeline').find({ case_id: alerts[0]?._id }).toArray();
     expect(timeline).toHaveLength(1);
@@ -154,16 +154,16 @@ describe('screenThenScoreToCaseOrchestrator (integration, real Mongo, fallback c
     expect(events[0]?.event_type).toBe('AML_ALERT_CREATED');
   });
 
-  it('confianza in [50,70): writes an AmlAlert but does NOT enrich riskSignals', async () => {
+  it('confidence in [50,70): writes an AmlAlert but does NOT enrich riskSignals', async () => {
     // "Mark Smith" shares two Double-Metaphone keys with "John Smith"
     // (SM0/XMT from the shared "Smith" surname, blocking finds it) but the
-    // given name differs enough that the combined confianza formula
+    // given name differs enough that the combined confidence formula
     // (0.4*phoneticAgreement + 0.6*jaroWinkler) lands deterministically at
     // 64 — inside [50,70), the ALERT_ONLY band (verified against the real
     // talisman adapters, not a fake, so this fixture is pinned to the
     // actual algorithm's output).
     await db.collection<WatchlistEntryDocument>('watchlist_entries').insertOne(
-      buildEntry({ nombre: 'Mark Smith', nombre_normalizado: 'mark smith', phonetic_keys: ['MRK', 'SM0', 'XMT'] }),
+      buildEntry({ name: 'Mark Smith', normalized_name: 'mark smith', phonetic_keys: ['MRK', 'SM0', 'XMT'] }),
     );
 
     let receivedEvent: CanonicalRiskEvent | undefined;
@@ -176,7 +176,7 @@ describe('screenThenScoreToCaseOrchestrator (integration, real Mongo, fallback c
     await process({
       auth: AUTH,
       event: originalEvent,
-      screening: { customerId: oid('customer-2'), entryType: 'PERSON', nombre: 'John Smith' },
+      screening: { customerId: oid('customer-2'), entryType: 'PERSON', name: 'John Smith' },
     });
 
     expect(receivedEvent).toBe(originalEvent);
@@ -197,7 +197,7 @@ describe('screenThenScoreToCaseOrchestrator (integration, real Mongo, fallback c
     const result = await process({
       auth: AUTH,
       event: originalEvent,
-      screening: { customerId: oid('customer-3'), entryType: 'PERSON', nombre: 'Nobody Here' },
+      screening: { customerId: oid('customer-3'), entryType: 'PERSON', name: 'Nobody Here' },
     });
 
     expect(result).toEqual(STUB_SCORE_RESULT);

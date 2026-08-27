@@ -9,7 +9,7 @@ import { toScoringContext } from './CalculateRiskScore.js';
 
 export interface SimulateScoringRuleInput {
   readonly auth: AuthContext;
-  /** Grafo en borrador: puede no existir todavía como regla. */
+  /** Draft graph: it may not exist as a rule yet. */
   readonly conditions: Readonly<Record<string, unknown>>;
   readonly event: CanonicalRiskEvent;
 }
@@ -18,9 +18,9 @@ export type SimulateScoringRuleResult =
   | ({
       readonly ok: true;
       /**
-       * La puntuación que produciría en producción, o `null` si el grafo
-       * devuelve algo que `RiskScore` no acepta. En ese caso `warning` dice
-       * qué, y la traza sigue viajando: es justo cuando más falta hace.
+       * The score it would produce in production, or `null` when the graph
+       * returns something `RiskScore` rejects. `warning` then says what, and
+       * the trace still travels: that is exactly when it is most needed.
        */
       readonly riskScore: number | null;
       readonly warning: string | null;
@@ -33,21 +33,22 @@ export interface SimulateScoringRuleDeps {
 }
 
 /**
- * Ensayo en seco: evalúa un grafo contra un evento de ejemplo sin guardar nada
- * y sin tocar la regla activa.
+ * Dry run: evaluates a graph against a sample event without persisting
+ * anything and without touching the active rule.
  *
- * Existe porque el editor de decisiones necesita responder «¿esto qué
- * puntúa?» ANTES de que la regla exista, y la única forma honesta de
- * responderlo es con el mismo motor que la evaluará en producción — un
- * simulador aparte acabaría discrepando justo en los casos raros.
+ * It exists because the decision editor has to answer "what does this score?"
+ * BEFORE the rule exists, and the only honest way to answer is with the same
+ * engine that will evaluate it in production — a separate simulator would end
+ * up disagreeing on exactly the odd cases that matter in fraud.
  *
- * Reservado al SUPERVISOR, que es quien redacta reglas. No amplía lo que ese
- * rol ya puede hacer: crear y activar una regla ya ejecuta su grafo contra
- * cada evento entrante. Lo que cambia es cuándo se entera de que está mal.
+ * SUPERVISOR only, the role that drafts rules. It does not widen what that
+ * role can already do: creating and activating a rule already runs its graph
+ * against every incoming event. What changes is when they find out it is
+ * wrong.
  *
- * Un grafo que no compila devuelve `ok: false` en vez de lanzar: que no
- * compile es el resultado que se ha venido a buscar, y quien está dibujando
- * necesita leer el motivo y seguir editando.
+ * A graph that does not compile returns `ok: false` instead of throwing: that
+ * it does not compile is the answer the caller came for, and whoever is
+ * drawing it needs to read the reason and keep editing.
  */
 export function createSimulateScoringRuleUseCase(deps: SimulateScoringRuleDeps) {
   return async function simulateScoringRule(
@@ -59,11 +60,11 @@ export function createSimulateScoringRuleUseCase(deps: SimulateScoringRuleDeps) 
     const outcome = await simulate(deps, input);
 
     /*
-     * Se audita aunque no persista nada: ejecutar un grafo en el motor del
-     * inquilino es un acto, y un ensayo que no deja rastro es justo el hueco
-     * por el que se prueba algo que luego nadie reconoce haber probado. La
-     * traza NO se guarda —puede llevar datos del evento de prueba y el rastro
-     * de auditoría no es un almacén de depuración.
+     * Audited even though nothing persists: running a graph on the tenant's
+     * engine is an act, and a dry run that leaves no trail is exactly the gap
+     * through which something gets tested that nobody later admits to having
+     * tested. The trace is NOT stored — it can carry sample-event data, and
+     * the audit trail is not a debugging store.
      */
     await deps.auditRecorder.record({
       organizationId,
@@ -97,9 +98,9 @@ async function simulate(
   }
 
   /*
-   * La puntuación se valida aquí y no se deja pasar: un grafo que devuelve 140
-   * tiene que enseñar el problema en la prueba, y no en producción, donde
-   * `CalculateRiskScore` falla cerrado y deja de abrirse ningún caso.
+   * The score is validated here rather than let through: a graph returning 140
+   * has to show the problem in the dry run, not in production, where
+   * `CalculateRiskScore` fails closed and no case opens at all.
    */
   const raw = (simulation.result as Record<string, unknown> | null)?.riskScore;
   try {

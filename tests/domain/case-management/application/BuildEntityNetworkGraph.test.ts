@@ -84,8 +84,8 @@ describe('BuildEntityNetworkGraph (INV-013)', () => {
     const { investigations, buildGraph } = setup();
     await investigations.save(buildInvestigation({ organizationId: ORG_2 }));
 
-    // No se degrada a 404: el actor no puede distinguir "no existe" de "no es
-    // tuya", pero el registro de auditoría sí tiene que poder.
+    // Not degraded to 404: the actor cannot tell "does not exist" from "not
+    // yours", but the audit log has to be able to.
     await expect(buildGraph({ auth: ANALYST, investigationId: INVESTIGATION_ID })).rejects.toThrow(
       /does not belong/,
     );
@@ -120,7 +120,7 @@ describe('BuildEntityNetworkGraph (INV-013)', () => {
 
     const first = buildCase({ customerId: 'cus-a', bridgeWallet: '0xroot', customerEmail: 'mula@x.com' });
     const second = buildCase({ customerId: 'cus-b', customerEmail: 'mula@x.com' });
-    // Sin relación con la red: comparte cero identificadores.
+    // Unrelated to the network: shares zero identifiers.
     const unrelated = buildCase({ customerId: 'cus-z', bridgeWallet: '0xotra' });
     await cases.save(first);
     await cases.save(second);
@@ -130,7 +130,7 @@ describe('BuildEntityNetworkGraph (INV-013)', () => {
 
     const ids = graph.nodes.map((node) => node.id);
     expect(ids).toContain(`CASE:${first.id}`);
-    // El segundo caso solo entra por el email compartido, a la ronda siguiente.
+    // The second case only enters via the shared email, on the next round.
     expect(ids).toContain(`CASE:${second.id}`);
     expect(ids).toContain('EMAIL:mula@x.com');
     expect(ids).not.toContain(`CASE:${unrelated.id}`);
@@ -149,7 +149,7 @@ describe('BuildEntityNetworkGraph (INV-013)', () => {
 
     const ids = graph.nodes.map((node) => node.id);
     expect(ids).toContain(`CASE:${mine.id}`);
-    // Misma wallet, otro inquilino: incluirlo revelaría que ese expediente existe.
+    // Same wallet, other tenant: including it would reveal that that case exists.
     expect(ids).not.toContain(`CASE:${theirs.id}`);
   });
 
@@ -161,8 +161,8 @@ describe('BuildEntityNetworkGraph (INV-013)', () => {
     const spy = jest.spyOn(cases, 'findByEntityIdentifiers');
     const graph = await buildGraph({ auth: ANALYST, investigationId: INVESTIGATION_ID });
 
-    // Ronda 1 encuentra el caso; ronda 2 explora `cus-a` y no halla nada más,
-    // así que la 3 (DEFAULT_GRAPH_DEPTH) sobra y no debe consultarse.
+    // Round 1 finds the case; round 2 explores `cus-a` and finds nothing more,
+    // so round 3 (DEFAULT_GRAPH_DEPTH) is surplus and must not be queried.
     expect(spy).toHaveBeenCalledTimes(2);
     expect(DEFAULT_GRAPH_DEPTH).toBe(3);
     expect(graph.truncated).toBe(false);

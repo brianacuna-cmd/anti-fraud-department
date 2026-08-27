@@ -20,8 +20,8 @@ export const calculateRiskScoreSchema = z
     rawPayload: z.record(z.string(), z.unknown()).optional(),
     subjectIdentity: z
       .object({
-        nombre: z.string().optional(),
-        documento: z.string().optional(),
+        name: z.string().optional(),
+        document: z.string().optional(),
         walletAddress: z.string().optional(),
         entryType: z.string().optional(),
       })

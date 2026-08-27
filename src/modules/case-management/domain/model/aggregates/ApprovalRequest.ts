@@ -31,15 +31,15 @@ export interface ReviewApprovalRequestInput {
 }
 
 /**
- * Puerta de aprobacion de las sanciones no-REVIEW (design: approval_requests)
- * y sede del principio de CUATRO OJOS.
+ * Approval gate for non-REVIEW sanctions (design: approval_requests) and
+ * home of the FOUR-EYES principle.
  *
- * La regla —quien solicita no puede revisar— vive AQUI y no en el caso de uso
- * a proposito: hay tres caminos que deciden una solicitud
- * (`ApproveEnforcementAction`, `RejectEnforcementAction` y
- * `ReviewApprovalRequest`), y una comprobacion repetida en tres sitios es una
- * comprobacion que algun dia estara en dos. En el agregado no hay forma de
- * llegar a `APPROVED` ni a `REJECTED` sin pasar por ella.
+ * The rule —whoever requests cannot review— lives HERE and not in the use
+ * case on purpose: there are three paths that decide a request
+ * (`ApproveEnforcementAction`, `RejectEnforcementAction`, and
+ * `ReviewApprovalRequest`), and a check repeated in three places is a check
+ * that someday will be in two. In the aggregate there is no way to reach
+ * `APPROVED` or `REJECTED` without passing through it.
  */
 export class ApprovalRequest {
   private constructor(private readonly props: ApprovalRequestProps) {}
@@ -108,9 +108,9 @@ export class ApprovalRequest {
 
   private decide(next: 'APPROVED' | 'REJECTED', input: ReviewApprovalRequestInput): ApprovalRequest {
     assertNonEmpty('reviewerId', input.reviewerId);
-    // Cuatro ojos. Aplica tanto a aprobar como a RECHAZAR: dejar que el
-    // solicitante retire lo suyo parece inofensivo, pero convierte la cola de
-    // revision en algo que una sola persona puede vaciar sin que nadie mire.
+    // Four eyes. Applies to approving AND to REJECTING: letting the
+    // requester withdraw their own request looks harmless, but it turns the
+    // review queue into something one person can empty without anyone looking.
     if (input.reviewerId === this.props.requesterId) {
       throw selfApprovalForbidden(this.props.requesterId, this.props.id);
     }

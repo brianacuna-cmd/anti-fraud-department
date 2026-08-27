@@ -36,12 +36,12 @@ export class ZenRiskScoringEngine implements RiskScoringEngine, RuleSimulationEn
   }
 
   /**
-   * Evaluación con traza, para el ensayo en seco del editor.
+   * Traced evaluation, for the editor's dry run.
    *
-   * `trace: true` es lo que distingue esto de `evaluate`: devuelve qué entró y
-   * qué salió de cada nodo, que es lo que el editor pinta sobre el grafo. No
-   * se activa en `evaluate` porque producción evalúa una vez por evento
-   * entrante y nadie lee esa traza.
+   * `trace: true` is what separates this from `evaluate`: it returns what went
+   * into and out of each node, which is what the editor paints over the graph.
+   * It stays off in `evaluate` because production evaluates once per incoming
+   * event and nobody reads that trace.
    */
   async simulate(
     conditions: Readonly<Record<string, unknown>>,

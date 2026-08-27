@@ -32,6 +32,8 @@ describe('src/main.ts risk-assessment wiring', () => {
     expect(fnBody).not.toContain('riskSignals.entryType');
     expect(fnBody).not.toContain('riskSignals.nombre');
     expect(fnBody).not.toContain('riskSignals.documento');
+    expect(fnBody).not.toContain('riskSignals.name');
+    expect(fnBody).not.toContain('riskSignals.document');
     expect(fnBody).not.toContain('riskSignals.walletAddress');
   });
 
@@ -59,7 +61,7 @@ describe('src/main.ts risk-assessment wiring', () => {
 
   it('wires OpenAmlAlert (aml_alerts + case_timeline + outbox_events) into screening', () => {
     expect(MAIN).toContain('createOpenAmlAlertUseCase');
-    expect(MAIN).toContain('MongoAmlExpedienteTimelineRecorder');
+    expect(MAIN).toContain('MongoAmlAlertTimelineRecorder');
     expect(MAIN).toContain('ScreeningMongoUnitOfWork');
     expect(MAIN).toContain('openAmlAlert');
   });

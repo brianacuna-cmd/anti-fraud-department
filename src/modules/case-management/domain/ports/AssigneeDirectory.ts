@@ -8,13 +8,13 @@ import type { AssignedTo } from '../model/value-objects/AssignedTo.js';
 export interface AssigneeDirectory {
   belongsToOrganization(organizationId: string, assignedTo: AssignedTo): Promise<boolean>;
   /**
-   * `true` cuando el destinatario pertenece al plano de OPERACIÓN y por tanto
-   * puede instruir expedientes.
+   * `true` when the assignee sits in the OPERATIONS plane and can therefore
+   * instruct cases.
    *
-   * Ser del inquilino no basta: ADMIN y AUDITOR son gobierno —administran
-   * personas y fiscalizan— y no actúan sobre ningún caso. Un expediente en la
-   * bandeja de un auditor no lo trabaja nadie y además rompe la segregación
-   * de funciones que sostiene el resto de la política de acceso.
+   * Belonging to the tenant is not enough: ADMIN and AUDITOR are governance —
+   * they administer people and audit — and act on no case. A file in an
+   * auditor's tray is worked by nobody, and it breaks the segregation of
+   * duties the rest of the access policy rests on.
    */
   canWorkCases(organizationId: string, assignedTo: AssignedTo): Promise<boolean>;
   /**
@@ -24,13 +24,12 @@ export interface AssigneeDirectory {
    */
   listRoleRecipients(organizationId: string, roleId: string): Promise<readonly string[]>;
   /**
-   * Nombres legibles para un puñado de asignatarios, por su id.
+   * Readable names for a handful of assignees, by their id.
    *
-   * Los devuelve el panel de carga de trabajo: sin esto la barra de cada
-   * responsable se rotula con un ObjectId en hexadecimal, que no le dice a
-   * nadie quién tiene los expedientes encima. Un id que no se resuelva
-   * (usuario borrado, rol retirado) simplemente no aparece en el mapa, y
-   * quien llama decide con qué rotularlo.
+   * The workload dashboard returns them: without this each assignee's bar is
+   * labeled with a hexadecimal ObjectId, which tells nobody who has the cases
+   * on their plate. An id that does not resolve (deleted user, retired role)
+   * simply does not appear in the map, and the caller decides how to label it.
    */
   displayNames(
     organizationId: string,

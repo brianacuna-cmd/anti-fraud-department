@@ -59,15 +59,15 @@ export function enforcementRouter(deps: EnforcementRouterDeps): Router {
     res.status(201).json(toRecordAnalystDecisionResponse(result));
   });
 
-  /** Los dictamenes ya emitidos. Sin esto la ficha no sabe que se concluyo. */
+  /** Decisions already issued. Without this the case card does not know what was concluded. */
   router.get('/cases/:caseId/decisions', async (req, res) => {
     const auth = requireAuthContext(req);
     const decisions = await deps.listCaseDecisions({ auth, caseId: req.params.caseId! });
     res.status(200).json({ items: decisions.map(toAnalystDecisionResponse) });
   });
 
-  // ENF-001: pedir una medida sobre un dictamen ya registrado, sin tener que
-  // volver a dictaminar el caso solo para anadir una segunda sancion.
+  // ENF-001: request a measure against an already recorded decision, without
+  // having to re-decide the case just to add a second sanction.
   router.post('/cases/:caseId/enforcement-actions', async (req, res) => {
     const auth = requireAuthContext(req);
     const body = parseRequest(requestEnforcementActionSchema, req.body);

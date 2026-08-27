@@ -32,7 +32,7 @@ import { notifyApprovers } from './notifyApprovers.js';
 export interface RequestEnforcementActionInput {
   readonly auth: AuthContext;
   readonly caseId: string;
-  /** Dictamen que motiva la sanción. Obligatorio: ver la nota del caso de uso. */
+  /** Analyst decision that motivates the sanction. Required: see the use-case note. */
   readonly analystDecisionId: string;
   readonly actionType: string;
   readonly targetType: string;
@@ -41,7 +41,7 @@ export interface RequestEnforcementActionInput {
 
 export interface RequestEnforcementActionResult {
   readonly enforcementAction: EnforcementAction;
-  /** `null` solo para `REVIEW`, que no restringe nada y no pasa por doble firma. */
+  /** `null` only for `REVIEW`, which restricts nothing and skips four-eyes. */
   readonly approvalRequest: ApprovalRequest | null;
 }
 
@@ -62,26 +62,26 @@ export interface RequestEnforcementActionDeps {
 }
 
 /**
- * ENF-001 — solicitud suelta de una medida cautelar.
+ * ENF-001 — standalone request for a precautionary measure.
  *
  * POST /cases/:caseId/enforcement-actions
  *
- * Hasta ahora una sanción solo podía nacer como efecto de
- * `RecordAnalystDecision`, lo que obligaba a volver a dictaminar el caso para
- * pedir una segunda medida —bloquear la wallet y, además, suspender al
- * cliente— y dejaba en el expediente dos dictámenes donde el analista solo
- * tomó una decisión.
+ * Until now a sanction could only be born as a side effect of
+ * `RecordAnalystDecision`, which forced recording another decision just
+ * to request a second measure — freeze the wallet and also suspend the
+ * customer — and left two analyst decisions on the case where the analyst
+ * only made one call.
  *
- * Lo que NO se relaja es el vínculo con el dictamen: `EnforcementAction`
- * exige `analystDecisionId` y aquí se sigue exigiendo. Una sanción sin
- * veredicto registrado es una restricción sobre el dinero de alguien que
- * nadie firmó, y ese es justamente el expediente que no se puede defender
- * ante un regulador. El dictamen se valida contra el caso: tiene que existir,
- * ser de este expediente y de este inquilino.
+ * What is NOT relaxed is the link to the decision: `EnforcementAction`
+ * requires `analystDecisionId` and this use case still requires it. A
+ * sanction with no recorded verdict is a restriction on someone's money
+ * that nobody signed, and that is exactly the case that cannot be
+ * defended before a regulator. The decision is validated against the
+ * case: it must exist, belong to this case, and belong to this tenant.
  *
- * Los cuatro ojos (ENF-002) se disparan igual que en el dictamen y en la
- * misma transacción, reutilizando `notifyApprovers`: las dos puertas por las
- * que nace una sanción abren la misma cola.
+ * Four-eyes (ENF-002) fire the same way as on a decision and in the same
+ * transaction, reusing `notifyApprovers`: the two doors through which a
+ * sanction is born open the same queue.
  */
 export function createRequestEnforcementActionUseCase(deps: RequestEnforcementActionDeps) {
   return async function requestEnforcementAction(
@@ -102,9 +102,9 @@ export function createRequestEnforcementActionUseCase(deps: RequestEnforcementAc
       if (existing.organizationId !== organizationId) {
         throw forbiddenCrossTenant('case does not belong to the actor organization');
       }
-      // Sin responsable el expediente esta congelado. Ver `AssignmentGate`.
+      // Without an assignee the case is frozen. See `AssignmentGate`.
       assertAssigned(existing);
-      // Un expediente cerrado no se instruye. Ver `ClosedCaseGate`.
+      // A closed case is not worked. See `ClosedCaseGate`.
       assertNotClosed(existing);
 
       const decision = await deps.decisions.findById(analystDecisionId, tx);
@@ -179,10 +179,10 @@ export function createRequestEnforcementActionUseCase(deps: RequestEnforcementAc
 }
 
 /**
- * Abre la solicitud de doble firma y avisa, salvo para `REVIEW`.
+ * Opens the four-eyes request and notifies, except for `REVIEW`.
  *
- * Marcar a alguien para mirarlo con calma no restringe nada al cliente, así
- * que exigir doble firma solo llenaría de ruido la cola del supervisor.
+ * Flagging someone to look at it later does not restrict the customer, so
+ * requiring four-eyes would only fill the supervisor queue with noise.
  */
 async function openApproval(
   deps: RequestEnforcementActionDeps,

@@ -20,11 +20,11 @@ export const createScoringRuleSchema = z
 export type CreateScoringRuleBody = z.infer<typeof createScoringRuleSchema>;
 
 /**
- * POST /risk-scoring-rules/simulate body — ensayo en seco desde el editor.
+ * POST /risk-scoring-rules/simulate body — the decision editor's dry run.
  *
- * Reutiliza `calculateRiskScoreSchema` para el evento en lugar de declarar
- * uno paralelo: si la prueba admitiera un evento que la ruta real rechaza,
- * probaría algo que no puede ocurrir.
+ * Reuses `calculateRiskScoreSchema` for the event instead of declaring a
+ * parallel one: if the dry run accepted an event the real route rejects, it
+ * would be testing something that cannot happen.
  */
 export const simulateScoringRuleSchema = z
   .object({

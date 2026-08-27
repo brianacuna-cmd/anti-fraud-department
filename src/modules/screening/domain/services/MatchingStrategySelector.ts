@@ -14,7 +14,7 @@ export interface MatchingWeights {
   readonly similarityWeight: number;
 }
 
-/** Centralized weights for the NAME confianza formula — do not scatter magic numbers. */
+/** Centralized weights for the NAME confidence formula — do not scatter magic numbers. */
 export const DEFAULT_MATCHING_WEIGHTS: MatchingWeights = {
   phoneticWeight: 0.4,
   similarityWeight: 0.6,
@@ -80,8 +80,8 @@ function scoreNameMatch(
     tokenSort(candidateTokens),
   );
 
-  const confianza = Math.round(100 * (weights.phoneticWeight * agreement + weights.similarityWeight * similarity));
-  return createMatchScore(confianza);
+  const confidence = Math.round(100 * (weights.phoneticWeight * agreement + weights.similarityWeight * similarity));
+  return createMatchScore(confidence);
 }
 
 function scoreExactLevenshteinMatch(
@@ -97,8 +97,8 @@ function scoreExactLevenshteinMatch(
     return createMatchScore(0);
   }
   const maxLength = Math.max(subjectValue.length, candidateValue.length, 1);
-  const confianza = Math.round(100 * (1 - distance / maxLength));
-  return createMatchScore(confianza);
+  const confidence = Math.round(100 * (1 - distance / maxLength));
+  return createMatchScore(confidence);
 }
 
 /** Pure dispatch: scores a subject/candidate pair for the given match field. */

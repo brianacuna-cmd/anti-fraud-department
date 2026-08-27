@@ -50,8 +50,8 @@ function buildCase(organizationId = ORG_1): Case {
     customerId: 'customer-1',
     riskScore: createRiskScore(50),
     priority: 'MEDIUM',
-    // La regla de asignacion congela los expedientes huerfanos:
-    // sin responsable no se pueden trabajar.
+    // Assignment rule freezes orphan cases:
+    // without an owner they cannot be worked.
     assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   });
@@ -128,9 +128,12 @@ function build() {
 describe('createGenerateCaseReportUseCase', () => {
   it('persists an immutable snapshot with every section + GENERATE_CASE_REPORT audit', async () => {
     const h = build();
-    await h.cases.save(buildCase());
+    // Notes require review; the report requires the case closed. See `WorkflowStepGate`.
+    await h.cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
     await h.addCaseNote({ auth: ANALYST, caseId: oid('case-1'), body: 'suspicious' });
     await h.openInvestigation({ auth: ANALYST, caseId: oid('case-1'), subjectType: 'WALLET', subjectId: 'w-1' });
+    const reviewed = await h.cases.findById(createCaseId(oid('case-1')));
+    await h.cases.save(reviewed!.transitionTo('RESOLVED', NOW));
 
     const report = await h.generateCaseReport({ auth: ANALYST, caseId: oid('case-1') });
 
@@ -167,10 +170,18 @@ describe('createGenerateCaseReportUseCase', () => {
       h.generateCaseReport({ auth: ANALYST, caseId: oid('case-1') }),
     ).rejects.toMatchObject({ code: 'FORBIDDEN_CROSS_TENANT' });
   });
+
+  it('throws CASE_NOT_RESOLVED_FOR_REPORT for a case still open', async () => {
+    const h = build();
+    await h.cases.save(buildCase());
+    await expect(
+      h.generateCaseReport({ auth: ANALYST, caseId: oid('case-1') }),
+    ).rejects.toMatchObject({ code: 'CASE_NOT_RESOLVED_FOR_REPORT' });
+  });
 });
 
 /* -------------------------------------------------------------------------- */
-/* El expediente congelado, completo                                           */
+/* The frozen case file, complete                                           */
 /* -------------------------------------------------------------------------- */
 
 describe('createGenerateCaseReportUseCase — full case file', () => {
@@ -181,7 +192,8 @@ describe('createGenerateCaseReportUseCase — full case file', () => {
 
   async function seedFullCase() {
     const built = build();
-    const kase = buildCase();
+    // The report requires the case closed. See `WorkflowStepGate.assertReadyForReport`.
+    const kase = buildCase().transitionTo('IN_REVIEW', NOW).transitionTo('RESOLVED', NOW);
     await built.cases.save(kase);
 
     await built.evidence.save(
@@ -308,7 +320,7 @@ describe('createGenerateCaseReportUseCase — full case file', () => {
     expect(snapshot.sla).toEqual({ dueDate: NOW, status: 'ON_TRACK', updatedAt: NOW });
   });
 
-  /** Perder el expediente por no poder poner un nombre seria peor. */
+  /** Losing the case because a name could not be put on it would be worse. */
   it('still freezes the file when the identity directory is down', async () => {
     const built = await seedFullCase();
     jest.spyOn(built.assignees, 'displayNames').mockRejectedValue(new Error('identity is down'));
@@ -322,7 +334,7 @@ describe('createGenerateCaseReportUseCase — full case file', () => {
 
   it('leaves the new sections empty, never absent, on a bare case', async () => {
     const built = build();
-    await built.cases.save(buildCase());
+    await built.cases.save(buildCase().transitionTo('IN_REVIEW', NOW).transitionTo('RESOLVED', NOW));
 
     const report = await built.generateCaseReport({ auth: ANALYST, caseId: CASE_ID });
 

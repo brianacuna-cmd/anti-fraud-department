@@ -15,8 +15,8 @@ export interface AmlAlertNaturalKey {
 
 export interface AmlAlertListQuery {
   readonly organizationId: string;
-  readonly estado?: readonly AmlAlertStatus[];
-  readonly severidad?: readonly AmlAlertSeverity[];
+  readonly status?: readonly AmlAlertStatus[];
+  readonly severity?: readonly AmlAlertSeverity[];
   readonly watchlistId?: string;
   readonly createdAfter?: Instant;
   readonly createdBefore?: Instant;

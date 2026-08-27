@@ -28,10 +28,10 @@ export type CaseManagementAuditAction =
   | 'DELETE_CASE_NOTE'
   | 'RECORD_ANALYST_DECISION'
   /**
-   * ENF-001: la medida se pidio suelta, no como efecto de un dictamen. Se
-   * audita aparte de `RECORD_ANALYST_DECISION` porque la pregunta que hace un
-   * regulador —quien pidio restringir este dinero y con que veredicto
-   * detras— se responde distinto en cada caso.
+   * ENF-001: the measure was requested on its own, not as an effect of a
+   * decision. It is audited separately from `RECORD_ANALYST_DECISION` because
+   * the question a regulator asks —who requested restricting this money and
+   * with what verdict behind it— is answered differently in each case.
    */
   | 'REQUEST_ENFORCEMENT_ACTION'
   | 'APPROVE_ENFORCEMENT_ACTION'
@@ -50,7 +50,23 @@ export type CaseManagementAuditAction =
    * confirmation with the team (design open point: "Enums de EventType/Action
    * ... confirmar los nombres exactos").
    */
-  | 'ROUTING_RULE_EVALUATION_FAILED';
+  | 'ROUTING_RULE_EVALUATION_FAILED'
+  /**
+   * A rule matched and resolved a target, but that target does not belong
+   * to the organization or is not `ACTIVE` (deleted/suspended/disabled
+   * user, or a role that is not assignable). Same "skip, don't assign,
+   * don't abort case creation" treatment as `ROUTING_RULE_EVALUATION_FAILED`
+   * — the difference is WHAT failed: the JDM ran fine, the target it
+   * pointed to just cannot receive a case.
+   */
+  | 'ROUTING_RULE_TARGET_INVALID'
+  /**
+   * DLQ-001: a platform operator manually replayed a dead-lettered event
+   * back onto `outbox_events`. Audited with `originalDlqId` and
+   * `newOutboxId` so the trail is complete even if the requeued event
+   * publishes successfully and the new outbox row is deleted.
+   */
+  | 'DLQ_REQUEUED';
 
 export type CaseManagementAuditResource =
   | 'case'
@@ -60,4 +76,10 @@ export type CaseManagementAuditResource =
   | 'investigation'
   | 'report'
   | 'evidence'
-  | 'enforcement_action';
+  | 'enforcement_action'
+  /**
+   * DLQ-001: a `dead_letter_queue` row (backed by the `OutboxDlqRepository`
+   * port). Added so `AuditEvent.resource` typechecks for `DLQ_REQUEUED`
+   * emissions (D6). Read paths (list, inspect) are not audited.
+   */
+  | 'dlq_event';

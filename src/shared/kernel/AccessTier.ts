@@ -1,12 +1,12 @@
 import type { AuthContext } from './AuthContext.js';
 
 /**
- * Los cuatro roles del catálogo, en un solo sitio.
+ * The four catalog roles, in one place.
  *
- * Estaban repartidos como literales sueltos en dos docenas de casos de uso
- * (`const APPROVAL_ROLES = ['SUPERVISOR', 'ADMIN']`, …), de modo que cambiar
- * la política exigía encontrarlos todos y no olvidar ninguno — que es
- * exactamente cómo `ADMIN` terminó pudiendo dictaminar, cerrar y sancionar.
+ * They used to be scattered as loose literals across two dozen use cases
+ * (`const APPROVAL_ROLES = ['SUPERVISOR', 'ADMIN']`, …), so changing the
+ * policy meant finding every copy and not missing any — which is exactly
+ * how `ADMIN` ended up able to decide, close, and enforce.
  */
 export const ROLE_ADMIN = 'ADMIN';
 export const ROLE_SUPERVISOR = 'SUPERVISOR';
@@ -14,31 +14,31 @@ export const ROLE_ANALYST = 'ANALYST';
 export const ROLE_AUDITOR = 'AUDITOR';
 
 /**
- * Segregación de funciones (SoD).
+ * Segregation of duties (SoD).
  *
- * El departamento se parte en dos planos que NO se solapan:
+ * The department splits into two planes that do NOT overlap:
  *
- * - Gobierno — el actor `ORGANIZATION` (dueño del inquilino) y los roles
- *   `ADMIN` y `AUDITOR`. Lo ven todo y no ejecutan nada sobre un expediente.
- *   `ADMIN` administra personas y accesos; `AUDITOR` fiscaliza. Que quien
- *   concede los permisos no pueda además usarlos es el control que impide
- *   que una sola cuenta lleve un caso de fraude de principio a fin sin que
- *   nadie más lo mire.
- * - Operación — `ANALYST` instruye y propone; `SUPERVISOR` revisa, cierra y
- *   autoriza sanciones.
+ * - Governance — the `ORGANIZATION` actor (tenant owner) and the
+ *   `ADMIN` and `AUDITOR` roles. They see everything and execute nothing
+ *   on a case. `ADMIN` administers people and access; `AUDITOR` oversees.
+ *   That whoever grants permissions cannot also use them is the control
+ *   that stops a single account from taking a fraud case from start to
+ *   finish without anyone else looking.
+ * - Operations — `ANALYST` instructs and proposes; `SUPERVISOR` reviews,
+ *   closes, and authorizes enforcement.
  *
- * `PLATFORM_ADMIN` no aparece aquí a propósito: no tiene inquilino, así que
- * `requireTenantContext` lo detiene antes de que ninguna guarda de rol llegue
- * a mirarlo.
+ * `PLATFORM_ADMIN` is omitted here on purpose: they have no tenant, so
+ * `requireTenantContext` stops them before any role guard ever looks at
+ * them.
  */
 export const OBSERVER_ROLES: readonly string[] = [ROLE_ADMIN, ROLE_AUDITOR];
 
-/** Roles operativos: los únicos que actúan sobre un expediente. */
+/** Operational roles: the only ones that act on a case. */
 export const OPERATIONAL_ROLES: readonly string[] = [ROLE_ANALYST, ROLE_SUPERVISOR];
 
 /**
- * `true` cuando el actor pertenece al plano de gobierno: observa el inquilino
- * entero pero no puede modificarlo.
+ * `true` when the actor belongs to the governance plane: they observe the
+ * whole tenant but cannot modify it.
  */
 export function isObserver(auth: AuthContext): boolean {
   if (auth.actorType === 'ORGANIZATION') {
@@ -48,9 +48,9 @@ export function isObserver(auth: AuthContext): boolean {
 }
 
 /**
- * Etiqueta con la que un actor sin rol operativo aparece en el mensaje de
- * error. Sin esto la organización se leía como `role "null"`, que no dice
- * nada a quien lo recibe.
+ * Label used when an actor without an operational role appears in an error
+ * message. Without this the organization read as `role "null"`, which tells
+ * the recipient nothing.
  */
 export function describeActor(auth: AuthContext): string {
   return auth.actorType === 'USER' ? (auth.roleId ?? 'sin rol') : auth.actorType;

@@ -227,28 +227,55 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     await db.collection('cases').deleteMany({});
   });
 
-  it('creates the aml_alerts filter indexes (screening inbox triage Slice 2) and drops the old narrow estado index', async () => {
+  it('creates the aml_alerts filter indexes (screening inbox triage Slice 2) and drops obsolete Spanish-named indexes', async () => {
     await ensureIndexes(db);
     await ensureIndexes(db);
 
     const alertIndexes = await db.collection('aml_alerts').indexes();
 
-    const orgEstadoCreatedIndex = alertIndexes.find(
-      (index) => index.name === 'aml_alert_org_estado_created_idx',
+    const orgStatusCreatedIndex = alertIndexes.find(
+      (index) => index.name === 'aml_alert_org_status_created_idx',
     );
-    expect(orgEstadoCreatedIndex?.key).toEqual({ organization_id: 1, estado: 1, created_at: -1 });
+    expect(orgStatusCreatedIndex?.key).toEqual({ organization_id: 1, status: 1, created_at: -1 });
 
-    const orgSeveridadIndex = alertIndexes.find((index) => index.name === 'aml_alert_org_severidad_idx');
-    expect(orgSeveridadIndex?.key).toEqual({ organization_id: 1, severidad: 1 });
+    const orgSeverityIndex = alertIndexes.find((index) => index.name === 'aml_alert_org_severity_idx');
+    expect(orgSeverityIndex?.key).toEqual({ organization_id: 1, severity: 1 });
 
     const orgWatchlistIndex = alertIndexes.find((index) => index.name === 'aml_alert_org_watchlist_idx');
     expect(orgWatchlistIndex?.key).toEqual({ organization_id: 1, 'matched_entry.watchlist_id': 1 });
 
     expect(alertIndexes.find((index) => index.name === 'aml_alert_org_estado_idx')).toBeUndefined();
+    expect(alertIndexes.find((index) => index.name === 'aml_alert_org_estado_created_idx')).toBeUndefined();
+    expect(alertIndexes.find((index) => index.name === 'aml_alert_org_severidad_idx')).toBeUndefined();
 
     expect(
-      alertIndexes.filter((index) => index.name === 'aml_alert_org_estado_created_idx'),
+      alertIndexes.filter((index) => index.name === 'aml_alert_org_status_created_idx'),
     ).toHaveLength(1);
+  });
+
+  it('creates watchlist_entries blocking indexes and drops obsolete Spanish-named indexes', async () => {
+    await ensureIndexes(db);
+    await ensureIndexes(db);
+
+    const watchlistIndexes = await db.collection('watchlist_entries').indexes();
+
+    expect(watchlistIndexes.find((index) => index.name === 'watchlist_entries_watchlist_status_idx')?.key).toEqual({
+      watchlist_id: 1,
+      status: 1,
+    });
+    expect(watchlistIndexes.find((index) => index.name === 'watchlist_entries_document_idx')?.key).toEqual({
+      document: 1,
+    });
+    expect(watchlistIndexes.find((index) => index.name === 'watchlist_entries_phonetic_keys_idx')?.key).toEqual({
+      phonetic_keys: 1,
+    });
+    expect(watchlistIndexes.find((index) => index.name === 'watchlist_entries_normalized_name_idx')?.key).toEqual({
+      normalized_name: 1,
+    });
+
+    expect(watchlistIndexes.find((index) => index.name === 'watchlist_entries_watchlist_estado_idx')).toBeUndefined();
+    expect(watchlistIndexes.find((index) => index.name === 'watchlist_entries_documento_idx')).toBeUndefined();
+    expect(watchlistIndexes.find((index) => index.name === 'watchlist_entries_nombre_normalizado_idx')).toBeUndefined();
   });
 
   it('creates the OrganizationFraudConfig unique index (case-management Slice 2) and stays idempotent on re-run', async () => {
@@ -561,5 +588,119 @@ describe('ensureIndexes (integration, real Mongo)', () => {
         updated_at: now,
       }),
     ).rejects.toMatchObject({ code: 11000 });
+  });
+
+  // ─── watchlists (screening, Slice A2, design §7 / ADR-5) ───────────────────
+
+  it('creates the required indexes on the watchlists collection', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+
+    const indexes = await db.collection('watchlists').indexes();
+
+    const orgStatusIdx = indexes.find((i) => i.name === 'watchlists_org_status_idx');
+    expect(orgStatusIdx).toBeDefined();
+    expect(orgStatusIdx?.key).toEqual({ organization_id: 1, status: 1 });
+
+    const orgTypeIdx = indexes.find((i) => i.name === 'watchlists_org_type_idx');
+    expect(orgTypeIdx).toBeDefined();
+    expect(orgTypeIdx?.key).toEqual({ organization_id: 1, type: 1 });
+
+    const orgNameIdx = indexes.find((i) => i.name === 'watchlists_org_name_partial_unique');
+    expect(orgNameIdx).toBeDefined();
+    expect(orgNameIdx?.key).toEqual({ organization_id: 1, name: 1 });
+    expect(orgNameIdx?.unique).toBe(true);
+    expect(orgNameIdx?.partialFilterExpression).toEqual({ deleted_at: null });
+  });
+
+  it('rejects a duplicate watchlist name within the same org (partial unique index, non-deleted)', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+
+    const organizationId = new ObjectId();
+    const now = new Date('2026-01-01T00:00:00.000Z');
+    await db.collection('watchlists').insertOne({
+      _id: new ObjectId(),
+      organization_id: organizationId,
+      name: 'OFAC List',
+      source: 'OFAC',
+      type: 'BLACKLIST',
+      status: 'ACTIVE',
+      deleted_at: null,
+      created_at: now,
+      updated_at: now,
+    });
+
+    await expect(
+      db.collection('watchlists').insertOne({
+        _id: new ObjectId(),
+        organization_id: organizationId,
+        name: 'OFAC List',
+        source: 'OFAC',
+        type: 'BLACKLIST',
+        status: 'ACTIVE',
+        deleted_at: null,
+        created_at: now,
+        updated_at: now,
+      }),
+    ).rejects.toMatchObject({ code: 11000 });
+  });
+
+  it('allows the same watchlist name to be reused after soft-delete (partial filter excludes deleted_at != null)', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+
+    const organizationId = new ObjectId();
+    const now = new Date('2026-01-01T00:00:00.000Z');
+    await db.collection('watchlists').insertOne({
+      _id: new ObjectId(),
+      organization_id: organizationId,
+      name: 'Reusable List',
+      source: 'OFAC',
+      type: 'BLACKLIST',
+      status: 'INACTIVE',
+      deleted_at: now,
+      created_at: now,
+      updated_at: now,
+    });
+
+    // Inserting a non-deleted doc with the same name should succeed
+    await expect(
+      db.collection('watchlists').insertOne({
+        _id: new ObjectId(),
+        organization_id: organizationId,
+        name: 'Reusable List',
+        source: 'OFAC',
+        type: 'BLACKLIST',
+        status: 'ACTIVE',
+        deleted_at: null,
+        created_at: now,
+        updated_at: now,
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('creates dlq_exhausted_idx on dead_letter_queue for cross-tenant DLQ admin list (D4)', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+
+    const dlqIndexes = await db.collection('dead_letter_queue').indexes();
+    const idx = dlqIndexes.find((i) => i.name === 'dlq_exhausted_idx');
+
+    expect(idx).toBeDefined();
+    expect(idx?.key).toEqual({ exhausted_at: -1, _id: -1 });
+  });
+
+  it('creates outbox_published_ttl_idx on outbox_events for PUBLISHED 7-day retention', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+
+    const indexes = await db.collection('outbox_events').indexes();
+    const idx = indexes.find((i) => i.name === 'outbox_published_ttl_idx');
+
+    expect(idx).toBeDefined();
+    expect(idx?.key).toEqual({ published_at: 1 });
+    expect(idx?.expireAfterSeconds).toBe(604800);
+    expect(idx?.partialFilterExpression).toEqual({ status: 'PUBLISHED' });
   });
 });

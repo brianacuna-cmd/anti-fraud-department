@@ -49,7 +49,7 @@ export function createStartReviewUseCase(deps: StartReviewDeps) {
       if (existing.organizationId !== organizationId) {
         throw forbiddenCrossTenant('case does not belong to the actor organization');
       }
-      // Sin responsable el expediente esta congelado. Ver `AssignmentGate`.
+      // Without an assignee the case is frozen. See `AssignmentGate`.
       assertAssigned(existing);
 
       const now = deps.clock.now();

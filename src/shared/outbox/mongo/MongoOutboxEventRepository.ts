@@ -1,7 +1,10 @@
-import { type ClientSession, type Collection, type Db } from 'mongodb';
+import { ObjectId, type ClientSession, type Collection, type Db } from 'mongodb';
+import type { Instant } from '../../time/Instant.js';
+import { toDate } from '../../time/Instant.js';
 import type { OutboxEvent } from '../OutboxEvent.js';
 import type { OutboxEventRepository } from '../OutboxEventRepository.js';
 import type { OutboxEventRelayRepository } from '../OutboxEventRelayRepository.js';
+import type { OutboxEventId } from '../OutboxEventId.js';
 import type { OutboxEventDocument } from './OutboxEventDocument.js';
 import { toDocument, toDomain } from './OutboxEventDocumentMapper.js';
 
@@ -29,9 +32,15 @@ export class MongoOutboxEventRepository implements OutboxEventRepository, Outbox
     await this.collection.insertOne(toDocument(event), { session: toSession(tx) });
   }
 
-  async findPending(limit = 100, tx?: unknown): Promise<readonly OutboxEvent[]> {
+  async findPending(now: Instant, limit = 100, tx?: unknown): Promise<readonly OutboxEvent[]> {
     const documents = await this.collection
-      .find({ status: 'PENDING' }, { session: toSession(tx) })
+      .find(
+        {
+          status: 'PENDING',
+          $or: [{ next_retry_at: null }, { next_retry_at: { $lte: toDate(now) } }],
+        },
+        { session: toSession(tx) },
+      )
       .sort({ _id: 1 })
       .limit(limit)
       .toArray();
@@ -41,5 +50,9 @@ export class MongoOutboxEventRepository implements OutboxEventRepository, Outbox
   async update(event: OutboxEvent, tx?: unknown): Promise<void> {
     const document = toDocument(event);
     await this.collection.replaceOne({ _id: document._id }, document, { session: toSession(tx) });
+  }
+
+  async delete(id: OutboxEventId, tx?: unknown): Promise<void> {
+    await this.collection.deleteOne({ _id: new ObjectId(id as string) }, { session: toSession(tx) });
   }
 }

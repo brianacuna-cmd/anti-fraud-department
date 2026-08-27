@@ -5,7 +5,7 @@ import type { MatchScore } from '../domain/model/value-objects/MatchScore.js';
 import type { ScreeningMatch } from '../domain/model/entities/ScreeningMatch.js';
 import { AmlAlert } from '../domain/model/aggregates/AmlAlert.js';
 import type { AmlAlertRepository } from '../domain/ports/AmlAlertRepository.js';
-import type { AmlExpedienteTimelineRecorder } from '../domain/ports/AmlExpedienteTimelineRecorder.js';
+import type { AmlAlertTimelineRecorder } from '../domain/ports/AmlAlertTimelineRecorder.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import type { OutboxEventRepository } from '../../../shared/outbox/OutboxEventRepository.js';
 import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
@@ -37,7 +37,7 @@ export interface OpenAmlAlertResult {
 
 export interface OpenAmlAlertDeps {
   readonly amlAlertRepository: AmlAlertRepository;
-  readonly timelineRecorder: AmlExpedienteTimelineRecorder;
+  readonly timelineRecorder: AmlAlertTimelineRecorder;
   readonly outbox: OutboxEventRepository;
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
@@ -48,9 +48,9 @@ export interface OpenAmlAlertDeps {
 }
 
 /**
- * Opens an AML expediente when similarity (`confidence`) meets the org's
+ * Opens an AML alert when similarity (`confidence`) meets the org's
  * configured alert threshold. Within ONE `unitOfWork.withTransaction`:
- * inserts `aml_alerts` (estado OPEN, calculated `severidad`), appends a
+ * inserts `aml_alerts` (status OPEN, calculated `severity`), appends a
  * `CASE_CREATED` `case_timeline` row keyed by the alert id, and emits an
  * `AML_ALERT_CREATED` `outbox_events` row. Idempotent on the alert natural
  * key (RF-6): a duplicate save skips timeline and outbox.
@@ -116,10 +116,10 @@ export function createOpenAmlAlertUseCase(deps: OpenAmlAlertDeps) {
             alert_id: String(alert.id),
             organization_id: organizationId,
             customer_id: alert.customerId,
-            estado: alert.status,
-            severidad: alert.severity,
-            confianza: alert.confidence,
-            tipo_alerta: alert.alertType,
+            status: alert.status,
+            severity: alert.severity,
+            confidence: alert.confidence,
+            alert_type: alert.alertType,
           },
           now,
         }),

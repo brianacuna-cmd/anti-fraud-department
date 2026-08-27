@@ -19,6 +19,8 @@ import { createGetCaseTimelineUseCase } from '../../../../src/modules/case-manag
 import { createAddCaseNoteUseCase } from '../../../../src/modules/case-management/application/AddCaseNote.js';
 import { createListCaseNotesUseCase } from '../../../../src/modules/case-management/application/ListCaseNotes.js';
 import { InMemoryResolutionRepository } from '../../../helpers/case-management/InMemoryResolutionRepository.js';
+import { InMemoryAnalystDecisionRepository } from '../../../helpers/case-management/InMemoryAnalystDecisionRepository.js';
+import { InMemoryEnforcementActionRepository } from '../../../helpers/case-management/InMemoryEnforcementActionRepository.js';
 import { generateResolutionId } from '../../../../src/modules/case-management/domain/model/value-objects/ResolutionId.js';
 import { createResolveCaseUseCase } from '../../../../src/modules/case-management/application/ResolveCase.js';
 import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
@@ -39,6 +41,7 @@ import { InMemoryCaseRoutingRuleRepository } from '../../../helpers/case-managem
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
 import { InMemoryCaseSlaTrackingRepository } from '../../../helpers/case-management/InMemoryCaseSlaTrackingRepository.js';
 import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
+import { AllowAllAssigneeDirectory } from '../../../helpers/case-management/AllowAllAssigneeDirectory.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 import { generateCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
@@ -87,13 +90,13 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
 
   const unitOfWork = new PassthroughUnitOfWork();
   const routeCase = createRouteCaseUseCase({
-    assigneeDirectory,
     cases,
     routingRules,
     routingEngine: new ZenRoutingEngine(),
     timelineRecorder,
     auditRecorder,
     fraudConfig,
+    assigneeDirectory: new AllowAllAssigneeDirectory(),
     clock,
     generateTimelineEventId,
   });
@@ -134,7 +137,10 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
     listCaseNotes: createListCaseNotesUseCase({ cases, notes: caseNotes }),
     resolveCase: createResolveCaseUseCase({
       outbox: new InMemoryOutboxEventRepository(),
-      generateOutboxEventId, cases, resolutions, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
+      generateOutboxEventId, cases, resolutions, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId,
+      decisions: new InMemoryAnalystDecisionRepository(),
+      enforcementActions: new InMemoryEnforcementActionRepository(),
+    }),
     archiveCase: createArchiveCaseUseCase({ cases, resolutions, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
     startReview: createStartReviewUseCase({ cases, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateTimelineEventId }),
     bulkCaseAction: createBulkCaseActionUseCase({
@@ -186,9 +192,6 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
 
   return { app, cases };
 }
-
-/** Permisiva: estas pruebas comprueban otra cosa. */
-const assigneeDirectory = new InMemoryAssigneeDirectory();
 
 describe('GET /api/v1/cases (inbox list)', () => {
   it('returns a filtered page of non-deleted cases for the tenant', async () => {

@@ -1,5 +1,4 @@
 import { oid } from '../../support/oid.js';
-import { InMemoryAssigneeDirectory } from '../../helpers/case-management/InMemoryAssigneeDirectory.js';
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { ObjectId, type Db, type MongoClient } from 'mongodb';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
@@ -19,6 +18,7 @@ import { MongoCaseRoutingRuleRepository } from '../../../src/modules/case-manage
 import { MongoOrganizationFraudConfigRepository } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoOrganizationFraudConfigRepository.js';
 import { MongoCaseSlaTrackingRepository } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseSlaTrackingRepository.js';
 import { ZenRoutingEngine } from '../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
+import { AllowAllAssigneeDirectory } from '../../helpers/case-management/AllowAllAssigneeDirectory.js';
 import type { AuditEvent, AuditRecorder } from '../../../src/modules/case-management/domain/ports/AuditRecorder.js';
 import type { Transaction } from '../../../src/modules/case-management/domain/ports/UnitOfWork.js';
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
@@ -46,9 +46,6 @@ function alwaysFailingRecorder(): AuditRecorder {
  * that a failure anywhere in that transaction rolls back everything —
  * mirrors `createOrganizationAudit.test.ts`'s atomicity precedent.
  */
-/** Permisiva: estas pruebas comprueban otra cosa. */
-const assigneeDirectory = new InMemoryAssigneeDirectory();
-
 describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
   let replicaSet: MongoMemoryReplSet;
   let client: MongoClient;
@@ -167,7 +164,7 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
       timelineRecorder,
       auditRecorder,
       fraudConfig,
-      assigneeDirectory,
+      assigneeDirectory: new AllowAllAssigneeDirectory(),
       clock,
       generateTimelineEventId,
     });

@@ -52,7 +52,7 @@ export function toDomain(document: EvidenceDocument): Evidence {
     sha256: document.sha256,
     storageKey: document.storage_key,
     timestamp,
-    // Documento anterior a INV-015: nadie lo escaneo, y asi se dice.
+    // Document from before INV-015: nobody scanned it, and that is how it is stated.
     scanStatus: toScanStatus(document.scan_status),
     uploadedBy: document.uploaded_by,
     createdAt: fromDate(document.created_at),

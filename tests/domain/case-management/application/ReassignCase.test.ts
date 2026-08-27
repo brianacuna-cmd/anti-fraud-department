@@ -27,6 +27,18 @@ const ANALYST = createAuthContext({
   // Repartir trabajo es del ADMIN: el analista ya no elige su carga.
   roleId: 'ADMIN',
 });
+const SUPERVISOR_NO_ADMIN = createAuthContext({
+  userId: oid('sup-1'),
+  organizationId: ORG_1,
+  actorType: 'USER',
+  roleId: 'SUPERVISOR',
+});
+// El dueño del tenant: no toda organización tiene un usuario ADMIN creado.
+const ORG_ACTOR = createAuthContext({
+  userId: ORG_1,
+  organizationId: ORG_1,
+  actorType: 'ORGANIZATION',
+});
 const CASE_ID = createCaseId(oid('case-1'));
 
 function buildCase(overrides: { organizationId?: string; assignedTo?: AssignedTo | null; deletedAt?: typeof NOW | null } = {}): Case {
@@ -125,7 +137,7 @@ describe('createReassignCaseUseCase (manual reassign)', () => {
     });
   });
 
-  it('sends CASO_ASIGNADO to the new USER assignee inside the same transaction (atomic)', async () => {
+  it('sends CASE_ASSIGNED to the new USER assignee inside the same transaction (atomic)', async () => {
     const target = createAssignedTo('USER', oid('analyst-2'));
     const { reassignCase, notificationSender } = buildUseCase(buildCase(), [target]);
 
@@ -141,7 +153,7 @@ describe('createReassignCaseUseCase (manual reassign)', () => {
     expect(requests[0]).toMatchObject({
       organizationId: ORG_1,
       recipientUserId: oid('analyst-2'),
-      alertType: 'CASO_ASIGNADO',
+      alertType: 'CASE_ASSIGNED',
     });
     expect(requests[0]?.context).toMatchObject({ caseId: CASE_ID });
   });
@@ -162,7 +174,7 @@ describe('createReassignCaseUseCase (manual reassign)', () => {
     expect(notificationSender.all()).toHaveLength(0);
   });
 
-  it('fans out CASO_ASIGNADO to every active member when reassigning to a ROLE (PR3)', async () => {
+  it('fans out CASE_ASSIGNED to every active member when reassigning to a ROLE (PR3)', async () => {
     const target = createAssignedTo('ROLE', oid('role-1'));
     const { reassignCase, notificationSender, assigneeDirectory } = buildUseCase(buildCase(), [target]);
     assigneeDirectory.allowRoleRecipients(ORG_1, oid('role-1'), [oid('analyst-2'), oid('analyst-3')]);
@@ -178,7 +190,7 @@ describe('createReassignCaseUseCase (manual reassign)', () => {
     expect(requests.map((request) => request.recipientUserId).sort()).toEqual(
       [oid('analyst-2'), oid('analyst-3')].sort(),
     );
-    expect(requests.every((request) => request.alertType === 'CASO_ASIGNADO')).toBe(true);
+    expect(requests.every((request) => request.alertType === 'CASE_ASSIGNED')).toBe(true);
   });
 
   it('returns CASE_NOT_FOUND when the case is soft-deleted', async () => {
@@ -264,5 +276,37 @@ describe('createReassignCaseUseCase (manual reassign)', () => {
         assignedToId: oid('analyst-2'),
       }),
     ).rejects.toMatchObject({ code: 'CASE_NOT_FOUND' } satisfies Partial<CaseManagementError>);
+  });
+
+  describe('la organización dueña del tenant también puede repartir trabajo', () => {
+    it('permite a la ORGANIZACIÓN reasignar un caso sin necesidad de un usuario ADMIN', async () => {
+      const target = createAssignedTo('USER', oid('analyst-2'));
+      const { reassignCase, cases } = buildUseCase(buildCase(), [target]);
+
+      const result = await reassignCase({
+        auth: ORG_ACTOR,
+        caseId: CASE_ID,
+        assignedToType: 'USER',
+        assignedToId: oid('analyst-2'),
+      });
+
+      expect(result.assignedTo).toEqual({ type: 'USER', id: oid('analyst-2') });
+      expect(cases.all()[0]?.assignedTo).toEqual({ type: 'USER', id: oid('analyst-2') });
+    });
+
+    it('sigue rechazando a un SUPERVISOR (no es ADMIN ni la organización) con FORBIDDEN_ROLE', async () => {
+      const target = createAssignedTo('USER', oid('analyst-2'));
+      const { reassignCase, cases } = buildUseCase(buildCase(), [target]);
+
+      await expect(
+        reassignCase({
+          auth: SUPERVISOR_NO_ADMIN,
+          caseId: CASE_ID,
+          assignedToType: 'USER',
+          assignedToId: oid('analyst-2'),
+        }),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN_ROLE' } satisfies Partial<CaseManagementError>);
+      expect(cases.all()[0]?.assignedTo).toBeNull();
+    });
   });
 });

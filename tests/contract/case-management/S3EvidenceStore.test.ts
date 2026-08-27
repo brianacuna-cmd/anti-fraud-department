@@ -56,8 +56,8 @@ describe('S3EvidenceStore', () => {
 
     await store.put('org/case/ev-1', Buffer.from('bytes'));
 
-    // Sin normalizar, `/prod/` daria `/prod//org/...` y la clave real del
-    // objeto no coincidiria con la que se firma al descargarlo.
+    // Without normalizing, `/prod/` would give `/prod//org/...` and the real
+    // object key would not match the one signed on download.
     expect(sent[0]!.input.Key).toBe('prod/org/case/ev-1');
   });
 

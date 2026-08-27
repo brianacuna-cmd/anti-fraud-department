@@ -43,7 +43,7 @@ const NOTE_ID = oid('note-1');
 const SUPERVISOR = createAuthContext({ userId: oid('sup-1'), organizationId: ORG_1, actorType: 'USER', roleId: 'SUPERVISOR' });
 const ANALYST = createAuthContext({ userId: oid('an-1'), organizationId: ORG_1, actorType: 'USER', roleId: 'ANALYST' });
 const ADMIN = createAuthContext({ userId: oid('adm-1'), organizationId: ORG_1, actorType: 'USER', roleId: 'ADMIN' });
-/** El actor ORGANIZATION nunca lleva `roleId`: el resolver de sesión solo lo resuelve para USER. */
+/** The ORGANIZATION actor never carries `roleId`: the session resolver only resolves it for USER. */
 const ORGANIZATION = createAuthContext({ userId: ORG_1, organizationId: ORG_1, actorType: 'ORGANIZATION' });
 
 function seedEvidence(): Evidence {
@@ -160,10 +160,10 @@ describe('DELETE /evidence/:id and /notes/:id (soft delete)', () => {
   });
 
   /**
-   * La regresión que motivó la política: con sesión de organización, el
-   * expediente respondía `role "null" is not authorized` a cada botón. Ahora
-   * sigue siendo un 403 —esa sesión no opera— pero el cuerpo dice POR QUÉ, y
-   * la interfaz usa ese `readOnly` para no ofrecer el botón siquiera.
+   * The regression that motivated the policy: with an organization session,
+   * the case answered `role "null" is not authorized` on every button. Now
+   * it is still a 403 — that session does not operate — but the body says
+   * WHY, and the UI uses that `readOnly` to not even offer the button.
    */
   it.each([
     ['ADMIN', () => ADMIN],
@@ -181,11 +181,11 @@ describe('DELETE /evidence/:id and /notes/:id (soft delete)', () => {
       expect(del.body.error.message).not.toContain('null');
     }
 
-    // Y nada se ha tocado.
+    // And nothing was touched.
     expect(await notes.listByCaseId(createCaseId(CASE_ID))).toHaveLength(1);
   });
 
-  /** Leer sí: el plano de gobierno observa el expediente entero. */
+  /** Reads yes: the governance plane observes the whole case. */
   it('still lets the ORGANIZATION actor read the evidence it may not delete', async () => {
     const { app, evidence } = buildApp(() => ORGANIZATION);
     await evidence.save(seedEvidence());

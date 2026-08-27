@@ -75,14 +75,13 @@ export async function ensureIndexes(db: Db): Promise<void> {
 
   await db.collection('cases').createIndex({ tags: 1 }, { name: 'case_tags_idx' });
 
-  // Grafo de entidades (INV-013) y deduplicacion de la ingesta (CASE-011):
-  // ambos buscan expedientes por identificador dentro de un inquilino. La
-  // expansion del grafo hace una consulta POR RONDA, asi que sin estos indices
-  // cada salto es un barrido completo de `cases` y el coste se multiplica por
-  // la profundidad pedida.
+  // Entity graph (INV-013) and ingest deduplication (CASE-011): both look up
+  // cases by identifier within a tenant. Graph expansion runs one query PER
+  // ROUND, so without these indexes each hop is a full scan of `cases` and
+  // the cost multiplies by the requested depth.
   //
-  // Van compuestos con `organization_id` delante porque ninguna consulta busca
-  // un identificador sin acotar el inquilino: el aislamiento no es opcional.
+  // They are compounded with `organization_id` first because no query looks
+  // up an identifier without scoping the tenant: isolation is not optional.
   await db
     .collection('cases')
     .createIndex({ organization_id: 1, customer_id: 1 }, { name: 'case_org_customer_idx' });
@@ -103,14 +102,14 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .collection('cases')
     .createIndex({ organization_id: 1, stripe_customer_id: 1 }, { name: 'case_org_stripe_customer_idx' });
 
-  // Panel de gobierno (`GET /metrics/overview`): la serie diaria de altas
-  // recorre `cases` por inquilino y fecha de creacion. Sin este indice, cada
-  // apertura del panel es un barrido completo de la coleccion.
+  // Governance dashboard (`GET /metrics/overview`): the daily-created series
+  // walks `cases` by tenant and creation date. Without this index, every
+  // dashboard open is a full collection scan.
   await db
     .collection('cases')
     .createIndex({ organization_id: 1, created_at: 1 }, { name: 'case_org_created_idx' });
 
-  // La misma serie, del lado de los cierres.
+  // The same series, on the closures side.
   await db
     .collection('resolutions')
     .createIndex({ organization_id: 1, created_at: 1 }, { name: 'resolutions_org_created_idx' });
@@ -237,15 +236,34 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { name: 'outbox_published_ttl_idx', expireAfterSeconds: 604800, partialFilterExpression: { status: 'PUBLISHED' } },
   );
 
+  // dead_letter_queue: operator inspection (newest exhausted first per tenant)
+  // and per-aggregate tracing of lost events. No TTL — silent expiry is worse
+  // than a growing collection. Uniqueness on event id comes from `_id`.
+  await db
+    .collection('dead_letter_queue')
+    .createIndex({ organization_id: 1, exhausted_at: -1 }, { name: 'dlq_org_exhausted_idx' });
+
+  // Cross-tenant DLQ admin list (D4): unfiltered newest-first page cannot use
+  // `dlq_org_exhausted_idx` because it is prefixed by `organization_id`. A
+  // plain `(exhausted_at DESC, _id DESC)` index covers both the cross-tenant
+  // page and acts as the tiebreak sort key for keyset cursors.
+  await db
+    .collection('dead_letter_queue')
+    .createIndex({ exhausted_at: -1, _id: -1 }, { name: 'dlq_exhausted_idx' });
+
+  await db
+    .collection('dead_letter_queue')
+    .createIndex({ aggregate_id: 1, created_at: 1 }, { name: 'dlq_aggregate_created_idx' });
+
   // watchlist_entries (screening): blocking-layer lookups for the
   // non-Atlas fallback candidate repository (RF-2) — compound status
-  // filter, exact documento/wallet lookups, and phonetic/normalized-name
+  // filter, exact document/wallet lookups, and phonetic/normalized-name
   // blocking.
   await db
     .collection('watchlist_entries')
-    .createIndex({ watchlist_id: 1, estado: 1 }, { name: 'watchlist_entries_watchlist_estado_idx' });
+    .createIndex({ watchlist_id: 1, status: 1 }, { name: 'watchlist_entries_watchlist_status_idx' });
 
-  await db.collection('watchlist_entries').createIndex({ documento: 1 }, { name: 'watchlist_entries_documento_idx' });
+  await db.collection('watchlist_entries').createIndex({ document: 1 }, { name: 'watchlist_entries_document_idx' });
 
   await db
     .collection('watchlist_entries')
@@ -253,34 +271,51 @@ export async function ensureIndexes(db: Db): Promise<void> {
 
   await db
     .collection('watchlist_entries')
-    .createIndex({ nombre_normalizado: 1 }, { name: 'watchlist_entries_nombre_normalizado_idx' });
+    .createIndex({ normalized_name: 1 }, { name: 'watchlist_entries_normalized_name_idx' });
+
+  const watchlistIndexes = await db.collection('watchlist_entries').indexes();
+  for (const obsolete of [
+    'watchlist_entries_watchlist_estado_idx',
+    'watchlist_entries_documento_idx',
+    'watchlist_entries_nombre_normalizado_idx',
+  ]) {
+    if (watchlistIndexes.some((index) => index.name === obsolete)) {
+      await db.collection('watchlist_entries').dropIndex(obsolete);
+    }
+  }
 
   await db
     .collection('watchlist_entries')
     .createIndex({ wallet_address: 1 }, { name: 'watchlist_entries_wallet_address_idx' });
 
   // aml_alerts (screening): lookups by organization/status/created_at,
-  // organization/severidad, organization/matched watchlist, and
+  // organization/severity, organization/matched watchlist, and
   // organization/customer, plus the natural-key idempotency unique index
   // (RF-6) so outbox redelivery never creates a duplicate alert.
-  // (Slice 2, NF-3) The compound org+estado+created_at index supersedes the
-  // narrower org+estado index (estado-only queries still use its prefix),
-  // and also serves the newest-first sort + estado+date-range queries.
+  // (Slice 2, NF-3) The compound org+status+created_at index supersedes the
+  // narrower org+status index (status-only queries still use its prefix),
+  // and also serves the newest-first sort + status+date-range queries.
   await db
     .collection('aml_alerts')
     .createIndex(
-      { organization_id: 1, estado: 1, created_at: -1 },
-      { name: 'aml_alert_org_estado_created_idx' },
+      { organization_id: 1, status: 1, created_at: -1 },
+      { name: 'aml_alert_org_status_created_idx' },
     );
-
-  const amlAlertIndexes = await db.collection('aml_alerts').indexes();
-  if (amlAlertIndexes.some((index) => index.name === 'aml_alert_org_estado_idx')) {
-    await db.collection('aml_alerts').dropIndex('aml_alert_org_estado_idx');
-  }
 
   await db
     .collection('aml_alerts')
-    .createIndex({ organization_id: 1, severidad: 1 }, { name: 'aml_alert_org_severidad_idx' });
+    .createIndex({ organization_id: 1, severity: 1 }, { name: 'aml_alert_org_severity_idx' });
+
+  const amlAlertIndexes = await db.collection('aml_alerts').indexes();
+  for (const obsolete of [
+    'aml_alert_org_estado_idx',
+    'aml_alert_org_estado_created_idx',
+    'aml_alert_org_severidad_idx',
+  ]) {
+    if (amlAlertIndexes.some((index) => index.name === obsolete)) {
+      await db.collection('aml_alerts').dropIndex(obsolete);
+    }
+  }
 
   await db
     .collection('aml_alerts')
@@ -303,9 +338,64 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { unique: true, name: 'aml_alerts_natural_key_unique' },
   );
 
+  // watchlists (screening, Slice A2, design §7 / ADR-5): list queries filter
+  // by org+status and org+type; the unique partial index on org+name where
+  // deleted_at is null enforces per-org name uniqueness among non-deleted
+  // watchlists only, allowing the same name to be reused after a soft-delete.
+  await db
+    .collection('watchlists')
+    .createIndex({ organization_id: 1, status: 1 }, { name: 'watchlists_org_status_idx' });
+
+  await db
+    .collection('watchlists')
+    .createIndex({ organization_id: 1, type: 1 }, { name: 'watchlists_org_type_idx' });
+
+  await db.collection('watchlists').createIndex(
+    { organization_id: 1, name: 1 },
+    {
+      unique: true,
+      name: 'watchlists_org_name_partial_unique',
+      partialFilterExpression: { deleted_at: null },
+    },
+  );
+
   // organization_screening_config (screening, design D-6): per-tenant
-  // singleton of confianza thresholds — one document per organization.
+  // singleton of confidence thresholds — one document per organization.
   await db
     .collection('organization_screening_config')
     .createIndex({ organization_id: 1 }, { unique: true, name: 'org_screening_config_unique' });
+
+  // bulk_screening_jobs (Slice A, design D7, RNF-BS-1): org-scoped status
+  // polling (GET /bulk-screening-jobs/:id) and org-scoped listing by creation
+  // date. Both are compounded with organization_id first for tenant isolation.
+  await db
+    .collection('bulk_screening_jobs')
+    .createIndex({ organization_id: 1, status: 1 }, { name: 'bulk_screening_jobs_org_status_idx' });
+
+  await db
+    .collection('bulk_screening_jobs')
+    .createIndex(
+      { organization_id: 1, created_at: -1 },
+      { name: 'bulk_screening_jobs_org_created_idx' },
+    );
+
+  // watchlist_entries (wallet-rescreen, PR2, D7): compound ESR index for the
+  // keyset delta scan — equality on org+type+status, range on updated_at.
+  // `watchlist_id: {$in:[...]}` stays a residual filter; BLACKLIST is the
+  // dominant subset so selectivity loss from omitting it from the key is small.
+  await db
+    .collection('watchlist_entries')
+    .createIndex(
+      { organization_id: 1, entry_type: 1, status: 1, updated_at: 1 },
+      { name: 'watchlist_entries_org_type_status_updated_idx' },
+    );
+
+  // screening_watermarks (wallet-rescreen, PR2, D2): unique per (org, job_name)
+  // enforces the per-job singleton; last-write-wins upsert relies on this key.
+  await db
+    .collection('screening_watermarks')
+    .createIndex(
+      { organization_id: 1, job_name: 1 },
+      { unique: true, name: 'screening_watermark_org_job_unique' },
+    );
 }

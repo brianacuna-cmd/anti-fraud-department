@@ -20,14 +20,14 @@ function toSession(tx: Transaction | undefined): ClientSession | undefined {
 }
 
 /**
- * Campo del documento por el que se busca cada tipo de identificador.
+ * Document field each identifier type is looked up by.
  *
- * `Record<EntityNodeType, ...>` obliga a que el mapa sea TOTAL: si manana se
- * anade un tipo de entidad al catalogo, el build falla aqui hasta que alguien
- * diga en que campo vive. Sin esto la expansion del grafo lo ignoraria en
- * silencio y la red saldria incompleta sin aviso — que es el peor fallo
- * posible en esta funcion, porque un grafo incompleto se parece mucho a un
- * grafo correcto.
+ * `Record<EntityNodeType, ...>` forces the map to be TOTAL: if a new entity
+ * type is added to the catalog tomorrow, the build fails here until someone
+ * says which field it lives in. Without this, graph expansion would ignore
+ * it silently and the network would come out incomplete with no warning —
+ * the worst possible failure in this function, because an incomplete graph
+ * looks a lot like a correct one.
  */
 const FIELD_BY_ENTITY_TYPE: Record<EntityNodeType, string> = {
   CUSTOMER: 'customer_id',
@@ -61,14 +61,14 @@ export class MongoCaseRepository implements CaseRepository {
   }
 
   /**
-   * CASE-011. `organization_id` NUNCA es opcional: una version anterior
-   * reintentaba la consulta sin el cuando no encontraba nada, de modo que la
-   * ingesta podia enganchar —y sobrescribir— el expediente de otro inquilino
-   * que compartiera identificador de cliente. Un expediente ajeno no es una
-   * coincidencia valida: si no hay caso en esta organizacion, toca crear uno.
+   * CASE-011. `organization_id` is NEVER optional: an earlier version retried
+   * the query without it when it found nothing, so ingestion could latch onto
+   * —and overwrite— another tenant's case that shared a customer identifier.
+   * A foreign case is not a valid match: if there is no case in this
+   * organization, one has to be created.
    *
-   * `deleted_at: null` excluye los borrados logicos, para que la ingesta no
-   * revuelva un expediente que el equipo ya habia retirado.
+   * `deleted_at: null` excludes logical deletes, so ingestion does not stir
+   * up a case the team had already withdrawn.
    */
   async findByCustomerOrBridgeId(
     options: FindCaseByIdentityOptions,
@@ -80,9 +80,9 @@ export class MongoCaseRepository implements CaseRepository {
     if (customerId) {
       conditions.push({ customer_id: customerId });
       conditions.push({ 'finturu_cache_snapshot.idUser': customerId });
-      // El padron de Finturu tipa `idUser` como numero en unos payloads y como
-      // cadena en otros; sin las dos variantes la deduplicacion fallaba para la
-      // mitad de los clientes y abria un expediente duplicado.
+      // The Finturu directory types `idUser` as a number in some payloads and
+      // as a string in others; without both variants, deduplication failed for
+      // half the customers and opened a duplicate case.
       const numericCustomerId = Number(customerId);
       if (Number.isFinite(numericCustomerId)) {
         conditions.push({ 'finturu_cache_snapshot.idUser': numericCustomerId });
@@ -119,9 +119,9 @@ export class MongoCaseRepository implements CaseRepository {
       return [];
     }
 
-    // Un $or con una rama por (tipo, valor) crece rapido y Mongo no puede usar
-    // un indice por rama repetida. Agrupamos por campo y emitimos un $in por
-    // campo: cinco ramas como maximo, cada una indexable.
+    // An $or with one branch per (type, value) grows fast and Mongo cannot use
+    // an index per repeated branch. We group by field and emit one $in per
+    // field: five branches at most, each indexable.
     const byField = new Map<string, Set<string>>();
     for (const ref of refs) {
       const field = FIELD_BY_ENTITY_TYPE[ref.type];

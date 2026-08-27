@@ -20,14 +20,11 @@ export const createRoutingRuleSchema = z
 export type CreateRoutingRuleBody = z.infer<typeof createRoutingRuleSchema>;
 
 /**
- * POST /case-routing-rules/priority-mapping body — el atajo del panel.
- *
- * A diferencia de `createRoutingRuleSchema`, aquí NO viaja un grafo JDM: llega
- * el mapeo prioridad -> destino y el grafo lo arma el dominio
- * (`buildPriorityRoutingJdm`). El cliente describe la intención; la forma de la
- * regla la decide quien la va a evaluar.
+ * POST /case-routing-rules/priority-mapping body. One row per priority; the
+ * JDM graph is generated server-side (`CreatePriorityAssignmentRule.ts`),
+ * so this schema validates the simple mapping shape, not a JDM graph.
  */
-export const createPriorityMappingRuleSchema = z
+export const createPriorityAssignmentRuleSchema = z
   .object({
     name: z.string().min(1),
     mappings: z
@@ -48,13 +45,13 @@ export const createPriorityMappingRuleSchema = z
   })
   .strict();
 
-export type CreatePriorityMappingRuleBody = z.infer<typeof createPriorityMappingRuleSchema>;
+export type CreatePriorityAssignmentRuleBody = z.infer<typeof createPriorityAssignmentRuleSchema>;
 
 /**
- * POST /case-routing-rules/simulate body — ensayo en seco desde el editor.
+ * POST /case-routing-rules/simulate body — the decision editor's dry run.
  *
- * `case` es el contexto que `ZenRoutingEngine` pone delante del grafo, campo
- * por campo: probar con una forma distinta a la real daría confianza falsa.
+ * `case` is the context `ZenRoutingEngine` puts in front of the graph, field
+ * for field: testing against a different shape would give false confidence.
  */
 export const simulateRoutingRuleSchema = z
   .object({

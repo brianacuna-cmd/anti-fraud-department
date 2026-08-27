@@ -1,7 +1,7 @@
 import type { createSyncFinturuDirectoryUseCase } from './SyncFinturuDirectory.js';
 
 export interface DirectorySyncStatus {
-  /** Hay un refresco en curso ahora mismo. */
+  /** There is a refresh in progress right now. */
   readonly running: boolean;
   readonly lastError: string | null;
   readonly lastDurationMs: number | null;
@@ -9,20 +9,20 @@ export interface DirectorySyncStatus {
 
 export interface DirectorySyncSchedulerOptions {
   readonly syncDirectory: ReturnType<typeof createSyncFinturuDirectoryUseCase>;
-  /** Periodo entre refrescos. `0` deja el directorio en manos del endpoint manual. */
+  /** Period between refreshes. `0` leaves the directory in the hands of the manual endpoint. */
   readonly intervalMinutes: number;
-  /** Margen tras el arranque antes del primer pase, para no competir con el boot. */
+  /** Margin after startup before the first pass, so it does not compete with boot. */
   readonly initialDelayMs?: number;
 }
 
 /**
- * Mantiene el directorio al día sin que nadie tenga que pedirlo.
+ * Keeps the directory up to date without anyone having to ask for it.
  *
- * Un refresco tarda minutos, así que dos solapados serían puro desperdicio
- * compitiendo por la misma API lenta: `start` es de un solo vuelo — si ya hay
- * uno corriendo, la siguiente petición se engancha a él en lugar de lanzar otro.
- * Ese mismo estado es el que la interfaz consulta para decir "sincronizando" en
- * vez de "no hay clientes" mientras se llena por primera vez.
+ * A refresh takes minutes, so two overlapping ones would be pure waste
+ * competing for the same slow API: `start` is single-flight — if one is
+ * already running, the next request attaches to it instead of launching
+ * another. That same state is what the UI consults to say "syncing"
+ * instead of "there are no customers" while it fills for the first time.
  */
 export class DirectorySyncScheduler {
   private inFlight: Promise<void> | null = null;
@@ -40,7 +40,7 @@ export class DirectorySyncScheduler {
     };
   }
 
-  /** Lanza un refresco, o devuelve el que ya estuviera en curso. */
+  /** Starts a refresh, or returns the one that was already in progress. */
   run(): Promise<void> {
     if (this.inFlight) return this.inFlight;
 

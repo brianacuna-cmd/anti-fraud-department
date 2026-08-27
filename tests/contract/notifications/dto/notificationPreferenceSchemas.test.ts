@@ -21,12 +21,20 @@ describe('setPreferenceBodySchema', () => {
 });
 
 describe('wire<->domain alertType casing map (design D2/D8)', () => {
-  it('is bijective across exactly the four catalog entries', () => {
-    const wireKeys = Object.keys(WIRE_TO_ALERT_TYPE);
-    expect(wireKeys).toHaveLength(4);
-    for (const wireKey of wireKeys) {
-      const domainValue = WIRE_TO_ALERT_TYPE[wireKey as keyof typeof WIRE_TO_ALERT_TYPE];
+  it('is bijective across the four English catalog entries', () => {
+    const canonicalWireKeys = Object.values(ALERT_TYPE_TO_WIRE);
+    expect(canonicalWireKeys).toHaveLength(4);
+    for (const wireKey of canonicalWireKeys) {
+      const domainValue = WIRE_TO_ALERT_TYPE[wireKey];
       expect(ALERT_TYPE_TO_WIRE[domainValue]).toBe(wireKey);
     }
+  });
+
+  it('maps legacy Spanish wire keys onto the English domain catalog', () => {
+    expect(WIRE_TO_ALERT_TYPE.caso_asignado).toBe('CASE_ASSIGNED');
+    expect(WIRE_TO_ALERT_TYPE.sla_por_vencer).toBe('SLA_DUE_SOON');
+    expect(WIRE_TO_ALERT_TYPE.aprobacion_pendiente).toBe('APPROVAL_PENDING');
+    expect(WIRE_TO_ALERT_TYPE.riesgo_critico).toBe('CRITICAL_RISK');
+    expect(ALERT_TYPE_TO_WIRE.CASE_ASSIGNED).toBe('case_assigned');
   });
 });

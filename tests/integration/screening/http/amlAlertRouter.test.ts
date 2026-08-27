@@ -24,7 +24,7 @@ import { createWatchlistId } from '../../../../src/modules/screening/domain/mode
 import { createMatchScore } from '../../../../src/modules/screening/domain/model/value-objects/MatchScore.js';
 import { createScreeningMatch } from '../../../../src/modules/screening/domain/model/entities/ScreeningMatch.js';
 import { InMemoryAmlAlertRepository } from '../../../helpers/screening/InMemoryAmlAlertRepository.js';
-import { InMemoryAmlExpedienteTimelineRecorder } from '../../../helpers/screening/InMemoryAmlExpedienteTimelineRecorder.js';
+import { InMemoryAmlAlertTimelineRecorder } from '../../../helpers/screening/InMemoryAmlAlertTimelineRecorder.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/screening/infrastructure/PassthroughUnitOfWork.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
@@ -67,7 +67,7 @@ class RecordingAuditRecorder implements AuditRecorder {
 
 function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
   const amlAlertRepository = new InMemoryAmlAlertRepository();
-  const timelineRecorder = new InMemoryAmlExpedienteTimelineRecorder();
+  const timelineRecorder = new InMemoryAmlAlertTimelineRecorder();
   const auditRecorder = new RecordingAuditRecorder();
   const getAmlAlert = createGetAmlAlertUseCase({ amlAlertRepository });
   const router = amlAlertRouter({
@@ -122,12 +122,12 @@ describe('GET /api/v1/aml-alerts (compliance inbox)', () => {
     await amlAlertRepository.save(buildAlert(oid('inbox-open')));
     await amlAlertRepository.save(buildAlert(oid('inbox-other-org'), ORG_2));
 
-    const response = await request(app).get('/api/v1/aml-alerts').query({ estado: 'OPEN' });
+    const response = await request(app).get('/api/v1/aml-alerts').query({ status: 'OPEN' });
 
     expect(response.status).toBe(200);
     expect(response.body.total).toBe(1);
     expect(response.body.items[0].id).toBe(oid('inbox-open'));
-    expect(response.body.items[0].estado).toBe('OPEN');
+    expect(response.body.items[0].status).toBe('OPEN');
     expect(response.body.items[0].caseId).toBeNull();
   });
 
@@ -163,7 +163,7 @@ describe('AML alert triage', () => {
 
     const investigating = await request(app).post(`/api/v1/aml-alerts/${oid('fp-alert')}/investigate`);
     expect(investigating.status).toBe(200);
-    expect(investigating.body.estado).toBe('INVESTIGATING');
+    expect(investigating.body.status).toBe('INVESTIGATING');
 
     const timeline = await request(app).get(`/api/v1/aml-alerts/${oid('fp-alert')}/timeline`);
     expect(timeline.status).toBe(200);
@@ -177,7 +177,7 @@ describe('AML alert triage', () => {
       .patch(`/api/v1/aml-alerts/${oid('fp-alert')}/resolve`)
       .send({ verdict: 'FALSE_POSITIVE', justification: 'Different date of birth.' });
     expect(resolved.status).toBe(200);
-    expect(resolved.body.estado).toBe('FALSE_POSITIVE');
+    expect(resolved.body.status).toBe('FALSE_POSITIVE');
     expect(resolved.body.caseId).toBeNull();
     expect(auditRecorder.events).toHaveLength(1);
     expect(auditRecorder.events[0]).toMatchObject({
@@ -197,7 +197,7 @@ describe('AML alert triage', () => {
       .send({ verdict: 'CONFIRMED_MATCH', justification: 'Matched government ID.' });
 
     expect(resolved.status).toBe(200);
-    expect(resolved.body.estado).toBe('RESOLVED');
+    expect(resolved.body.status).toBe('RESOLVED');
     expect(auditRecorder.events).toHaveLength(1);
   });
 
@@ -291,7 +291,7 @@ describe('AML alert triage', () => {
     const response = await request(app).post(`/api/v1/aml-alerts/${oid('escalate-me')}/escalate`);
 
     expect(response.status).toBe(200);
-    expect(response.body.estado).toBe('INVESTIGATING');
+    expect(response.body.status).toBe('INVESTIGATING');
     expect(response.body.caseId).toBe(CASE_ID);
     expect(response.body.alreadyEscalated).toBe(false);
 

@@ -3,7 +3,7 @@ import type { NotificationPreference } from '../../../../domain/model/aggregates
 import type { NotificationPreferenceRepository } from '../../../../domain/ports/NotificationPreferenceRepository.js';
 import type { OrganizationId } from '../../../../domain/model/value-objects/OrganizationId.js';
 import type { UserId } from '../../../../domain/model/value-objects/UserId.js';
-import type { AlertType } from '../../../../domain/model/value-objects/AlertType.js';
+import { alertTypeStorageValues, type AlertType } from '../../../../domain/model/value-objects/AlertType.js';
 import type { NotificationChannel } from '../../../../domain/model/value-objects/NotificationChannel.js';
 import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
 import type { NotificationPreferenceDocument } from './documents/NotificationPreferenceDocument.js';
@@ -43,7 +43,7 @@ export class MongoNotificationPreferenceRepository implements NotificationPrefer
       {
         organization_id: new ObjectId(organizationId),
         user_id: new ObjectId(userId),
-        alert_type: alertType,
+        alert_type: { $in: [...alertTypeStorageValues(alertType)] },
         channel,
       },
       { session: toSession(tx) },
@@ -53,10 +53,28 @@ export class MongoNotificationPreferenceRepository implements NotificationPrefer
 
   async upsert(pref: NotificationPreference, tx: Transaction): Promise<NotificationPreference> {
     const { key, set, setOnInsert } = toUpsertFields(pref);
+    const session = toSession(tx);
+    const existing = await this.collection.findOne(
+      {
+        organization_id: key.organization_id,
+        user_id: key.user_id,
+        alert_type: { $in: [...alertTypeStorageValues(pref.alertType)] },
+        channel: key.channel,
+      },
+      { session },
+    );
+    if (existing) {
+      const document = await this.collection.findOneAndUpdate(
+        { _id: existing._id },
+        { $set: { ...set, alert_type: pref.alertType } },
+        { returnDocument: 'after', session },
+      );
+      return toDomain(document!);
+    }
     const document = await this.collection.findOneAndUpdate(
       key,
       { $set: set, $setOnInsert: { ...key, ...setOnInsert } },
-      { upsert: true, returnDocument: 'after', session: toSession(tx) },
+      { upsert: true, returnDocument: 'after', session },
     );
     return toDomain(document!);
   }

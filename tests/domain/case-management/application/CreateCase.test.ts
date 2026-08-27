@@ -1,5 +1,4 @@
 import { oid } from '../../../support/oid.js';
-import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
 import { createCreateCaseUseCase } from '../../../../src/modules/case-management/application/CreateCase.js';
 import { createCalculateSlaUseCase } from '../../../../src/modules/case-management/application/CalculateSla.js';
 import { createRouteCaseUseCase } from '../../../../src/modules/case-management/application/RouteCase.js';
@@ -15,6 +14,7 @@ import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-manag
 import { InMemoryCaseRoutingRuleRepository } from '../../../helpers/case-management/InMemoryCaseRoutingRuleRepository.js';
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
 import { InMemoryCaseSlaTrackingRepository } from '../../../helpers/case-management/InMemoryCaseSlaTrackingRepository.js';
+import { AllowAllAssigneeDirectory } from '../../../helpers/case-management/AllowAllAssigneeDirectory.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate, toDate } from '../../../../src/shared/time/Instant.js';
@@ -77,7 +77,7 @@ function buildCreateCase(options: { seedConfig?: boolean; slaMinutes?: { low: nu
     timelineRecorder,
     auditRecorder,
     fraudConfig,
-    assigneeDirectory,
+    assigneeDirectory: new AllowAllAssigneeDirectory(),
     clock,
     generateTimelineEventId,
   });
@@ -103,9 +103,6 @@ function buildCreateCase(options: { seedConfig?: boolean; slaMinutes?: { low: nu
 
   return { createCase, cases, slaTracking, timelineRecorder, auditRecorder };
 }
-
-/** Permisiva: estas pruebas comprueban otra cosa. */
-const assigneeDirectory = new InMemoryAssigneeDirectory();
 
 describe('createCreateCaseUseCase (T2 SLA after RouteCase)', () => {
   it('sets dueDate and creates ON_TRACK SLA tracking after routing when fraud config exists', async () => {
@@ -262,7 +259,7 @@ describe('createCreateCaseUseCase idempotent short-circuit (D2/D3)', () => {
       timelineRecorder,
       auditRecorder,
       fraudConfig,
-      assigneeDirectory,
+      assigneeDirectory: new AllowAllAssigneeDirectory(),
       clock,
       generateTimelineEventId,
     });

@@ -45,10 +45,10 @@ function build() {
 }
 
 /**
- * Regresion: el inquilino se resolvia a un literal `'finturu-org'` cuando no
- * llegaba ninguno. Desde la migracion a ObjectId nativo eso reventaba dentro
- * del driver de Mongo con un `BSONError` sobre cadenas hexadecimales — un 400
- * cuyo mensaje no mencionaba la organizacion por ningun lado.
+ * Regression: the tenant resolved to a `'finturu-org'` literal when none
+ * arrived. After the native ObjectId migration that blew up inside the Mongo
+ * driver with a `BSONError` about hexadecimal strings — a 400 whose message
+ * never mentioned the organization.
  */
 describe('IngestFinturuCase — resolución del inquilino', () => {
   it('rechaza el payload cuando no hay organización ni por defecto, nombrando el campo que falta', async () => {
@@ -57,16 +57,16 @@ describe('IngestFinturuCase — resolución del inquilino', () => {
     await expect(ingestFinturuCase({ rawPayload: { idUser: 'usr_1' } })).rejects.toThrow(CaseManagementError);
     await expect(ingestFinturuCase({ rawPayload: { idUser: 'usr_1' } })).rejects.toThrow(/resolved no organization/);
 
-    // Y nada quedó a medias.
+    // And nothing was left half-done.
     expect(cases.all()).toHaveLength(0);
   });
 
   it('rechaza un slug en vez de archivarlo bajo el inquilino por defecto', async () => {
     const { ingestFinturuCase, cases } = build();
 
-    // El payload designa un inquilino concreto que no sabemos resolver. Caer al
-    // de por defecto colocaria el expediente de fraude de un cliente ajeno en
-    // otra organizacion, que es una fuga entre inquilinos.
+    // The payload names a specific tenant we cannot resolve. Falling back to
+    // the default would place another customer's fraud case in a different
+    // organization, which is a cross-tenant leak.
     await expect(
       ingestFinturuCase({
         rawPayload: { idUser: 'usr_1', organizationSlug: 'acme-corp' },

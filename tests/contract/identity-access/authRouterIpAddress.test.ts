@@ -38,8 +38,8 @@ describe('authRouter IP capture (design D-A7)', () => {
     const router = authRouter({
       beginUserLogin,
       issueOrganizationSession,
-      // Esta prueba solo recorre /auth/users/login, que no toca ninguna de las
-      // dos: se inyectan para satisfacer el contrato, no para ejercitarlas.
+      // This test only walks /auth/users/login, which touches neither of
+      // these: they are injected to satisfy the contract, not to exercise them.
       emailSender: new FakeEmailSender(),
       db: {} as Db,
       authenticateOrganization: (async () => undefined) as unknown as ReturnType<
@@ -85,9 +85,9 @@ describe('authRouter IP capture (design D-A7)', () => {
   });
 
   it('does not honor X-Forwarded-For when trust proxy is not configured', async () => {
-    // El login de organización ahora es de 3 pasos y no invoca
-    // `issueOrganizationSession` en el paso 1 — la captura se hace en el
-    // login de USER, cuyo route inyecta `req.ip` en la misma request.
+    // Organization login is now 3 steps and does not invoke
+    // `issueOrganizationSession` at step 1 — capture is done on the USER
+    // login, whose route injects `req.ip` on the same request.
     const calls: unknown[] = [];
     const beginUserLogin = (async (input: unknown) => {
       calls.push(input);
@@ -96,8 +96,8 @@ describe('authRouter IP capture (design D-A7)', () => {
 
     const router = authRouter({
       beginUserLogin,
-      // Esta prueba solo recorre /auth/users/login, que no toca ninguna de las
-      // dos: se inyectan para satisfacer el contrato, no para ejercitarlas.
+      // This test only walks /auth/users/login, which touches neither of
+      // these: they are injected to satisfy the contract, not to exercise them.
       emailSender: new FakeEmailSender(),
       db: {} as Db,
       authenticateOrganization: (async () => undefined) as unknown as ReturnType<

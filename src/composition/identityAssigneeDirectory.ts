@@ -48,9 +48,9 @@ export function createIdentityAssigneeDirectory(
       organizationId: string,
       assignees: readonly AssignedTo[],
     ): Promise<ReadonlyMap<string, string>> {
-      // Son como mucho ocho (el tope de `workload`), asi que una lectura por
-      // asignatario es barata y evita un metodo `findManyByIds` en el puerto
-      // de identity-access solo para esto.
+      // At most eight (the `workload` cap), so one read per assignee is cheap
+      // and avoids a `findManyByIds` method on the identity-access port just
+      // for this.
       const users = userRepositoryFactory.forTenant(createOrganizationId(organizationId));
       const resolved = new Map<string, string>();
 
@@ -67,9 +67,9 @@ export function createIdentityAssigneeDirectory(
 }
 
 /**
- * Nombre completo del usuario, o su correo si no tiene nombre cargado.
- * `null` cuando el id no resuelve —usuario borrado o id con forma invalida—:
- * el panel prefiere una barra sin nombre a un nombre inventado.
+ * The user's full name, or their email if no name is loaded.
+ * `null` when the id does not resolve — deleted user or invalid id shape —:
+ * the dashboard prefers a nameless bar to a made-up name.
  */
 async function userDisplayName(
   users: ReturnType<UserRepositoryFactory['forTenant']>,
@@ -97,6 +97,15 @@ async function roleDisplayName(
   }
 }
 
+/**
+ * `findById` only checks that the user exists and belongs to the tenant —
+ * it deliberately still resolves deactivated users (`userDisplayName` above
+ * needs that, to label a timeline entry for someone who has since been
+ * suspended). Assignment is different: a case handed to a SUSPENDED/INACTIVE/
+ * DISABLED user is not "assigned to someone who can't work it", it is
+ * assigned to no one, silently. `ACTIVE` is the only status that can receive
+ * a case.
+ */
 async function userBelongsToOrganization(
   userRepositoryFactory: UserRepositoryFactory,
   organizationId: string,
@@ -106,7 +115,7 @@ async function userBelongsToOrganization(
     const organizationIdBranded = createOrganizationId(organizationId);
     const userId = createUserId(userIdRaw);
     const user = await userRepositoryFactory.forTenant(organizationIdBranded).findById(userId);
-    return user !== null;
+    return user !== null && user.status === 'ACTIVE';
   } catch {
     return false;
   }
@@ -121,11 +130,11 @@ async function roleIsAssignable(roleRepository: RoleRepository, roleIdRaw: strin
 }
 
 /**
- * El rol del usuario, o `null` si el id no resuelve.
+ * The user's role, or `null` when the id does not resolve.
  *
- * Un id que no resuelve se trata como «no puede instruir» y no como error, por
- * lo mismo que `belongsToOrganization`: quien pregunta está decidiendo si
- * asignar, y ante la duda no se asigna.
+ * An unresolvable id counts as "cannot instruct" rather than an error, for the
+ * same reason as `belongsToOrganization`: the caller is deciding whether to
+ * assign, and when in doubt it does not assign.
  */
 async function userRoleId(
   userRepositoryFactory: UserRepositoryFactory,

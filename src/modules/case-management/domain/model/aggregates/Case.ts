@@ -220,16 +220,16 @@ export class Case {
   }
 
   /**
-   * CASE-007 — reetiquetado y cambio de severidad.
+   * CASE-007 — retag and severity change.
    *
-   * Las etiquetas se normalizan aquí y no en el borde HTTP: se recortan, se
-   * descartan las vacías y se deduplican preservando el orden de llegada. Sin
-   * esto un mismo criterio entraba tres veces escrito distinto (`"AML"`,
-   * `" AML"`, `"AML "`) y el filtro por etiquetas de CASE-004, que exige
-   * coincidencia exacta, dejaba de encontrar el caso.
+   * Tags are normalized here and not at the HTTP edge: they are trimmed,
+   * empties are dropped, and they are de-duplicated while preserving arrival
+   * order. Without this the same criterion came in three times written
+   * differently (`"AML"`, `" AML"`, `"AML "`) and CASE-004's tag filter,
+   * which requires an exact match, stopped finding the case.
    *
-   * No toca `dueDate`: recalcular el vencimiento es competencia de las vías
-   * de SLA, que son las únicas que pueden escribir ese campo.
+   * Does not touch `dueDate`: recomputing the deadline is the concern of the
+   * SLA paths, which are the only ones that may write that field.
    */
   reclassify(input: {
     readonly priority?: CasePriority;

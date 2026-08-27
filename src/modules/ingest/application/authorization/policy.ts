@@ -3,13 +3,13 @@ import { isObserver, ROLE_SUPERVISOR } from '../../../../shared/kernel/AccessTie
 import { forbiddenReadOnly, forbiddenRole } from '../../domain/errors/IngestError.js';
 
 /**
- * Política de acceso de ingest. Espejo de
+ * Ingest access policy. Mirror of
  * `case-management/application/authorization/policy.ts`.
  *
- * El secreto de un webhook entrante es la credencial con la que un proveedor
- * externo mete casos en el sistema: rotarlo es un acto operativo con efecto
- * inmediato sobre la ingesta, así que queda en el SUPERVISOR. El plano de
- * gobierno (ORGANIZATION, ADMIN, AUDITOR) no lo toca.
+ * An inbound webhook secret is the credential an external provider uses to
+ * push cases into the system: rotating it is an operational act with
+ * immediate effect on ingest, so it stays with SUPERVISOR. The governance
+ * plane (ORGANIZATION, ADMIN, AUDITOR) does not touch it.
  */
 export const SECRET_WRITE_ROLES: readonly string[] = [ROLE_SUPERVISOR];
 

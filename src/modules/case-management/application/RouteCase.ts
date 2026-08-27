@@ -3,8 +3,8 @@ import type { Clock } from '../../../shared/time/Clock.js';
 import type { Case } from '../domain/model/aggregates/Case.js';
 import type { CaseRoutingRule } from '../domain/model/aggregates/CaseRoutingRule.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
-import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { AssigneeDirectory } from '../domain/ports/AssigneeDirectory.js';
+import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { CaseRepository } from '../domain/ports/CaseRepository.js';
 import type { CaseRoutingRuleRepository } from '../domain/ports/CaseRoutingRuleRepository.js';
 import type { OrganizationFraudConfigRepository } from '../domain/ports/OrganizationFraudConfigRepository.js';
@@ -35,7 +35,14 @@ export interface RouteCaseDeps {
   readonly timelineRecorder: TimelineRecorder;
   readonly auditRecorder: AuditRecorder;
   readonly fraudConfig: OrganizationFraudConfigRepository;
-  /** Para descartar reglas que reparten a quien no instruye. */
+  /**
+   * Same directory `ReassignCase`/`BulkCaseAction` use to reject an assignee
+   * that does not belong to the organization or is not `ACTIVE`. Without
+   * this, a rule pointing at a deleted/deactivated/foreign user or role
+   * assigned the case anyway — silently, with no error and no audit trail
+   * of the failure — which is worse than not auto-routing at all: the case
+   * LOOKS assigned but no one is actually accountable for it.
+   */
   readonly assigneeDirectory: AssigneeDirectory;
   readonly clock: Clock;
   readonly generateTimelineEventId: () => TimelineEventId;
@@ -55,7 +62,11 @@ export interface RouteCaseDeps {
  * Rule isolation: a rule whose JDM fails to compile or evaluate is SKIPPED
  * (audited as `ROUTING_RULE_EVALUATION_FAILED`) instead of propagating, which
  * would roll back the enclosing `CreateCase` transaction and make a single
- * malformed rule block all case creation for that organization.
+ * malformed rule block all case creation for that organization. The same
+ * applies to a rule whose resolved target does not belong to the
+ * organization or is not `ACTIVE` (audited as `ROUTING_RULE_TARGET_INVALID`):
+ * skipped, not assigned — the next rule still gets a chance, and a case
+ * never ends up "assigned" to someone who cannot actually work it.
  *
  * Provenance: the winning rule's id, name and `conditionsVersion` land in the
  * `REASSIGN_CASE` audit row's detail, so an assignment can always be traced
@@ -90,30 +101,34 @@ export function createRouteCaseUseCase(deps: RouteCaseDeps) {
         continue;
       }
 
+      const inOrg = await deps.assigneeDirectory.belongsToOrganization(organizationId, assignedTo);
       /*
-       * La regla eligió a alguien que no instruye —ADMIN o AUDITOR—, casi
-       * siempre porque quien la escribió lo tenía a mano en el desplegable o
-       * porque a esa persona la ascendieron después. Se SALTA la regla en vez
-       * de asignar: dejar el expediente en la bandeja de un auditor lo saca
-       * de toda cola útil y rompe la segregación de funciones. Se audita, que
-       * es lo único que distingue esto de que la regla no casara.
+       * Belonging to the tenant is not enough: ADMIN administers people and
+       * AUDITOR audits, and neither instructs a case. The rule may have been
+       * written before that mattered, or its target promoted since. Skipping
+       * the rule beats parking the case in an inbox nobody works — and the
+       * audit row below is what separates this from "the rule did not match".
        */
-      if (!(await deps.assigneeDirectory.canWorkCases(organizationId, assignedTo))) {
+      const targetValid =
+        inOrg && (await deps.assigneeDirectory.canWorkCases(organizationId, assignedTo));
+      if (!targetValid) {
         await deps.auditRecorder.record(
           {
             organizationId,
             actorType: input.actorType,
             actorId: input.createdBy,
-            action: 'ROUTING_RULE_EVALUATION_FAILED',
+            action: 'ROUTING_RULE_TARGET_INVALID',
             resource: 'rule',
             resourceId: rule.id,
             detail: {
               caseId: input.kase.id,
               ruleName: rule.name,
               conditionsVersion: rule.conditionsVersion,
-              reason: 'assignee is governance, not operations',
-              assignedToId: assignedTo.id,
               assignedToType: assignedTo.type,
+              assignedToId: assignedTo.id,
+              reason: inOrg
+                ? 'assignee is governance, not operations'
+                : 'assignee does not belong to the organization',
             },
             ipAddress: input.ipAddress,
           },

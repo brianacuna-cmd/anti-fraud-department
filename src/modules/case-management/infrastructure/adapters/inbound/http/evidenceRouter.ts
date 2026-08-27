@@ -65,14 +65,14 @@ export function evidenceRouter(deps: EvidenceRouterDeps): Router {
   });
 
   /**
-   * INV-004. Antes que `/download`: son rutas hermanas y el orden importa poco
-   * aqui, pero mantenerlas juntas evita que alguien meta un patron con
-   * comodin en medio.
+   * INV-004. Before `/download`: they are sibling routes and order barely
+   * matters here, but keeping them together avoids someone inserting a
+   * wildcard pattern in between.
    *
-   * Devuelve una URL, no el fichero: la descarga va directa contra el almacen
-   * de objetos y no atraviesa este proceso. Falla explicitamente si el almacen
-   * configurado no sabe firmar (filesystem en desarrollo), en cuyo caso la
-   * ruta de streaming de abajo es la que sirve.
+   * Returns a URL, not the file: the download goes straight against the
+   * object store and does not traverse this process. Fails explicitly if the
+   * configured store cannot sign (filesystem in development), in which case
+   * the streaming route below is the one that serves.
    */
   router.get('/evidence/:evidenceId/download-url', async (req, res) => {
     const auth = requireAuthContext(req);

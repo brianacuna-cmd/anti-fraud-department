@@ -50,12 +50,13 @@ export function forbiddenRole(
 }
 
 /**
- * El actor pertenece al plano de gobierno (`ORGANIZATION`, `ADMIN`,
- * `AUDITOR`): observa el inquilino entero y no opera sobre él.
+ * The actor belongs to the governance plane (`ORGANIZATION`, `ADMIN`,
+ * `AUDITOR`): they observe the whole tenant and do not operate on it.
  *
- * Se separa de `forbiddenRole` porque el mensaje es lo unico que llega a la
- * pantalla: `role "null" is not authorized` no le dice a nadie que su acceso
- * es de solo lectura por diseno, ni a quien tiene que pedirle la accion.
+ * Separated from `forbiddenRole` because the message is the only thing that
+ * reaches the screen: `role "null" is not authorized` does not tell anyone
+ * that their access is read-only by design, nor whom they must ask to
+ * perform the action.
  */
 export function forbiddenReadOnly(
   auth: { readonly actorType: string; readonly roleId: string | null },
@@ -70,12 +71,13 @@ export function forbiddenReadOnly(
 }
 
 /**
- * Principio de cuatro ojos: quien solicita una sancion no puede autorizarla.
+ * Four-eyes principle: whoever requests a sanction cannot authorize it.
  *
- * Codigo propio y no `FORBIDDEN_ROLE` porque no es un problema de rol — el
- * supervisor que la pidio TIENE el rol para aprobar. Lo que falla es la
- * separacion entre quien propone y quien revisa, y quien lo recibe necesita
- * entender que la accion no es suya, sino de otra persona.
+ * Own code and not `FORBIDDEN_ROLE` because this is not a role problem — the
+ * supervisor who requested it DOES have the role to approve. What fails is
+ * the separation between who proposes and who reviews, and whoever receives
+ * this needs to understand that the action is not theirs, but another
+ * person's.
  */
 export function selfApprovalForbidden(
   requesterId: string,
@@ -151,10 +153,10 @@ export function approvalRequestNotFound(approvalRequestId: string): CaseManageme
 }
 
 /**
- * INV-015: el antivirus reconocio malware. Se nombra la firma porque el
- * analista necesita saber QUE se detecto —un falso positivo de un PDF con
- * macros no se trata igual que un troyano— y porque sin ella el rechazo es
- * indistinguible de un fallo del sistema.
+ * INV-015: the antivirus recognized malware. The signature is named because
+ * the analyst needs to know WHAT was detected —a false positive from a PDF
+ * with macros is not treated the same as a trojan— and because without it
+ * the rejection is indistinguishable from a system failure.
  */
 export function evidenceInfected(filename: string, signature: string): CaseManagementError {
   return new CaseManagementError(
@@ -165,11 +167,11 @@ export function evidenceInfected(filename: string, signature: string): CaseManag
 }
 
 /**
- * Un expediente sin responsable esta congelado.
+ * A case with no assignee is frozen.
  *
- * La regla existe para que ningun caso avance mientras nadie responde por el:
- * un expediente que se instruye, se dictamina y se cierra sin que conste quien
- * lo llevaba es justo el que no se puede defender despues.
+ * The rule exists so that no case advances while nobody is accountable for
+ * it: a case that is worked, decided, and closed without a record of who
+ * carried it is exactly the one that cannot be defended later.
  */
 export function caseNotAssigned(caseId: string): CaseManagementError {
   return new CaseManagementError(
@@ -180,11 +182,11 @@ export function caseNotAssigned(caseId: string): CaseManagementError {
 }
 
 /**
- * Un expediente cerrado ya no se instruye.
+ * A closed case is no longer worked.
  *
- * El mensaje nombra el camino de salida —reabrir— porque quien recibe este
- * error casi siempre tiene el permiso y solo le falta saber que hay un paso
- * previo.
+ * The message names the way out —reopen— because whoever receives this
+ * error almost always has the permission and only needs to know there is a
+ * prior step.
  */
 export function caseClosed(caseId: string, status: string): CaseManagementError {
   return new CaseManagementError(
@@ -195,35 +197,81 @@ export function caseClosed(caseId: string, status: string): CaseManagementError 
 }
 
 /**
- * Abrir un expediente a mano exige que el departamento este configurado.
- *
- * Un expediente que nace huerfano no lo trabaja nadie: no aparece en la
- * bandeja de ningun analista, su reloj de SLA corre igual y se descubre
- * cuando ya esta vencido. Por esta via hay una persona delante que puede ir a
- * arreglarlo, asi que se prefiere negar la apertura a crear algo que nadie va
- * a mirar.
- *
- * Las vias automaticas NO usan esto a proposito: rechazar un webhook pierde
- * el evento, y ahi no hay nadie a quien avisar.
+ * Instruction (notes, evidence) requires the case to already be `IN_REVIEW`.
+ * Named after the step it is missing, like `caseNotAssigned`/`caseClosed`.
  */
-export function caseIntakeNotConfigured(
-  reason: 'MISSING_FRAUD_CONFIG' | 'NO_ASSIGNEE',
-  organizationId: string,
-): CaseManagementError {
-  const message =
-    reason === 'MISSING_FRAUD_CONFIG'
-      ? 'the organization has no fraud config: set SLA windows and risk thresholds before opening cases by hand'
-      : 'the case would have no assignee: pick one, or activate a routing rule that assigns this case';
-  return new CaseManagementError('CASE_INTAKE_NOT_CONFIGURED', message, { reason, organizationId });
+export function caseNotReviewed(caseId: string): CaseManagementError {
+  return new CaseManagementError(
+    'CASE_NOT_REVIEWED',
+    'the case has not entered review yet: start the review before adding notes or evidence',
+    { caseId },
+  );
+}
+
+/** A decision needs at least one note or one piece of evidence behind it. */
+export function caseNotInstructed(caseId: string): CaseManagementError {
+  return new CaseManagementError(
+    'CASE_NOT_INSTRUCTED',
+    'the case has no notes or evidence yet: instruct it before recording a decision',
+    { caseId },
+  );
+}
+
+/** Closing a case requires at least one analyst decision on file. */
+export function caseNotDecided(caseId: string): CaseManagementError {
+  return new CaseManagementError(
+    'CASE_NOT_DECIDED',
+    'the case has no analyst decision yet: record one before resolving',
+    { caseId },
+  );
+}
+
+/** A FRAUD_CONFIRMED decision exists with no enforcement action requested yet. */
+export function caseEnforcementPending(caseId: string): CaseManagementError {
+  return new CaseManagementError(
+    'CASE_ENFORCEMENT_PENDING',
+    'the case has a fraud-confirmed decision with no enforcement action requested yet',
+    { caseId },
+  );
+}
+
+/** The report/dossier freezes the full case file — the case must be closed first. */
+export function caseNotResolvedForReport(caseId: string): CaseManagementError {
+  return new CaseManagementError(
+    'CASE_NOT_RESOLVED_FOR_REPORT',
+    'the case is not resolved yet: resolve or archive it before generating its report',
+    { caseId },
+  );
 }
 
 /**
- * El expediente no puede caer en manos de quien no lo instruye.
+ * No assignee was chosen and there is no active routing rule to fall back
+ * on: creating the case now would leave it permanently orphaned. The
+ * message names both ways out because either one resolves it.
+ */
+export function noActiveRoutingRule(organizationId: string): CaseManagementError {
+  return new CaseManagementError(
+    'NO_ACTIVE_ROUTING_RULE',
+    'no assignee was chosen and the organization has no active routing rule: pick an assignee or configure one first',
+    { organizationId },
+  );
+}
+
+export function dlqEventNotFound(dlqEventId: string): CaseManagementError {
+  return new CaseManagementError(
+    'DLQ_EVENT_NOT_FOUND',
+    `no dead-letter event with id "${dlqEventId}" was found`,
+    { dlqEventId },
+  );
+}
+
+/**
+ * A case must never land with someone who does not work cases.
  *
- * ADMIN administra personas y AUDITOR fiscaliza: ninguno de los dos actua
- * sobre un caso. Asignarles uno lo deja fuera de toda bandeja util y ademas
- * rompe la segregacion de funciones —quien concede los permisos no puede
- * ademas usarlos— que sostiene el resto de la politica de acceso.
+ * ADMIN administers people and AUDITOR audits: neither acts on a case.
+ * Assigning them one leaves it out of every useful inbox and breaks the
+ * segregation of duties — whoever grants the permissions must not also use
+ * them — that the rest of the access policy rests on.
  */
 export function assigneeCannotWorkCases(
   assignedToType: string,

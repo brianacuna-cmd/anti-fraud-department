@@ -91,8 +91,8 @@ afterAll(async () => {
   await replicaSet.stop();
 });
 
-// El secreto TOTP se persiste en el paso 3; sin limpiar, la siguiente prueba
-// heredaria el enrolamiento y tomaria la rama de reto en vez de la de alta.
+// The TOTP secret is persisted at step 3; without cleanup, the next test
+// would inherit enrollment and take the challenge branch instead of signup.
 beforeEach(async () => {
   await db.collection('organizations').deleteMany({});
   await db.collection('users').deleteMany({});
@@ -157,8 +157,8 @@ function buildApp(
       enrollmentTtlSeconds: 900,
     }),
     authenticateOrganization,
-    // El paso 1 del login de organizacion manda el OTP por aqui; el fake lo
-    // captura para que la prueba pueda completar los pasos 2 y 3.
+    // Organization-login step 1 sends the OTP through here; the fake
+    // captures it so the test can complete steps 2 and 3.
     emailSender,
     db,
     issueOrganizationSession: createIssueOrganizationSessionUseCase({
@@ -245,12 +245,12 @@ function buildApp(
 }
 
 /**
- * Completa el login de organizacion de 3 pasos (este fork): paso 1 dispara el
- * OTP por correo, paso 2 lo verifica y devuelve el secreto TOTP de
- * enrolamiento, paso 3 responde el reto TOTP y recibe la sesion.
+ * Completes the 3-step organization login (this fork): step 1 fires the
+ * OTP by email, step 2 verifies it and returns the enrollment TOTP secret,
+ * step 3 answers the TOTP challenge and receives the session.
  *
- * Sin `deps.db` el paso 2 toma siempre la rama de enrolamiento, asi que el
- * secreto viene en la respuesta y no hace falta Mongo para recorrerlo.
+ * Without `deps.db` step 2 always takes the enrollment branch, so the
+ * secret comes in the response and Mongo is not needed to walk it.
  */
 async function orgLogin3Steps(
   app: Express,
@@ -492,8 +492,8 @@ describe('authRouter (e2e, in-memory gateways)', () => {
       const { app, organizationGateway, sessions, emailSender } = buildApp();
       organizationGateway.seed('org@acme.example.com', ORG_RECORD);
 
-      // Este fork mete OTP por correo + TOTP entre la credencial y la sesion,
-      // asi que la sesion se emite en el paso 3, no en el 1.
+      // This fork puts email OTP + TOTP between the credential and the
+      // session, so the session is minted at step 3, not step 1.
       const response = await orgLogin3Steps(app, emailSender, 'org@acme.example.com', 'org-password');
 
       expect(response.status).toBe(200);

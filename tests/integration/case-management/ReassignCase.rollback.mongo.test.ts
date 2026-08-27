@@ -79,7 +79,7 @@ describe('ReassignCase rollback (integration, real replica-set Mongo end-to-end)
       _id: new ObjectId(collidingId),
       organization_id: new ObjectId(ORG),
       recipient_user_id: new ObjectId(TARGET_USER),
-      alert_type: 'CASO_ASIGNADO',
+      alert_type: 'CASE_ASSIGNED',
       channel: 'EMAIL',
       context: {},
       created_at: new Date(NOW),

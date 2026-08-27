@@ -1,6 +1,10 @@
 # Internal docs — never commit
 docs/
 
+# Hexagonal folder placeholders — do not reintroduce empty trees
+.gitkeep
+
+
 # Node / TypeScript
 node_modules/
 dist/

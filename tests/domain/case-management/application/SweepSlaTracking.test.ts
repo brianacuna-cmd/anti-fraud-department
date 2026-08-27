@@ -133,7 +133,7 @@ describe('createSweepSlaTrackingUseCase', () => {
     expect(result.processed).toBe(0);
   });
 
-  it('sends SLA_POR_VENCER and marks the row notified on first sweep', async () => {
+  it('sends SLA_DUE_SOON and marks the row notified on first sweep', async () => {
     const { sweepSlaTracking, cases, slaTracking, notificationSender } = buildUseCase();
     const assignee = createAssignedTo('USER', oid('analyst-1'));
     await cases.save(buildCase(oid('case-1'), assignee));
@@ -147,7 +147,7 @@ describe('createSweepSlaTrackingUseCase', () => {
     expect(requests[0]).toMatchObject({
       organizationId: ORG_1,
       recipientUserId: oid('analyst-1'),
-      alertType: 'SLA_POR_VENCER',
+      alertType: 'SLA_DUE_SOON',
     });
     const row = await slaTracking.findByCaseId(createCaseId(oid('case-1')));
     expect(row?.hasNotified('WARNING')).toBe(true);
@@ -166,7 +166,7 @@ describe('createSweepSlaTrackingUseCase', () => {
     await sweepSlaTracking();
 
     // The row advances WARNING->BREACHED. BREACHED has not been notified yet,
-    // so a fresh SLA_POR_VENCER is sent for the new status.
+    // so a fresh SLA_DUE_SOON is sent for the new status.
     expect(notificationSender.all()).toHaveLength(1);
     const row = await slaTracking.findByCaseId(createCaseId(oid('case-1')));
     expect(row?.status).toBe('BREACHED');
@@ -189,7 +189,7 @@ describe('createSweepSlaTrackingUseCase', () => {
     expect(row?.hasNotified('WARNING')).toBe(true);
   });
 
-  it('fans out SLA_POR_VENCER to every active member of a ROLE-assigned case (PR3)', async () => {
+  it('fans out SLA_DUE_SOON to every active member of a ROLE-assigned case (PR3)', async () => {
     const { sweepSlaTracking, cases, slaTracking, notificationSender, assigneeDirectory } = buildUseCase();
     const role = createAssignedTo('ROLE', oid('role-1'));
     await cases.save(buildCase(oid('case-1'), role));
@@ -204,7 +204,7 @@ describe('createSweepSlaTrackingUseCase', () => {
       .map((request) => request.recipientUserId)
       .sort();
     expect(recipients).toEqual([oid('analyst-1'), oid('analyst-2')].sort());
-    expect(notificationSender.all().every((request) => request.alertType === 'SLA_POR_VENCER')).toBe(true);
+    expect(notificationSender.all().every((request) => request.alertType === 'SLA_DUE_SOON')).toBe(true);
   });
 
   it('suppresses notification for an unassigned case but still advances and marks notified', async () => {

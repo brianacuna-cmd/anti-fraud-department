@@ -9,7 +9,7 @@ import type { FinturuCustomerDocument } from './documents/FinturuCustomerDocumen
 
 const COLLECTION_NAME = 'FinturuCustomers';
 
-/** Escapa la entrada del usuario antes de meterla en una regex de Mongo. */
+/** Escapes user input before putting it in a Mongo regex. */
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -61,16 +61,16 @@ export class MongoFinturuDirectoryRepository implements FinturuDirectoryReposito
   }
 
   /**
-   * Upsert de todo el lote y borrado de lo que quedó atrás. Se marca cada
-   * documento con `SyncedAt`; al terminar se eliminan los que conserven una
-   * marca anterior, que son justamente los clientes que ya no existen en
-   * origen. Evita un `deleteMany` previo, que dejaría el directorio vacío
-   * durante los minutos que dura el sync.
+   * Upsert of the whole batch and deletion of what was left behind. Each
+   * document is stamped with `SyncedAt`; when done, those that still hold an
+   * earlier stamp are removed, which are exactly the customers that no longer
+   * exist at the source. Avoids a prior `deleteMany`, which would leave the
+   * directory empty for the minutes the sync lasts.
    */
   async replaceAll(entries: readonly FinturuDirectoryEntry[], syncedAt: string): Promise<void> {
-    // Un lote vacío casi siempre significa "el origen falló", no "ya no hay
-    // clientes". Borrar el directorio entero por eso sería destruir la única
-    // copia buena que queda.
+    // An empty batch almost always means "the source failed", not "there are
+    // no customers left". Wiping the whole directory for that would destroy
+    // the only good copy that remains.
     if (entries.length === 0) return;
 
     await this.collection.bulkWrite(
@@ -116,7 +116,7 @@ export class MongoFinturuDirectoryRepository implements FinturuDirectoryReposito
     const [documents, total, syncedAt] = await Promise.all([
       this.collection
         .find(filter)
-        // Los de mayor riesgo primero: es el orden en el que un analista quiere leerlos.
+        // Highest risk first: that is the order an analyst wants to read them.
         .sort({ RiskScore: -1, Name: 1 })
         .skip(query.offset)
         .limit(query.limit)

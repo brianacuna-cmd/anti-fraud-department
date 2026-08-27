@@ -20,16 +20,16 @@ import {
 
 const DIGEST = 'a'.repeat(64);
 
-/** SET vacío, que es lo que lleva `digestAlgorithms` cuando no interesa. */
+/** Empty SET, which is what `digestAlgorithms` carries when it is not of interest. */
 const EMPTY_SET = Buffer.from([0x31, 0x00]);
 
 /**
- * Arma un `TimeStampResp` como el que devolvería una TSA.
+ * Builds a `TimeStampResp` like the one a TSA would return.
  *
- * `certificates` mete un GeneralizedTime ANTES del `genTime` real, imitando la
- * fecha de validez de un certificado incrustado. Es exactamente la trampa en
- * la que cae la implementación que busca "el primer GeneralizedTime del
- * buffer" — y por eso el test la construye a propósito.
+ * `certificates` puts a GeneralizedTime BEFORE the real `genTime`, mimicking
+ * the validity date of an embedded certificate. That is exactly the trap an
+ * implementation that looks for "the first GeneralizedTime in the buffer"
+ * falls into — which is why the test builds it on purpose.
  */
 function buildResponse(options: {
   status: number;
@@ -76,7 +76,7 @@ describe('DER', () => {
   });
 
   it('antepone 0x00 a un entero cuyo bit alto está puesto', () => {
-    // Sin ese byte, DER lo leería como negativo y algunas TSA rechazan el nonce.
+    // Without that byte, DER would read it as negative and some TSAs reject the nonce.
     const encoded = encodeInteger(Buffer.from([0xff, 0x01]));
     expect([...encoded]).toEqual([0x02, 0x03, 0x00, 0xff, 0x01]);
   });
@@ -110,7 +110,7 @@ describe('DER', () => {
   });
 
   it('rechaza un GeneralizedTime sin Z', () => {
-    // RFC 3161 exige UTC. Aceptar hora local pondría un sello con la hora mal.
+    // RFC 3161 requires UTC. Accepting local time would stamp with the wrong hour.
     expect(() => parseGeneralizedTime('20260115103000')).toThrow(/unsupported GeneralizedTime/);
   });
 });
@@ -130,8 +130,8 @@ describe('buildTimeStampReq', () => {
   });
 
   it('incluye un nonce distinto en cada petición', () => {
-    // El nonce ata la respuesta a ESTA peticion: sin el, alguien puede
-    // devolver un sello valido pero de otro documento.
+    // The nonce binds the response to THIS request: without it, someone can
+    // return a valid stamp for a different document.
     const a = buildTimeStampReq(DIGEST, true);
     const b = buildTimeStampReq(DIGEST, true);
 
@@ -171,8 +171,8 @@ describe('parseTimeStampResp', () => {
       buildResponse({ status: 0, genTime: '20260115103000Z', decoyTime: '20301231235959Z' }),
     );
 
-    // El señuelo va DESPUES en el buffer pero un escaneo ingenuo podria
-    // cogerlo; el recorrido estructural llega solo al genTime de TSTInfo.
+    // The decoy comes AFTER in the buffer but a naive scan could pick it up;
+    // the structural walk only reaches TSTInfo's genTime.
     expect(parsed.genTime.toISOString()).toBe('2026-01-15T10:30:00.000Z');
   });
 });

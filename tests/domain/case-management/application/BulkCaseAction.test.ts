@@ -79,9 +79,10 @@ function buildUseCase(seeds: Case[] = []) {
 
 describe('createBulkCaseActionUseCase', () => {
   it('CHANGE_PRIORITY across multiple cases records PRIORITY_CHANGED + BULK_CASE_ACTION per case', async () => {
+    const assignee = createAssignedTo('USER', ANALYST_ID);
     const { bulkCaseAction, cases, timelineRecorder, auditRecorder } = buildUseCase([
-      buildCase(CASE_A, { priority: 'LOW' }),
-      buildCase(CASE_B, { priority: 'MEDIUM' }),
+      buildCase(CASE_A, { priority: 'LOW' }).reassign(assignee, NOW),
+      buildCase(CASE_B, { priority: 'MEDIUM' }).reassign(assignee, NOW),
     ]);
 
     const result = await bulkCaseAction({
@@ -105,7 +106,7 @@ describe('createBulkCaseActionUseCase', () => {
 
   it('ADD_TAGS merges without duplicating existing tags', async () => {
     const { bulkCaseAction, cases, timelineRecorder } = buildUseCase([
-      buildCase(CASE_A, { tags: ['fraud'] }),
+      buildCase(CASE_A, { tags: ['fraud'] }).reassign(createAssignedTo('USER', ANALYST_ID), NOW),
     ]);
 
     const result = await bulkCaseAction({
@@ -133,7 +134,9 @@ describe('createBulkCaseActionUseCase', () => {
   });
 
   it('does NOT recompute SLA on bulk priority change (dueDate untouched)', async () => {
-    const withDue = buildCase(CASE_A, { priority: 'LOW' }).withDueDate(NOW, NOW);
+    const withDue = buildCase(CASE_A, { priority: 'LOW' })
+      .reassign(createAssignedTo('USER', ANALYST_ID), NOW)
+      .withDueDate(NOW, NOW);
     const { bulkCaseAction } = buildUseCase([withDue]);
 
     const result = await bulkCaseAction({
@@ -147,9 +150,10 @@ describe('createBulkCaseActionUseCase', () => {
   });
 
   it('skips no-op cases (already at target) without timeline/audit noise', async () => {
+    const assignee = createAssignedTo('USER', ANALYST_ID);
     const { bulkCaseAction, timelineRecorder, auditRecorder } = buildUseCase([
-      buildCase(CASE_A, { priority: 'HIGH' }),
-      buildCase(CASE_B, { priority: 'LOW' }),
+      buildCase(CASE_A, { priority: 'HIGH' }).reassign(assignee, NOW),
+      buildCase(CASE_B, { priority: 'LOW' }).reassign(assignee, NOW),
     ]);
 
     const result = await bulkCaseAction({
@@ -231,7 +235,9 @@ describe('createBulkCaseActionUseCase', () => {
   });
 
   it('de-duplicates repeated case ids', async () => {
-    const { bulkCaseAction, auditRecorder } = buildUseCase([buildCase(CASE_A, { priority: 'LOW' })]);
+    const { bulkCaseAction, auditRecorder } = buildUseCase([
+      buildCase(CASE_A, { priority: 'LOW' }).reassign(createAssignedTo('USER', ANALYST_ID), NOW),
+    ]);
 
     const result = await bulkCaseAction({
       auth: ANALYST,
@@ -241,5 +247,54 @@ describe('createBulkCaseActionUseCase', () => {
 
     expect(result.cases).toHaveLength(1);
     expect(auditRecorder.all()).toHaveLength(1);
+  });
+
+  describe('closed/unassigned cases (bulk mirrors the single-case gates)', () => {
+    it('rejects CHANGE_PRIORITY on a closed case with CASE_CLOSED', async () => {
+      const closed = buildCase(CASE_A, { priority: 'LOW' })
+        .reassign(createAssignedTo('USER', ANALYST_ID), NOW)
+        .transitionTo('IN_REVIEW', NOW)
+        .transitionTo('RESOLVED', NOW);
+      const { bulkCaseAction, cases } = buildUseCase([closed]);
+
+      await expect(
+        bulkCaseAction({
+          auth: ANALYST,
+          caseIds: [CASE_A],
+          action: { type: 'CHANGE_PRIORITY', priority: 'HIGH' },
+        }),
+      ).rejects.toMatchObject({ code: 'CASE_CLOSED' });
+
+      // All-or-nothing held: the closed case's priority is untouched.
+      expect(cases.all()[0]?.priority).toBe('LOW');
+    });
+
+    it('rejects ADD_TAGS on a closed case with CASE_CLOSED', async () => {
+      const closed = buildCase(CASE_A, { tags: ['fraud'] })
+        .reassign(createAssignedTo('USER', ANALYST_ID), NOW)
+        .transitionTo('IN_REVIEW', NOW)
+        .transitionTo('RESOLVED', NOW);
+      const { bulkCaseAction } = buildUseCase([closed]);
+
+      await expect(
+        bulkCaseAction({
+          auth: ANALYST,
+          caseIds: [CASE_A],
+          action: { type: 'ADD_TAGS', tags: ['aml'] },
+        }),
+      ).rejects.toMatchObject({ code: 'CASE_CLOSED' });
+    });
+
+    it('rejects CHANGE_PRIORITY on an unassigned case with CASE_NOT_ASSIGNED', async () => {
+      const { bulkCaseAction } = buildUseCase([buildCase(CASE_A, { priority: 'LOW' })]);
+
+      await expect(
+        bulkCaseAction({
+          auth: ANALYST,
+          caseIds: [CASE_A],
+          action: { type: 'CHANGE_PRIORITY', priority: 'HIGH' },
+        }),
+      ).rejects.toMatchObject({ code: 'CASE_NOT_ASSIGNED' });
+    });
   });
 });

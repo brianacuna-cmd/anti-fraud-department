@@ -51,7 +51,7 @@ describe('createListAmlAlertsUseCase (compliance inbox)', () => {
     expect(page.items.map((alert) => String(alert.id))).toEqual([oid('newer'), oid('older')]);
   });
 
-  it('filters by estado', async () => {
+  it('filters by status', async () => {
     const amlAlertRepository = new InMemoryAmlAlertRepository();
     await amlAlertRepository.save(buildAlert(oid('open'), ORG_1));
     await amlAlertRepository.save(
@@ -61,7 +61,7 @@ describe('createListAmlAlertsUseCase (compliance inbox)', () => {
 
     const page = await listAmlAlerts({
       auth: ANALYST,
-      estado: ['INVESTIGATING'],
+      status: ['INVESTIGATING'],
       limit: 20,
       offset: 0,
     });
@@ -70,7 +70,7 @@ describe('createListAmlAlertsUseCase (compliance inbox)', () => {
     expect(String(page.items[0]?.id)).toBe(oid('investigating'));
   });
 
-  it('filters by severidad, watchlist_id, and created_at range combined with AND', async () => {
+  it('filters by severity, watchlist_id, and created_at range combined with AND', async () => {
     const amlAlertRepository = new InMemoryAmlAlertRepository();
     await amlAlertRepository.save(buildAlert(oid('older'), ORG_1, NOW));
     await amlAlertRepository.save(buildAlert(oid('newer'), ORG_1, LATER));
@@ -78,7 +78,7 @@ describe('createListAmlAlertsUseCase (compliance inbox)', () => {
 
     const page = await listAmlAlerts({
       auth: ANALYST,
-      severidad: ['HIGH'],
+      severity: ['HIGH'],
       watchlistId: oid('watchlist-1'),
       createdAfter: LATER,
       limit: 20,
@@ -96,7 +96,7 @@ describe('createListAmlAlertsUseCase (compliance inbox)', () => {
 
     const page = await listAmlAlerts({
       auth: ANALYST,
-      severidad: ['LOW'],
+      severity: ['LOW'],
       limit: 20,
       offset: 0,
     });

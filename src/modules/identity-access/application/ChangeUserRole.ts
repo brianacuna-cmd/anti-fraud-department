@@ -37,7 +37,7 @@ export interface ChangeUserRoleDeps {
  */
 export function createChangeUserRoleUseCase(deps: ChangeUserRoleDeps) {
   return async function changeUserRole(input: ChangeUserRoleInput): Promise<User> {
-    // role-authorization: ORGANIZATION o USER con rol ADMIN pueden cambiar roles.
+    // role-authorization: ORGANIZATION or USER with ADMIN role may change roles.
     await requireUserRole(input.auth, deps.userRepositoryFactory, USER_MANAGE_ROLES, 'change user roles');
     const organizationId = createOrganizationId(requireTenantContext(input.auth));
     const repository = deps.userRepositoryFactory.forTenant(organizationId);

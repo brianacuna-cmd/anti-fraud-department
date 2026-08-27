@@ -33,17 +33,19 @@ const ANALYST = createAuthContext({ userId: oid('analyst-1'), organizationId: OR
 const nullTsa: TimestampAuthority = { requestTimestamp: async () => null };
 
 function buildCase(organizationId = ORG_1): Case {
-  return Case.create({
+  const kase = Case.create({
     id: createCaseId(oid('case-1')),
     organizationId,
     customerId: 'customer-1',
     riskScore: createRiskScore(50),
     priority: 'MEDIUM',
-    // La regla de asignacion congela los expedientes huerfanos:
-    // sin responsable no se pueden trabajar.
+    // Assignment rule freezes orphan cases:
+    // without an owner they cannot be worked.
     assignedTo: createAssignedTo('USER', oid('analyst-1')),
     now: NOW,
   });
+  // Instruction (notes/evidence) comes after review. See `WorkflowStepGate`.
+  return kase.transitionTo('IN_REVIEW', NOW);
 }
 
 function build(tsa: TimestampAuthority = nullTsa, malwareScanner = new FakeMalwareScanner()) {
@@ -170,6 +172,23 @@ describe('createRegisterEvidenceUseCase', () => {
       h.registerEvidence({ auth: ANALYST, caseId: oid('case-1'), filename: 'x', contentType: 'text/plain', bytes: Buffer.from('x') }),
     ).rejects.toMatchObject({ code: 'FORBIDDEN_CROSS_TENANT' });
   });
+
+  it('throws CASE_NOT_REVIEWED for a case still OPEN', async () => {
+    const h = build();
+    const open = Case.create({
+      id: createCaseId(oid('case-1')),
+      organizationId: ORG_1,
+      customerId: 'customer-1',
+      riskScore: createRiskScore(50),
+      priority: 'MEDIUM',
+      assignedTo: createAssignedTo('USER', oid('analyst-1')),
+      now: NOW,
+    });
+    await h.cases.save(open);
+    await expect(
+      h.registerEvidence({ auth: ANALYST, caseId: oid('case-1'), filename: 'x', contentType: 'text/plain', bytes: Buffer.from('x') }),
+    ).rejects.toMatchObject({ code: 'CASE_NOT_REVIEWED' });
+  });
 });
 
 describe('read evidence', () => {
@@ -273,8 +292,8 @@ describe('escaneo antivirus al registrar evidencia (INV-015)', () => {
       }),
     ).rejects.toThrow();
 
-    // El intento es en si mismo informacion: alguien subio malware al
-    // expediente y eso tiene que quedar escrito aunque el fichero se rechace.
+    // The attempt itself is information: someone uploaded malware to the
+    // case and that has to be written even though the file is rejected.
     const entry = h.auditRecorder.all().find((event) => event.detail.rejected === true);
     expect(entry).toBeDefined();
     expect(entry!.detail).toMatchObject({ signature: 'Win.Trojan.Agent', filename: 'malo.exe' });

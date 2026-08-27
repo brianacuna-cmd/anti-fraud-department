@@ -163,7 +163,7 @@ describe('GenerateCaseAuditDossier (INV-016)', () => {
     await cases.save(buildCase());
     await seedReport(reports);
     await evidence.save(buildEvidence(false));
-    // A propósito: no se guarda el blob en el almacen.
+    // On purpose: the blob is not stored in the store.
 
     const result = await dossier({ auth: SUPERVISOR, caseId: CASE_ID });
     const manifest = JSON.parse(
@@ -207,7 +207,7 @@ describe('GenerateCaseAuditDossier (INV-016)', () => {
     await cases.save(buildCase());
     await seedReport(reports);
 
-    // Un dossier saca TODAS las pruebas del expediente en un solo fichero.
+    // A dossier pulls ALL of the case's evidence into a single file.
     await expect(dossier({ auth: ANALYST, caseId: CASE_ID })).rejects.toThrow(CaseManagementError);
   });
 

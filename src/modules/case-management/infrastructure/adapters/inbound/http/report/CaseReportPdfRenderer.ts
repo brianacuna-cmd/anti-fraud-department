@@ -17,18 +17,19 @@ const INK = '#111111';
 const MUTED = '#6b6b75';
 const RULE = '#d8d8dd';
 
-/** Ancho util de una pagina Letter con los margenes de arriba. */
+/** Usable width of a Letter page with the margins above. */
 const CONTENT_WIDTH = 612 - MARGIN * 2;
 
 /**
- * Todo enum del dominio que puede acabar impreso en el informe.
+ * Every domain enum that may end up printed in the report.
  *
- * `Record<Translatable, string>` obliga al compilador a exigir el mapa
- * COMPLETO: si manana se anade un tipo de sancion o un hito de cronologia,
- * el build falla hasta que alguien decida como se llama en castellano. Sin
- * esto la traduccion se olvida en silencio y el valor sale crudo — que es
- * justo lo que paso con `FRAUD_CONFIRMED`, escrito aqui al reves como
- * `CONFIRMED_FRAUD`: el mapa parecia completo y el dictamen salia en ingles.
+ * `Record<Translatable, string>` forces the compiler to require the COMPLETE
+ * map: if a sanction type or a timeline milestone is added tomorrow, the
+ * build fails until someone decides what it is called in Spanish. Without
+ * this the translation is forgotten silently and the raw value comes out —
+ * which is exactly what happened with `FRAUD_CONFIRMED`, written here
+ * backwards as `CONFIRMED_FRAUD`: the map looked complete and the decision
+ * came out in English.
  */
 type Translatable =
   | AnalystDecisionType
@@ -44,26 +45,26 @@ type Translatable =
   | TimelineEventType;
 
 /**
- * Etiquetas en castellano.
+ * Labels in Spanish.
  *
- * El snapshot guarda el valor del dominio (`IN_REVIEW`), que es lo correcto
- * —traducir en el guardado congelaria el idioma junto con los datos—, pero el
- * PDF lo lee una persona que a menudo no ha visto el sistema por dentro: un
- * regulador, un banco corresponsal, un juzgado. Un valor sin traduccion cae
- * en su forma cruda antes que desaparecer.
+ * The snapshot stores the domain value (`IN_REVIEW`), which is correct
+ * —translating on save would freeze the language along with the data— but
+ * the PDF is read by someone who often has not seen the system from the
+ * inside: a regulator, a correspondent bank, a court. An untranslated
+ * value falls back to its raw form rather than disappearing.
  */
 const LABELS: Readonly<Record<Translatable, string>> = {
-  // Estado del expediente
+  // Case status
   OPEN: 'Abierto',
   IN_REVIEW: 'En revisión',
   RESOLVED: 'Resuelto',
   ARCHIVED: 'Archivado',
-  // Prioridad
+  // Priority
   LOW: 'Baja',
   MEDIUM: 'Media',
   HIGH: 'Alta',
   CRITICAL: 'Crítica',
-  // Eventos de la cronología
+  // Timeline events
   CASE_CREATED: 'Expediente abierto',
   CASE_REOPENED: 'Expediente reabierto',
   STATE_CHANGED: 'Cambio de estado',
@@ -78,11 +79,11 @@ const LABELS: Readonly<Record<Translatable, string>> = {
   CASE_LINKED_TO_INVESTIGATION: 'Vinculado a una investigación',
   SNAPSHOT_REFRESHED: 'Datos del cliente actualizados',
   ENFORCEMENT_REQUESTED: 'Medida cautelar solicitada',
-  // Dictamen y cierre
+  // Decision and closure
   FRAUD_CONFIRMED: 'Fraude confirmado',
   FALSE_POSITIVE: 'Falso positivo',
   INCONCLUSIVE: 'No concluyente',
-  // Sanciones
+  // Sanctions
   BLOCK: 'Bloqueo',
   RESTRICT: 'Restricción',
   SUSPEND: 'Suspensión',
@@ -93,11 +94,11 @@ const LABELS: Readonly<Record<Translatable, string>> = {
   REJECTED: 'Rechazada',
   EXECUTED: 'Ejecutada',
   REVERTED: 'Revertida',
-  // Estado del SLA
+  // SLA status
   ON_TRACK: 'En plazo',
   WARNING: 'Cerca de vencer',
   BREACHED: 'Vencido',
-  // Investigaciones (OPEN y RESOLVED comparten clave con el expediente)
+  // Investigations (OPEN and RESOLVED share a key with the case)
   INVESTIGATING: 'En curso',
   CLOSED: 'Cerrada',
   CUSTOMER: 'Cliente',
@@ -108,35 +109,37 @@ const LABELS: Readonly<Record<Translatable, string>> = {
 };
 
 /**
- * Cada bloque del expediente congelado: como se titula, de que clave del
- * snapshot sale y como se resume cada fila en una linea.
+ * Each block of the frozen case: how it is titled, which snapshot key it
+ * comes from, and how each row is summarized into a line.
  *
- * En orden narrativo —que paso, quien lo dijo, que se investigo, que se
- * decidio, que se ejecuto y como acabo— y no en el orden en que el snapshot
- * guarda las claves: el informe lo lee una persona, normalmente alguien
- * ajeno al caso.
+ * In narrative order —what happened, who said it, what was investigated,
+ * what was decided, what was executed and how it ended— and not in the
+ * order the snapshot stores the keys: the report is read by a person,
+ * usually someone outside the case.
  */
 /**
- * `actor(id)` traduce un id a la persona que era EN EL MOMENTO de congelar:
- * el mapa `actors` viaja dentro del snapshot. Un id que no esta en el mapa se
- * imprime crudo antes que atribuirle a nadie lo que hizo.
+ * `actor(id)` translates an id to the person they were AT THE MOMENT of
+ * freeze: the `actors` map travels inside the snapshot. An id that is not
+ * in the map is printed raw rather than attributing to anyone what they did.
  */
 type LineContext = {
   actor: (value: unknown) => string;
-  /** id de evidencia -> nombre del fichero, resuelto contra el propio snapshot. */
+  /** evidence id -> filename, resolved against the snapshot itself. */
   evidenceName: (id: string) => string | null;
 };
 
 /**
- * Detalle legible de un hito de la cronologia.
+ * Readable detail of a timeline milestone.
  *
- * Varios eventos guardan un IDENTIFICADOR en `newValue` —la evidencia, la
- * nota, la investigacion vinculada— y el informe los imprimia crudos: una
- * linea que decia «Nota anadida · 6a8acd5e55dd874d4afe713c», que no le dice
- * nada a quien lee el documento desde fuera, que es justamente su lector.
+ * Several events store an IDENTIFIER in `newValue` —the evidence, the
+ * note, the linked investigation— and the report used to print them raw: a
+ * line that said «Nota anadida · 6a8acd5e55dd874d4afe713c», which tells
+ * nothing to whoever reads the document from outside, which is exactly its
+ * reader.
  *
- * Los ids se resuelven contra el snapshot cuando se puede, y cuando no, se
- * omiten: el hito, su autor y su fecha ya cuentan lo que paso.
+ * Ids are resolved against the snapshot when possible, and when not, they
+ * are omitted: the milestone, its author and its date already tell what
+ * happened.
  */
 function timelineDetail(row: Record<string, unknown>, ctx: LineContext): string {
   const type = str(row.eventType);
@@ -144,8 +147,8 @@ function timelineDetail(row: Record<string, unknown>, ctx: LineContext): string 
   if (type === 'EVIDENCE_ADDED') {
     return ctx.evidenceName(str(row.newValue)) ?? '';
   }
-  // El cuerpo de la nota sale entero en su propia seccion; repetir el id no
-  // ayuda y repetir el texto duplicaria media pagina.
+  // The note body comes out in full in its own section; repeating the id does
+  // not help and repeating the text would duplicate half a page.
   if (type === 'NOTE_ADDED' || type === 'NOTE_DELETED' || type === 'EVIDENCE_DELETED') {
     return '';
   }
@@ -170,8 +173,8 @@ const SECTIONS: readonly {
     line: (row, ctx) => [
       label(row.eventType),
       [
-        // `->` y no `→`: la Helvetica base de pdfkit no lleva la flecha
-        // Unicode y la imprimia como dos caracteres sueltos sin sentido.
+        // `->` and not `→`: pdfkit's base Helvetica does not carry the Unicode
+        // arrow and printed it as two loose characters that made no sense.
         timelineDetail(row, ctx),
         ctx.actor(row.createdBy),
         date(row.createdAt),
@@ -260,16 +263,16 @@ const SECTIONS: readonly {
 ];
 
 /**
- * Renderiza un informe congelado como PDF.
+ * Renders a frozen report as PDF.
  *
- * Un informe existe para salir de la aplicación —a un regulador, a un banco
- * corresponsal, a un expediente judicial—, así que lo que se dibuja aquí es
- * el snapshot y NADA más: releer el caso vivo para completar huecos
- * destruiría justamente la propiedad que hace útil al informe, que es contar
- * el expediente tal y como estaba en el instante en que se congeló.
+ * A report exists to leave the application —to a regulator, a correspondent
+ * bank, a court file— so what is drawn here is the snapshot and NOTHING
+ * else: re-reading the live case to fill gaps would destroy exactly the
+ * property that makes the report useful, which is telling the case as it
+ * stood at the instant it was frozen.
  *
- * pdfkit y no un navegador headless, igual que `PdfCaseExportRenderer`: es
- * JS puro y no arrastra un Chromium al despliegue.
+ * pdfkit and not a headless browser, same as `PdfCaseExportRenderer`: it is
+ * pure JS and does not drag a Chromium into the deployment.
  */
 export class CaseReportPdfRenderer {
   readonly contentType = 'application/pdf';
@@ -317,16 +320,16 @@ export class CaseReportPdfRenderer {
 
 
   /**
-   * Conclusion, arriba del todo.
+   * Conclusion, at the very top.
    *
-   * El informe salia como un registro: ocho secciones cronologicas que habia
-   * que leer enteras para saber en que acabo el expediente. Quien lo abre
-   * —un regulador, un banco corresponsal, un juzgado— necesita el desenlace
-   * en la primera pantalla, y el detalle despues como respaldo.
+   * The report used to come out as a log: eight chronological sections that
+   * had to be read in full to know how the case ended. Whoever opens it
+   * —a regulator, a correspondent bank, a court— needs the outcome on the
+   * first screen, and the detail afterwards as backing.
    *
-   * Todo sale del propio snapshot congelado: no consulta nada vivo, asi que
-   * el resumen envejece igual que el resto del documento, que es lo correcto
-   * para una foto inmutable.
+   * Everything comes from the frozen snapshot itself: it queries nothing
+   * live, so the summary ages the same as the rest of the document, which
+   * is the correct thing for an immutable photograph.
    */
   private verdict(
     doc: PDFKit.PDFDocument,
@@ -339,8 +342,8 @@ export class CaseReportPdfRenderer {
     const resolutions = list(snapshot.resolutions);
     const evidence = list(snapshot.evidence);
 
-    // El ultimo dictamen es el que vale: los anteriores quedan como historia
-    // en su seccion, pero el veredicto del expediente es el mas reciente.
+    // The last decision is the one that counts: earlier ones remain as
+    // history in their section, but the case verdict is the most recent.
     const lastDecision = decisions[decisions.length - 1];
     const closure = resolutions[resolutions.length - 1];
     const executed = actions.filter((a) => str(a.status) === 'EXECUTED');
@@ -382,10 +385,10 @@ export class CaseReportPdfRenderer {
     );
 
     /*
-     * Se dice cuantas piezas van selladas y cuantas no. Una prueba sin sello
-     * RFC 3161 sigue teniendo su hash, pero no tiene fecha oponible a un
-     * tercero, y esa diferencia la tiene que ver quien recibe el informe sin
-     * ponerse a contar la seccion de evidencia.
+     * It says how many pieces are sealed and how many are not. Evidence
+     * without an RFC 3161 seal still has its hash, but it has no date
+     * opposable to a third party, and whoever receives the report has to see
+     * that difference without counting the evidence section.
      */
     this.entry(
       doc,
@@ -440,11 +443,11 @@ export class CaseReportPdfRenderer {
   }
 
   /**
-   * Quien es el cliente, tal y como estaba congelado.
+   * Who the customer is, as they stood when frozen.
    *
-   * Sin este bloque el informe identifica al sujeto por un `customerId`
-   * interno que no le dice nada a quien lo lee desde fuera — que es
-   * exactamente el lector para el que existe el documento.
+   * Without this block the report identifies the subject by an internal
+   * `customerId` that tells nothing to whoever reads it from outside — which
+   * is exactly the reader the document exists for.
    */
   private customer(doc: PDFKit.PDFDocument, kase: Record<string, unknown>): void {
     const customer = record(kase.customer);
@@ -463,9 +466,9 @@ export class CaseReportPdfRenderer {
   }
 
   /**
-   * Titulo de bloque. Reserva sitio para el titulo Y su primera fila antes de
-   * decidir si cabe: sin eso un bloque puede quedar como ultima linea de una
-   * pagina y su contenido empezar en la siguiente, huerfano.
+   * Block title. Reserves room for the title AND its first row before
+   * deciding whether it fits: without that a block can sit as the last line
+   * of a page and its content start on the next, orphaned.
    */
   private section(doc: PDFKit.PDFDocument, title: string, count: number | null): void {
     this.ensureSpace(doc, 56);
@@ -524,14 +527,14 @@ export class CaseReportPdfRenderer {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Lectura defensiva del snapshot                                              */
+/* Defensive snapshot reading                                                  */
 /* -------------------------------------------------------------------------- */
 
 /**
- * El snapshot es `Record<string, unknown>` a proposito —congela lo que habia,
- * y lo que habia hace seis meses puede no tener la forma de hoy—, asi que
- * cada lectura tolera que la clave falte o venga de otro tipo. Un informe
- * antiguo tiene que seguir imprimiendose.
+ * The snapshot is `Record<string, unknown>` on purpose —it freezes what was
+ * there, and what was there six months ago may not have today's shape— so
+ * each read tolerates a missing key or a different type. An old report has
+ * to keep printing.
  */
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -543,7 +546,7 @@ function list(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.map((entry) => record(entry)) : [];
 }
 
-/** Las etiquetas son cadenas sueltas, no filas: `list` las convertiria en `{}`. */
+/** Tags are loose strings, not rows: `list` would turn them into `{}`. */
 function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.map((entry) => str(entry)).filter((entry) => entry.length > 0) : [];
 }
@@ -571,9 +574,9 @@ function assignee(value: unknown, ctx: LineContext): string {
 }
 
 /**
- * Buscador de nombres sobre el mapa `actors` del snapshot. Devuelve cadena
- * vacia cuando no hay nombre, para que quien llama decida si cae al id o si
- * omite el dato.
+ * Name lookup over the snapshot `actors` map. Returns an empty string when
+ * there is no name, so the caller decides whether to fall back to the id or
+ * omit the datum.
  */
 function actorLookup(value: unknown): (id: unknown) => string {
   const actors = record(value);
@@ -584,7 +587,7 @@ function actorLookup(value: unknown): (id: unknown) => string {
   };
 }
 
-/** Tamaño legible del fichero de evidencia. */
+/** Human-readable size of the evidence file. */
 function size(value: unknown): string {
   const bytes = typeof value === 'number' ? value : Number(str(value));
   if (!Number.isFinite(bytes) || bytes <= 0) return '';
@@ -594,9 +597,9 @@ function size(value: unknown): string {
 }
 
 /**
- * El sello RFC 3161, si lo hay. Que se diga explicitamente cuando NO lo hay
- * importa: una prueba sin sello vale menos ante un tercero, y callarlo en el
- * informe seria sugerir lo contrario.
+ * The RFC 3161 seal, if there is one. Saying so explicitly when there is NOT
+ * one matters: evidence without a seal is worth less to a third party, and
+ * staying silent in the report would suggest the opposite.
  */
 function seal(value: unknown): string {
   const timestamp = record(value);
@@ -606,10 +609,10 @@ function seal(value: unknown): string {
     : `sellada por ${authority} el ${date(timestamp.timestampedAt)}`;
 }
 
-/** Traduce un enum del dominio; sin traduccion, devuelve el valor crudo. */
+/** Translates a domain enum; without a translation, returns the raw value. */
 function label(value: unknown): string {
   const raw = str(value);
-  // El snapshot es historico: puede traer un valor que ya no existe en el
-  // enum de hoy. Se imprime crudo antes que perderse.
+  // The snapshot is historical: it may carry a value that no longer exists in
+  // today's enum. It is printed raw rather than being lost.
   return (LABELS as Record<string, string>)[raw] ?? raw;
 }

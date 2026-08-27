@@ -29,13 +29,13 @@ function naturalKeyQuery(key: AmlAlertNaturalKey): Filter<AmlAlertDocument> {
   };
 }
 
-function estadoFilterFragment(query: AmlAlertListQuery): Record<string, unknown> {
-  return query.estado !== undefined && query.estado.length > 0 ? { estado: { $in: [...query.estado] } } : {};
+function statusFilterFragment(query: AmlAlertListQuery): Record<string, unknown> {
+  return query.status !== undefined && query.status.length > 0 ? { status: { $in: [...query.status] } } : {};
 }
 
-function severidadFilterFragment(query: AmlAlertListQuery): Record<string, unknown> {
-  return query.severidad !== undefined && query.severidad.length > 0
-    ? { severidad: { $in: [...query.severidad] } }
+function severityFilterFragment(query: AmlAlertListQuery): Record<string, unknown> {
+  return query.severity !== undefined && query.severity.length > 0
+    ? { severity: { $in: [...query.severity] } }
     : {};
 }
 
@@ -60,8 +60,8 @@ function createdAtFilterFragment(query: AmlAlertListQuery): Record<string, unkno
 function listFilter(query: AmlAlertListQuery): Filter<AmlAlertDocument> {
   const filter: Record<string, unknown> = {
     organization_id: new ObjectId(query.organizationId),
-    ...estadoFilterFragment(query),
-    ...severidadFilterFragment(query),
+    ...statusFilterFragment(query),
+    ...severityFilterFragment(query),
     ...watchlistFilterFragment(query),
     ...createdAtFilterFragment(query),
   };

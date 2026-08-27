@@ -11,11 +11,11 @@ import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { OVERSIGHT_READ_ROLES, requireReadRole } from './authorization/policy.js';
 
 /**
- * Ventana por defecto y tope duro.
+ * Default window and hard cap.
  *
- * El tope no es cosmetico: `flow` devuelve un punto por dia, asi que una
- * ventana sin limite convierte una peticion del panel en una respuesta
- * arbitrariamente grande y en un barrido completo de `cases`.
+ * The cap is not cosmetic: `flow` returns one point per day, so an unbounded
+ * window turns a dashboard request into an arbitrarily large response and a
+ * full scan of `cases`.
  */
 export const DEFAULT_WINDOW_DAYS = 30;
 export const MAX_WINDOW_DAYS = 365;
@@ -28,17 +28,17 @@ export interface GetFraudMetricsInput {
 export interface GetFraudMetricsDeps {
   readonly metrics: FraudMetricsReader;
   readonly clock: Clock;
-  /** Solo para poner nombre a las barras de `workload`. */
+  /** Only used to put names on the `workload` bars. */
   readonly assignees: AssigneeDirectory;
 }
 
 /**
- * GET /metrics/overview — la foto agregada que alimenta el panel de gobierno.
+ * GET /metrics/overview — the aggregated snapshot that feeds the governance dashboard.
  *
- * Guarda de LECTURA (`OVERSIGHT_READ_ROLES` + el actor ORGANIZATION): es
- * justo lo que el plano de gobierno —ADMIN, AUDITOR y la organizacion— si
- * puede hacer, ahora que no opera sobre expedientes. El ANALYST queda fuera
- * a proposito: trabaja su bandeja, no la metrica del departamento.
+ * READ gate (`OVERSIGHT_READ_ROLES` + the ORGANIZATION actor): this is exactly
+ * what the governance plane —ADMIN, AUDITOR, and the organization— is allowed
+ * to do, now that it does not operate on cases. ANALYST is left out on
+ * purpose: they work their inbox, not the department metric.
  */
 export function createGetFraudMetricsUseCase(deps: GetFraudMetricsDeps) {
   return async function getFraudMetrics(
@@ -66,16 +66,16 @@ export function createGetFraudMetricsUseCase(deps: GetFraudMetricsDeps) {
 }
 
 /**
- * Pone nombre a los responsables.
+ * Puts names on the assignees.
  *
- * El lado de lectura solo conoce el id que hay guardado en `cases`, asi que
- * la barra se rotulaba con un ObjectId en hexadecimal — inservible para saber
- * quien tiene los expedientes encima. Un id que no resuelva (usuario borrado,
- * rol retirado) se queda sin nombre y la interfaz decide como rotularlo: es
- * preferible a inventarse uno.
+ * The read side only knows the id stored in `cases`, so the bar was labeled
+ * with a hexadecimal ObjectId — useless for telling who has the cases on
+ * their plate. An id that does not resolve (deleted user, retired role)
+ * stays nameless and the UI decides how to label it: that is preferable to
+ * inventing one.
  *
- * Si el directorio falla, el panel sale sin nombres en vez de no salir: la
- * carga de trabajo sigue siendo legible por los numeros.
+ * If the directory fails, the dashboard comes out without names rather than
+ * not coming out at all: the workload is still readable from the numbers.
  */
 async function withNames(
   deps: GetFraudMetricsDeps,

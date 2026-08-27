@@ -29,7 +29,7 @@ function buildApp(overrides: {
       NotificationPreference.create({
         organizationId: createOrganizationId(oid('org-1')),
         userId: createUserId(oid('user-1')),
-        alertType: 'CASO_ASIGNADO',
+        alertType: 'CASE_ASSIGNED',
         channel: 'EMAIL',
         enabled: true,
         now: NOW,
@@ -58,14 +58,14 @@ describe('notificationPreferenceRouter', () => {
     const app = buildApp({
       getNotificationPreferences: (async (input: unknown) => {
         calls.push(input);
-        return [{ alertType: 'CASO_ASIGNADO', channel: 'EMAIL', enabled: true }];
+        return [{ alertType: 'CASE_ASSIGNED', channel: 'EMAIL', enabled: true }];
       }) as unknown as ReturnType<typeof createGetNotificationPreferencesUseCase>,
     });
 
     const response = await request(app).get('/api/v1/notifications/preferences');
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ items: [{ alertType: 'caso_asignado', channel: 'EMAIL', enabled: true }] });
+    expect(response.body).toEqual({ items: [{ alertType: 'case_assigned', channel: 'EMAIL', enabled: true }] });
     expect(calls).toHaveLength(1);
   });
 
@@ -77,7 +77,34 @@ describe('notificationPreferenceRouter', () => {
         return NotificationPreference.create({
           organizationId: createOrganizationId(oid('org-1')),
           userId: createUserId(oid('user-1')),
-          alertType: 'CASO_ASIGNADO',
+          alertType: 'CASE_ASSIGNED',
+          channel: 'EMAIL',
+          enabled: false,
+          now: NOW,
+        });
+      }) as unknown as ReturnType<typeof createSetNotificationPreferenceUseCase>,
+    });
+
+    const response = await request(app)
+      .put('/api/v1/notifications/preferences/case_assigned/EMAIL')
+      .send({ enabled: false });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ alertType: 'case_assigned', channel: 'EMAIL', enabled: false, updatedAt: NOW });
+    expect(calls).toEqual([
+      expect.objectContaining({ alertType: 'CASE_ASSIGNED', channel: 'EMAIL', enabled: false }),
+    ]);
+  });
+
+  it('PUT still accepts the legacy Spanish wire alertType and returns the English wire key', async () => {
+    const calls: unknown[] = [];
+    const app = buildApp({
+      setNotificationPreference: (async (input: unknown) => {
+        calls.push(input);
+        return NotificationPreference.create({
+          organizationId: createOrganizationId(oid('org-1')),
+          userId: createUserId(oid('user-1')),
+          alertType: 'CASE_ASSIGNED',
           channel: 'EMAIL',
           enabled: false,
           now: NOW,
@@ -90,9 +117,9 @@ describe('notificationPreferenceRouter', () => {
       .send({ enabled: false });
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ alertType: 'caso_asignado', channel: 'EMAIL', enabled: false, updatedAt: NOW });
+    expect(response.body).toEqual({ alertType: 'case_assigned', channel: 'EMAIL', enabled: false, updatedAt: NOW });
     expect(calls).toEqual([
-      expect.objectContaining({ alertType: 'CASO_ASIGNADO', channel: 'EMAIL', enabled: false }),
+      expect.objectContaining({ alertType: 'CASE_ASSIGNED', channel: 'EMAIL', enabled: false }),
     ]);
   });
 
@@ -111,7 +138,7 @@ describe('notificationPreferenceRouter', () => {
     const app = buildApp({});
 
     const response = await request(app)
-      .put('/api/v1/notifications/preferences/caso_asignado/SMS')
+      .put('/api/v1/notifications/preferences/case_assigned/SMS')
       .send({ enabled: true });
 
     expect(response.status).toBe(422);
@@ -138,7 +165,7 @@ describe('notificationPreferenceRouter', () => {
         NotificationPreference.create({
           organizationId: createOrganizationId(oid('org-1')),
           userId: createUserId(oid('user-1')),
-          alertType: 'CASO_ASIGNADO',
+          alertType: 'CASE_ASSIGNED',
           channel: 'EMAIL',
           enabled: true,
           now: NOW,

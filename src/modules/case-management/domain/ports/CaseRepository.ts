@@ -26,13 +26,13 @@ export interface CaseListQuery {
 }
 
 /**
- * Identidad con la que la ingesta de Finturu busca un expediente ya existente
- * antes de abrir uno nuevo (CASE-011). `customerId` y `bridgeUserId` componen
- * como OR; `statuses`, cuando se pasa, acota la ventana de ciclo de vida.
+ * Identity with which Finturu ingestion looks up an already existing case
+ * before opening a new one (CASE-011). `customerId` and `bridgeUserId`
+ * compose as OR; `statuses`, when passed, bounds the lifecycle window.
  *
- * `IngestFinturuCase` pasa la ventana ACTIVA (spec CASE-011: "si la entidad ya
- * tiene un caso OPEN o IN_REVIEW"), mientras que `OpenFraudCaseFromCustomer` la
- * omite porque reabrir un caso RESOLVED/ARCHIVED es su camino previsto.
+ * `IngestFinturuCase` passes the ACTIVE window (spec CASE-011: "si la entidad ya
+ * tiene un caso OPEN o IN_REVIEW"), while `OpenFraudCaseFromCustomer` omits
+ * it because reopening a RESOLVED/ARCHIVED case is its intended path.
  */
 export interface FindCaseByIdentityOptions {
   readonly organizationId: string;
@@ -41,7 +41,7 @@ export interface FindCaseByIdentityOptions {
   readonly statuses?: readonly CaseStatus[];
 }
 
-/** La ventana de ciclo de vida que CASE-011 trata como "ya tiene expediente abierto". */
+/** The lifecycle window that CASE-011 treats as "already has an open case". */
 export const ACTIVE_CASE_STATUSES: readonly CaseStatus[] = ['OPEN', 'IN_REVIEW'];
 
 export interface CaseListResult {
@@ -50,13 +50,13 @@ export interface CaseListResult {
 }
 
 /**
- * Expansión del grafo de entidades (INV-013): los expedientes de ESTA
- * organización que citan cualquiera de `refs`.
+ * Entity graph expansion (INV-013): cases of THIS organization that cite
+ * any of `refs`.
  *
- * Los `refs` componen como OR —basta compartir un identificador para estar en
- * la red— y `limit` acota cada ronda, porque un identificador muy compartido
- * (un email de dominio corporativo, una wallet de exchange) puede arrastrar
- * miles de expedientes y la ronda siguiente los multiplicaría.
+ * The `refs` compose as OR —sharing one identifier is enough to be in the
+ * network— and `limit` bounds each round, because a widely shared identifier
+ * (a corporate-domain email, an exchange wallet) can pull thousands of
+ * cases and the next round would multiply them.
  */
 export interface EntityIdentifierQuery {
   readonly organizationId: string;
@@ -76,15 +76,15 @@ export interface CaseRepository {
   findByIdempotencyKey(organizationId: string, idempotencyKey: string, tx?: Transaction): Promise<Case | null>;
   list(query: CaseListQuery, tx?: Transaction): Promise<CaseListResult>;
   /**
-   * Deduplicacion de la ingesta de Finturu (CASE-011): devuelve el expediente
-   * de ESTA organizacion que ya cubre la identidad recibida, o `null`. Nunca
-   * cruza inquilinos ni devuelve expedientes borrados.
+   * Deduplication of Finturu ingestion (CASE-011): returns the case of THIS
+   * organization that already covers the received identity, or `null`. Never
+   * crosses tenants or returns deleted cases.
    */
   findByCustomerOrBridgeId(options: FindCaseByIdentityOptions, tx?: Transaction): Promise<Case | null>;
   /**
-   * Expansion del grafo de entidades (INV-013). Devuelve los expedientes de la
-   * organizacion que citan cualquiera de los identificadores pedidos, sin
-   * borrados logicos y sin cruzar inquilinos.
+   * Entity graph expansion (INV-013). Returns the organization's cases that
+   * cite any of the requested identifiers, without soft-deleted rows and
+   * without crossing tenants.
    */
   findByEntityIdentifiers(query: EntityIdentifierQuery, tx?: Transaction): Promise<readonly Case[]>;
 }

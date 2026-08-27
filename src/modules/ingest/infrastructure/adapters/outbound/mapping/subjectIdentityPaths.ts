@@ -25,14 +25,14 @@ export function readOptionalStringPath(source: unknown, path: readonly string[])
  * Returns undefined when no identity was extracted at all.
  */
 export function inferSubjectEntryType(
-  nombre: string | undefined,
-  documento: string | undefined,
+  name: string | undefined,
+  document: string | undefined,
   walletAddress: string | undefined,
 ): string | undefined {
   if (walletAddress !== undefined) {
     return 'WALLET';
   }
-  if (nombre !== undefined || documento !== undefined) {
+  if (name !== undefined || document !== undefined) {
     return 'PERSON';
   }
   return undefined;

@@ -45,9 +45,9 @@ export class ZenRoutingEngine implements RoutingEngine, RuleSimulationEngine {
   }
 
   /**
-   * Evaluación con traza, para el ensayo en seco del editor. `trace: true` es
-   * lo que devuelve qué entró y qué salió de cada nodo, que es lo que el
-   * editor pinta sobre el grafo.
+   * Traced evaluation, for the editor's dry run. `trace: true` is what returns
+   * what went into and out of each node, which is what the editor paints over
+   * the graph.
    */
   async simulate(
     conditions: Readonly<Record<string, unknown>>,

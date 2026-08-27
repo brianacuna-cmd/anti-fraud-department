@@ -24,7 +24,7 @@ export interface EnrichedFinturuCustomer {
 export interface FinturuDirectoryView {
   readonly customers: readonly EnrichedFinturuCustomer[];
   readonly total: number;
-  /** Momento del último refresco; `null` si el directorio nunca se sincronizó. */
+  /** Time of the last refresh; `null` if the directory has never been synced. */
   readonly syncedAt: string | null;
 }
 
@@ -46,13 +46,13 @@ const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 100;
 
 /**
- * Lee el directorio de la copia local, no de Bridge.
+ * Reads the directory from the local copy, not from Bridge.
  *
- * Componerlo en vivo costaba minutos; contra Mongo la consulta es de
- * milisegundos, y además permite lo que la paginación por cursor de Bridge no
- * daba: total real, búsqueda sobre todo el padrón y orden por riesgo.
- * El precio es que los datos tienen la antigüedad del último sync, que se
- * devuelve en `syncedAt` para que la interfaz pueda mostrarla.
+ * Composing it live used to take minutes; against Mongo the query is
+ * milliseconds, and it also allows what Bridge's cursor pagination did not:
+ * a real total, search over the whole register, and sort by risk.
+ * The price is that the data has the age of the last sync, which is
+ * returned in `syncedAt` so the UI can show it.
  */
 export function createGetFinturuDirectoryUseCase(deps: GetFinturuDirectoryDeps) {
   return async function getFinturuDirectory(

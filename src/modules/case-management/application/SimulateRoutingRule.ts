@@ -7,7 +7,7 @@ import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/polic
 
 export interface SimulateRoutingRuleInput {
   readonly auth: AuthContext;
-  /** Grafo en borrador: puede no existir todavía como regla. */
+  /** Draft graph: it may not exist as a rule yet. */
   readonly conditions: Readonly<Record<string, unknown>>;
   readonly context: CaseRoutingContext;
 }
@@ -16,9 +16,10 @@ export type SimulateRoutingRuleResult =
   | ({
       readonly ok: true;
       /**
-       * A quién asignaría. Ambos nulos NO es un fallo: es lo que `RouteCase`
-       * lee como «esta regla no asigna con este caso» antes de pasar a la
-       * siguiente. Distinguirlo de un grafo roto es lo que hace útil la prueba.
+       * Who it would assign to. Both null is NOT a failure: it is what
+       * `RouteCase` reads as "this rule assigns nobody for this case" before
+       * moving to the next one. Telling that apart from a broken graph is
+       * what makes the dry run worth running.
        */
       readonly targetUserId: string | null;
       readonly targetRoleId: string | null;
@@ -31,9 +32,9 @@ export interface SimulateRoutingRuleDeps {
 }
 
 /**
- * Ensayo en seco de una regla de enrutamiento: evalúa un grafo contra un caso
- * de ejemplo sin guardar nada y sin tocar las reglas activas. Gemelo de
- * `SimulateScoringRule` en risk-assessment.
+ * Routing-rule dry run: evaluates a graph against a sample case without
+ * persisting anything and without touching the active rules. Twin of
+ * `SimulateScoringRule` in risk-assessment.
  */
 export function createSimulateRoutingRuleUseCase(deps: SimulateRoutingRuleDeps) {
   return async function simulateRoutingRule(
@@ -44,7 +45,7 @@ export function createSimulateRoutingRuleUseCase(deps: SimulateRoutingRuleDeps) 
 
     const outcome = await simulate(deps, input);
 
-    /* Se audita aunque no persista nada: ejecutar un grafo en el motor es un acto. */
+    /* Audited even though nothing persists: running a graph on the engine is an act. */
     await deps.auditRecorder.record(
       {
         organizationId,

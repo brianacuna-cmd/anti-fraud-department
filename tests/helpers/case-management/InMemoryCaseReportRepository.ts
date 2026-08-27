@@ -19,7 +19,7 @@ export class InMemoryCaseReportRepository implements CaseReportRepository {
     return this.reports.filter((report) => (report.caseId as string) === (caseId as string)).reverse();
   }
 
-  /** Solo para tests: todos los informes guardados, en orden de inserción. */
+  /** Tests only: every saved report, in insertion order. */
   all(): readonly CaseReport[] {
     return [...this.reports];
   }

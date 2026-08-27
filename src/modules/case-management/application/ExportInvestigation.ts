@@ -24,44 +24,44 @@ export interface ExportInvestigationDeps {
 }
 
 /**
- * INV-014 — congela el informe ejecutivo de una investigación.
+ * INV-014 — freezes the executive report of an investigation.
  *
  * GET /investigations/:investigationId/export
  *
- * Es el mismo informe que devuelve `/summary`, con notas y evidencia de cada
- * expediente, escrito en `case_reports` con `reportType: 'INVESTIGATION_EXPORT'`
- * y colgado del expediente raíz de la investigación.
+ * It is the same report `/summary` returns, with notes and evidence for each
+ * case, written to `case_reports` with `reportType: 'INVESTIGATION_EXPORT'`
+ * and attached to the investigation's root case.
  *
- * POR QUÉ DOS RUTAS Y NO UNA
+ * WHY TWO ROUTES AND NOT ONE
  *
- * `/summary` responde "cómo está la red ahora" y por eso no se guarda: una
- * investigación abierta cambia con cada expediente que entra, y una copia
- * congelada de eso solo produce informes que envejecen en silencio.
+ * `/summary` answers "how the network looks now" and is therefore not
+ * saved: an open investigation changes with every case that comes in, and
+ * a frozen copy of that only produces reports that age in silence.
  *
- * Un export es lo contrario. Se entrega a alguien —un comité, un regulador, un
- * juzgado— y ese alguien tiene que poder abrir meses después exactamente lo que
- * se le entregó. Si el documento se recalcula al abrirlo, emisor y receptor
- * acaban leyendo cosas distintas bajo el mismo identificador, y no hay forma de
- * saber cuál valía. Congelarlo es lo que lo convierte en una entrega y no en un
- * enlace.
+ * An export is the opposite. It is delivered to someone — a committee, a
+ * regulator, a court — and that someone has to be able to open, months
+ * later, exactly what they were given. If the document is recalculated
+ * when opened, sender and recipient end up reading different things under
+ * the same identifier, with no way to know which one counted. Freezing it
+ * is what turns it into a delivery instead of a link.
  *
- * POR QUÉ LA LECTURA QUEDA FUERA DE LA TRANSACCIÓN
+ * WHY THE READ STAYS OUTSIDE THE TRANSACTION
  *
- * La transacción envuelve solo la escritura del informe. Componerlo recorre la
- * red entera —hasta `MAX_GRAPH_NODES` expedientes, con sus notas, evidencia,
- * dictámenes y medidas—, y mantener una transacción abierta durante ese
- * recorrido bloquearía el conjunto de trabajo mucho más de lo que hace falta
- * para insertar una fila. Nada de lo que se lee se modifica aquí, así que lo
- * único que se pierde es la lectura consistente: el informe puede mezclar dos
- * instantes separados por milisegundos. Para una foto ejecutiva es aceptable;
- * `generatedAt` deja constancia de cuándo se tomó.
+ * The transaction wraps only the report write. Composing it walks the
+ * entire network — up to `MAX_GRAPH_NODES` cases, with their notes,
+ * evidence, analyst decisions, and enforcement actions — and keeping a
+ * transaction open for that walk would lock the working set far longer
+ * than needed to insert one row. Nothing that is read is modified here,
+ * so the only thing lost is consistent read: the report may mix two
+ * instants milliseconds apart. For an executive snapshot that is
+ * acceptable; `generatedAt` records when it was taken.
  */
 export function createExportInvestigationUseCase(deps: ExportInvestigationDeps) {
   return async function exportInvestigation(
     input: ExportInvestigationInput,
   ): Promise<CaseReport> {
-    // Valida tenant, existencia y pertenencia; si algo falla, revienta antes
-    // de que se abra ninguna transacción.
+    // Validates tenant, existence, and ownership; if anything fails, it
+    // blows up before any transaction is opened.
     const summary = await deps.exportInvestigationSummary({
       auth: input.auth,
       investigationId: input.investigationId,

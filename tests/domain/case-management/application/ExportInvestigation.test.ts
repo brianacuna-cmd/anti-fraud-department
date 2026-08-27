@@ -139,7 +139,7 @@ describe('ExportInvestigation (INV-014, congelado)', () => {
     expect((snapshot['totals'] as { totalCases: number }).totalCases).toBe(1);
   });
 
-  /** Es lo que separa un export de una vista: el documento lleva las pruebas. */
+  /** What separates an export from a view: the document carries the evidence. */
   it('el congelado incluye las notas de cada expediente', async () => {
     const { cases, investigations, notes, exportInvestigation } = setup();
 
@@ -165,8 +165,8 @@ describe('ExportInvestigation (INV-014, congelado)', () => {
   });
 
   /**
-   * Cada llamada deja un informe nuevo a propósito: el historial de qué se
-   * entregó y cuándo es justamente lo que hace auditable la entrega.
+   * Each call leaves a new report on purpose: the history of what was
+   * delivered and when is exactly what makes the delivery auditable.
    */
   it('dos exportaciones dejan dos informes, no uno pisado', async () => {
     const { cases, investigations, reports, exportInvestigation } = setup();

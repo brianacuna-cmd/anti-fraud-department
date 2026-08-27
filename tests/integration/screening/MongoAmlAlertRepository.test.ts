@@ -17,7 +17,7 @@ jest.setTimeout(60_000);
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 
-function buildAlert(overrides: { matchField?: 'NAME' | 'DOCUMENTO' | 'WALLET'; customerId?: string } = {}): AmlAlert {
+function buildAlert(overrides: { matchField?: 'NAME' | 'DOCUMENT' | 'WALLET'; customerId?: string } = {}): AmlAlert {
   return AmlAlert.create({
     id: generateAmlAlertId(),
     organizationId: oid('org-1'),
@@ -108,7 +108,7 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
     expect(count).toBe(1);
   });
 
-  it('lists tenant alerts newest first and filters by estado', async () => {
+  it('lists tenant alerts newest first and filters by status', async () => {
     const older = buildAlert({ customerId: oid('customer-older') });
     const newer = AmlAlert.create({
       id: generateAmlAlertId(),
@@ -143,7 +143,7 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
 
     const investigating = await repository.list({
       organizationId: oid('org-1'),
-      estado: ['INVESTIGATING'],
+      status: ['INVESTIGATING'],
       limit: 20,
       offset: 0,
     });
@@ -177,16 +177,16 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
 
   it('persists distinct records when match_field differs for the same subject/entry (not a duplicate)', async () => {
     const nameMatch = buildAlert({ matchField: 'NAME' });
-    const documentoMatch = buildAlert({ matchField: 'DOCUMENTO' });
+    const documentMatch = buildAlert({ matchField: 'DOCUMENT' });
 
     await repository.save(nameMatch);
-    await repository.save(documentoMatch);
+    await repository.save(documentMatch);
 
     const count = await db.collection('aml_alerts').countDocuments({});
     expect(count).toBe(2);
   });
 
-  it('filters by severidad, watchlist_id, and created_at range, combined with AND', async () => {
+  it('filters by severity, watchlist_id, and created_at range, combined with AND', async () => {
     const watchlistA = oid('watchlist-a');
     const watchlistB = oid('watchlist-b');
     const low = AmlAlert.create({
@@ -244,13 +244,13 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
     await repository.save(highOldWatchlist);
     await repository.save(highMatch);
 
-    const bySeveridad = await repository.list({
+    const bySeverity = await repository.list({
       organizationId: oid('org-1'),
-      severidad: ['HIGH'],
+      severity: ['HIGH'],
       limit: 20,
       offset: 0,
     });
-    expect(bySeveridad.total).toBe(2);
+    expect(bySeverity.total).toBe(2);
 
     const byWatchlist = await repository.list({
       organizationId: oid('org-1'),
@@ -272,7 +272,7 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
 
     const combined = await repository.list({
       organizationId: oid('org-1'),
-      severidad: ['HIGH'],
+      severity: ['HIGH'],
       watchlistId: watchlistA,
       limit: 20,
       offset: 0,
@@ -282,7 +282,7 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
 
     const noMatch = await repository.list({
       organizationId: oid('org-1'),
-      severidad: ['LOW'],
+      severity: ['LOW'],
       watchlistId: watchlistB,
       limit: 20,
       offset: 0,

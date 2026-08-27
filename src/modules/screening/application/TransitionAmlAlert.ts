@@ -3,7 +3,7 @@ import type { Clock } from '../../../shared/time/Clock.js';
 import type { AmlAlert } from '../domain/model/aggregates/AmlAlert.js';
 import type { AmlAlertStatus } from '../domain/model/value-objects/AmlAlertStatus.js';
 import type { AmlAlertRepository } from '../domain/ports/AmlAlertRepository.js';
-import type { AmlExpedienteTimelineRecorder } from '../domain/ports/AmlExpedienteTimelineRecorder.js';
+import type { AmlAlertTimelineRecorder } from '../domain/ports/AmlAlertTimelineRecorder.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import { createAmlAlertId } from '../domain/model/value-objects/AmlAlertId.js';
 import { amlAlertNotFound, forbiddenCrossTenant } from '../domain/errors/ScreeningError.js';
@@ -17,7 +17,7 @@ export interface TransitionAmlAlertInput {
 
 export interface TransitionAmlAlertDeps {
   readonly amlAlertRepository: AmlAlertRepository;
-  readonly timelineRecorder: AmlExpedienteTimelineRecorder;
+  readonly timelineRecorder: AmlAlertTimelineRecorder;
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
   readonly generateTimelineEventId: () => string;
@@ -25,7 +25,7 @@ export interface TransitionAmlAlertDeps {
 
 /**
  * Forward-path AML triage: OPEN → INVESTIGATING → RESOLVED|FALSE_POSITIVE.
- * Same transaction: persist the new estado + STATE_CHANGED timeline row
+ * Same transaction: persist the new status + STATE_CHANGED timeline row
  * keyed by the alert id (compliance inbox, not a fraud Case).
  */
 export function createTransitionAmlAlertUseCase(deps: TransitionAmlAlertDeps) {

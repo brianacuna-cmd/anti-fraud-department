@@ -25,6 +25,18 @@ export interface SyncFinturuDataDeps {
   readonly defaultOrganizationId?: string;
 }
 
+/**
+ * Reads a correlation key from an untyped object (Stripe `metadata`,
+ * a transfer's `source`/`destination`). Returns `null` if missing, so the
+ * caller never compares `undefined` against a Set.
+ *
+ * Accepts a number as well as text: Finturu's register types the SAME field
+ * as a number in some payloads and as a string in others, and discarding the
+ * numeric variant would leave half the customers uncorrelated.
+ *
+ * Exact lookup only — `readKey` is the one that also tries the snake_case
+ * spelling.
+ */
 function readExactKey(bag: Record<string, unknown> | undefined, key: string): string | null {
   const value = bag?.[key];
   if (typeof value === 'string') {
@@ -43,20 +55,14 @@ function toSnakeCase(key: string): string {
 }
 
 /**
- * Lee una clave de correlacion de un objeto sin contrato (`metadata` de Stripe,
- * `source`/`destination` de un transfer). Devuelve `null` si falta, para que el
- * llamante nunca compare `undefined` contra un Set.
+ * Same lookup, but also trying the `snake_case` spelling.
  *
- * Acepta numero ademas de texto: el padron de Finturu tipa el MISMO campo como
- * numero en unos payloads y como cadena en otros, y descartar la variante
- * numerica dejaria sin correlacionar a la mitad de los clientes.
- *
- * Y prueba tambien la variante `snake_case`: Finturu normaliza a camelCase la
- * capa exterior del transfer (`idTransfer`, `clientReferenceId`) pero reenvia
- * `source`/`destination` tal cual llegan de Bridge, donde las claves son
- * `bridge_wallet_id`, `from_address` y `to_address`. Buscar solo en camelCase
- * hacia que NINGUN transfer casara con su cliente: el directorio guardaba
- * `transfers: []` para todo el padron y la pestana Movimientos salia vacia.
+ * Finturu normalizes the transfer's outer layer to camelCase (`idTransfer`,
+ * `clientReferenceId`) but forwards `source`/`destination` exactly as they
+ * arrive from Bridge, where the keys are `bridge_wallet_id`, `from_address`
+ * and `to_address`. Looking only in camelCase made NO transfer match its
+ * customer: the directory stored `transfers: []` for the whole register and
+ * the Movements tab came up empty.
  */
 function readKey(bag: Record<string, unknown> | undefined, key: string): string | null {
   const snake = toSnakeCase(key);

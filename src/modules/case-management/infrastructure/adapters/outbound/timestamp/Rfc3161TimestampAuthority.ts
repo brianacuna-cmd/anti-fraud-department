@@ -25,40 +25,40 @@ import {
 } from './der.js';
 
 export interface Rfc3161Options {
-  /** Endpoint HTTP de la TSA. */
+  /** HTTP endpoint of the TSA. */
   readonly url: string;
-  /** Nombre con el que queda firmado el sello en el expediente. */
+  /** Name under which the seal is recorded on the case. */
   readonly authorityName: string;
   readonly timeoutMs?: number;
   /**
-   * `true` pide que la TSA incluya su certificado en el token. Por defecto sí:
-   * un sello sin la cadena solo se puede verificar mientras alguien conserve
-   * el certificado por otro lado, y un expediente tiene que poder verificarse
-   * solo dentro de diez años.
+   * `true` asks the TSA to include its certificate in the token. Default yes:
+   * a seal without the chain can only be verified while someone else still
+   * holds the certificate, and a case has to remain verifiable on its own
+   * ten years from now.
    */
   readonly requestCertificate?: boolean;
-  /** Credenciales HTTP básicas, si la TSA las exige. */
+  /** HTTP basic credentials, if the TSA requires them. */
   readonly authorizationHeader?: string;
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
-/** PKIStatus (RFC 3161 §2.4.2). Solo 0 y 1 entregan token. */
+/** PKIStatus (RFC 3161 §2.4.2). Only 0 and 1 deliver a token. */
 const PKI_STATUS_GRANTED = 0;
 const PKI_STATUS_GRANTED_WITH_MODS = 1;
 
 /**
- * `TimestampAuthority` real contra una TSA RFC 3161 por HTTP.
+ * Real `TimestampAuthority` against an RFC 3161 TSA over HTTP.
  *
- * Sella el SHA-256 que `RegisterEvidence` ya calculó sobre los bytes. Lo que
- * viaja es el hash, nunca el fichero: la TSA no debe ver el contenido de una
- * prueba, y ese es justamente el diseño del protocolo.
+ * Seals the SHA-256 that `RegisterEvidence` already computed over the bytes.
+ * What travels is the hash, never the file: the TSA must not see the content
+ * of a piece of evidence, and that is exactly the design of the protocol.
  *
- * El sello se guarda en base64 tal cual llega. Es un `TimeStampToken` CMS
- * completo —con la cadena de certificados dentro si se pidió— y es lo único
- * que permite a un tercero demostrar dentro de diez años que ese hash existía
- * en esa fecha. Guardar solo la hora extraída sería tirar la prueba y quedarse
- * con nuestra palabra.
+ * The seal is stored in base64 as it arrives. It is a complete CMS
+ * `TimeStampToken` —with the certificate chain inside if it was requested—
+ * and it is the only thing that lets a third party prove ten years from now
+ * that that hash existed on that date. Saving only the extracted time would
+ * be throwing away the proof and keeping our word.
  */
 export class Rfc3161TimestampAuthority implements TimestampAuthority {
   private readonly timeoutMs: number;
@@ -114,10 +114,10 @@ export class Rfc3161TimestampAuthority implements TimestampAuthority {
  *   nonce INTEGER OPTIONAL,
  *   certReq BOOLEAN DEFAULT FALSE }
  *
- * El nonce es aleatorio y de 8 bytes: es lo que ata la respuesta a ESTA
- * petición. Sin él, alguien que pueda interceptar la conexión puede devolver
- * un sello viejo y válido de otro documento, y el expediente se quedaría con
- * una fecha que nadie pidió.
+ * The nonce is random and 8 bytes: that is what binds the reply to THIS
+ * request. Without it, someone who can intercept the connection can return
+ * an old, valid seal from another document, and the case would keep a date
+ * nobody asked for.
  */
 export function buildTimeStampReq(sha256Hex: string, requestCertificate: boolean): Buffer {
   const digest = Buffer.from(sha256Hex, 'hex');
@@ -146,9 +146,9 @@ export interface ParsedTimeStampResp {
 /**
  * TimeStampResp ::= SEQUENCE { status PKIStatusInfo, timeStampToken OPTIONAL }
  *
- * Un `status` distinto de granted/grantedWithMods lanza: una TSA que rechaza
- * no deja evidencia sin sellar "por defecto", deja un fallo que alguien tiene
- * que ver.
+ * A `status` other than granted/grantedWithMods throws: a TSA that rejects
+ * does not leave evidence unstamped "by default", it leaves a failure someone
+ * has to see.
  */
 export function parseTimeStampResp(response: Buffer): ParsedTimeStampResp {
   const outer = expectTag(response, 0, TAG_SEQUENCE, 'TimeStampResp');
@@ -169,13 +169,13 @@ export function parseTimeStampResp(response: Buffer): ParsedTimeStampResp {
 }
 
 /**
- * Saca el `genTime` del token recorriendo la estructura, no buscando el primer
- * GeneralizedTime que aparezca.
+ * Pulls `genTime` from the token by walking the structure, not by hunting
+ * for the first GeneralizedTime that appears.
  *
- * El atajo de escanear el buffer es tentador y está mal: si se pidió el
- * certificado, dentro del token viajan las fechas de validez del certificado
- * de la TSA, que también son GeneralizedTime, y el escaneo puede devolver la
- * fecha en que caduca un certificado como si fuera la hora del sello.
+ * The shortcut of scanning the buffer is tempting and wrong: if the
+ * certificate was requested, the TSA certificate validity dates travel
+ * inside the token, and those are GeneralizedTime too, so a scan can
+ * return the date a certificate expires as if it were the seal time.
  *
  * ContentInfo -> [0] -> SignedData -> encapContentInfo -> [0] -> OCTET STRING
  * -> TSTInfo -> genTime.

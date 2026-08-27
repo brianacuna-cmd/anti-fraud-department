@@ -41,13 +41,13 @@ export function scoringRuleRouter(deps: ScoringRuleRouterDeps): Router {
   });
 
   /*
-   * Ensayo en seco desde el editor de decisiones: evalúa el grafo que se está
-   * dibujando contra un evento de ejemplo y no guarda nada. Se declara antes
-   * que `/:id` por costumbre defensiva — hoy no colisionan, pero el día que
-   * exista `POST /risk-scoring-rules/:id`, «simulate» dejaría de ser una ruta.
+   * Dry run from the decision editor: evaluates the graph being drawn against
+   * a sample event and persists nothing. Declared before `/:id` out of
+   * defensive habit — they do not collide today, but the day
+   * `POST /risk-scoring-rules/:id` exists, "simulate" would stop being a route.
    *
-   * Devuelve 200 aunque el grafo falle: que no compile es el resultado que se
-   * ha venido a buscar, no un error del servidor.
+   * Returns 200 even when the graph fails: that it does not compile is the
+   * answer the caller came for, not a server error.
    */
   router.post('/risk-scoring-rules/simulate', async (req, res) => {
     const auth = requireAuthContext(req);

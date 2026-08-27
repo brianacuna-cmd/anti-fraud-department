@@ -76,17 +76,17 @@ describe('SetNotificationPreference atomicity (integration, real replica-set Mon
       auditRecorder: createNotificationsAuditRecorderAdapter(buildRecordAuditLog()),
     });
 
-    await setNotificationPreference({ auth, alertType: 'CASO_ASIGNADO', channel: 'EMAIL', enabled: false });
+    await setNotificationPreference({ auth, alertType: 'CASE_ASSIGNED', channel: 'EMAIL', enabled: false });
 
     const prefRow = await db
       .collection('notification_preferences')
-      .findOne({ organization_id: new ObjectId(oid('org-1')), user_id: new ObjectId(oid('user-1')), alert_type: 'CASO_ASIGNADO', channel: 'EMAIL' });
+      .findOne({ organization_id: new ObjectId(oid('org-1')), user_id: new ObjectId(oid('user-1')), alert_type: 'CASE_ASSIGNED', channel: 'EMAIL' });
     expect(prefRow?.enabled).toBe(false);
 
     const auditRow = await db.collection('audit_logs').findOne({ action: 'NOTIFICATION_PREFERENCE_UPDATED' });
     expect(auditRow?.organization_id).toEqual(new ObjectId(oid('org-1')));
     expect(auditRow?.actor_id).toBe(oid('user-1'));
-    expect(auditRow?.resource_id).toBe('CASO_ASIGNADO:EMAIL');
+    expect(auditRow?.resource_id).toBe('CASE_ASSIGNED:EMAIL');
   });
 
   it('rolls BOTH writes back when the audit step fails inside the transaction', async () => {
@@ -109,7 +109,7 @@ describe('SetNotificationPreference atomicity (integration, real replica-set Mon
     });
 
     await expect(
-      setNotificationPreference({ auth, alertType: 'RIESGO_CRITICO', channel: 'EMAIL', enabled: false }),
+      setNotificationPreference({ auth, alertType: 'CRITICAL_RISK', channel: 'EMAIL', enabled: false }),
     ).rejects.toThrow('audit bridge boom (post-write)');
 
     const prefCount = await db.collection('notification_preferences').countDocuments({});

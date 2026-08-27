@@ -317,8 +317,8 @@ describe('MongoCaseRepository (integration, real replica-set Mongo)', () => {
     it('devuelve vacio sin identificadores, sin tocar la coleccion', async () => {
       await repository.save(buildCaseWithIdentifiers(oid('case-1'), { bridgeWallet: '0xabc' }));
 
-      // Un $or vacio es un error en Mongo: sin el corte previo, la expansion
-      // reventaria justo cuando la red se agota.
+      // An empty $or is an error in Mongo: without the early cut, expansion
+      // would blow up just as the network is exhausted.
       const found = await repository.findByEntityIdentifiers({
         organizationId: oid('org-1'),
         refs: [],

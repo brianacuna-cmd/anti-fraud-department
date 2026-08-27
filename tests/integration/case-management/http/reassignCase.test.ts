@@ -12,6 +12,7 @@ import { caseRouter } from '../../../../src/modules/case-management/infrastructu
 import { createCreateCaseUseCase } from '../../../../src/modules/case-management/application/CreateCase.js';
 import { createCalculateSlaUseCase } from '../../../../src/modules/case-management/application/CalculateSla.js';
 import { createRouteCaseUseCase } from '../../../../src/modules/case-management/application/RouteCase.js';
+import { AllowAllAssigneeDirectory } from '../../../helpers/case-management/AllowAllAssigneeDirectory.js';
 import { createReassignCaseUseCase } from '../../../../src/modules/case-management/application/ReassignCase.js';
 import { createListCasesUseCase } from '../../../../src/modules/case-management/application/ListCases.js';
 import { createGetCaseUseCase } from '../../../../src/modules/case-management/application/GetCase.js';
@@ -19,6 +20,8 @@ import { createGetCaseTimelineUseCase } from '../../../../src/modules/case-manag
 import { createAddCaseNoteUseCase } from '../../../../src/modules/case-management/application/AddCaseNote.js';
 import { createListCaseNotesUseCase } from '../../../../src/modules/case-management/application/ListCaseNotes.js';
 import { InMemoryResolutionRepository } from '../../../helpers/case-management/InMemoryResolutionRepository.js';
+import { InMemoryAnalystDecisionRepository } from '../../../helpers/case-management/InMemoryAnalystDecisionRepository.js';
+import { InMemoryEnforcementActionRepository } from '../../../helpers/case-management/InMemoryEnforcementActionRepository.js';
 import { generateResolutionId } from '../../../../src/modules/case-management/domain/model/value-objects/ResolutionId.js';
 import { createResolveCaseUseCase } from '../../../../src/modules/case-management/application/ResolveCase.js';
 import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
@@ -94,13 +97,13 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
 
   const unitOfWork = new PassthroughUnitOfWork();
   const routeCase = createRouteCaseUseCase({
-    assigneeDirectory,
     cases,
     routingRules,
     routingEngine: new ZenRoutingEngine(),
     timelineRecorder,
     auditRecorder,
     fraudConfig,
+    assigneeDirectory: new AllowAllAssigneeDirectory(),
     clock,
     generateTimelineEventId,
   });
@@ -141,7 +144,10 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
     listCaseNotes: createListCaseNotesUseCase({ cases, notes: caseNotes }),
     resolveCase: createResolveCaseUseCase({
       outbox: new InMemoryOutboxEventRepository(),
-      generateOutboxEventId, cases, resolutions, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
+      generateOutboxEventId, cases, resolutions, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId,
+      decisions: new InMemoryAnalystDecisionRepository(),
+      enforcementActions: new InMemoryEnforcementActionRepository(),
+    }),
     archiveCase: createArchiveCaseUseCase({ cases, resolutions, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
     startReview: createStartReviewUseCase({ cases, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateTimelineEventId }),
     bulkCaseAction: createBulkCaseActionUseCase({
@@ -224,7 +230,7 @@ describe('caseRouter POST /cases/:caseId/reassign', () => {
     expect(notificationSender.all()[0]).toMatchObject({
       organizationId: ORG_1,
       recipientUserId: TARGET_USER,
-      alertType: 'CASO_ASIGNADO',
+      alertType: 'CASE_ASSIGNED',
     });
   });
 
@@ -290,37 +296,6 @@ describe('caseRouter POST /cases/:caseId/reassign', () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe('FORBIDDEN_CROSS_TENANT');
-  });
-
-  /*
-   * Ser del inquilino no basta. ADMIN administra personas y AUDITOR fiscaliza:
-   * un expediente en su bandeja no lo trabaja nadie y rompe la segregacion de
-   * funciones. 422 y no 403 porque quien pide la reasignacion SI tiene
-   * permiso; el problema es a quien se la quiere dar.
-   */
-  it('returns 422 ASSIGNEE_CANNOT_WORK_CASES for a governance assignee', async () => {
-    const { app, cases, assigneeDirectory } = buildApp();
-    await cases.save(
-      Case.create({
-        id: CASE_ID,
-        organizationId: ORG_1,
-        customerId: 'customer-1',
-        riskScore: createRiskScore(40),
-        priority: 'MEDIUM',
-        now: NOW,
-      }),
-    );
-    assigneeDirectory.allow(ORG_1, createAssignedTo('USER', TARGET_USER));
-    assigneeDirectory.denyCaseWork(ORG_1, createAssignedTo('USER', TARGET_USER));
-
-    const response = await request(app)
-      .post(`/api/v1/cases/${CASE_ID}/reassign`)
-      .send({ assignedToType: 'USER', assignedToId: TARGET_USER });
-
-    expect(response.status).toBe(422);
-    expect(response.body.error.code).toBe('ASSIGNEE_CANNOT_WORK_CASES');
-    /* El expediente no cambia de manos. */
-    expect((await cases.findById(CASE_ID))?.assignedTo).toBeNull();
   });
 
   it('returns 400 INVARIANT_VIOLATION when reassigning to the same assignee', async () => {

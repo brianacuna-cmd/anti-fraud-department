@@ -14,7 +14,7 @@ const PLATFORM_ADMIN_AUTH_TRUSTED_HEADER = 'trusted-header';
 export interface AuthContextResolverDeps {
   readonly sessionTokenService?: SessionTokenService;
   readonly sessionRepository?: SessionRepository;
-  /** Resuelve el rol del usuario en cada peticion, para poblar `AuthContext.roleId`. */
+  /** Resolves the user's role on every request, to populate `AuthContext.roleId`. */
   readonly userRepositoryFactory?: UserRepositoryFactory;
   /**
    * Design D6: `'disabled'` (default, prod-safe) or `'trusted-header'`

@@ -1,4 +1,4 @@
-/** Una parada del recorrido: qué entró en un nodo y qué salió de él. */
+/** One stop along the run: what went into a node and what came out of it. */
 export interface RuleTrace {
   readonly id: string;
   readonly name: string;
@@ -9,7 +9,7 @@ export interface RuleTrace {
   readonly order: number;
 }
 
-/** Resultado crudo de una evaluación, sin plegar. */
+/** Raw evaluation result, unfolded. */
 export interface RuleSimulation {
   readonly performance: string;
   readonly result: unknown;
@@ -17,13 +17,13 @@ export interface RuleSimulation {
 }
 
 /**
- * Puerto de ensayo en seco, separado de `RiskScoringEngine` a propósito.
+ * Dry-run port, deliberately separate from `RiskScoringEngine`.
  *
- * `RiskScoringEngine` pliega: devuelve la puntuación entera y los aciertos,
- * que es lo único que producción necesita. Quien está DIBUJANDO la regla
- * necesita lo contrario —el recorrido nodo a nodo, con lo que entró y salió
- * de cada uno—, y meter eso en el puerto de producción obligaría a todo el
- * camino caliente a cargar con una traza que nadie mira.
+ * `RiskScoringEngine` folds: it returns the integer score and the hits, which
+ * is all production needs. Whoever is DRAWING the rule needs the opposite —
+ * the node-by-node run, with what went in and out of each one — and putting
+ * that in the production port would make the whole hot path carry a trace
+ * nobody ever looks at.
  */
 export interface RuleSimulationEngine {
   simulate(

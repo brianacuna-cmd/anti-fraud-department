@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
 import type { createSyncFinturuDataUseCase } from '../../../../application/SyncFinturuData.js';
 import type { createGetFinturuDirectoryUseCase } from '../../../../application/GetFinturuDirectory.js';
@@ -16,17 +16,18 @@ export interface FinturuRouterDeps {
 }
 
 /**
- * Rutas propias de la integracion con Finturu: consultas en vivo a los
- * proveedores (Bridge, Stripe), el padron de clientes y la apertura de
- * expediente desde un cliente del padron.
+ * Dedicated Finturu integration routes: live queries to the providers
+ * (Bridge, Stripe), the customer directory, and opening a case from a
+ * directory customer.
  *
- * Va en un router aparte —y no dentro de `caseRouter`— por la misma razon que
- * upstream separo `caseExportRouter`, `noteRouter` o `routingRuleRouter`: son
- * rutas que este fork anade sobre el modulo, y mantenerlas fuera del router
- * comun evita que cada merge con upstream vuelva a chocar en el mismo archivo.
+ * Lives in a separate router —and not inside `caseRouter`— for the same
+ * reason upstream split out `caseExportRouter`, `noteRouter`, or
+ * `routingRuleRouter`: these are routes this fork adds on top of the module,
+ * and keeping them out of the shared router avoids every merge with upstream
+ * colliding on the same file again.
  *
- * Cada dependencia es opcional y responde 501 cuando falta, de modo que el
- * servicio arranca igual en un entorno sin credenciales de Finturu.
+ * Each dependency is optional and answers 501 when missing, so the service
+ * still starts in an environment without Finturu credentials.
  */
 export function finturuRouter(deps: FinturuRouterDeps): Router {
   const router = Router();
@@ -61,11 +62,11 @@ export function finturuRouter(deps: FinturuRouterDeps): Router {
   });
 
   /*
-   * Estas dos responden 502 cuando el cliente devuelve `null`, en vez de un
-   * `[]` que el panel no puede distinguir de "no tiene ninguna". Finturu tiene
-   * hoy comentadas ambas rutas (`/customer/:id/virtual-accounts` y
-   * `/customer/:id/ach-history` dan 404), así que hasta que las reimplemente
-   * el expediente debe decir "no disponible" y no inventarse un cero.
+   * These two answer 502 when the client returns `null`, rather than an `[]`
+   * the panel cannot tell apart from "has none". Finturu currently has both
+   * routes commented out (`/customer/:id/virtual-accounts` and
+   * `/customer/:id/ach-history` answer 404), so until they reimplement them
+   * the case file must say "not available" instead of inventing a zero.
    */
   router.get('/cases/providers/bridge/virtual-accounts/:idUserBridge', async (req, res) => {
     requireAuthContext(req);
@@ -120,13 +121,91 @@ export function finturuRouter(deps: FinturuRouterDeps): Router {
     res.status(200).json(data);
   });
 
+  router.get('/cases/providers/stripe/connected-accounts', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
+    const limit = Number(req.query.limit) || 50;
+    const offset = Number(req.query.offset) || 0;
+    const data = await deps.finturuClient.getStripeConnectedAccounts(limit, offset);
+    res.status(200).json(data);
+  });
+
+  router.get('/cases/providers/stripe/connected-account/:idUserBridge', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
+    const data = await deps.finturuClient.getStripeConnectedAccount(req.params.idUserBridge!);
+    res.status(200).json(data);
+  });
+
+  router.get('/cases/providers/stripe/connected-account/:providerId/status', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
+    const data = await deps.finturuClient.getStripeConnectedAccountStatus(req.params.providerId!);
+    res.status(200).json(data);
+  });
+
+  router.get('/cases/providers/stripe/connected-account/:providerId/balance', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
+    const data = await deps.finturuClient.getStripeConnectedAccountBalance(req.params.providerId!);
+    res.status(200).json(data);
+  });
+
+  router.get('/cases/providers/stripe/connected-account/:providerId/charges', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
+    const limit = Number(req.query.limit) || 10;
+    const startingAfter = typeof req.query.startingAfter === 'string' ? req.query.startingAfter : undefined;
+    const data = await deps.finturuClient.getStripeConnectedAccountCharges(req.params.providerId!, limit, startingAfter);
+    res.status(200).json(data);
+  });
+
+  router.get('/cases/providers/stripe/connected-account/:providerId/charge/:chargeId', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
+    const data = await deps.finturuClient.getStripeConnectedAccountChargeDetail(
+      req.params.providerId!,
+      req.params.chargeId!,
+    );
+    res.status(200).json(data);
+  });
+
+  const pagedQuery = (req: Request) => ({
+    limit: Number(req.query.limit) || 10,
+    startingAfter: typeof req.query.startingAfter === 'string' ? req.query.startingAfter : undefined,
+  });
+
+  router.get('/cases/providers/stripe/connected-account/:providerId/disputes', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
+    const { limit, startingAfter } = pagedQuery(req);
+    const data = await deps.finturuClient.getStripeConnectedAccountDisputes(req.params.providerId!, limit, startingAfter);
+    res.status(200).json(data);
+  });
+
+  router.get('/cases/providers/stripe/connected-account/:providerId/fraud-warnings', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
+    const { limit, startingAfter } = pagedQuery(req);
+    const data = await deps.finturuClient.getStripeConnectedAccountFraudWarnings(req.params.providerId!, limit, startingAfter);
+    res.status(200).json(data);
+  });
+
+  router.get('/cases/providers/stripe/connected-account/:providerId/payouts', async (req, res) => {
+    requireAuthContext(req);
+    if (!deps.finturuClient) return res.status(501).json({ message: 'Finturu client not available' });
+    const { limit, startingAfter } = pagedQuery(req);
+    const data = await deps.finturuClient.getStripeConnectedAccountPayouts(req.params.providerId!, limit, startingAfter);
+    res.status(200).json(data);
+  });
+
   router.get('/cases/directory/finturu', async (req, res) => {
     const auth = requireAuthContext(req);
     if (!deps.getFinturuDirectory) {
       res.status(501).json({ message: 'Directory service is not enabled' });
       return;
     }
-    // Se lee de la copia local, así que hay total real, búsqueda y offset.
+    // Read from the local copy, so there is a real total, search, and offset.
     const limit = req.query.limit ? Number(req.query.limit) : undefined;
     const offset = req.query.offset ? Number(req.query.offset) : undefined;
     const search = typeof req.query.search === 'string' ? req.query.search : undefined;
@@ -138,17 +217,18 @@ export function finturuRouter(deps: FinturuRouterDeps): Router {
       customers: view.customers,
       total: view.total,
       syncedAt: view.syncedAt,
-      // La pantalla necesita distinguir "todavía no hay datos" de "aún se
-      // están trayendo" para no mostrar un vacío que parece un error.
+      // The screen needs to tell "there is still no data" from "it is still
+      // being fetched" so it does not show an emptiness that looks like an
+      // error.
       syncing: sync?.running ?? false,
       syncError: sync?.lastError ?? null,
     });
   });
 
   /**
-   * Fuerza un refresco. El directorio ya se mantiene solo; esto existe para
-   * operación y pruebas, no como parte del flujo normal. Responde en cuanto
-   * arranca porque el recorrido tarda minutos.
+   * Forces a refresh. The directory already maintains itself; this exists for
+   * operations and tests, not as part of the normal flow. It answers as soon
+   * as it starts because the walk takes minutes.
    */
   router.post('/cases/directory/finturu/sync', async (req, res) => {
     requireAuthContext(req);

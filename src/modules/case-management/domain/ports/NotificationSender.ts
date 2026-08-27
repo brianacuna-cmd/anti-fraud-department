@@ -7,7 +7,7 @@ import type { Transaction } from './UnitOfWork.js';
  * types, so this literal union is duplicated here rather than imported —
  * it MUST be kept in sync with `notifications/domain/model/value-objects/AlertType.ts`.
  */
-export type CaseManagementAlertType = 'CASO_ASIGNADO' | 'SLA_POR_VENCER' | 'APROBACION_PENDIENTE' | 'RIESGO_CRITICO';
+export type CaseManagementAlertType = 'CASE_ASSIGNED' | 'SLA_DUE_SOON' | 'APPROVAL_PENDING' | 'CRITICAL_RISK';
 
 export interface NotificationRequest {
   readonly organizationId: string;
