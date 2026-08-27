@@ -264,3 +264,19 @@ export function dlqEventNotFound(dlqEventId: string): CaseManagementError {
     { dlqEventId },
   );
 }
+
+export function webhookSubscriptionNotFound(subscriptionId: string): CaseManagementError {
+  return new CaseManagementError(
+    'WEBHOOK_SUBSCRIPTION_NOT_FOUND',
+    `webhook subscription "${subscriptionId}" was not found`,
+    { subscriptionId },
+  );
+}
+
+export function webhookSubscriptionUrlTaken(url: string): CaseManagementError {
+  return new CaseManagementError(
+    'WEBHOOK_SUBSCRIPTION_URL_TAKEN',
+    `webhook subscription URL "${url}" is already in use`,
+    { url },
+  );
+}

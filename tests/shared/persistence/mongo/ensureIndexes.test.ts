@@ -703,4 +703,53 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     expect(idx?.expireAfterSeconds).toBe(604800);
     expect(idx?.partialFilterExpression).toEqual({ status: 'PUBLISHED' });
   });
+
+  it('creates unique (organization_id, url) and org+active indexes on customer_webhook_subscriptions', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+    await ensureIndexes(db);
+
+    const indexes = await db.collection('customer_webhook_subscriptions').indexes();
+    const uniqueIndex = indexes.find((index) => index.name === 'customer_webhook_subscriptions_org_url_unique');
+    expect(uniqueIndex).toBeDefined();
+    expect(uniqueIndex?.key).toEqual({ organization_id: 1, url: 1 });
+    expect(uniqueIndex?.unique).toBe(true);
+    expect(uniqueIndex?.partialFilterExpression).toBeUndefined();
+    expect(indexes.filter((index) => index.name === 'customer_webhook_subscriptions_org_url_unique')).toHaveLength(1);
+
+    const activeIndex = indexes.find((index) => index.name === 'customer_webhook_subscriptions_org_active_idx');
+    expect(activeIndex).toBeDefined();
+    expect(activeIndex?.key).toEqual({ organization_id: 1, active: 1 });
+  });
+
+  it('rejects a second customer webhook subscription with the same organization_id and url, including inactive rows', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+
+    const organizationId = new ObjectId();
+    const now = new Date('2026-01-01T00:00:00.000Z');
+    await db.collection('customer_webhook_subscriptions').insertOne({
+      _id: new ObjectId(),
+      organization_id: organizationId,
+      url: 'https://hooks.example.com/dup',
+      event_types: ['case.created'],
+      active: false,
+      created_at: now,
+      updated_at: now,
+    });
+
+    await expect(
+      db.collection('customer_webhook_subscriptions').insertOne({
+        _id: new ObjectId(),
+        organization_id: organizationId,
+        url: 'https://hooks.example.com/dup',
+        event_types: ['case.resolved'],
+        active: true,
+        created_at: now,
+        updated_at: now,
+      }),
+    ).rejects.toMatchObject({ code: 11000 });
+
+    await db.collection('customer_webhook_subscriptions').deleteMany({});
+  });
 });

@@ -398,4 +398,16 @@ export async function ensureIndexes(db: Db): Promise<void> {
       { organization_id: 1, job_name: 1 },
       { unique: true, name: 'screening_watermark_org_job_unique' },
     );
+
+  // customer_webhook_subscriptions: unique (organization_id, url) includes
+  // inactive rows so the same destination cannot be registered twice; list
+  // by org+active for tenant catalog filters.
+  await db.collection('customer_webhook_subscriptions').createIndex(
+    { organization_id: 1, url: 1 },
+    { unique: true, name: 'customer_webhook_subscriptions_org_url_unique' },
+  );
+
+  await db
+    .collection('customer_webhook_subscriptions')
+    .createIndex({ organization_id: 1, active: 1 }, { name: 'customer_webhook_subscriptions_org_active_idx' });
 }
