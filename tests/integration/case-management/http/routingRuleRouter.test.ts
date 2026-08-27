@@ -1,4 +1,5 @@
 import { oid } from '../../../support/oid.js';
+import { tableOf } from '../../../support/jdm.js';
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import request from 'supertest';
 import { createApp } from '../../../../src/shared/http/createApp.js';
@@ -13,12 +14,21 @@ import { createListRoutingRulesUseCase } from '../../../../src/modules/case-mana
 import { createGetRoutingRuleUseCase } from '../../../../src/modules/case-management/application/GetRoutingRule.js';
 import { createActivateRoutingRuleUseCase } from '../../../../src/modules/case-management/application/ActivateRoutingRule.js';
 import { createDeactivateRoutingRuleUseCase } from '../../../../src/modules/case-management/application/DeactivateRoutingRule.js';
+import { createSimulateRoutingRuleUseCase } from '../../../../src/modules/case-management/application/SimulateRoutingRule.js';
+import { ZenRoutingEngine } from '../../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { generateCaseRoutingRuleId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseRoutingRuleId.js';
 import { InMemoryCaseRoutingRuleRepository } from '../../../helpers/case-management/InMemoryCaseRoutingRuleRepository.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
+
+/** Los nombres de los nodos en el orden en que el motor los recorrió. */
+function traceOrder(trace: Record<string, { name: string; order: number }>): string[] {
+  return Object.values(trace)
+    .sort((a, b) => a.order - b.order)
+    .map((entry) => entry.name);
+}
 const LATER = fromDate(new Date('2026-02-01T00:00:00.000Z'));
 
 const VALID_JDM = {
@@ -66,6 +76,11 @@ function buildApp(actorPerRequest: () => AuthContext, clockNow: typeof NOW = NOW
       getRoutingRule,
       activateRoutingRule,
       deactivateRoutingRule,
+      /* El motor de verdad: una prueba en seco con un doble no prueba nada. */
+      simulateRoutingRule: createSimulateRoutingRuleUseCase({
+        simulationEngine: new ZenRoutingEngine(),
+        auditRecorder,
+      }),
     }),
   );
 
@@ -99,6 +114,216 @@ describe('routingRuleRouter (HTTP)', () => {
     expect(response.body.targetUserId).toBe('auto-user');
     expect(routingRules.all()).toHaveLength(1);
     expect(auditRecorder.all()[0]?.action).toBe('CREATE_ROUTING_RULE');
+  });
+
+  describe('POST /case-routing-rules/simulate', () => {
+    const SUPERVISOR = () =>
+      createAuthContext({
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
+        roleId: 'SUPERVISOR',
+      });
+
+    const CASE = { riskScore: 90, status: 'OPEN', priority: 'HIGH', tags: [] };
+
+    /** Tabla mínima: prioridad ALTA -> la cola de supervisores. */
+    const ROUTING_GRAPH = {
+      contentType: 'application/vnd.gorules.decision',
+      nodes: [
+        { id: 'input', type: 'inputNode', name: 'Caso', position: { x: 0, y: 0 } },
+        {
+          id: 'table',
+          type: 'decisionTableNode',
+          name: 'Reparto',
+          position: { x: 200, y: 0 },
+          content: {
+            hitPolicy: 'first',
+            inputs: [{ id: 'i1', name: 'Prioridad', field: 'priority' }],
+            outputs: [{ id: 'o1', name: 'Rol', field: 'targetRoleId' }],
+            rules: [{ _id: 'r1', i1: '"HIGH"', o1: '"SUPERVISOR"' }],
+          },
+        },
+        { id: 'output', type: 'outputNode', name: 'Salida', position: { x: 400, y: 0 } },
+      ],
+      edges: [
+        { id: 'e1', sourceId: 'input', targetId: 'table' },
+        { id: 'e2', sourceId: 'table', targetId: 'output' },
+      ],
+    };
+
+    it('evaluates a draft graph without persisting anything', async () => {
+      const { app, routingRules, auditRecorder } = buildApp(SUPERVISOR);
+
+      const response = await request(app)
+        .post('/api/v1/case-routing-rules/simulate')
+        .send({ conditions: ROUTING_GRAPH, case: CASE })
+        .expect(200);
+
+      expect(response.body.ok).toBe(true);
+      expect(response.body.targetRoleId).toBe('SUPERVISOR');
+      expect(response.body.targetUserId).toBeNull();
+      /*
+       * La traza nodo a nodo es lo que el editor pinta sobre el grafo. Llega
+       * indexada por id de nodo, no en orden: el recorrido lo da `order`.
+       */
+      expect(traceOrder(response.body.trace)).toEqual([
+        'Caso',
+        'Reparto',
+        'Salida',
+      ]);
+      expect(routingRules.all()).toHaveLength(0);
+      expect(auditRecorder.all()[0]?.action).toBe('SIMULATE_ROUTING_RULE');
+    });
+
+    /*
+     * Ambos destinos nulos NO es un fallo: es lo que `RouteCase` lee como
+     * «esta regla no asigna con este caso» antes de pasar a la siguiente.
+     */
+    it('separates "assigns nobody" from "the graph is broken"', async () => {
+      const { app } = buildApp(SUPERVISOR);
+
+      const response = await request(app)
+        .post('/api/v1/case-routing-rules/simulate')
+        .send({ conditions: ROUTING_GRAPH, case: { ...CASE, priority: 'LOW' } })
+        .expect(200);
+
+      expect(response.body.ok).toBe(true);
+      expect(response.body.targetUserId).toBeNull();
+      expect(response.body.targetRoleId).toBeNull();
+    });
+
+    it('reports a broken graph as a result, not as a server error', async () => {
+      const { app } = buildApp(SUPERVISOR);
+
+      const response = await request(app)
+        .post('/api/v1/case-routing-rules/simulate')
+        .send({
+          conditions: {
+            ...ROUTING_GRAPH,
+            nodes: [{ id: 'solo', type: 'decisionTableNode', content: { hitPolicy: 'first' } }],
+            edges: [],
+          },
+          case: CASE,
+        })
+        .expect(200);
+
+      expect(response.body.ok).toBe(false);
+    });
+
+    it('rejects a case context the routing engine could not receive', async () => {
+      const { app } = buildApp(SUPERVISOR);
+
+      await request(app)
+        .post('/api/v1/case-routing-rules/simulate')
+        .send({ conditions: ROUTING_GRAPH, case: { ...CASE, priority: 'URGENT' } })
+        .expect(400);
+    });
+
+    it('rejects ANALYST with 403', async () => {
+      const { app } = buildApp(() =>
+        createAuthContext({
+          userId: oid('user-1'),
+          organizationId: oid('org-1'),
+          roleId: 'ANALYST',
+        }),
+      );
+
+      await request(app)
+        .post('/api/v1/case-routing-rules/simulate')
+        .send({ conditions: ROUTING_GRAPH, case: CASE })
+        .expect(403);
+    });
+  });
+
+  describe('POST /case-routing-rules/priority-mapping', () => {
+    const SUPERVISOR = () =>
+      createAuthContext({
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
+        roleId: 'SUPERVISOR',
+      });
+
+    const MAPPINGS = [
+      { priority: 'CRITICAL', target: { type: 'ROLE', id: 'SUPERVISOR' } },
+      { priority: 'LOW', target: { type: 'USER', id: 'user-9' } },
+    ];
+
+    it('builds the JDM server-side and stores an INACTIVE draft', async () => {
+      const { app, routingRules, auditRecorder } = buildApp(SUPERVISOR);
+
+      const response = await request(app)
+        .post('/api/v1/case-routing-rules/priority-mapping')
+        .send({ name: 'Reparto por prioridad', mappings: MAPPINGS })
+        .expect(201);
+
+      expect(response.body.status).toBe('INACTIVE');
+      expect(auditRecorder.all()[0]?.action).toBe('CREATE_ROUTING_RULE');
+
+      /*
+       * Los destinos viven en las filas de la tabla, no en el destino de la
+       * regla: una sola regla reparte a varias personas distintas, que es
+       * justo lo que `targetUserId`/`targetRoleId` a nivel de regla no puede.
+       */
+      const stored = routingRules.all()[0]!;
+      expect(stored.targetUserId).toBeNull();
+      expect(stored.targetRoleId).toBeNull();
+      expect(tableOf(stored.conditions).rules).toEqual([
+        { _id: 'r1', i1: '"CRITICAL"', o1: 'null', o2: '"SUPERVISOR"' },
+        { _id: 'r2', i1: '"LOW"', o1: '"user-9"', o2: 'null' },
+      ]);
+    });
+
+    it('rejects an unknown priority without persisting', async () => {
+      const { app, routingRules } = buildApp(SUPERVISOR);
+
+      await request(app)
+        .post('/api/v1/case-routing-rules/priority-mapping')
+        .send({ name: 'Mala', mappings: [{ priority: 'URGENT', target: { type: 'ROLE', id: 'X' } }] })
+        .expect(400);
+
+      expect(routingRules.all()).toHaveLength(0);
+    });
+
+    it('rejects the same priority assigned twice without persisting', async () => {
+      const { app, routingRules } = buildApp(SUPERVISOR);
+
+      await request(app)
+        .post('/api/v1/case-routing-rules/priority-mapping')
+        .send({
+          name: 'Repetida',
+          mappings: [
+            { priority: 'HIGH', target: { type: 'ROLE', id: 'ANALYST' } },
+            { priority: 'HIGH', target: { type: 'USER', id: 'user-9' } },
+          ],
+        })
+        .expect(400);
+
+      expect(routingRules.all()).toHaveLength(0);
+    });
+
+    it('rejects an empty mapping', async () => {
+      const { app } = buildApp(SUPERVISOR);
+
+      await request(app)
+        .post('/api/v1/case-routing-rules/priority-mapping')
+        .send({ name: 'Vacía', mappings: [] })
+        .expect(400);
+    });
+
+    it('rejects ANALYST with 403', async () => {
+      const { app } = buildApp(() =>
+        createAuthContext({
+          userId: oid('user-1'),
+          organizationId: oid('org-1'),
+          roleId: 'ANALYST',
+        }),
+      );
+
+      await request(app)
+        .post('/api/v1/case-routing-rules/priority-mapping')
+        .send({ name: 'Reparto', mappings: MAPPINGS })
+        .expect(403);
+    });
   });
 
   it('rejects invalid JDM without persisting', async () => {

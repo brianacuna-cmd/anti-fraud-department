@@ -166,6 +166,7 @@ function buildApp(
     timelineRecorder,
     auditRecorder: caseAuditRecorder,
     fraudConfig,
+    assigneeDirectory,
     clock,
     generateTimelineEventId,
   });
@@ -271,6 +272,12 @@ function buildApp(
 
   return { app, engine, rule, cases };
 }
+
+/**
+ * Permisiva: estas pruebas comprueban la puntuación, no quién puede
+ * instruir el expediente que abre.
+ */
+const assigneeDirectory = new InMemoryAssigneeDirectory();
 
 describe('POST /api/v1/risk-scores/process', () => {
   it('opens a case with HIGH priority and returns opened=true when score ≥ low', async () => {

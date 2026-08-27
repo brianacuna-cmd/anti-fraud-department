@@ -94,6 +94,7 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
 
   const unitOfWork = new PassthroughUnitOfWork();
   const routeCase = createRouteCaseUseCase({
+    assigneeDirectory,
     cases,
     routingRules,
     routingEngine: new ZenRoutingEngine(),
@@ -289,6 +290,37 @@ describe('caseRouter POST /cases/:caseId/reassign', () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe('FORBIDDEN_CROSS_TENANT');
+  });
+
+  /*
+   * Ser del inquilino no basta. ADMIN administra personas y AUDITOR fiscaliza:
+   * un expediente en su bandeja no lo trabaja nadie y rompe la segregacion de
+   * funciones. 422 y no 403 porque quien pide la reasignacion SI tiene
+   * permiso; el problema es a quien se la quiere dar.
+   */
+  it('returns 422 ASSIGNEE_CANNOT_WORK_CASES for a governance assignee', async () => {
+    const { app, cases, assigneeDirectory } = buildApp();
+    await cases.save(
+      Case.create({
+        id: CASE_ID,
+        organizationId: ORG_1,
+        customerId: 'customer-1',
+        riskScore: createRiskScore(40),
+        priority: 'MEDIUM',
+        now: NOW,
+      }),
+    );
+    assigneeDirectory.allow(ORG_1, createAssignedTo('USER', TARGET_USER));
+    assigneeDirectory.denyCaseWork(ORG_1, createAssignedTo('USER', TARGET_USER));
+
+    const response = await request(app)
+      .post(`/api/v1/cases/${CASE_ID}/reassign`)
+      .send({ assignedToType: 'USER', assignedToId: TARGET_USER });
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe('ASSIGNEE_CANNOT_WORK_CASES');
+    /* El expediente no cambia de manos. */
+    expect((await cases.findById(CASE_ID))?.assignedTo).toBeNull();
   });
 
   it('returns 400 INVARIANT_VIOLATION when reassigning to the same assignee', async () => {

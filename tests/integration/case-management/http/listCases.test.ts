@@ -87,6 +87,7 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
 
   const unitOfWork = new PassthroughUnitOfWork();
   const routeCase = createRouteCaseUseCase({
+    assigneeDirectory,
     cases,
     routingRules,
     routingEngine: new ZenRoutingEngine(),
@@ -185,6 +186,9 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
 
   return { app, cases };
 }
+
+/** Permisiva: estas pruebas comprueban otra cosa. */
+const assigneeDirectory = new InMemoryAssigneeDirectory();
 
 describe('GET /api/v1/cases (inbox list)', () => {
   it('returns a filtered page of non-deleted cases for the tenant', async () => {

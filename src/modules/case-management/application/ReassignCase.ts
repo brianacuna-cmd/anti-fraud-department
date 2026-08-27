@@ -12,6 +12,7 @@ import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.
 import { createAssignedTo } from '../domain/model/value-objects/AssignedTo.js';
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import {
+  assigneeCannotWorkCases,
   caseNotFound,
   forbiddenCrossTenant,
   invariantViolation,
@@ -79,6 +80,16 @@ export function createReassignCaseUseCase(deps: ReassignCaseDeps) {
       const inOrg = await deps.assigneeDirectory.belongsToOrganization(organizationId, assignedTo);
       if (!inOrg) {
         throw forbiddenCrossTenant('assignee does not belong to the case organization');
+      }
+
+      /*
+       * Ser del inquilino no basta: ADMIN administra personas y AUDITOR
+       * fiscaliza, y ninguno instruye. Un expediente en su bandeja no lo
+       * trabaja nadie, y el reloj de SLA corre igual.
+       */
+      const operational = await deps.assigneeDirectory.canWorkCases(organizationId, assignedTo);
+      if (!operational) {
+        throw assigneeCannotWorkCases(assignedTo.type, assignedTo.id);
       }
 
       const now = deps.clock.now();

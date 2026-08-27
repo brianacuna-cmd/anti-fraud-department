@@ -165,6 +165,7 @@ function buildApp(actorPerRequest: () => AuthContext, engine: RiskScoringEngine,
     timelineRecorder,
     auditRecorder: caseAuditRecorder,
     fraudConfig,
+    assigneeDirectory,
     clock,
     generateTimelineEventId,
   });
@@ -259,6 +260,12 @@ function buildApp(actorPerRequest: () => AuthContext, engine: RiskScoringEngine,
 
   return { app, engine, rule, auditRecorder };
 }
+
+/**
+ * Permisiva: estas pruebas comprueban la puntuación, no quién puede
+ * instruir el expediente que abre.
+ */
+const assigneeDirectory = new InMemoryAssigneeDirectory();
 
 describe('riskScoreRouter (e2e, in-memory repository)', () => {
   it('POST /risk-scores scores a camelCase event and returns provenance without echoing rawPayload', async () => {

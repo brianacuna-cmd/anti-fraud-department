@@ -8,6 +8,16 @@ import type { AssignedTo } from '../model/value-objects/AssignedTo.js';
 export interface AssigneeDirectory {
   belongsToOrganization(organizationId: string, assignedTo: AssignedTo): Promise<boolean>;
   /**
+   * `true` cuando el destinatario pertenece al plano de OPERACIÓN y por tanto
+   * puede instruir expedientes.
+   *
+   * Ser del inquilino no basta: ADMIN y AUDITOR son gobierno —administran
+   * personas y fiscalizan— y no actúan sobre ningún caso. Un expediente en la
+   * bandeja de un auditor no lo trabaja nadie y además rompe la segregación
+   * de funciones que sostiene el resto de la política de acceso.
+   */
+  canWorkCases(organizationId: string, assignedTo: AssignedTo): Promise<boolean>;
+  /**
    * Ids of the ACTIVE users assigned the given role within the organization —
    * the fan-out recipients for a ROLE-assigned case's notifications. Empty
    * when the role has no active members.

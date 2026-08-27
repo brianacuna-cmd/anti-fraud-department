@@ -1,4 +1,5 @@
 import { createRouteCaseUseCase } from '../../../../src/modules/case-management/application/RouteCase.js';
+import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
 import type {
   CaseRoutingContext,
   RoutingEngine,
@@ -127,6 +128,7 @@ function buildUseCase(
     timelineRecorder,
     auditRecorder,
     fraudConfig,
+    assigneeDirectory,
     clock: new FixedClock(NOW),
     generateTimelineEventId,
   });
@@ -137,6 +139,9 @@ const NO_TX = undefined as never;
 
 /** Every test routes as a USER-triggered request; only `createdBy` stays system-null. */
 const ROUTE = { tx: NO_TX, createdBy: null, actorType: 'USER', ipAddress: null } as const;
+
+/** Permisiva: estas pruebas comprueban otra cosa. */
+const assigneeDirectory = new InMemoryAssigneeDirectory();
 
 describe('createRouteCaseUseCase (T1 auto-routing)', () => {
   it('returns the case unchanged and records no timeline when the org has no active rules', async () => {

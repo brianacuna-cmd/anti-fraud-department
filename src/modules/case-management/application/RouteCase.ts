@@ -4,6 +4,7 @@ import type { Case } from '../domain/model/aggregates/Case.js';
 import type { CaseRoutingRule } from '../domain/model/aggregates/CaseRoutingRule.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
+import type { AssigneeDirectory } from '../domain/ports/AssigneeDirectory.js';
 import type { CaseRepository } from '../domain/ports/CaseRepository.js';
 import type { CaseRoutingRuleRepository } from '../domain/ports/CaseRoutingRuleRepository.js';
 import type { OrganizationFraudConfigRepository } from '../domain/ports/OrganizationFraudConfigRepository.js';
@@ -34,6 +35,8 @@ export interface RouteCaseDeps {
   readonly timelineRecorder: TimelineRecorder;
   readonly auditRecorder: AuditRecorder;
   readonly fraudConfig: OrganizationFraudConfigRepository;
+  /** Para descartar reglas que reparten a quien no instruye. */
+  readonly assigneeDirectory: AssigneeDirectory;
   readonly clock: Clock;
   readonly generateTimelineEventId: () => TimelineEventId;
 }
@@ -84,6 +87,38 @@ export function createRouteCaseUseCase(deps: RouteCaseDeps) {
       }
       const assignedTo = resolveAssignment(outcome.evaluation, rule);
       if (assignedTo === null) {
+        continue;
+      }
+
+      /*
+       * La regla eligió a alguien que no instruye —ADMIN o AUDITOR—, casi
+       * siempre porque quien la escribió lo tenía a mano en el desplegable o
+       * porque a esa persona la ascendieron después. Se SALTA la regla en vez
+       * de asignar: dejar el expediente en la bandeja de un auditor lo saca
+       * de toda cola útil y rompe la segregación de funciones. Se audita, que
+       * es lo único que distingue esto de que la regla no casara.
+       */
+      if (!(await deps.assigneeDirectory.canWorkCases(organizationId, assignedTo))) {
+        await deps.auditRecorder.record(
+          {
+            organizationId,
+            actorType: input.actorType,
+            actorId: input.createdBy,
+            action: 'ROUTING_RULE_EVALUATION_FAILED',
+            resource: 'rule',
+            resourceId: rule.id,
+            detail: {
+              caseId: input.kase.id,
+              ruleName: rule.name,
+              conditionsVersion: rule.conditionsVersion,
+              reason: 'assignee is governance, not operations',
+              assignedToId: assignedTo.id,
+              assignedToType: assignedTo.type,
+            },
+            ipAddress: input.ipAddress,
+          },
+          input.tx,
+        );
         continue;
       }
 

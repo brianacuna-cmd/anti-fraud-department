@@ -111,6 +111,7 @@ function buildApp(actorPerRequest: () => AuthContext, options: { seedFraudConfig
   }
 
   const routeCase = createRouteCaseUseCase({
+    assigneeDirectory,
     cases,
     routingRules,
     routingEngine: new ZenRoutingEngine(),
@@ -210,6 +211,9 @@ function buildApp(actorPerRequest: () => AuthContext, options: { seedFraudConfig
 
   return { app, cases, timelineRecorder, auditRecorder, routingRules, fraudConfig, slaTracking };
 }
+
+/** Permisiva: estas pruebas comprueban otra cosa. */
+const assigneeDirectory = new InMemoryAssigneeDirectory();
 
 describe('caseRouter (e2e, in-memory repository)', () => {
   it('POST /cases creates a Case scoped to the caller\'s organization, status OPEN, 201 shape', async () => {

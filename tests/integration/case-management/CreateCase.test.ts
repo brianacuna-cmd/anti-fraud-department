@@ -1,4 +1,5 @@
 import { oid } from '../../support/oid.js';
+import { InMemoryAssigneeDirectory } from '../../helpers/case-management/InMemoryAssigneeDirectory.js';
 import type { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { ObjectId, type Db, type MongoClient } from 'mongodb';
 import { connectMongo } from '../../../src/shared/persistence/mongo/connect.js';
@@ -45,6 +46,9 @@ function alwaysFailingRecorder(): AuditRecorder {
  * that a failure anywhere in that transaction rolls back everything —
  * mirrors `createOrganizationAudit.test.ts`'s atomicity precedent.
  */
+/** Permisiva: estas pruebas comprueban otra cosa. */
+const assigneeDirectory = new InMemoryAssigneeDirectory();
+
 describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
   let replicaSet: MongoMemoryReplSet;
   let client: MongoClient;
@@ -163,6 +167,7 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
       timelineRecorder,
       auditRecorder,
       fraudConfig,
+      assigneeDirectory,
       clock,
       generateTimelineEventId,
     });

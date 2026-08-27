@@ -29,4 +29,11 @@ export const caseManagementErrorStatus: StatusByCode = {
   // 409 igual que el anterior: no falta permiso, el expediente esta en un
   // estado que no admite la accion.
   CASE_CLOSED: 409,
+  // 409 y no 400: la peticion es correcta, lo que falta es configuracion del
+  // inquilino. Se resuelve en «Reglas» y «Ajustes antifraude», no cambiando
+  // el cuerpo de la peticion.
+  CASE_INTAKE_NOT_CONFIGURED: 409,
+  // 422 y no 403: la peticion esta bien formada y quien la hace tiene
+  // permiso; el problema es a QUIEN se quiere asignar.
+  ASSIGNEE_CANNOT_WORK_CASES: 422,
 };

@@ -1,4 +1,5 @@
 import { oid } from '../../../support/oid.js';
+import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { createActivateRoutingRuleUseCase } from '../../../../src/modules/case-management/application/ActivateRoutingRule.js';
@@ -77,6 +78,9 @@ class ScriptedRoutingEngine implements RoutingEngine {
     return this.queue.shift() ?? { targetUserId: null, targetRoleId: null };
   }
 }
+
+/** Permisiva: estas pruebas comprueban otra cosa. */
+const assigneeDirectory = new InMemoryAssigneeDirectory();
 
 describe('ActivateRoutingRule', () => {
   it('activates a draft without deactivating sibling ACTIVE rules (non-exclusive)', async () => {
@@ -230,6 +234,7 @@ describe('ActivateRoutingRule', () => {
       timelineRecorder: new InMemoryTimelineRecorder(),
       auditRecorder: new InMemoryCaseManagementAuditRecorder(),
       fraudConfig,
+      assigneeDirectory,
       clock: new FixedClock(LATER),
       generateTimelineEventId,
     });

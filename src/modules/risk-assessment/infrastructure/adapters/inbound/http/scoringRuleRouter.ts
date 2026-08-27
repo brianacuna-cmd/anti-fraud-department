@@ -4,7 +4,12 @@ import type { createCreateScoringRuleUseCase } from '../../../../application/Cre
 import type { createActivateScoringRuleUseCase } from '../../../../application/ActivateScoringRule.js';
 import type { createListScoringRulesUseCase } from '../../../../application/ListScoringRules.js';
 import type { createGetScoringRuleUseCase } from '../../../../application/GetScoringRule.js';
-import { createScoringRuleSchema } from './dto/scoringRuleSchemas.js';
+import {
+  createScoringRuleSchema,
+  simulateScoringRuleSchema,
+} from './dto/scoringRuleSchemas.js';
+import { toCanonicalRiskEvent } from './mappers/RiskScoreHttpMapper.js';
+import type { createSimulateScoringRuleUseCase } from '../../../../application/SimulateScoringRule.js';
 import { toScoringRuleResponse } from './mappers/ScoringRuleHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
 
@@ -13,6 +18,7 @@ export interface ScoringRuleRouterDeps {
   readonly activateScoringRule: ReturnType<typeof createActivateScoringRuleUseCase>;
   readonly listScoringRules: ReturnType<typeof createListScoringRulesUseCase>;
   readonly getScoringRule: ReturnType<typeof createGetScoringRuleUseCase>;
+  readonly simulateScoringRule: ReturnType<typeof createSimulateScoringRuleUseCase>;
 }
 
 /**
@@ -32,6 +38,26 @@ export function scoringRuleRouter(deps: ScoringRuleRouterDeps): Router {
       conditionsVersion: body.conditionsVersion,
     });
     res.status(201).json(toScoringRuleResponse(rule));
+  });
+
+  /*
+   * Ensayo en seco desde el editor de decisiones: evalúa el grafo que se está
+   * dibujando contra un evento de ejemplo y no guarda nada. Se declara antes
+   * que `/:id` por costumbre defensiva — hoy no colisionan, pero el día que
+   * exista `POST /risk-scoring-rules/:id`, «simulate» dejaría de ser una ruta.
+   *
+   * Devuelve 200 aunque el grafo falle: que no compile es el resultado que se
+   * ha venido a buscar, no un error del servidor.
+   */
+  router.post('/risk-scoring-rules/simulate', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(simulateScoringRuleSchema, req.body);
+    const outcome = await deps.simulateScoringRule({
+      auth,
+      conditions: body.conditions,
+      event: toCanonicalRiskEvent(body.event),
+    });
+    res.status(200).json(outcome);
   });
 
   router.get('/risk-scoring-rules', async (req, res) => {

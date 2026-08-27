@@ -5,6 +5,7 @@ import type { RoleRepository } from '../modules/identity-access/domain/ports/Rol
 import { createOrganizationId } from '../modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createUserId } from '../modules/identity-access/domain/model/value-objects/UserId.js';
 import { createRoleId } from '../modules/identity-access/domain/model/value-objects/RoleId.js';
+import { OPERATIONAL_ROLES } from '../shared/kernel/AccessTier.js';
 
 /**
  * Composition-root bridge: implements case-management's `AssigneeDirectory`
@@ -25,6 +26,13 @@ export function createIdentityAssigneeDirectory(
         return userBelongsToOrganization(userRepositoryFactory, organizationId, assignedTo.id);
       }
       return roleIsAssignable(roleRepository, assignedTo.id);
+    },
+    async canWorkCases(organizationId: string, assignedTo: AssignedTo): Promise<boolean> {
+      if (assignedTo.type === 'ROLE') {
+        return OPERATIONAL_ROLES.includes(assignedTo.id);
+      }
+      const roleId = await userRoleId(userRepositoryFactory, organizationId, assignedTo.id);
+      return roleId !== null && OPERATIONAL_ROLES.includes(roleId);
     },
     async listRoleRecipients(organizationId: string, roleId: string): Promise<readonly string[]> {
       try {
@@ -109,5 +117,27 @@ async function roleIsAssignable(roleRepository: RoleRepository, roleIdRaw: strin
     return await roleRepository.isAssignableToUser(createRoleId(roleIdRaw));
   } catch {
     return false;
+  }
+}
+
+/**
+ * El rol del usuario, o `null` si el id no resuelve.
+ *
+ * Un id que no resuelve se trata como «no puede instruir» y no como error, por
+ * lo mismo que `belongsToOrganization`: quien pregunta está decidiendo si
+ * asignar, y ante la duda no se asigna.
+ */
+async function userRoleId(
+  userRepositoryFactory: UserRepositoryFactory,
+  organizationId: string,
+  userIdRaw: string,
+): Promise<string | null> {
+  try {
+    const user = await userRepositoryFactory
+      .forTenant(createOrganizationId(organizationId))
+      .findById(createUserId(userIdRaw));
+    return user === null ? null : (user.roleId as string);
+  } catch {
+    return null;
   }
 }

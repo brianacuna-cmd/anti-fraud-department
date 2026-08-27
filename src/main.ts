@@ -168,6 +168,7 @@ import { MongoCaseRoutingRuleRepository } from './modules/case-management/infras
 import { MongoOrganizationFraudConfigRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoOrganizationFraudConfigRepository.js';
 import { MongoCaseSlaTrackingRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseSlaTrackingRepository.js';
 import { ZenRoutingEngine } from './modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
+import { createSimulateRoutingRuleUseCase } from './modules/case-management/application/SimulateRoutingRule.js';
 import { caseRouter } from './modules/case-management/infrastructure/adapters/inbound/http/caseRouter.js';
 import { caseExportRouter } from './modules/case-management/infrastructure/adapters/inbound/http/caseExportRouter.js';
 import { metricsRouter } from './modules/case-management/infrastructure/adapters/inbound/http/metricsRouter.js';
@@ -230,6 +231,7 @@ import { generateCaseRoutingRuleId } from './modules/case-management/domain/mode
 import { MongoRiskScoringRuleRepository } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoRiskScoringRuleRepository.js';
 import { MongoUnitOfWork as RiskAssessmentMongoUnitOfWork } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { ZenRiskScoringEngine } from './modules/risk-assessment/infrastructure/adapters/outbound/zen/ZenRiskScoringEngine.js';
+import { createSimulateScoringRuleUseCase } from './modules/risk-assessment/application/SimulateScoringRule.js';
 import { createCalculateRiskScoreUseCase } from './modules/risk-assessment/application/CalculateRiskScore.js';
 import { createCreateScoringRuleUseCase } from './modules/risk-assessment/application/CreateScoringRule.js';
 import { createActivateScoringRuleUseCase } from './modules/risk-assessment/application/ActivateScoringRule.js';
@@ -542,6 +544,11 @@ async function bootstrap(): Promise<void> {
   const approvalRequests = new MongoApprovalRequestRepository(db);
   const analystDecisions = new MongoAnalystDecisionRepository(db);
   const enforcementActions = new MongoEnforcementActionRepository(db);
+  // Sube aquí porque `routeCase` la necesita para descartar reglas que
+  // reparten a quien no instruye; antes se declaraba justo antes de
+  // `createCase`, que ya es demasiado tarde.
+  const assigneeDirectory = createIdentityAssigneeDirectory(userRepositoryFactory, roleRepository);
+
   const routeCase = createRouteCaseUseCase({
     cases,
     routingRules: caseRoutingRules,
@@ -549,6 +556,7 @@ async function bootstrap(): Promise<void> {
     timelineRecorder: caseTimelineRecorder,
     auditRecorder: caseManagementAuditRecorder,
     fraudConfig: organizationFraudConfig,
+    assigneeDirectory,
     clock,
     generateTimelineEventId,
   });
@@ -559,7 +567,6 @@ async function bootstrap(): Promise<void> {
     clock,
     generateCaseSlaTrackingId,
   });
-  const assigneeDirectory = createIdentityAssigneeDirectory(userRepositoryFactory, roleRepository);
   const createCase = createCreateCaseUseCase({
     cases,
     timelineRecorder: caseTimelineRecorder,
@@ -654,7 +661,10 @@ async function bootstrap(): Promise<void> {
     generateTimelineEventId,
     generateOutboxEventId,
     auditRecorder: caseManagementAuditRecorder,
+    assigneeDirectory,
+    fraudConfig: organizationFraudConfig,
     initializeCaseSla,
+    routeCase,
   });
 
   // El otro extremo del outbox: los eventos entran en la misma transaccion que
@@ -1088,6 +1098,11 @@ async function bootstrap(): Promise<void> {
       generateCaseRoutingRuleId,
     }),
     listRoutingRules: createListRoutingRulesUseCase({ routingRules: caseRoutingRules }),
+    // Ensayo en seco del editor: mismo motor que enruta en producción.
+    simulateRoutingRule: createSimulateRoutingRuleUseCase({
+      simulationEngine: caseRoutingEngine,
+      auditRecorder: caseManagementAuditRecorder,
+    }),
     getRoutingRule: createGetRoutingRuleUseCase({ routingRules: caseRoutingRules }),
     activateRoutingRule: createActivateRoutingRuleUseCase({
       routingRules: caseRoutingRules,
@@ -1134,6 +1149,11 @@ async function bootstrap(): Promise<void> {
     activateScoringRule,
     listScoringRules,
     getScoringRule,
+    // Ensayo en seco del editor: mismo motor que puntúa en producción.
+    simulateScoringRule: createSimulateScoringRuleUseCase({
+      simulationEngine: scoringEngine,
+      auditRecorder: riskAssessmentAuditRecorder,
+    }),
   });
   // Composition-only score→threshold→CreateCase path (eslint boundaries).
   const processRiskScoreToCase = createScoreToCaseOrchestrator({

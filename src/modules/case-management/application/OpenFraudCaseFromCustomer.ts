@@ -4,6 +4,8 @@ import type { CaseRepository } from '../domain/ports/CaseRepository.js';
 import type { TimelineRecorder } from '../domain/ports/TimelineRecorder.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
+import type { OrganizationFraudConfigRepository } from '../domain/ports/OrganizationFraudConfigRepository.js';
+import type { AssigneeDirectory } from '../domain/ports/AssigneeDirectory.js';
 import type { InitializeCaseSlaService } from './InitializeCaseSla.js';
 import type { OutboxEventRepository } from '../../../shared/outbox/OutboxEventRepository.js';
 import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
@@ -16,6 +18,11 @@ import { createRiskScore } from '../domain/model/value-objects/RiskScore.js';
 import { createCasePriority } from '../domain/model/value-objects/CasePriority.js';
 import { createAssignedTo, type AssignedTo } from '../domain/model/value-objects/AssignedTo.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
+import {
+  assigneeCannotWorkCases,
+  caseIntakeNotConfigured,
+} from '../domain/errors/CaseManagementError.js';
+import type { RouteCaseInput } from './RouteCase.js';
 
 export interface OpenFraudCaseInput {
   readonly auth: AuthContext;
@@ -43,7 +50,26 @@ export interface OpenFraudCaseDeps {
   readonly generateTimelineEventId: () => TimelineEventId;
   readonly generateOutboxEventId: () => OutboxEventId;
   readonly auditRecorder: AuditRecorder;
+  /**
+   * Se lee para EXIGIRLA, no para calcular: `initializeCaseSla` sabe caer a
+   * los valores de la casa cuando falta, y esa caída es correcta para las
+   * vías automáticas. Por esta no: aquí hay alguien delante que puede ir a
+   * configurarlo.
+   */
+  readonly fraudConfig: OrganizationFraudConfigRepository;
+  /** Para comprobar que quien recibe el expediente lo puede instruir. */
+  readonly assigneeDirectory: AssigneeDirectory;
   readonly initializeCaseSla: InitializeCaseSlaService;
+  /**
+   * Enrutamiento automático (CASE-002) para cuando nadie eligió responsable.
+   *
+   * Obligatoria y no opcional a propósito: esta vía nació sin ella y el
+   * síntoma fue mudo — quien abría un caso sin marcar «asignármelo» lo dejaba
+   * huérfano, y las reglas de enrutamiento no se aplicaban nunca por aquí. Una
+   * dependencia opcional deja que eso vuelva a pasar sin que nadie se entere;
+   * exigirla hace que el compilador lo impida.
+   */
+  readonly routeCase: (input: RouteCaseInput) => Promise<Case>;
 }
 
 export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
@@ -66,6 +92,26 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
     }
 
     return deps.unitOfWork.withTransaction(async (tx) => {
+      /*
+       * Primero de todo, antes de escribir: un expediente cuyo SLA se calcula
+       * con valores que el inquilino nunca eligió nace con un plazo que nadie
+       * ha acordado, y ese plazo es el que luego se incumple.
+       */
+      const config = await deps.fraudConfig.findByOrganization(organizationId, tx);
+      if (!config) {
+        throw caseIntakeNotConfigured('MISSING_FRAUD_CONFIG', organizationId);
+      }
+
+      /*
+       * También antes de escribir: una elección explícita que recae en
+       * gobierno (o un ADMIN marcando «asignármelo a mí») se rechaza aquí, y
+       * no se cae calladamente a las reglas — quien eligió mal tiene que
+       * enterarse.
+       */
+      if (assignedTo !== null && !(await deps.assigneeDirectory.canWorkCases(organizationId, assignedTo))) {
+        throw assigneeCannotWorkCases(assignedTo.type, assignedTo.id);
+      }
+
       // Check if a case already exists
       // Sin `statuses`: a diferencia de la ingesta por webhook, abrir un caso a
       // mano sobre un cliente con expediente cerrado debe reabrir aquel, no
@@ -134,7 +180,9 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
           await deps.timelineRecorder.record(assignEvent, tx);
         }
 
-        return updated;
+        // Un expediente que vuelve a la bandeja sin dueño tiene el mismo
+        // problema que uno nuevo sin dueño: nadie sabe que es suyo.
+        return requireAssignee(await maybeRoute(deps, updated, input, tx), organizationId);
       }
 
       // Create new case with frozen snapshot
@@ -192,6 +240,11 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
         await deps.timelineRecorder.record(assignEvent, tx);
       }
 
+      // CASE-002: si nadie eligió responsable, deciden las reglas. `RouteCase`
+      // persiste la asignación, emite su propio hito `ASSIGNED` y audita la
+      // regla ganadora, todo dentro de esta misma transacción.
+      const routed = requireAssignee(await maybeRoute(deps, kase, input, tx), organizationId);
+
       // Record Audit Log
       await deps.auditRecorder.record(
         {
@@ -237,7 +290,55 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
       });
       await deps.outbox.save(outboxEvent, tx);
 
-      return kase;
+      return routed;
     });
   };
+}
+
+/**
+ * Aplica las reglas de enrutamiento SOLO si el caso quedó sin responsable.
+ *
+ * Una elección explícita —de la casilla «asignármelo» o del selector de
+ * ADMIN— gana siempre sobre la regla: quien abre el expediente y decide a
+ * quién le toca no puede ver cómo una regla se lo quita.
+ *
+ * `createdBy: null` porque en ese caso eligió la regla y no un humano, igual
+ * que en `CreateCase` y en la ingesta por webhook. Que ninguna regla case
+ * deja el caso sin asignar, que es el mismo desenlace que por las otras vías.
+ */
+async function maybeRoute(
+  deps: OpenFraudCaseDeps,
+  kase: Case,
+  input: OpenFraudCaseInput,
+  tx: Parameters<typeof deps.routeCase>[0]['tx'],
+): Promise<Case> {
+  if (kase.assignedTo !== null) {
+    return kase;
+  }
+  return deps.routeCase({
+    kase,
+    tx,
+    createdBy: null,
+    actorType: input.auth.actorType,
+    ipAddress: input.auth.ipAddress,
+  });
+}
+
+/**
+ * Un expediente abierto a mano tiene que salir con alguien que responda por él.
+ *
+ * Ni la elección explícita, ni «asignármelo», ni ninguna regla activa dieron
+ * responsable: crear el caso igual lo dejaría fuera de toda bandeja, con su
+ * reloj de SLA corriendo, hasta que alguien lo encontrara vencido. Se lanza
+ * DESPUÉS de enrutar porque hasta entonces no se sabe: una regla activa que no
+ * casa con este caso vale lo mismo que no tener ninguna.
+ *
+ * Lanzar aquí deshace la transacción entera —el caso, su hito y su fila de
+ * SLA—, así que no queda a medias.
+ */
+function requireAssignee(kase: Case, organizationId: string): Case {
+  if (kase.assignedTo === null) {
+    throw caseIntakeNotConfigured('NO_ASSIGNEE', organizationId);
+  }
+  return kase;
 }

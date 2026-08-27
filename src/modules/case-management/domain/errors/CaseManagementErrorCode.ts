@@ -34,4 +34,15 @@ export type CaseManagementErrorCode =
    * El expediente esta cerrado y por tanto ya no se instruye. Se resuelve
    * reabriendolo, no cambiando de usuario ni reintentando.
    */
-  | 'CASE_CLOSED';
+  | 'CASE_CLOSED'
+  /**
+   * No se puede abrir un expediente a mano porque el departamento no esta
+   * configurado: falta la configuracion antifraude, o el caso acabaria sin
+   * nadie que responda por el.
+   */
+  | 'CASE_INTAKE_NOT_CONFIGURED'
+  /**
+   * El destinatario existe y es del inquilino, pero pertenece al plano de
+   * gobierno (ADMIN o AUDITOR) y por tanto no instruye expedientes.
+   */
+  | 'ASSIGNEE_CANNOT_WORK_CASES';

@@ -26,6 +26,8 @@ describe('caseManagementErrorStatus', () => {
       EVIDENCE_INFECTED: 422,
       CASE_NOT_ASSIGNED: 409,
       CASE_CLOSED: 409,
+      CASE_INTAKE_NOT_CONFIGURED: 409,
+      ASSIGNEE_CANNOT_WORK_CASES: 422,
     });
   });
 

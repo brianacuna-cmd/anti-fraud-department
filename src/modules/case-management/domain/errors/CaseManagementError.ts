@@ -193,3 +193,45 @@ export function caseClosed(caseId: string, status: string): CaseManagementError 
     { caseId, status },
   );
 }
+
+/**
+ * Abrir un expediente a mano exige que el departamento este configurado.
+ *
+ * Un expediente que nace huerfano no lo trabaja nadie: no aparece en la
+ * bandeja de ningun analista, su reloj de SLA corre igual y se descubre
+ * cuando ya esta vencido. Por esta via hay una persona delante que puede ir a
+ * arreglarlo, asi que se prefiere negar la apertura a crear algo que nadie va
+ * a mirar.
+ *
+ * Las vias automaticas NO usan esto a proposito: rechazar un webhook pierde
+ * el evento, y ahi no hay nadie a quien avisar.
+ */
+export function caseIntakeNotConfigured(
+  reason: 'MISSING_FRAUD_CONFIG' | 'NO_ASSIGNEE',
+  organizationId: string,
+): CaseManagementError {
+  const message =
+    reason === 'MISSING_FRAUD_CONFIG'
+      ? 'the organization has no fraud config: set SLA windows and risk thresholds before opening cases by hand'
+      : 'the case would have no assignee: pick one, or activate a routing rule that assigns this case';
+  return new CaseManagementError('CASE_INTAKE_NOT_CONFIGURED', message, { reason, organizationId });
+}
+
+/**
+ * El expediente no puede caer en manos de quien no lo instruye.
+ *
+ * ADMIN administra personas y AUDITOR fiscaliza: ninguno de los dos actua
+ * sobre un caso. Asignarles uno lo deja fuera de toda bandeja util y ademas
+ * rompe la segregacion de funciones —quien concede los permisos no puede
+ * ademas usarlos— que sostiene el resto de la politica de acceso.
+ */
+export function assigneeCannotWorkCases(
+  assignedToType: string,
+  assignedToId: string,
+): CaseManagementError {
+  return new CaseManagementError(
+    'ASSIGNEE_CANNOT_WORK_CASES',
+    'the assignee is governance, not operations: only analysts and supervisors can be given a case',
+    { assignedToType, assignedToId },
+  );
+}

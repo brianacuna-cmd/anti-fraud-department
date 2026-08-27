@@ -6,6 +6,7 @@ export type RiskAssessmentAuditAction =
   | 'CALCULATE_RISK_SCORE'
   | 'SCORING_RULE_EVALUATION_FAILED'
   | 'CREATE_SCORING_RULE'
-  | 'ACTIVATE_SCORING_RULE';
+  | 'ACTIVATE_SCORING_RULE'
+  | 'SIMULATE_SCORING_RULE';
 
 export type RiskAssessmentAuditResource = 'rule';

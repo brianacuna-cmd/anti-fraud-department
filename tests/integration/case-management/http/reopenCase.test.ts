@@ -141,6 +141,7 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
   );
 
   const routeCase = createRouteCaseUseCase({
+    assigneeDirectory,
     cases,
     routingRules,
     routingEngine: new ZenRoutingEngine(),
@@ -239,6 +240,9 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
 
   return { app, cases, slaTracking, timelineRecorder, auditRecorder };
 }
+
+/** Permisiva: estas pruebas comprueban otra cosa. */
+const assigneeDirectory = new InMemoryAssigneeDirectory();
 
 describe('caseRouter POST /cases/:caseId/reopen', () => {
   it('reopens a RESOLVED case for SUPERVISOR and resets dueDate', async () => {
