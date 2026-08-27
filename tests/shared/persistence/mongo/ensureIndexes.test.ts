@@ -690,4 +690,17 @@ describe('ensureIndexes (integration, real Mongo)', () => {
     expect(idx).toBeDefined();
     expect(idx?.key).toEqual({ exhausted_at: -1, _id: -1 });
   });
+
+  it('creates outbox_published_ttl_idx on outbox_events for PUBLISHED 7-day retention', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+
+    const indexes = await db.collection('outbox_events').indexes();
+    const idx = indexes.find((i) => i.name === 'outbox_published_ttl_idx');
+
+    expect(idx).toBeDefined();
+    expect(idx?.key).toEqual({ published_at: 1 });
+    expect(idx?.expireAfterSeconds).toBe(604800);
+    expect(idx?.partialFilterExpression).toEqual({ status: 'PUBLISHED' });
+  });
 });
