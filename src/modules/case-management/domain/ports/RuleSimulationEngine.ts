@@ -1,22 +1,7 @@
+import type { RuleSimulation } from '../../../../shared/rules/RuleSimulation.js';
 import type { CaseRoutingContext } from './RoutingEngine.js';
 
-/** One stop along the run: what went into a node and what came out of it. */
-export interface RuleTrace {
-  readonly id: string;
-  readonly name: string;
-  readonly input: unknown;
-  readonly output: unknown;
-  readonly performance?: string;
-  readonly traceData?: unknown;
-  readonly order: number;
-}
-
-/** Raw evaluation result, unfolded. */
-export interface RuleSimulation {
-  readonly performance: string;
-  readonly result: unknown;
-  readonly trace?: Readonly<Record<string, RuleTrace>>;
-}
+export type { RuleSimulation, RuleTrace } from '../../../../shared/rules/RuleSimulation.js';
 
 /**
  * Dry-run port, deliberately separate from `RoutingEngine`.
