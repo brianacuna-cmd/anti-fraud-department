@@ -32,6 +32,7 @@ describe('caseManagementErrorStatus', () => {
       CASE_ENFORCEMENT_PENDING: 409,
       CASE_NOT_RESOLVED_FOR_REPORT: 409,
       NO_ACTIVE_ROUTING_RULE: 409,
+      DLQ_EVENT_NOT_FOUND: 404,
     });
   });
 

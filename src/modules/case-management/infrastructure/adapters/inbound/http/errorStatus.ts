@@ -39,4 +39,6 @@ export const caseManagementErrorStatus: StatusByCode = {
   // 409: the request is valid, but creating/reopening the case unassigned
   // right now would leave it with no path to ever getting assigned.
   NO_ACTIVE_ROUTING_RULE: 409,
+  // 404: the DLQ row was never created or was already consumed by a prior requeue.
+  DLQ_EVENT_NOT_FOUND: 404,
 };

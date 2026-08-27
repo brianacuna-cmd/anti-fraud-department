@@ -256,3 +256,11 @@ export function noActiveRoutingRule(organizationId: string): CaseManagementError
     { organizationId },
   );
 }
+
+export function dlqEventNotFound(dlqEventId: string): CaseManagementError {
+  return new CaseManagementError(
+    'DLQ_EVENT_NOT_FOUND',
+    `no dead-letter event with id "${dlqEventId}" was found`,
+    { dlqEventId },
+  );
+}

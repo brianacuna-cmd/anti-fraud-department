@@ -71,4 +71,10 @@ export type CaseManagementErrorCode =
    * an orphan case that only an ADMIN/organization login can ever discover
    * and assign by hand.
    */
-  | 'NO_ACTIVE_ROUTING_RULE';
+  | 'NO_ACTIVE_ROUTING_RULE'
+  /**
+   * No `dead_letter_queue` row exists for the given id. Returned by inspect
+   * and requeue when the caller references a row that was never created or
+   * was already deleted by a prior successful requeue.
+   */
+  | 'DLQ_EVENT_NOT_FOUND';

@@ -58,7 +58,14 @@ export type CaseManagementAuditAction =
    * — the difference is WHAT failed: the JDM ran fine, the target it
    * pointed to just cannot receive a case.
    */
-  | 'ROUTING_RULE_TARGET_INVALID';
+  | 'ROUTING_RULE_TARGET_INVALID'
+  /**
+   * DLQ-001: a platform operator manually replayed a dead-lettered event
+   * back onto `outbox_events`. Audited with `originalDlqId` and
+   * `newOutboxId` so the trail is complete even if the requeued event
+   * publishes successfully and the new outbox row is deleted.
+   */
+  | 'DLQ_REQUEUED';
 
 export type CaseManagementAuditResource =
   | 'case'
@@ -68,4 +75,10 @@ export type CaseManagementAuditResource =
   | 'investigation'
   | 'report'
   | 'evidence'
-  | 'enforcement_action';
+  | 'enforcement_action'
+  /**
+   * DLQ-001: a `dead_letter_queue` row (backed by the `OutboxDlqRepository`
+   * port). Added so `AuditEvent.resource` typechecks for `DLQ_REQUEUED`
+   * emissions (D6). Read paths (list, inspect) are not audited.
+   */
+  | 'dlq_event';
