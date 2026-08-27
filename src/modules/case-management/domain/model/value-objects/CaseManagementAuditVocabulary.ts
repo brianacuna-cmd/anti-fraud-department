@@ -65,7 +65,14 @@ export type CaseManagementAuditAction =
    * `newOutboxId` so the trail is complete even if the requeued event
    * publishes successfully and the new outbox row is deleted.
    */
-  | 'DLQ_REQUEUED';
+  | 'DLQ_REQUEUED'
+  /**
+   * Catalog mutations for `customer_webhook_subscriptions`. Deactivate is
+   * UPDATE, not DELETE. Read paths are not audited.
+   */
+  | 'CREATE_WEBHOOK_SUBSCRIPTION'
+  | 'UPDATE_WEBHOOK_SUBSCRIPTION'
+  | 'DELETE_WEBHOOK_SUBSCRIPTION';
 
 export type CaseManagementAuditResource =
   | 'case'
@@ -81,4 +88,9 @@ export type CaseManagementAuditResource =
    * port). Added so `AuditEvent.resource` typechecks for `DLQ_REQUEUED`
    * emissions (D6). Read paths (list, inspect) are not audited.
    */
-  | 'dlq_event';
+  | 'dlq_event'
+  /**
+   * Catalog row in `customer_webhook_subscriptions`. Mutation-only
+   * (CREATE/UPDATE/DELETE); list/get are not audited.
+   */
+  | 'webhook_subscription';
