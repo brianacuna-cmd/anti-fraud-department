@@ -26,6 +26,7 @@ describe('caseManagementErrorStatus', () => {
       EVIDENCE_INFECTED: 422,
       CASE_NOT_ASSIGNED: 409,
       CASE_CLOSED: 409,
+      DLQ_EVENT_NOT_FOUND: 404,
     });
   });
 

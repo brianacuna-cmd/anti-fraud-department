@@ -243,6 +243,14 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .collection('dead_letter_queue')
     .createIndex({ organization_id: 1, exhausted_at: -1 }, { name: 'dlq_org_exhausted_idx' });
 
+  // Cross-tenant DLQ admin list (D4): unfiltered newest-first page cannot use
+  // `dlq_org_exhausted_idx` because it is prefixed by `organization_id`. A
+  // plain `(exhausted_at DESC, _id DESC)` index covers both the cross-tenant
+  // page and acts as the tiebreak sort key for keyset cursors.
+  await db
+    .collection('dead_letter_queue')
+    .createIndex({ exhausted_at: -1, _id: -1 }, { name: 'dlq_exhausted_idx' });
+
   await db
     .collection('dead_letter_queue')
     .createIndex({ aggregate_id: 1, created_at: 1 }, { name: 'dlq_aggregate_created_idx' });

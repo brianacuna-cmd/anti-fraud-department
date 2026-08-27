@@ -679,4 +679,15 @@ describe('ensureIndexes (integration, real Mongo)', () => {
       }),
     ).resolves.toBeDefined();
   });
+
+  it('creates dlq_exhausted_idx on dead_letter_queue for cross-tenant DLQ admin list (D4)', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+
+    const dlqIndexes = await db.collection('dead_letter_queue').indexes();
+    const idx = dlqIndexes.find((i) => i.name === 'dlq_exhausted_idx');
+
+    expect(idx).toBeDefined();
+    expect(idx?.key).toEqual({ exhausted_at: -1, _id: -1 });
+  });
 });

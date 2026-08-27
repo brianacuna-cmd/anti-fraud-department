@@ -221,6 +221,10 @@ import { approvalRequestRouter } from './modules/case-management/infrastructure/
 import { createReviewApprovalRequestUseCase } from './modules/case-management/application/ReviewApprovalRequest.js';
 import { createListApprovalRequestsUseCase } from './modules/case-management/application/ListApprovalRequests.js';
 import { routingRuleRouter } from './modules/case-management/infrastructure/adapters/inbound/http/routingRuleRouter.js';
+import { dlqAdminRouter } from './modules/case-management/infrastructure/adapters/inbound/http/dlqAdminRouter.js';
+import { createListDlqEventsUseCase } from './modules/case-management/application/ListDlqEvents.js';
+import { createGetDlqEventUseCase } from './modules/case-management/application/GetDlqEvent.js';
+import { createRequeueDlqEventUseCase } from './modules/case-management/application/RequeueDlqEvent.js';
 import { MongoAnalystDecisionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoAnalystDecisionRepository.js';
 import { MongoEnforcementActionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoEnforcementActionRepository.js';
 import { MongoApprovalRequestRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoApprovalRequestRepository.js';
@@ -715,6 +719,10 @@ async function bootstrap(): Promise<void> {
     initializeCaseSla,
   });
 
+  // Hoisted so both PublishOutboxEvents (DLQ insert) and the three DLQ admin
+  // use cases (findMany / findById / delete) share the same adapter instance.
+  const dlqEvents = new MongoOutboxDlqRepository(db);
+
   // The other end of the outbox: events enter in the same transaction as
   // the case — the hard part, the one that guarantees they are not lost —
   // but without a relay they sat in PENDING indefinitely.
@@ -723,7 +731,7 @@ async function bootstrap(): Promise<void> {
     outbox: outboxEvents,
     publisher: await resolveOutboxPublisher(),
     clock,
-    dlq: new MongoOutboxDlqRepository(db),
+    dlq: dlqEvents,
     unitOfWork: caseManagementUnitOfWork,
     retryPolicy: outboxRetryPolicy,
   });
@@ -1162,6 +1170,16 @@ async function bootstrap(): Promise<void> {
       auditRecorder: caseManagementAuditRecorder,
       unitOfWork: caseManagementUnitOfWork,
       clock,
+    }),
+  });
+  const dlqAdminHttpRouter = dlqAdminRouter({
+    listDlqEvents: createListDlqEventsUseCase({ dlq: dlqEvents }),
+    getDlqEvent: createGetDlqEventUseCase({ dlq: dlqEvents }),
+    requeueDlqEvent: createRequeueDlqEventUseCase({
+      dlq: dlqEvents,
+      outbox: outboxEvents,
+      unitOfWork: caseManagementUnitOfWork,
+      auditRecorder: caseManagementAuditRecorder,
     }),
   });
 
@@ -1715,6 +1733,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(enforcementHttpRouter);
   identityAccessRouter.use(approvalRequestHttpRouter);
   identityAccessRouter.use(routingRuleHttpRouter);
+  identityAccessRouter.use(dlqAdminHttpRouter);
   identityAccessRouter.use(riskScoresRouter);
   identityAccessRouter.use(riskScoreProcessRouter);
   identityAccessRouter.use(riskScoringRulesRouter);
