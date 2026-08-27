@@ -77,4 +77,14 @@ export type CaseManagementErrorCode =
    * and requeue when the caller references a row that was never created or
    * was already deleted by a prior successful requeue.
    */
-  | 'DLQ_EVENT_NOT_FOUND';
+  | 'DLQ_EVENT_NOT_FOUND'
+  /**
+   * No `customer_webhook_subscriptions` row exists for the given id (or it
+   * belongs to another organization — same 404 so existence is not leaked).
+   */
+  | 'WEBHOOK_SUBSCRIPTION_NOT_FOUND'
+  /**
+   * Unique `(organization_id, url)` collision, including inactive rows.
+   * Reactivate the existing row via PATCH instead of inserting a duplicate.
+   */
+  | 'WEBHOOK_SUBSCRIPTION_URL_TAKEN';
