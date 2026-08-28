@@ -131,3 +131,27 @@ describe('CaseRoutingRule#update', () => {
     expect(rule.name).toBe('high-risk');
   });
 });
+
+describe('CaseRoutingRule#withExecutionOrder', () => {
+  it('sets executionOrder and updatedAt without bumping conditionsVersion', () => {
+    const rule = create({ conditionsVersion: 4, name: 'high-risk', status: 'ACTIVE' });
+
+    const reordered = rule.withExecutionOrder(7, LATER);
+
+    expect(reordered.executionOrder).toBe(7);
+    expect(reordered.conditionsVersion).toBe(4);
+    expect(reordered.updatedAt).toBe(LATER);
+    expect(reordered.name).toBe('high-risk');
+    expect(reordered.status).toBe('ACTIVE');
+    expect(rule.executionOrder).toBe(0);
+    expect(rule.updatedAt).toBe(NOW);
+  });
+
+  it('accepts 0 and rejects a negative executionOrder without mutating the original', () => {
+    const rule = create();
+
+    expect(rule.withExecutionOrder(0, LATER).executionOrder).toBe(0);
+    expect(() => rule.withExecutionOrder(-1, LATER)).toThrow(/executionOrder/);
+    expect(rule.executionOrder).toBe(0);
+  });
+});

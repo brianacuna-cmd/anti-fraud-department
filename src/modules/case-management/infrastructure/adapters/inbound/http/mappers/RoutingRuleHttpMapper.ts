@@ -11,6 +11,7 @@ export interface RoutingRuleResponseDto {
   readonly targetRoleId: string | null;
   readonly targetUserId: string | null;
   readonly status: string;
+  readonly executionOrder: number;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -41,6 +42,7 @@ export function toRoutingRuleResponse(rule: CaseRoutingRule): RoutingRuleRespons
     targetRoleId: rule.targetRoleId,
     targetUserId: rule.targetUserId,
     status: rule.status,
+    executionOrder: rule.executionOrder,
     createdAt: toDate(rule.createdAt).toISOString(),
     updatedAt: toDate(rule.updatedAt).toISOString(),
   };

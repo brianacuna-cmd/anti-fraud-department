@@ -5,6 +5,7 @@ import { createErrorHandler } from './shared/http/errorHandler.js';
 import { connectMongo } from './shared/persistence/mongo/connect.js';
 import { ensureIndexes } from './shared/persistence/mongo/ensureIndexes.js';
 import { ensureRoles } from './shared/persistence/mongo/ensureRoles.js';
+import { backfillRoutingRuleExecutionOrder } from './modules/case-management/infrastructure/adapters/outbound/mongo/backfillRoutingRuleExecutionOrder.js';
 import { SystemClock } from './shared/time/SystemClock.js';
 import { generateObjectIdHex } from './shared/kernel/ObjectIdHex.js';
 import { identityAccessErrorStatus } from './modules/identity-access/infrastructure/adapters/inbound/http/errorStatus.js';
@@ -219,6 +220,7 @@ import { createGetRoutingRuleUseCase } from './modules/case-management/applicati
 import { createActivateRoutingRuleUseCase } from './modules/case-management/application/ActivateRoutingRule.js';
 import { createDeactivateRoutingRuleUseCase } from './modules/case-management/application/DeactivateRoutingRule.js';
 import { createUpdateRoutingRuleUseCase } from './modules/case-management/application/UpdateRoutingRule.js';
+import { createReorderRoutingRulesUseCase } from './modules/case-management/application/ReorderRoutingRules.js';
 import { createCreateWebhookSubscriptionUseCase } from './modules/case-management/application/CreateWebhookSubscription.js';
 import { createListWebhookSubscriptionUseCase } from './modules/case-management/application/ListWebhookSubscription.js';
 import { createGetWebhookSubscriptionUseCase } from './modules/case-management/application/GetWebhookSubscription.js';
@@ -489,6 +491,7 @@ async function bootstrap(): Promise<void> {
   const { client, db } = await connectMongo(MONGO_URI, MONGO_DB_NAME);
   const clock = new SystemClock();
   await ensureIndexes(db);
+  await backfillRoutingRuleExecutionOrder(db);
   // user-roles PR-1a: idempotent fixed role-catalog seed (ADMIN/SUPERVISOR/
   // ANALYST/AUDITOR) — must run before any request that could reference a
   // role.
@@ -1224,6 +1227,12 @@ async function bootstrap(): Promise<void> {
     }),
     getRoutingRule: createGetRoutingRuleUseCase({ routingRules: caseRoutingRules }),
     updateRoutingRule: createUpdateRoutingRuleUseCase({
+      routingRules: caseRoutingRules,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+    }),
+    reorderRoutingRules: createReorderRoutingRulesUseCase({
       routingRules: caseRoutingRules,
       auditRecorder: caseManagementAuditRecorder,
       unitOfWork: caseManagementUnitOfWork,

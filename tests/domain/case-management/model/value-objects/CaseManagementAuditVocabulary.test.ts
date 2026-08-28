@@ -18,4 +18,9 @@ describe('CaseManagementAuditVocabulary', () => {
     const action: CaseManagementAuditAction = 'UPDATE_ROUTING_RULE';
     expect(action).toBe('UPDATE_ROUTING_RULE');
   });
+
+  it('accepts REORDER_ROUTING_RULES as a closed action', () => {
+    const action: CaseManagementAuditAction = 'REORDER_ROUTING_RULES';
+    expect(action).toBe('REORDER_ROUTING_RULES');
+  });
 });

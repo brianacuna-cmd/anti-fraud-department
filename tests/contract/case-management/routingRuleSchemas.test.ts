@@ -2,6 +2,7 @@ import {
   jdmGraphSchema,
   createRoutingRuleSchema,
   updateRoutingRuleSchema,
+  reorderRoutingRulesSchema,
 } from '../../../src/modules/case-management/infrastructure/adapters/inbound/http/dto/routingRuleSchemas.js';
 
 const VALID_JDM = {
@@ -133,5 +134,33 @@ describe('updateRoutingRuleSchema', () => {
     const result = updateRoutingRuleSchema.safeParse({ name: 'renamed', executionOrder: 0 });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe('reorderRoutingRulesSchema', () => {
+  it('accepts a full ids permutation', () => {
+    const ids = ['aaaaaaaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbbbbbbb', 'cccccccccccccccccccccccc'];
+    const result = reorderRoutingRulesSchema.safeParse({ ids });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.ids).toEqual(ids);
+    }
+  });
+
+  it('accepts an empty ids list for an empty catalog', () => {
+    const result = reorderRoutingRulesSchema.safeParse({ ids: [] });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.ids).toEqual([]);
+    }
+  });
+
+  it('rejects a missing ids field and extra keys via strict()', () => {
+    expect(reorderRoutingRulesSchema.safeParse({}).success).toBe(false);
+    expect(reorderRoutingRulesSchema.safeParse({ ids: ['aaaaaaaaaaaaaaaaaaaaaaaa'], extra: true }).success).toBe(
+      false,
+    );
   });
 });

@@ -46,6 +46,12 @@ export type CaseManagementAuditAction =
    * does not emit this action.
    */
   | 'UPDATE_ROUTING_RULE'
+  /**
+   * SUPERVISOR PUT `/case-routing-rules/reorder`. Catalog-wide permutation;
+   * `resourceId` is null and `detail.ids` is the requested order. Identity
+   * order does not emit this action.
+   */
+  | 'REORDER_ROUTING_RULES'
   | 'ACTIVATE_ROUTING_RULE'
   | 'DEACTIVATE_ROUTING_RULE'
   | 'SIMULATE_ROUTING_RULE'

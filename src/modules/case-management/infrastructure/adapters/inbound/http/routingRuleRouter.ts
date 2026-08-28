@@ -7,11 +7,13 @@ import type { createGetRoutingRuleUseCase } from '../../../../application/GetRou
 import type { createActivateRoutingRuleUseCase } from '../../../../application/ActivateRoutingRule.js';
 import type { createDeactivateRoutingRuleUseCase } from '../../../../application/DeactivateRoutingRule.js';
 import type { createUpdateRoutingRuleUseCase } from '../../../../application/UpdateRoutingRule.js';
+import type { createReorderRoutingRulesUseCase } from '../../../../application/ReorderRoutingRules.js';
 import {
   simulateRoutingRuleSchema,
   createRoutingRuleSchema,
   createPriorityAssignmentRuleSchema,
   updateRoutingRuleSchema,
+  reorderRoutingRulesSchema,
 } from './dto/routingRuleSchemas.js';
 import { toRoutingRuleResponse, toUpdateRoutingRuleFields } from './mappers/RoutingRuleHttpMapper.js';
 import type { createSimulateRoutingRuleUseCase } from '../../../../application/SimulateRoutingRule.js';
@@ -23,15 +25,17 @@ export interface RoutingRuleRouterDeps {
   readonly listRoutingRules: ReturnType<typeof createListRoutingRulesUseCase>;
   readonly getRoutingRule: ReturnType<typeof createGetRoutingRuleUseCase>;
   readonly updateRoutingRule: ReturnType<typeof createUpdateRoutingRuleUseCase>;
+  readonly reorderRoutingRules: ReturnType<typeof createReorderRoutingRulesUseCase>;
   readonly activateRoutingRule: ReturnType<typeof createActivateRoutingRuleUseCase>;
   readonly deactivateRoutingRule: ReturnType<typeof createDeactivateRoutingRuleUseCase>;
   readonly simulateRoutingRule: ReturnType<typeof createSimulateRoutingRuleUseCase>;
 }
 
 /**
- * `/case-routing-rules` routes — draft create, list, get, patch, activate, deactivate.
+ * `/case-routing-rules` routes — draft create, list, get, patch, reorder, activate, deactivate.
  * Express 5 forwards rejected handler promises to `errorHandler`. Status changes
- * only via activate/deactivate, never PATCH.
+ * only via activate/deactivate, never PATCH. PUT `/reorder` is a static path
+ * declared beside `/simulate`, before `/:id`.
  */
 export function routingRuleRouter(deps: RoutingRuleRouterDeps): Router {
   const router = Router();
@@ -76,6 +80,17 @@ export function routingRuleRouter(deps: RoutingRuleRouterDeps): Router {
       context: body.case,
     });
     res.status(200).json(outcome);
+  });
+
+  /*
+   * Catalog permutation. Static path beside `/simulate`, before `/:id`, so
+   * "reorder" is never captured as a rule id.
+   */
+  router.put('/case-routing-rules/reorder', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(reorderRoutingRulesSchema, req.body);
+    const rules = await deps.reorderRoutingRules({ auth, ids: body.ids });
+    res.status(200).json({ items: rules.map(toRoutingRuleResponse) });
   });
 
   router.get('/case-routing-rules', async (req, res) => {
