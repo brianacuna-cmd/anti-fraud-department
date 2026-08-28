@@ -315,6 +315,15 @@ describe('ensureIndexes (integration, real Mongo)', () => {
 
     expect(orgStatusIndex?.key).toEqual({ organization_id: 1, status: 1 });
     expect(routingIndexes.filter((index) => index.name === 'case_routing_rules_org_status_idx')).toHaveLength(1);
+
+    const executionOrderIndex = routingIndexes.find(
+      (index) => index.name === 'case_routing_rules_org_execution_created_idx',
+    );
+    expect(executionOrderIndex?.key).toEqual({ organization_id: 1, execution_order: 1, created_at: 1 });
+    expect(executionOrderIndex?.unique).not.toBe(true);
+    expect(
+      routingIndexes.filter((index) => index.name === 'case_routing_rules_org_execution_created_idx'),
+    ).toHaveLength(1);
   });
 
   it('creates enforcement + outbox indexes and stays idempotent on re-run', async () => {

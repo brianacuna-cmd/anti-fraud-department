@@ -53,7 +53,8 @@ export interface RouteCaseDeps {
  * case's organization, evaluates each JDM via ZEN Engine against the case
  * context (`riskScore`, `status`, `priority`, `tags`), and on the first match
  * assigns `AssignedTo` / `AssignedToType` and appends an `ASSIGNED` timeline
- * event. Rules are tried in ascending `CreatedAt` order (first-match wins).
+ * event. Rules are tried in `executionOrder` ASC then `createdAt` ASC
+ * (repository sort; first-match wins after catalog reorder).
  *
  * Opt-out: `OrganizationFraudConfig.featureFlags.autoRouting === false` skips
  * routing entirely. A missing config or an absent flag leaves routing ON —

@@ -40,6 +40,18 @@ export type CaseManagementAuditAction =
   | 'EXECUTE_ENFORCEMENT_ACTION'
   | 'REVERT_ENFORCEMENT_ACTION'
   | 'CREATE_ROUTING_RULE'
+  /**
+   * SUPERVISOR PATCH of name, conditions, and/or targets. Status changes
+   * only via ACTIVATE_ROUTING_RULE / DEACTIVATE_ROUTING_RULE. A no-op PATCH
+   * does not emit this action.
+   */
+  | 'UPDATE_ROUTING_RULE'
+  /**
+   * SUPERVISOR PUT `/case-routing-rules/reorder`. Catalog-wide permutation;
+   * `resourceId` is null and `detail.ids` is the requested order. Identity
+   * order does not emit this action.
+   */
+  | 'REORDER_ROUTING_RULES'
   | 'ACTIVATE_ROUTING_RULE'
   | 'DEACTIVATE_ROUTING_RULE'
   | 'SIMULATE_ROUTING_RULE'
@@ -73,7 +85,12 @@ export type CaseManagementAuditAction =
    */
   | 'CREATE_WEBHOOK_SUBSCRIPTION'
   | 'UPDATE_WEBHOOK_SUBSCRIPTION'
-  | 'DELETE_WEBHOOK_SUBSCRIPTION';
+  | 'DELETE_WEBHOOK_SUBSCRIPTION'
+  /**
+   * PUT `/organization-fraud-config` singleton upsert. One action for create
+   * and re-upsert. GET is not audited.
+   */
+  | 'UPSERT_ORGANIZATION_FRAUD_CONFIG';
 
 export type CaseManagementAuditResource =
   | 'case'
@@ -94,4 +111,9 @@ export type CaseManagementAuditResource =
    * Catalog row in `customer_webhook_subscriptions`. Mutation-only
    * (CREATE/UPDATE/DELETE); list/get are not audited.
    */
-  | 'webhook_subscription';
+  | 'webhook_subscription'
+  /**
+   * Per-tenant singleton in `organization_fraud_config`. Mutation-only
+   * (PUT upsert); GET is not audited.
+   */
+  | 'organization_fraud_config';

@@ -5,8 +5,8 @@ import type { Transaction } from '../../../src/modules/case-management/domain/po
 
 /**
  * In-memory `CaseRoutingRuleRepository` fake. `findActiveByOrganization`
- * mirrors the Mongo adapter: only ACTIVE rules for the org, ordered by
- * `createdAt` ascending (first-match-wins determinism). Draft CRUD uses
+ * and `listByOrganization` mirror Mongo: `executionOrder` ASC then
+ * `createdAt` ASC (first-match-wins determinism). Draft CRUD uses
  * save / findById / listByOrganization.
  */
 export class InMemoryCaseRoutingRuleRepository implements CaseRoutingRuleRepository {
@@ -26,7 +26,7 @@ export class InMemoryCaseRoutingRuleRepository implements CaseRoutingRuleReposit
   ): Promise<readonly CaseRoutingRule[]> {
     return this.rules
       .filter((rule) => rule.organizationId === organizationId && rule.status === 'ACTIVE')
-      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
+      .sort(compareCatalogOrder);
   }
 
   async findById(id: CaseRoutingRuleId, _tx?: Transaction): Promise<CaseRoutingRule | null> {
@@ -34,9 +34,7 @@ export class InMemoryCaseRoutingRuleRepository implements CaseRoutingRuleReposit
   }
 
   async listByOrganization(organizationId: string, _tx?: Transaction): Promise<readonly CaseRoutingRule[]> {
-    return this.rules
-      .filter((rule) => rule.organizationId === organizationId)
-      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
+    return this.rules.filter((rule) => rule.organizationId === organizationId).sort(compareCatalogOrder);
   }
 
   async save(rule: CaseRoutingRule, _tx?: Transaction): Promise<void> {
@@ -47,4 +45,17 @@ export class InMemoryCaseRoutingRuleRepository implements CaseRoutingRuleReposit
       this.rules.push(rule);
     }
   }
+}
+
+function compareCatalogOrder(a: CaseRoutingRule, b: CaseRoutingRule): number {
+  if (a.executionOrder !== b.executionOrder) {
+    return a.executionOrder - b.executionOrder;
+  }
+  if (a.createdAt < b.createdAt) {
+    return -1;
+  }
+  if (a.createdAt > b.createdAt) {
+    return 1;
+  }
+  return 0;
 }
