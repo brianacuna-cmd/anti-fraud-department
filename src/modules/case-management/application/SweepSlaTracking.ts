@@ -1,9 +1,14 @@
 import type { Clock } from '../../../shared/time/Clock.js';
+import type { Instant } from '../../../shared/time/Instant.js';
+import type { OutboxEventRepository } from '../../../shared/outbox/OutboxEventRepository.js';
+import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
+import { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
+import type { Case } from '../domain/model/aggregates/Case.js';
 import type { CaseRepository } from '../domain/ports/CaseRepository.js';
 import type { CaseSlaTrackingRepository } from '../domain/ports/CaseSlaTrackingRepository.js';
 import type { NotificationSender } from '../domain/ports/NotificationSender.js';
 import type { AssigneeDirectory } from '../domain/ports/AssigneeDirectory.js';
-import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
+import type { UnitOfWork, Transaction } from '../domain/ports/UnitOfWork.js';
 import type { CaseSlaTracking } from '../domain/model/aggregates/CaseSlaTracking.js';
 import type { SlaStatus } from '../domain/model/value-objects/SlaStatus.js';
 import { slaStatusTransitions } from '../domain/services/transitions.js';
@@ -15,6 +20,8 @@ export interface SweepSlaTrackingDeps {
   readonly assigneeDirectory: AssigneeDirectory;
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
+  readonly outbox: OutboxEventRepository;
+  readonly generateOutboxEventId: () => OutboxEventId;
 }
 
 export interface SweepSlaTrackingResult {
@@ -27,6 +34,46 @@ export interface SweepSlaTrackingResult {
 function nextStatus(tracking: CaseSlaTracking): SlaStatus | null {
   const [next] = slaStatusTransitions[tracking.status];
   return next ?? null;
+}
+
+/** Outbox catalog names (not AlertType). ON_TRACK→WARNING / WARNING→BREACHED. */
+function slaHopOutboxEventType(previousStatus: SlaStatus, status: SlaStatus): 'SLA_WARNING' | 'SLA_BREACHED' {
+  if (previousStatus === 'WARNING' && status === 'BREACHED') {
+    return 'SLA_BREACHED';
+  }
+  return 'SLA_WARNING';
+}
+
+/** Copies `closeCase.emitOutbox`: one PENDING row per successful hop, same per-row UoW. */
+async function emitSlaHopOutbox(
+  deps: SweepSlaTrackingDeps,
+  tx: Transaction,
+  input: {
+    readonly kase: Case;
+    readonly advanced: CaseSlaTracking;
+    readonly previousStatus: SlaStatus;
+    readonly now: Instant;
+  },
+): Promise<void> {
+  await deps.outbox.save(
+    OutboxEvent.create({
+      id: deps.generateOutboxEventId(),
+      organizationId: input.kase.organizationId,
+      eventType: slaHopOutboxEventType(input.previousStatus, input.advanced.status),
+      aggregateType: 'cases',
+      aggregateId: input.advanced.caseId,
+      payload: {
+        case_id: input.advanced.caseId,
+        organization_id: input.kase.organizationId,
+        sla_tracking_id: input.advanced.id,
+        previous_status: input.previousStatus,
+        status: input.advanced.status,
+        due_date: input.advanced.dueDate,
+      },
+      now: input.now,
+    }),
+    tx,
+  );
 }
 
 /** Max rows claimed per sweep tick (bounds the atomic-claim loop, mirrors the outbox dispatcher). */
@@ -73,6 +120,7 @@ export function createSweepSlaTrackingUseCase(deps: SweepSlaTrackingDeps) {
           return;
         }
 
+        const previousStatus = current.status;
         const target = nextStatus(current);
         let advanced = current;
         if (target !== null) {
@@ -100,6 +148,10 @@ export function createSweepSlaTrackingUseCase(deps: SweepSlaTrackingDeps) {
             }
           }
           advanced = advanced.markNotified(advanced.status, now);
+        }
+
+        if (target !== null && kase !== null) {
+          await emitSlaHopOutbox(deps, tx, { kase, advanced, previousStatus, now });
         }
 
         await deps.slaTracking.save(advanced, tx);
