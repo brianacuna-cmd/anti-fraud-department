@@ -84,3 +84,14 @@ export const updateRoutingRuleSchema = z
   .strict();
 
 export type UpdateRoutingRuleBody = z.infer<typeof updateRoutingRuleSchema>;
+
+/**
+ * PUT /case-routing-rules/reorder body. Full-org permutation of catalog ids.
+ */
+export const reorderRoutingRulesSchema = z
+  .object({
+    ids: z.array(z.string().min(1)),
+  })
+  .strict();
+
+export type ReorderRoutingRulesBody = z.infer<typeof reorderRoutingRulesSchema>;

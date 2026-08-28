@@ -13,6 +13,8 @@ export interface CaseRoutingRuleProps {
   readonly targetRoleId: string | null;
   readonly targetUserId: string | null;
   readonly status: RoutingRuleStatus;
+  /** Catalog position; duplicates allowed; list/findActive tie-break on createdAt ASC. */
+  readonly executionOrder: number;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
 }
@@ -26,6 +28,7 @@ export interface CreateCaseRoutingRuleInput {
   readonly targetRoleId?: string | null;
   readonly targetUserId?: string | null;
   readonly status?: RoutingRuleStatus;
+  readonly executionOrder?: number;
   readonly now: Instant;
 }
 
@@ -48,6 +51,8 @@ export class CaseRoutingRule {
     assertNonEmpty('organizationId', input.organizationId);
     assertNonEmpty('name', input.name);
     assertNonNegative('conditionsVersion', input.conditionsVersion);
+    const executionOrder = input.executionOrder ?? 0;
+    assertNonNegative('executionOrder', executionOrder);
     return new CaseRoutingRule({
       id: input.id,
       organizationId: input.organizationId,
@@ -57,6 +62,7 @@ export class CaseRoutingRule {
       targetRoleId: input.targetRoleId ?? null,
       targetUserId: input.targetUserId ?? null,
       status: input.status ?? 'INACTIVE',
+      executionOrder,
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -105,6 +111,15 @@ export class CaseRoutingRule {
     });
   }
 
+  /**
+   * Catalog reorder only. Does not bump conditionsVersion. Status stays
+   * as-is. Caller persists via repository.
+   */
+  withExecutionOrder(executionOrder: number, now: Instant): CaseRoutingRule {
+    assertNonNegative('executionOrder', executionOrder);
+    return new CaseRoutingRule({ ...this.props, executionOrder, updatedAt: now });
+  }
+
   get id(): CaseRoutingRuleId {
     return this.props.id;
   }
@@ -135,6 +150,10 @@ export class CaseRoutingRule {
 
   get status(): RoutingRuleStatus {
     return this.props.status;
+  }
+
+  get executionOrder(): number {
+    return this.props.executionOrder;
   }
 
   get createdAt(): Instant {

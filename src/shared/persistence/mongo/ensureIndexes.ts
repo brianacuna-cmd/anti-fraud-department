@@ -165,6 +165,11 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .collection('case_routing_rules')
     .createIndex({ organization_id: 1, status: 1 }, { name: 'case_routing_rules_org_status_idx' });
 
+  await db.collection('case_routing_rules').createIndex(
+    { organization_id: 1, execution_order: 1, created_at: 1 },
+    { name: 'case_routing_rules_org_execution_created_idx' },
+  );
+
   await db
     .collection('analyst_decisions')
     .createIndex({ case_id: 1, created_at: -1 }, { name: 'analyst_decisions_case_created_idx' });
