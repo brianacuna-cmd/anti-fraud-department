@@ -1,6 +1,7 @@
 import {
   jdmGraphSchema,
   createRoutingRuleSchema,
+  updateRoutingRuleSchema,
 } from '../../../src/modules/case-management/infrastructure/adapters/inbound/http/dto/routingRuleSchemas.js';
 
 const VALID_JDM = {
@@ -81,6 +82,55 @@ describe('routingRuleSchemas JDM structural validation', () => {
       name: 'draft-rule',
       conditions: { contentType: 'application/vnd.gorules.decision', nodes: [], edges: [] },
     });
+
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('updateRoutingRuleSchema', () => {
+  it('accepts optional name, conditions, and targets', () => {
+    const result = updateRoutingRuleSchema.safeParse({
+      name: 'renamed',
+      conditions: VALID_JDM,
+      targetRoleId: 'role-1',
+      targetUserId: null,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.name).toBe('renamed');
+      expect(result.data.conditions).toEqual(VALID_JDM);
+      expect(result.data.targetRoleId).toBe('role-1');
+      expect(result.data.targetUserId).toBeNull();
+    }
+  });
+
+  it('accepts a name-only body', () => {
+    const result = updateRoutingRuleSchema.safeParse({ name: 'renamed' });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.name).toBe('renamed');
+      expect(result.data.conditions).toBeUndefined();
+    }
+  });
+
+  it('rejects invalid JDM when conditions are present', () => {
+    const result = updateRoutingRuleSchema.safeParse({
+      conditions: { contentType: 'application/vnd.gorules.decision', nodes: [], edges: [] },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects status via strict()', () => {
+    const result = updateRoutingRuleSchema.safeParse({ name: 'renamed', status: 'INACTIVE' });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects executionOrder via strict()', () => {
+    const result = updateRoutingRuleSchema.safeParse({ name: 'renamed', executionOrder: 0 });
 
     expect(result.success).toBe(false);
   });

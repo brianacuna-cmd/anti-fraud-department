@@ -1,5 +1,6 @@
 import { toDate } from '../../../../../../../shared/time/Instant.js';
 import type { CaseRoutingRule } from '../../../../../domain/model/aggregates/CaseRoutingRule.js';
+import type { UpdateRoutingRuleBody } from '../dto/routingRuleSchemas.js';
 
 export interface RoutingRuleResponseDto {
   readonly id: string;
@@ -12,6 +13,21 @@ export interface RoutingRuleResponseDto {
   readonly status: string;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+/** PATCH body → use-case fields. Omits status/executionOrder (schema-rejected). */
+export function toUpdateRoutingRuleFields(body: UpdateRoutingRuleBody): {
+  readonly name?: string;
+  readonly conditions?: Readonly<Record<string, unknown>>;
+  readonly targetRoleId?: string | null;
+  readonly targetUserId?: string | null;
+} {
+  return {
+    name: body.name,
+    conditions: body.conditions,
+    targetRoleId: body.targetRoleId,
+    targetUserId: body.targetUserId,
+  };
 }
 
 /** Domain → HTTP DTO for a routing rule. */
