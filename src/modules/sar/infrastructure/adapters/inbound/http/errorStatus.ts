@@ -16,4 +16,7 @@ export const sarErrorStatus: StatusByCode = {
   INVALID_TRANSITION: 422,
   // 403 not 422: the request is valid, the approver is not (four eyes).
   SELF_APPROVAL_FORBIDDEN: 403,
+  // 422 and not 400: the request is well formed, the REPORT is incomplete.
+  // The fix is filling in the report, not resending the call.
+  SAR_NOT_READY_TO_FILE: 422,
 };

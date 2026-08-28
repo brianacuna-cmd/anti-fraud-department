@@ -3,13 +3,22 @@ import { requireAuthContext } from '../../../../../../shared/http/requestAuthCon
 import { fromDate } from '../../../../../../shared/time/Instant.js';
 import type { createCreateSarReportDraftUseCase } from '../../../../application/CreateSarReportDraft.js';
 import type { createApproveSarReportDraftUseCase } from '../../../../application/ApproveSarReportDraft.js';
-import { createSarReportSchema } from './dto/sarReportSchemas.js';
-import { toSarReportResponse } from './mappers/SarReportHttpMapper.js';
+import { createSarReportSchema, upsertSarFilingProfileSchema } from './dto/sarReportSchemas.js';
+import { toSarFilingProfileResponse, toSarReportResponse } from './mappers/SarReportHttpMapper.js';
+import { renderFincenSarXml } from './report/FincenSarXmlRenderer.js';
+import { createPostalAddress } from '../../../../domain/model/value-objects/PostalAddress.js';
+import { createSuspiciousActivityCategory } from '../../../../domain/model/value-objects/SuspiciousActivityCategory.js';
+import type { createGenerateSarReportXmlUseCase } from '../../../../application/GenerateSarReportXml.js';
+import type { createGetSarFilingProfileUseCase } from '../../../../application/GetSarFilingProfile.js';
+import type { createUpsertSarFilingProfileUseCase } from '../../../../application/UpsertSarFilingProfile.js';
 import { parseRequest } from './parseRequest.js';
 
 export interface SarReportRouterDeps {
   readonly createSarReportDraft: ReturnType<typeof createCreateSarReportDraftUseCase>;
   readonly approveSarReportDraft: ReturnType<typeof createApproveSarReportDraftUseCase>;
+  readonly generateSarReportXml: ReturnType<typeof createGenerateSarReportXmlUseCase>;
+  readonly getSarFilingProfile: ReturnType<typeof createGetSarFilingProfileUseCase>;
+  readonly upsertSarFilingProfile: ReturnType<typeof createUpsertSarFilingProfileUseCase>;
 }
 
 /**
@@ -29,8 +38,13 @@ export function sarReportRouter(deps: SarReportRouterDeps): Router {
       narrative: body.narrative,
       subjectName: body.subjectName,
       suspiciousAmount: body.suspiciousAmount,
+      subjectAddress: body.subjectAddress ? createPostalAddress(body.subjectAddress) : null,
+      subjectTin: body.subjectTin,
+      subjectTinType: body.subjectTinType,
+      subjectBirthDate: body.subjectBirthDate ? fromDate(new Date(body.subjectBirthDate)) : null,
       activityStartDate: body.activityStartDate ? fromDate(new Date(body.activityStartDate)) : null,
       activityEndDate: body.activityEndDate ? fromDate(new Date(body.activityEndDate)) : null,
+      activityCategories: (body.activityCategories ?? []).map(createSuspiciousActivityCategory),
     });
     res.status(201).json(toSarReportResponse(report));
   });
@@ -39,6 +53,52 @@ export function sarReportRouter(deps: SarReportRouterDeps): Router {
     const auth = requireAuthContext(req);
     const report = await deps.approveSarReportDraft({ auth, sarReportId: req.params.id! });
     res.status(200).json(toSarReportResponse(report));
+  });
+
+  /*
+   * SAR-003. `GET` and not `POST` because it produces no side effect on the
+   * report — it renders what is already locked. Sent as a downloadable file:
+   * this is filed with a regulator, so it belongs on disk with a name, not
+   * pretty-printed in a browser tab.
+   */
+  router.get('/sar-reports/:id/xml', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const { report, profile } = await deps.generateSarReportXml({
+      auth,
+      sarReportId: req.params.id!,
+    });
+    const xml = renderFincenSarXml({ report, profile, generatedAt: new Date() });
+    res.status(200);
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="sar-${report.id}.xml"`);
+    res.send(xml);
+  });
+
+  /*
+   * The filing identity is per tenant, so it needs no id in the path — the
+   * organization comes from the token, same shape as
+   * `/organization-fraud-config`.
+   */
+  router.get('/sar-filing-profile', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const profile = await deps.getSarFilingProfile({ auth });
+    res.status(200).json(profile === null ? null : toSarFilingProfileResponse(profile));
+  });
+
+  router.put('/sar-filing-profile', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(upsertSarFilingProfileSchema, req.body);
+    const profile = await deps.upsertSarFilingProfile({
+      auth,
+      filerName: body.filerName,
+      filerTin: body.filerTin,
+      filerTinType: body.filerTinType,
+      filerAddress: createPostalAddress(body.filerAddress),
+      contactName: body.contactName,
+      contactPhone: body.contactPhone,
+      contactEmail: body.contactEmail ?? null,
+    });
+    res.status(200).json(toSarFilingProfileResponse(profile));
   });
 
   return router;

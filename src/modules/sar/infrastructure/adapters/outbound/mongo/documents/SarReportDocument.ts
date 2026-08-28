@@ -8,6 +8,15 @@
 
 import type { ObjectId } from 'mongodb';
 
+/** Embedded address; `null` on the document when the subject's is unknown. */
+export interface PostalAddressDocument {
+  readonly street: string;
+  readonly city: string;
+  readonly state: string | null;
+  readonly postal_code: string;
+  readonly country: string;
+}
+
 export interface SarReportDocument {
   readonly _id: ObjectId;
   readonly organization_id: ObjectId;
@@ -16,7 +25,12 @@ export interface SarReportDocument {
   readonly status: string;
   readonly narrative: string;
   readonly subject_name: string | null;
+  readonly subject_address: PostalAddressDocument | null;
+  readonly subject_tin: string | null;
+  readonly subject_tin_type: string | null;
+  readonly subject_birth_date: Date | null;
   readonly suspicious_amount: number | null;
+  readonly activity_categories: readonly string[];
   readonly activity_start_date: Date | null;
   readonly activity_end_date: Date | null;
   readonly created_by: string;

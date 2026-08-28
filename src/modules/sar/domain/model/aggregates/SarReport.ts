@@ -3,6 +3,9 @@ import type { SarReportId } from '../value-objects/SarReportId.js';
 import type { SarReportStatus } from '../value-objects/SarReportStatus.js';
 import { sarReportStatusTransitions } from '../../services/transitions.js';
 import { assertTransitionAllowed } from '../../services/StatusTransitionPolicy.js';
+import type { PostalAddress } from '../value-objects/PostalAddress.js';
+import type { SuspiciousActivityCategory } from '../value-objects/SuspiciousActivityCategory.js';
+import type { TinType } from '../value-objects/TinType.js';
 import { invariantViolation, selfApprovalForbidden } from '../../errors/SarError.js';
 
 export interface SarReportProps {
@@ -21,9 +24,21 @@ export interface SarReportProps {
   /** The suspicious-activity description. Required — a SAR with nothing written is not a draft. */
   readonly narrative: string;
   readonly subjectName: string | null;
+  /**
+   * Subject detail the filing schema asks for. All nullable because a SAR is
+   * often drafted on what is known at the time — an unidentified counterparty
+   * is a normal reason to file, not a reason to block the draft.
+   * `SarFilingReadiness` is what refuses to BUILD the file without them.
+   */
+  readonly subjectAddress: PostalAddress | null;
+  readonly subjectTin: string | null;
+  readonly subjectTinType: TinType | null;
+  readonly subjectBirthDate: Instant | null;
   readonly suspiciousAmount: number | null;
   readonly activityStartDate: Instant | null;
   readonly activityEndDate: Instant | null;
+  /** How the activity is classified. Empty on a draft; required to file. */
+  readonly activityCategories: readonly SuspiciousActivityCategory[];
   readonly createdBy: string;
   /** Set only once `approve()` has been called (SAR-002). */
   readonly approvedBy: string | null;
@@ -39,9 +54,14 @@ export interface CreateSarReportInput {
   readonly amlAlertId?: string | null;
   readonly narrative: string;
   readonly subjectName?: string | null;
+  readonly subjectAddress?: PostalAddress | null;
+  readonly subjectTin?: string | null;
+  readonly subjectTinType?: TinType | null;
+  readonly subjectBirthDate?: Instant | null;
   readonly suspiciousAmount?: number | null;
   readonly activityStartDate?: Instant | null;
   readonly activityEndDate?: Instant | null;
+  readonly activityCategories?: readonly SuspiciousActivityCategory[];
   readonly createdBy: string;
   readonly now: Instant;
 }
@@ -69,9 +89,14 @@ export class SarReport {
       status: 'DRAFT',
       narrative: input.narrative,
       subjectName: input.subjectName ?? null,
+      subjectAddress: input.subjectAddress ?? null,
+      subjectTin: input.subjectTin?.trim() || null,
+      subjectTinType: input.subjectTinType ?? null,
+      subjectBirthDate: input.subjectBirthDate ?? null,
       suspiciousAmount: input.suspiciousAmount ?? null,
       activityStartDate: input.activityStartDate ?? null,
       activityEndDate: input.activityEndDate ?? null,
+      activityCategories: dedupe(input.activityCategories ?? []),
       createdBy: input.createdBy,
       approvedBy: null,
       approvedAt: null,
@@ -136,6 +161,26 @@ export class SarReport {
     return this.props.subjectName;
   }
 
+  get subjectAddress(): PostalAddress | null {
+    return this.props.subjectAddress;
+  }
+
+  get subjectTin(): string | null {
+    return this.props.subjectTin;
+  }
+
+  get subjectTinType(): TinType | null {
+    return this.props.subjectTinType;
+  }
+
+  get subjectBirthDate(): Instant | null {
+    return this.props.subjectBirthDate;
+  }
+
+  get activityCategories(): readonly SuspiciousActivityCategory[] {
+    return this.props.activityCategories;
+  }
+
   get suspiciousAmount(): number | null {
     return this.props.suspiciousAmount;
   }
@@ -187,4 +232,15 @@ function assertNonEmpty(field: 'organizationId' | 'createdBy' | 'narrative', val
   if (value.trim().length === 0) {
     throw invariantViolation(`SarReport ${field} must be a non-empty string`, { field, value });
   }
+}
+
+/**
+ * The same category twice says nothing twice. Deduping on the way in keeps
+ * the generated file from carrying a repeated element that some validators
+ * accept and others reject.
+ */
+function dedupe(
+  categories: readonly SuspiciousActivityCategory[],
+): readonly SuspiciousActivityCategory[] {
+  return [...new Set(categories)];
 }

@@ -102,3 +102,20 @@ export function selfApprovalForbidden(createdBy: string, reportId: string): SarE
     { createdBy, reportId },
   );
 }
+
+/**
+ * The report is not fileable yet, with everything that is wrong.
+ *
+ * The defects travel in `metadata` so the panel can put each message next to
+ * its own field instead of printing one sentence above the form.
+ */
+export function sarNotReadyToFile(
+  reportId: string,
+  defects: readonly { readonly field: string; readonly reason: string }[],
+): SarError {
+  return new SarError(
+    'SAR_NOT_READY_TO_FILE',
+    `the report is missing ${defects.length} thing(s) the filing schema requires`,
+    { reportId, defects: defects.map((d) => ({ ...d })) },
+  );
+}

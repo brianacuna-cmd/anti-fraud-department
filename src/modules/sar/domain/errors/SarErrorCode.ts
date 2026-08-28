@@ -23,4 +23,11 @@ export type SarErrorCode =
    * Four eyes (SAR-002): whoever drafted the report cannot be the one who
    * approves and locks it.
    */
-  | 'SELF_APPROVAL_FORBIDDEN';
+  | 'SELF_APPROVAL_FORBIDDEN'
+  /**
+   * The report cannot be turned into a filing document yet: the tenant has
+   * no filing profile, or required fields are missing or out of range. The
+   * error carries the full list of defects — one per attempt would turn a
+   * form into a round trip per field.
+   */
+  | 'SAR_NOT_READY_TO_FILE';

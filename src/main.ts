@@ -266,6 +266,11 @@ import { createCreateSarReportDraftUseCase } from './modules/sar/application/Cre
 import { createApproveSarReportDraftUseCase } from './modules/sar/application/ApproveSarReportDraft.js';
 import { generateSarReportId } from './modules/sar/domain/model/value-objects/SarReportId.js';
 import { sarReportRouter } from './modules/sar/infrastructure/adapters/inbound/http/sarReportRouter.js';
+import { createGenerateSarReportXmlUseCase } from './modules/sar/application/GenerateSarReportXml.js';
+import { createGetSarFilingProfileUseCase } from './modules/sar/application/GetSarFilingProfile.js';
+import { createUpsertSarFilingProfileUseCase } from './modules/sar/application/UpsertSarFilingProfile.js';
+import { MongoOrganizationSarFilingProfileRepository } from './modules/sar/infrastructure/adapters/outbound/mongo/MongoOrganizationSarFilingProfileRepository.js';
+import { generateOrganizationSarFilingProfileId } from './modules/sar/domain/model/value-objects/OrganizationSarFilingProfileId.js';
 import { sarErrorStatus } from './modules/sar/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createSarSourceVerifier } from './composition/sarSourceVerifier.js';
 import { createSarAuditRecorderAdapter } from './composition/sarAuditRecorderAdapter.js';
@@ -1790,6 +1795,7 @@ async function bootstrap(): Promise<void> {
   const sarReports = new MongoSarReportRepository(db);
   const sarUnitOfWork = new SarMongoUnitOfWork(client);
   const sarAuditRecorder = createSarAuditRecorderAdapter(recordAuditLog);
+  const sarFilingProfiles = new MongoOrganizationSarFilingProfileRepository(db);
   const sarReportHttpRouter = sarReportRouter({
     createSarReportDraft: createCreateSarReportDraftUseCase({
       reports: sarReports,
@@ -1804,6 +1810,21 @@ async function bootstrap(): Promise<void> {
       auditRecorder: sarAuditRecorder,
       unitOfWork: sarUnitOfWork,
       clock,
+    }),
+    // SAR-003: gathers and CHECKS; the router renders the XML.
+    generateSarReportXml: createGenerateSarReportXmlUseCase({
+      reports: sarReports,
+      profiles: sarFilingProfiles,
+      auditRecorder: sarAuditRecorder,
+      clock,
+    }),
+    getSarFilingProfile: createGetSarFilingProfileUseCase({ profiles: sarFilingProfiles }),
+    upsertSarFilingProfile: createUpsertSarFilingProfileUseCase({
+      profiles: sarFilingProfiles,
+      auditRecorder: sarAuditRecorder,
+      unitOfWork: sarUnitOfWork,
+      clock,
+      generateOrganizationSarFilingProfileId,
     }),
   });
 
