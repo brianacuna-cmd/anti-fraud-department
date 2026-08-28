@@ -22,6 +22,11 @@ export interface SarReportResponseDto {
   readonly createdBy: string;
   readonly approvedBy: string | null;
   readonly approvedAt: string | null;
+  readonly bsaIdentifier: string | null;
+  readonly filedAt: string | null;
+  readonly filedBy: string | null;
+  readonly acknowledgementReference: string | null;
+  readonly filingRejectionReason: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -47,6 +52,11 @@ export function toSarReportResponse(report: SarReport): SarReportResponseDto {
     createdBy: report.createdBy,
     approvedBy: report.approvedBy,
     approvedAt: report.approvedAt ? toDate(report.approvedAt).toISOString() : null,
+    bsaIdentifier: report.bsaIdentifier,
+    filedAt: report.filedAt ? toDate(report.filedAt).toISOString() : null,
+    filedBy: report.filedBy,
+    acknowledgementReference: report.acknowledgementReference,
+    filingRejectionReason: report.filingRejectionReason,
     createdAt: toDate(report.createdAt).toISOString(),
     updatedAt: toDate(report.updatedAt).toISOString(),
   };

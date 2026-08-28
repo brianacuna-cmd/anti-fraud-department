@@ -36,6 +36,11 @@ export interface SarReportDocument {
   readonly created_by: string;
   readonly approved_by: string | null;
   readonly approved_at: Date | null;
+  readonly bsa_identifier: string | null;
+  readonly filed_at: Date | null;
+  readonly filed_by: string | null;
+  readonly acknowledgement_reference: string | null;
+  readonly filing_rejection_reason: string | null;
   readonly created_at: Date;
   readonly updated_at: Date;
 }

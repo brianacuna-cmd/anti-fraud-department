@@ -17,6 +17,7 @@ import { FakeSarSourceVerifier } from '../../../helpers/sar/FakeSarSourceVerifie
 import { PassthroughUnitOfWork } from '../../../../src/modules/sar/infrastructure/PassthroughUnitOfWork.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { createGenerateSarReportXmlUseCase } from '../../../../src/modules/sar/application/GenerateSarReportXml.js';
+import { createRecordSarFilingStatusUseCase } from '../../../../src/modules/sar/application/RecordSarFilingStatus.js';
 import { createGetSarFilingProfileUseCase } from '../../../../src/modules/sar/application/GetSarFilingProfile.js';
 import { createUpsertSarFilingProfileUseCase } from '../../../../src/modules/sar/application/UpsertSarFilingProfile.js';
 import { generateOrganizationSarFilingProfileId } from '../../../../src/modules/sar/domain/model/value-objects/OrganizationSarFilingProfileId.js';
@@ -54,6 +55,12 @@ function buildApp(actorPerRequest: () => AuthContext) {
     auditRecorder,
     clock,
   });
+  const recordSarFilingStatus = createRecordSarFilingStatusUseCase({
+    reports,
+    auditRecorder,
+    unitOfWork,
+    clock,
+  });
   const getSarFilingProfile = createGetSarFilingProfileUseCase({ profiles });
   const upsertSarFilingProfile = createUpsertSarFilingProfileUseCase({
     profiles,
@@ -73,6 +80,7 @@ function buildApp(actorPerRequest: () => AuthContext) {
       createSarReportDraft,
       approveSarReportDraft,
       generateSarReportXml,
+      recordSarFilingStatus,
       getSarFilingProfile,
       upsertSarFilingProfile,
     }),
@@ -413,5 +421,102 @@ describe('GET /sar-reports/:id/xml', () => {
       }),
     );
     await request(app).get(`/api/v1/sar-reports/${oid('missing')}/xml`).expect(404);
+  });
+});
+
+describe('PATCH /sar-reports/:id/filing-status', () => {
+  const BSA_ID = '31000012345678';
+
+  /** Deja un informe aprobado (cuatro ojos: redacta uno, aprueba otro). */
+  async function approvedReport(): Promise<{
+    app: import('express').Express;
+    id: string;
+    auditRecorder: ReturnType<typeof buildApp>['auditRecorder'];
+  }> {
+    let currentActor = SUPERVISOR;
+    const { app, sourceVerifier, auditRecorder } = buildApp(() => currentActor());
+    sourceVerifier.allowCase(oid('case-1'), true);
+    const created = await request(app)
+      .post('/api/v1/sar-reports')
+      .send({ caseId: oid('case-1'), narrative: 'Structured deposits.' })
+      .expect(201);
+    currentActor = SUPERVISOR_2;
+    await request(app).patch(`/api/v1/sar-reports/${created.body.id}/approve`).send({}).expect(200);
+    return { app, id: created.body.id, auditRecorder };
+  }
+
+  it('records the tracking number and the acknowledgement', async () => {
+    const { app, id, auditRecorder } = await approvedReport();
+
+    const response = await request(app)
+      .patch(`/api/v1/sar-reports/${id}/filing-status`)
+      .send({
+        outcome: 'FILED',
+        bsaIdentifier: BSA_ID,
+        filedAt: '2025-12-01T00:00:00.000Z',
+        acknowledgementReference: 'ACK-2026-0042',
+      })
+      .expect(200);
+
+    expect(response.body.status).toBe('FILED');
+    expect(response.body.bsaIdentifier).toBe(BSA_ID);
+    expect(response.body.acknowledgementReference).toBe('ACK-2026-0042');
+    expect(auditRecorder.all().map((e) => e.action)).toContain('RECORD_SAR_FILING_STATUS');
+  });
+
+  it('records a rejection with its reason', async () => {
+    const { app, id } = await approvedReport();
+
+    const response = await request(app)
+      .patch(`/api/v1/sar-reports/${id}/filing-status`)
+      .send({ outcome: 'REJECTED', reason: 'Subject TIN failed validation' })
+      .expect(200);
+
+    expect(response.body.status).toBe('FILING_REJECTED');
+    expect(response.body.filingRejectionReason).toBe('Subject TIN failed validation');
+  });
+
+  /*
+   * Union discriminada: una aceptacion sin numero de radicacion y un rechazo
+   * sin motivo no significan nada, asi que mezclarlos es 400.
+   */
+  it('rejects a body that mixes the two outcomes', async () => {
+    const { app, id } = await approvedReport();
+
+    await request(app)
+      .patch(`/api/v1/sar-reports/${id}/filing-status`)
+      .send({ outcome: 'FILED', reason: 'no tracking number here' })
+      .expect(400);
+  });
+
+  it('rejects a malformed BSA identifier', async () => {
+    const { app, id } = await approvedReport();
+
+    await request(app)
+      .patch(`/api/v1/sar-reports/${id}/filing-status`)
+      .send({ outcome: 'FILED', bsaIdentifier: '123', filedAt: '2025-12-01T00:00:00.000Z' })
+      .expect(400);
+  });
+
+  it('refuses to file a draft that was never approved', async () => {
+    const { app, sourceVerifier } = buildApp(SUPERVISOR);
+    sourceVerifier.allowCase(oid('case-1'), true);
+    const created = await request(app)
+      .post('/api/v1/sar-reports')
+      .send({ caseId: oid('case-1'), narrative: 'x' })
+      .expect(201);
+
+    await request(app)
+      .patch(`/api/v1/sar-reports/${created.body.id}/filing-status`)
+      .send({ outcome: 'FILED', bsaIdentifier: BSA_ID, filedAt: '2025-12-01T00:00:00.000Z' })
+      .expect(422);
+  });
+
+  it('rejects ANALYST with 403', async () => {
+    const { app } = buildApp(ANALYST);
+    await request(app)
+      .patch(`/api/v1/sar-reports/${oid('any')}/filing-status`)
+      .send({ outcome: 'REJECTED', reason: 'x' })
+      .expect(403);
   });
 });

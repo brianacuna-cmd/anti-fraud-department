@@ -60,3 +60,31 @@ export const upsertSarFilingProfileSchema = z
   .strict();
 
 export type UpsertSarFilingProfileBody = z.infer<typeof upsertSarFilingProfileSchema>;
+
+/**
+ * PATCH /sar-reports/:id/filing-status body — what the regulator answered.
+ *
+ * A discriminated union on `outcome`, not a bag of optional fields: an
+ * acceptance without a tracking number and a rejection without a reason are
+ * both meaningless, and `.strict()` on each branch makes sending the wrong
+ * half a 400 instead of a silently half-filled record.
+ */
+export const recordSarFilingStatusSchema = z.discriminatedUnion('outcome', [
+  z
+    .object({
+      outcome: z.literal('FILED'),
+      bsaIdentifier: z.string().min(1),
+      /** The date on the acknowledgement, not the day someone typed it in. */
+      filedAt: z.iso.datetime(),
+      acknowledgementReference: z.string().min(1).nullable().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      outcome: z.literal('REJECTED'),
+      reason: z.string().min(1),
+    })
+    .strict(),
+]);
+
+export type RecordSarFilingStatusBody = z.infer<typeof recordSarFilingStatusSchema>;

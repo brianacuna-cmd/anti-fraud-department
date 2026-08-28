@@ -3,12 +3,17 @@ import { requireAuthContext } from '../../../../../../shared/http/requestAuthCon
 import { fromDate } from '../../../../../../shared/time/Instant.js';
 import type { createCreateSarReportDraftUseCase } from '../../../../application/CreateSarReportDraft.js';
 import type { createApproveSarReportDraftUseCase } from '../../../../application/ApproveSarReportDraft.js';
-import { createSarReportSchema, upsertSarFilingProfileSchema } from './dto/sarReportSchemas.js';
+import {
+  createSarReportSchema,
+  recordSarFilingStatusSchema,
+  upsertSarFilingProfileSchema,
+} from './dto/sarReportSchemas.js';
 import { toSarFilingProfileResponse, toSarReportResponse } from './mappers/SarReportHttpMapper.js';
 import { renderFincenSarXml } from './report/FincenSarXmlRenderer.js';
 import { createPostalAddress } from '../../../../domain/model/value-objects/PostalAddress.js';
 import { createSuspiciousActivityCategory } from '../../../../domain/model/value-objects/SuspiciousActivityCategory.js';
 import type { createGenerateSarReportXmlUseCase } from '../../../../application/GenerateSarReportXml.js';
+import type { createRecordSarFilingStatusUseCase } from '../../../../application/RecordSarFilingStatus.js';
 import type { createGetSarFilingProfileUseCase } from '../../../../application/GetSarFilingProfile.js';
 import type { createUpsertSarFilingProfileUseCase } from '../../../../application/UpsertSarFilingProfile.js';
 import { parseRequest } from './parseRequest.js';
@@ -17,6 +22,7 @@ export interface SarReportRouterDeps {
   readonly createSarReportDraft: ReturnType<typeof createCreateSarReportDraftUseCase>;
   readonly approveSarReportDraft: ReturnType<typeof createApproveSarReportDraftUseCase>;
   readonly generateSarReportXml: ReturnType<typeof createGenerateSarReportXmlUseCase>;
+  readonly recordSarFilingStatus: ReturnType<typeof createRecordSarFilingStatusUseCase>;
   readonly getSarFilingProfile: ReturnType<typeof createGetSarFilingProfileUseCase>;
   readonly upsertSarFilingProfile: ReturnType<typeof createUpsertSarFilingProfileUseCase>;
 }
@@ -72,6 +78,30 @@ export function sarReportRouter(deps: SarReportRouterDeps): Router {
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="sar-${report.id}.xml"`);
     res.send(xml);
+  });
+
+  /*
+   * SAR-004. Records what came back from the regulator; it does not submit
+   * anything — submission goes through FinCEN's E-Filing system, outside this
+   * application, and what lands here is the receipt.
+   */
+  router.patch('/sar-reports/:id/filing-status', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(recordSarFilingStatusSchema, req.body);
+    const report = await deps.recordSarFilingStatus({
+      auth,
+      sarReportId: req.params.id!,
+      filing:
+        body.outcome === 'FILED'
+          ? {
+              outcome: 'FILED',
+              bsaIdentifier: body.bsaIdentifier,
+              filedAt: fromDate(new Date(body.filedAt)),
+              acknowledgementReference: body.acknowledgementReference ?? null,
+            }
+          : { outcome: 'REJECTED', reason: body.reason },
+    });
+    res.status(200).json(toSarReportResponse(report));
   });
 
   /*

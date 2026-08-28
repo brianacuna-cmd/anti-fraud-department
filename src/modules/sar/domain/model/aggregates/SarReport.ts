@@ -1,4 +1,5 @@
 import type { Instant } from '../../../../../shared/time/Instant.js';
+import { toDate } from '../../../../../shared/time/Instant.js';
 import type { SarReportId } from '../value-objects/SarReportId.js';
 import type { SarReportStatus } from '../value-objects/SarReportStatus.js';
 import { sarReportStatusTransitions } from '../../services/transitions.js';
@@ -43,6 +44,16 @@ export interface SarReportProps {
   /** Set only once `approve()` has been called (SAR-002). */
   readonly approvedBy: string | null;
   readonly approvedAt: Instant | null;
+  /**
+   * Filing outcome (SAR-004). All null until the report is actually sent:
+   * the tracking number comes back FROM the regulator, so it cannot exist
+   * before submission.
+   */
+  readonly bsaIdentifier: string | null;
+  readonly filedAt: Instant | null;
+  readonly filedBy: string | null;
+  readonly acknowledgementReference: string | null;
+  readonly filingRejectionReason: string | null;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
 }
@@ -100,6 +111,11 @@ export class SarReport {
       createdBy: input.createdBy,
       approvedBy: null,
       approvedAt: null,
+      bsaIdentifier: null,
+      filedAt: null,
+      filedBy: null,
+      acknowledgementReference: null,
+      filingRejectionReason: null,
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -130,6 +146,64 @@ export class SarReport {
       approvedBy,
       approvedAt: now,
       updatedAt: now,
+    });
+  }
+
+  /**
+   * SAR-004: the regulator took it. Records the tracking number it gave back,
+   * the acknowledgement and the date the submission was formally made.
+   *
+   * `filedAt` is supplied, not taken from the clock: the report is filed
+   * through FinCEN's E-Filing system and recorded here afterwards, so the
+   * date that matters is the one on the acknowledgement, not the one someone
+   * got round to typing it in.
+   *
+   * Deliberately does NOT re-check filing readiness. The report is already
+   * with the regulator — refusing to record that because a field looks thin
+   * would leave the system claiming a filing never happened.
+   */
+  recordFiling(input: {
+    bsaIdentifier: string;
+    filedAt: Instant;
+    filedBy: string;
+    acknowledgementReference?: string | null;
+    now: Instant;
+  }): SarReport {
+    assertBsaIdentifier(input.bsaIdentifier);
+    assertNonEmpty('filedBy', input.filedBy);
+    assertNotInFuture(input.filedAt, input.now);
+    assertTransitionAllowed(sarReportStatusTransitions, this.props.status, 'FILED');
+
+    return new SarReport({
+      ...this.props,
+      status: 'FILED',
+      bsaIdentifier: input.bsaIdentifier.trim(),
+      filedAt: input.filedAt,
+      filedBy: input.filedBy,
+      acknowledgementReference: input.acknowledgementReference?.trim() || null,
+      /* A successful re-submission clears the earlier rejection. */
+      filingRejectionReason: null,
+      updatedAt: input.now,
+    });
+  }
+
+  /**
+   * SAR-004: the regulator bounced it.
+   *
+   * The reason is required. A rejection with no reason is the same dead end
+   * as no record at all — whoever picks the report up next has to know what
+   * to fix before re-submitting.
+   */
+  recordFilingRejection(input: { reason: string; recordedBy: string; now: Instant }): SarReport {
+    assertNonEmpty('filingRejectionReason', input.reason);
+    assertNonEmpty('recordedBy', input.recordedBy);
+    assertTransitionAllowed(sarReportStatusTransitions, this.props.status, 'FILING_REJECTED');
+
+    return new SarReport({
+      ...this.props,
+      status: 'FILING_REJECTED',
+      filingRejectionReason: input.reason.trim(),
+      updatedAt: input.now,
     });
   }
 
@@ -205,6 +279,26 @@ export class SarReport {
     return this.props.approvedAt;
   }
 
+  get bsaIdentifier(): string | null {
+    return this.props.bsaIdentifier;
+  }
+
+  get filedAt(): Instant | null {
+    return this.props.filedAt;
+  }
+
+  get filedBy(): string | null {
+    return this.props.filedBy;
+  }
+
+  get acknowledgementReference(): string | null {
+    return this.props.acknowledgementReference;
+  }
+
+  get filingRejectionReason(): string | null {
+    return this.props.filingRejectionReason;
+  }
+
   get createdAt(): Instant {
     return this.props.createdAt;
   }
@@ -228,7 +322,37 @@ function assertExactlyOneSource(caseId: string | null, amlAlertId: string | null
   }
 }
 
-function assertNonEmpty(field: 'organizationId' | 'createdBy' | 'narrative', value: string): void {
+/**
+ * A FinCEN BSA Identifier is 14 digits.
+ *
+ * Kept as a named constant, like `FILING_LIMITS`, so that checking it against
+ * the current specification is reading one line. Rejecting a malformed one
+ * here beats storing a tracking number that leads nowhere when a regulator
+ * asks for the filing months later.
+ */
+const BSA_IDENTIFIER_DIGITS = 14;
+
+function assertBsaIdentifier(value: string): void {
+  const trimmed = value.trim();
+  if (!new RegExp(`^\\d{${BSA_IDENTIFIER_DIGITS}}$`).test(trimmed)) {
+    throw invariantViolation(
+      `the BSA identifier must be ${BSA_IDENTIFIER_DIGITS} digits`,
+      { bsaIdentifier: value },
+    );
+  }
+}
+
+/** A filing cannot have happened tomorrow. */
+function assertNotInFuture(filedAt: Instant, now: Instant): void {
+  if (toDate(filedAt).getTime() > toDate(now).getTime()) {
+    throw invariantViolation('filedAt is in the future', {});
+  }
+}
+
+function assertNonEmpty(
+  field: 'organizationId' | 'createdBy' | 'narrative' | 'filedBy' | 'recordedBy' | 'filingRejectionReason',
+  value: string,
+): void {
   if (value.trim().length === 0) {
     throw invariantViolation(`SarReport ${field} must be a non-empty string`, { field, value });
   }

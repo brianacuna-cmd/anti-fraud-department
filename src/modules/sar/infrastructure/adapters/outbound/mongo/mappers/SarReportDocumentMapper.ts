@@ -34,6 +34,13 @@ export function toDomain(document: SarReportDocument): SarReport {
     createdBy: document.created_by,
     approvedBy: document.approved_by,
     approvedAt: document.approved_at ? fromDate(document.approved_at) : null,
+    /* Documents written before SAR-004 have no filing keys — `?? null`
+     * keeps every report already on disk readable. */
+    bsaIdentifier: document.bsa_identifier ?? null,
+    filedAt: document.filed_at ? fromDate(document.filed_at) : null,
+    filedBy: document.filed_by ?? null,
+    acknowledgementReference: document.acknowledgement_reference ?? null,
+    filingRejectionReason: document.filing_rejection_reason ?? null,
     createdAt: fromDate(document.created_at),
     updatedAt: fromDate(document.updated_at),
   });
@@ -60,6 +67,11 @@ export function toDocument(report: SarReport): SarReportDocument {
     created_by: report.createdBy,
     approved_by: report.approvedBy,
     approved_at: report.approvedAt ? toDate(report.approvedAt) : null,
+    bsa_identifier: report.bsaIdentifier,
+    filed_at: report.filedAt ? toDate(report.filedAt) : null,
+    filed_by: report.filedBy,
+    acknowledgement_reference: report.acknowledgementReference,
+    filing_rejection_reason: report.filingRejectionReason,
     created_at: toDate(report.createdAt),
     updated_at: toDate(report.updatedAt),
   };

@@ -267,6 +267,7 @@ import { createApproveSarReportDraftUseCase } from './modules/sar/application/Ap
 import { generateSarReportId } from './modules/sar/domain/model/value-objects/SarReportId.js';
 import { sarReportRouter } from './modules/sar/infrastructure/adapters/inbound/http/sarReportRouter.js';
 import { createGenerateSarReportXmlUseCase } from './modules/sar/application/GenerateSarReportXml.js';
+import { createRecordSarFilingStatusUseCase } from './modules/sar/application/RecordSarFilingStatus.js';
 import { createGetSarFilingProfileUseCase } from './modules/sar/application/GetSarFilingProfile.js';
 import { createUpsertSarFilingProfileUseCase } from './modules/sar/application/UpsertSarFilingProfile.js';
 import { MongoOrganizationSarFilingProfileRepository } from './modules/sar/infrastructure/adapters/outbound/mongo/MongoOrganizationSarFilingProfileRepository.js';
@@ -1816,6 +1817,13 @@ async function bootstrap(): Promise<void> {
       reports: sarReports,
       profiles: sarFilingProfiles,
       auditRecorder: sarAuditRecorder,
+      clock,
+    }),
+    // SAR-004: records the regulator's answer; it does not submit anything.
+    recordSarFilingStatus: createRecordSarFilingStatusUseCase({
+      reports: sarReports,
+      auditRecorder: sarAuditRecorder,
+      unitOfWork: sarUnitOfWork,
       clock,
     }),
     getSarFilingProfile: createGetSarFilingProfileUseCase({ profiles: sarFilingProfiles }),
