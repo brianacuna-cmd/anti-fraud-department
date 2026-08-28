@@ -10,9 +10,13 @@ import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemor
 import { InMemoryCaseSlaTrackingRepository } from '../../../helpers/case-management/InMemoryCaseSlaTrackingRepository.js';
 import { InMemoryCaseManagementNotificationSender } from '../../../helpers/case-management/InMemoryCaseManagementNotificationSender.js';
 import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
+import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
+import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
+import type { OutboxEvent } from '../../../../src/shared/outbox/OutboxEvent.js';
+import type { UnitOfWork } from '../../../../src/modules/case-management/domain/ports/UnitOfWork.js';
 
 const CREATED = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const NOW = fromDate(new Date('2026-01-02T00:00:00.000Z'));
@@ -48,20 +52,64 @@ function buildTracking(id: string, caseId: string, dueDate: typeof NOW, override
   return tracking;
 }
 
+function sweepDeps(overrides: {
+  cases: InMemoryCaseRepository;
+  slaTracking: InMemoryCaseSlaTrackingRepository;
+  notificationSender: InMemoryCaseManagementNotificationSender;
+  assigneeDirectory?: InMemoryAssigneeDirectory;
+  unitOfWork?: UnitOfWork;
+  outbox: InMemoryOutboxEventRepository;
+}) {
+  return {
+    cases: overrides.cases,
+    slaTracking: overrides.slaTracking,
+    notificationSender: overrides.notificationSender,
+    assigneeDirectory: overrides.assigneeDirectory ?? new InMemoryAssigneeDirectory(),
+    unitOfWork: overrides.unitOfWork ?? new PassthroughUnitOfWork(),
+    clock: new FixedClock(NOW),
+    outbox: overrides.outbox,
+    generateOutboxEventId,
+  };
+}
+
 function buildUseCase() {
   const cases = new InMemoryCaseRepository();
   const slaTracking = new InMemoryCaseSlaTrackingRepository();
   const notificationSender = new InMemoryCaseManagementNotificationSender();
   const assigneeDirectory = new InMemoryAssigneeDirectory();
-  const sweepSlaTracking = createSweepSlaTrackingUseCase({
-    cases,
-    slaTracking,
-    notificationSender,
-    assigneeDirectory,
-    unitOfWork: new PassthroughUnitOfWork(),
-    clock: new FixedClock(NOW),
+  const outbox = new InMemoryOutboxEventRepository();
+  const sweepSlaTracking = createSweepSlaTrackingUseCase(
+    sweepDeps({ cases, slaTracking, notificationSender, assigneeDirectory, outbox }),
+  );
+  return { sweepSlaTracking, cases, slaTracking, notificationSender, assigneeDirectory, outbox };
+}
+
+function expectSlaHopOutbox(
+  event: OutboxEvent | undefined,
+  expected: {
+    eventType: 'SLA_WARNING' | 'SLA_BREACHED';
+    previousStatus: 'ON_TRACK' | 'WARNING';
+    status: 'WARNING' | 'BREACHED';
+    caseId?: string;
+    trackingId?: string;
+  },
+) {
+  expect(event).toBeDefined();
+  const caseId = expected.caseId ?? oid('case-1');
+  const trackingId = expected.trackingId ?? oid('tracking-1');
+  expect(event!.eventType).toBe(expected.eventType);
+  expect(event!.aggregateType).toBe('cases');
+  expect(event!.aggregateId).toBe(caseId);
+  expect(event!.organizationId).toBe(ORG_1);
+  expect(event!.status).toBe('PENDING');
+  expect(event!.payload).toEqual({
+    case_id: caseId,
+    organization_id: ORG_1,
+    sla_tracking_id: trackingId,
+    previous_status: expected.previousStatus,
+    status: expected.status,
+    due_date: PAST_DUE,
   });
-  return { sweepSlaTracking, cases, slaTracking, notificationSender, assigneeDirectory };
 }
 
 describe('createSweepSlaTrackingUseCase', () => {
@@ -241,18 +289,199 @@ describe('createSweepSlaTrackingUseCase', () => {
       },
     };
 
-    const sweepSlaTracking = createSweepSlaTrackingUseCase({
-      cases,
-      slaTracking,
-      notificationSender,
-      assigneeDirectory: new InMemoryAssigneeDirectory(),
-      unitOfWork: flakyUnitOfWork,
-      clock: new FixedClock(NOW),
-    });
+    const outbox = new InMemoryOutboxEventRepository();
+    const sweepSlaTracking = createSweepSlaTrackingUseCase(
+      sweepDeps({
+        cases,
+        slaTracking,
+        notificationSender,
+        unitOfWork: flakyUnitOfWork,
+        outbox,
+      }),
+    );
 
     await expect(sweepSlaTracking()).rejects.toThrow('simulated per-row failure');
 
     const ok = await slaTracking.findByCaseId(createCaseId(oid('case-ok')));
     expect(ok?.status).toBe('WARNING');
+    const failed = await slaTracking.findByCaseId(createCaseId(oid('case-fail')));
+    expect(failed?.status).toBe('ON_TRACK');
+    expect(outbox.all()).toHaveLength(1);
+    expectSlaHopOutbox(outbox.all()[0], {
+      eventType: 'SLA_WARNING',
+      previousStatus: 'ON_TRACK',
+      status: 'WARNING',
+      caseId: oid('case-ok'),
+      trackingId: oid('tracking-ok'),
+    });
+  });
+
+  it.each([
+    {
+      hop: 'ON_TRACK to WARNING',
+      trackingStatus: undefined as 'WARNING' | undefined,
+      eventType: 'SLA_WARNING' as const,
+      previousStatus: 'ON_TRACK' as const,
+      status: 'WARNING' as const,
+    },
+    {
+      hop: 'WARNING to BREACHED',
+      trackingStatus: 'WARNING' as const,
+      eventType: 'SLA_BREACHED' as const,
+      previousStatus: 'WARNING' as const,
+      status: 'BREACHED' as const,
+    },
+  ])('emits one PENDING $eventType outbox event on a successful $hop hop', async ({
+    trackingStatus,
+    eventType,
+    previousStatus,
+    status,
+  }) => {
+    const { sweepSlaTracking, cases, slaTracking, outbox } = buildUseCase();
+    const assignee = createAssignedTo('USER', oid('analyst-1'));
+    await cases.save(buildCase(oid('case-1'), assignee));
+    await slaTracking.save(
+      buildTracking(oid('tracking-1'), oid('case-1'), PAST_DUE, trackingStatus ? { status: trackingStatus } : {}),
+    );
+
+    await sweepSlaTracking();
+
+    expect(outbox.all()).toHaveLength(1);
+    expectSlaHopOutbox(outbox.all()[0], { eventType, previousStatus, status });
+  });
+
+  it('emits SLA_WARNING then SLA_BREACHED across two successful ticks', async () => {
+    const { sweepSlaTracking, cases, slaTracking, outbox } = buildUseCase();
+    const assignee = createAssignedTo('USER', oid('analyst-1'));
+    await cases.save(buildCase(oid('case-1'), assignee));
+    await slaTracking.save(buildTracking(oid('tracking-1'), oid('case-1'), PAST_DUE));
+
+    await sweepSlaTracking();
+    await sweepSlaTracking();
+
+    expect(outbox.all()).toHaveLength(2);
+    expectSlaHopOutbox(outbox.all()[0], {
+      eventType: 'SLA_WARNING',
+      previousStatus: 'ON_TRACK',
+      status: 'WARNING',
+    });
+    expectSlaHopOutbox(outbox.all()[1], {
+      eventType: 'SLA_BREACHED',
+      previousStatus: 'WARNING',
+      status: 'BREACHED',
+    });
+  });
+
+  it.each([
+    {
+      closed: 'RESOLVED',
+      close: (kase: ReturnType<typeof buildCase>) =>
+        kase.transitionTo('IN_REVIEW', NOW).transitionTo('RESOLVED', NOW),
+    },
+    {
+      closed: 'ARCHIVED',
+      close: (kase: ReturnType<typeof buildCase>) =>
+        kase.transitionTo('IN_REVIEW', NOW).transitionTo('RESOLVED', NOW).transitionTo('ARCHIVED', NOW),
+    },
+  ])('inserts no outbox and does not advance when the Case is $closed', async ({ close }) => {
+    const { sweepSlaTracking, cases, slaTracking, outbox } = buildUseCase();
+    const assignee = createAssignedTo('USER', oid('analyst-1'));
+    await cases.save(close(buildCase(oid('case-1'), assignee)));
+    await slaTracking.save(buildTracking(oid('tracking-1'), oid('case-1'), PAST_DUE));
+
+    await sweepSlaTracking();
+
+    expect(outbox.all()).toHaveLength(0);
+    const row = await slaTracking.findByCaseId(createCaseId(oid('case-1')));
+    expect(row?.status).toBe('ON_TRACK');
+  });
+
+  it('inserts no additional outbox when a subsequent tick does not hop', async () => {
+    const { sweepSlaTracking, cases, slaTracking, outbox } = buildUseCase();
+    const assignee = createAssignedTo('USER', oid('analyst-1'));
+    await cases.save(buildCase(oid('case-1'), assignee));
+    await slaTracking.save(buildTracking(oid('tracking-1'), oid('case-1'), PAST_DUE));
+
+    await sweepSlaTracking();
+    await sweepSlaTracking();
+    await sweepSlaTracking();
+
+    expect(outbox.all()).toHaveLength(2);
+    const row = await slaTracking.findByCaseId(createCaseId(oid('case-1')));
+    expect(row?.status).toBe('BREACHED');
+  });
+
+  it('skips outbox when Case is missing but still advances tracking', async () => {
+    const { sweepSlaTracking, slaTracking, outbox } = buildUseCase();
+    await slaTracking.save(buildTracking(oid('tracking-1'), oid('case-1'), PAST_DUE));
+
+    const result = await sweepSlaTracking();
+
+    expect(result.advanced).toBe(1);
+    expect(outbox.all()).toHaveLength(0);
+    const row = await slaTracking.findByCaseId(createCaseId(oid('case-1')));
+    expect(row?.status).toBe('WARNING');
+  });
+
+  it.each([
+    { label: 'unassigned', assignedTo: null as ReturnType<typeof createAssignedTo> | null },
+    { label: 'empty ROLE', assignedTo: createAssignedTo('ROLE', oid('role-1')) },
+  ])('still emits one PENDING outbox row for an $label hop', async ({ assignedTo }) => {
+    const { sweepSlaTracking, cases, slaTracking, notificationSender, outbox } = buildUseCase();
+    await cases.save(buildCase(oid('case-1'), assignedTo));
+    await slaTracking.save(buildTracking(oid('tracking-1'), oid('case-1'), PAST_DUE));
+
+    await sweepSlaTracking();
+
+    expect(notificationSender.all()).toHaveLength(0);
+    expect(outbox.all()).toHaveLength(1);
+    expectSlaHopOutbox(outbox.all()[0], {
+      eventType: 'SLA_WARNING',
+      previousStatus: 'ON_TRACK',
+      status: 'WARNING',
+    });
+  });
+
+  it('still emits one PENDING outbox row when the new status was already marked notified', async () => {
+    const { sweepSlaTracking, cases, slaTracking, notificationSender, outbox } = buildUseCase();
+    const assignee = createAssignedTo('USER', oid('analyst-1'));
+    await cases.save(buildCase(oid('case-1'), assignee));
+    const created = buildTracking(oid('tracking-1'), oid('case-1'), PAST_DUE);
+    const alreadyNotifiedForWarning = CaseSlaTracking.rehydrate({
+      ...created.toProps(),
+      notifiedStatuses: new Set(['WARNING']),
+    });
+    await slaTracking.save(alreadyNotifiedForWarning);
+
+    await sweepSlaTracking();
+
+    expect(notificationSender.all()).toHaveLength(0);
+    expect(outbox.all()).toHaveLength(1);
+    expectSlaHopOutbox(outbox.all()[0], {
+      eventType: 'SLA_WARNING',
+      previousStatus: 'ON_TRACK',
+      status: 'WARNING',
+    });
+    const row = await slaTracking.findByCaseId(createCaseId(oid('case-1')));
+    expect(row?.status).toBe('WARNING');
+    expect(row?.hasNotified('WARNING')).toBe(true);
+  });
+
+  it('still notifies SLA_DUE_SOON on a hop and does not mutate the Case', async () => {
+    const { sweepSlaTracking, cases, slaTracking, notificationSender, outbox } = buildUseCase();
+    const assignee = createAssignedTo('USER', oid('analyst-1'));
+    await cases.save(buildCase(oid('case-1'), assignee));
+    await slaTracking.save(buildTracking(oid('tracking-1'), oid('case-1'), PAST_DUE));
+    const before = await cases.findById(createCaseId(oid('case-1')));
+    const snapshot = before!.toProps();
+
+    await sweepSlaTracking();
+
+    expect(notificationSender.all()).toHaveLength(1);
+    expect(notificationSender.all()[0]?.alertType).toBe('SLA_DUE_SOON');
+    expect(outbox.all()).toHaveLength(1);
+    const after = await cases.findById(createCaseId(oid('case-1')));
+    expect(after?.status).toBe('OPEN');
+    expect(after?.toProps()).toEqual(snapshot);
   });
 });

@@ -1129,6 +1129,8 @@ async function bootstrap(): Promise<void> {
     assigneeDirectory,
     unitOfWork: caseManagementUnitOfWork,
     clock,
+    outbox: outboxEvents,
+    generateOutboxEventId,
   });
   const slaSweepScheduler = createSlaSweepScheduler({ sweepSlaTracking });
   const enforcementHttpRouter = enforcementRouter({
