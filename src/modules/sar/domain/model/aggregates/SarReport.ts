@@ -1,7 +1,9 @@
 import type { Instant } from '../../../../../shared/time/Instant.js';
 import type { SarReportId } from '../value-objects/SarReportId.js';
 import type { SarReportStatus } from '../value-objects/SarReportStatus.js';
-import { invariantViolation } from '../../errors/SarError.js';
+import { sarReportStatusTransitions } from '../../services/transitions.js';
+import { assertTransitionAllowed } from '../../services/StatusTransitionPolicy.js';
+import { invariantViolation, selfApprovalForbidden } from '../../errors/SarError.js';
 
 export interface SarReportProps {
   readonly id: SarReportId;
@@ -23,6 +25,9 @@ export interface SarReportProps {
   readonly activityStartDate: Instant | null;
   readonly activityEndDate: Instant | null;
   readonly createdBy: string;
+  /** Set only once `approve()` has been called (SAR-002). */
+  readonly approvedBy: string | null;
+  readonly approvedAt: Instant | null;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
 }
@@ -68,6 +73,8 @@ export class SarReport {
       activityStartDate: input.activityStartDate ?? null,
       activityEndDate: input.activityEndDate ?? null,
       createdBy: input.createdBy,
+      approvedBy: null,
+      approvedAt: null,
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -76,6 +83,29 @@ export class SarReport {
   /** Reconstructs from persisted props — no business-rule validation. */
   static rehydrate(props: SarReportProps): SarReport {
     return new SarReport(props);
+  }
+
+  /**
+   * SAR-002: reviews, approves, and locks the report in one step. Four eyes
+   * lives HERE, not in the use case — `ApprovalRequest.decide()`'s same
+   * reasoning applies: there is exactly one path to `APPROVED`, so putting
+   * the check anywhere else is a check that can someday be bypassed.
+   */
+  approve(approvedBy: string, now: Instant): SarReport {
+    if (approvedBy.trim().length === 0) {
+      throw invariantViolation('SarReport approvedBy must be a non-empty string', { approvedBy });
+    }
+    if (approvedBy === this.props.createdBy) {
+      throw selfApprovalForbidden(this.props.createdBy, this.props.id);
+    }
+    assertTransitionAllowed(sarReportStatusTransitions, this.props.status, 'APPROVED');
+    return new SarReport({
+      ...this.props,
+      status: 'APPROVED',
+      approvedBy,
+      approvedAt: now,
+      updatedAt: now,
+    });
   }
 
   get id(): SarReportId {
@@ -120,6 +150,14 @@ export class SarReport {
 
   get createdBy(): string {
     return this.props.createdBy;
+  }
+
+  get approvedBy(): string | null {
+    return this.props.approvedBy;
+  }
+
+  get approvedAt(): Instant | null {
+    return this.props.approvedAt;
   }
 
   get createdAt(): Instant {

@@ -13,6 +13,8 @@ export interface SarReportResponseDto {
   readonly activityStartDate: string | null;
   readonly activityEndDate: string | null;
   readonly createdBy: string;
+  readonly approvedBy: string | null;
+  readonly approvedAt: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -31,6 +33,8 @@ export function toSarReportResponse(report: SarReport): SarReportResponseDto {
     activityStartDate: report.activityStartDate ? toDate(report.activityStartDate).toISOString() : null,
     activityEndDate: report.activityEndDate ? toDate(report.activityEndDate).toISOString() : null,
     createdBy: report.createdBy,
+    approvedBy: report.approvedBy,
+    approvedAt: report.approvedAt ? toDate(report.approvedAt).toISOString() : null,
     createdAt: toDate(report.createdAt).toISOString(),
     updatedAt: toDate(report.updatedAt).toISOString(),
   };

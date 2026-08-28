@@ -12,4 +12,8 @@ export const sarErrorStatus: StatusByCode = {
   SAR_SOURCE_NOT_FOUND: 404,
   // 409 not 400: the request is well formed, the source just is not confirmed yet.
   SAR_SOURCE_NOT_ELIGIBLE: 409,
+  SAR_REPORT_NOT_FOUND: 404,
+  INVALID_TRANSITION: 422,
+  // 403 not 422: the request is valid, the approver is not (four eyes).
+  SELF_APPROVAL_FORBIDDEN: 403,
 };

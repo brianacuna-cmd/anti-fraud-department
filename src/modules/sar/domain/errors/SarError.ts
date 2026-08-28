@@ -78,3 +78,27 @@ export function sarSourceNotEligible(kind: 'case' | 'amlAlert', id: string): Sar
       : 'the AML alert was not resolved as a confirmed match';
   return new SarError('SAR_SOURCE_NOT_ELIGIBLE', reason, { kind, id });
 }
+
+export function sarReportNotFound(reportId: string): SarError {
+  return new SarError('SAR_REPORT_NOT_FOUND', `SAR report "${reportId}" was not found`, { reportId });
+}
+
+export function invalidTransition(current: string, next: string): SarError {
+  return new SarError(
+    'INVALID_TRANSITION',
+    `cannot transition from "${current}" to "${next}"`,
+    { current, next },
+  );
+}
+
+/**
+ * Four eyes (SAR-002): the drafter cannot be the one who approves and locks
+ * the same report — mirrors `CaseManagementError.selfApprovalForbidden`.
+ */
+export function selfApprovalForbidden(createdBy: string, reportId: string): SarError {
+  return new SarError(
+    'SELF_APPROVAL_FORBIDDEN',
+    'the drafter of a SAR report cannot approve it: dual control requires a second person',
+    { createdBy, reportId },
+  );
+}

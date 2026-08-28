@@ -14,4 +14,13 @@ export type SarErrorCode =
    * drafted against an unconfirmed source is exactly the report that cannot
    * be defended before a regulator.
    */
-  | 'SAR_SOURCE_NOT_ELIGIBLE';
+  | 'SAR_SOURCE_NOT_ELIGIBLE'
+  /** No `sar_reports` row with this id in this organization. */
+  | 'SAR_REPORT_NOT_FOUND'
+  /** The report is not in a state that admits the requested transition (e.g. already APPROVED). */
+  | 'INVALID_TRANSITION'
+  /**
+   * Four eyes (SAR-002): whoever drafted the report cannot be the one who
+   * approves and locks it.
+   */
+  | 'SELF_APPROVAL_FORBIDDEN';

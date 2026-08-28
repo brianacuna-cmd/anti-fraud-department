@@ -263,6 +263,7 @@ import { createRiskAssessmentAuditRecorderAdapter } from './composition/riskAsse
 import { MongoSarReportRepository } from './modules/sar/infrastructure/adapters/outbound/mongo/MongoSarReportRepository.js';
 import { MongoUnitOfWork as SarMongoUnitOfWork } from './modules/sar/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { createCreateSarReportDraftUseCase } from './modules/sar/application/CreateSarReportDraft.js';
+import { createApproveSarReportDraftUseCase } from './modules/sar/application/ApproveSarReportDraft.js';
 import { generateSarReportId } from './modules/sar/domain/model/value-objects/SarReportId.js';
 import { sarReportRouter } from './modules/sar/infrastructure/adapters/inbound/http/sarReportRouter.js';
 import { sarErrorStatus } from './modules/sar/infrastructure/adapters/inbound/http/errorStatus.js';
@@ -1786,14 +1787,23 @@ async function bootstrap(): Promise<void> {
   // (composition root) wrapping the ALREADY-CONSTRUCTED `cases`,
   // `analystDecisions`, and `amlAlerts` repositories from above.
   const sarSourceVerifier = createSarSourceVerifier(cases, analystDecisions, amlAlerts);
+  const sarReports = new MongoSarReportRepository(db);
+  const sarUnitOfWork = new SarMongoUnitOfWork(client);
+  const sarAuditRecorder = createSarAuditRecorderAdapter(recordAuditLog);
   const sarReportHttpRouter = sarReportRouter({
     createSarReportDraft: createCreateSarReportDraftUseCase({
-      reports: new MongoSarReportRepository(db),
+      reports: sarReports,
       sourceVerifier: sarSourceVerifier,
-      auditRecorder: createSarAuditRecorderAdapter(recordAuditLog),
-      unitOfWork: new SarMongoUnitOfWork(client),
+      auditRecorder: sarAuditRecorder,
+      unitOfWork: sarUnitOfWork,
       clock,
       generateSarReportId,
+    }),
+    approveSarReportDraft: createApproveSarReportDraftUseCase({
+      reports: sarReports,
+      auditRecorder: sarAuditRecorder,
+      unitOfWork: sarUnitOfWork,
+      clock,
     }),
   });
 

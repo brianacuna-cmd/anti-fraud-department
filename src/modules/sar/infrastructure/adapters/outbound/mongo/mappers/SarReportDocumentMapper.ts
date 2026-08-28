@@ -19,6 +19,8 @@ export function toDomain(document: SarReportDocument): SarReport {
     activityStartDate: document.activity_start_date ? fromDate(document.activity_start_date) : null,
     activityEndDate: document.activity_end_date ? fromDate(document.activity_end_date) : null,
     createdBy: document.created_by,
+    approvedBy: document.approved_by,
+    approvedAt: document.approved_at ? fromDate(document.approved_at) : null,
     createdAt: fromDate(document.created_at),
     updatedAt: fromDate(document.updated_at),
   });
@@ -38,6 +40,8 @@ export function toDocument(report: SarReport): SarReportDocument {
     activity_start_date: report.activityStartDate ? toDate(report.activityStartDate) : null,
     activity_end_date: report.activityEndDate ? toDate(report.activityEndDate) : null,
     created_by: report.createdBy,
+    approved_by: report.approvedBy,
+    approved_at: report.approvedAt ? toDate(report.approvedAt) : null,
     created_at: toDate(report.createdAt),
     updated_at: toDate(report.updatedAt),
   };

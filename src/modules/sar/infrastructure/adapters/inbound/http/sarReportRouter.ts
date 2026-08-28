@@ -2,12 +2,14 @@ import { Router } from 'express';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
 import { fromDate } from '../../../../../../shared/time/Instant.js';
 import type { createCreateSarReportDraftUseCase } from '../../../../application/CreateSarReportDraft.js';
+import type { createApproveSarReportDraftUseCase } from '../../../../application/ApproveSarReportDraft.js';
 import { createSarReportSchema } from './dto/sarReportSchemas.js';
 import { toSarReportResponse } from './mappers/SarReportHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
 
 export interface SarReportRouterDeps {
   readonly createSarReportDraft: ReturnType<typeof createCreateSarReportDraftUseCase>;
+  readonly approveSarReportDraft: ReturnType<typeof createApproveSarReportDraftUseCase>;
 }
 
 /**
@@ -31,6 +33,12 @@ export function sarReportRouter(deps: SarReportRouterDeps): Router {
       activityEndDate: body.activityEndDate ? fromDate(new Date(body.activityEndDate)) : null,
     });
     res.status(201).json(toSarReportResponse(report));
+  });
+
+  router.patch('/sar-reports/:id/approve', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const report = await deps.approveSarReportDraft({ auth, sarReportId: req.params.id! });
+    res.status(200).json(toSarReportResponse(report));
   });
 
   return router;

@@ -20,6 +20,8 @@ export interface SarReportDocument {
   readonly activity_start_date: Date | null;
   readonly activity_end_date: Date | null;
   readonly created_by: string;
+  readonly approved_by: string | null;
+  readonly approved_at: Date | null;
   readonly created_at: Date;
   readonly updated_at: Date;
 }

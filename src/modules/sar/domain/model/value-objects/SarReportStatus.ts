@@ -1,16 +1,18 @@
 import { invariantViolation } from '../../errors/SarError.js';
 
 /**
- * Closed for now — every report SAR-001 creates is a draft. SAR-002 will add
- * `IN_REVIEW`/`APPROVED`/`LOCKED` as the review/lock workflow lands.
+ * `DRAFT` (SAR-001) -> `APPROVED` (SAR-002: reviewed, approved, and locked
+ * in one step — `PATCH /sar-reports/:id/approve`). No reverse edge: an
+ * approved report is immutable, matching "bloqueo formal del expediente
+ * previo al envío oficial".
  */
-export type SarReportStatus = 'DRAFT';
+export type SarReportStatus = 'DRAFT' | 'APPROVED';
 
-const VALID_STATUSES: ReadonlySet<string> = new Set<SarReportStatus>(['DRAFT']);
+const VALID_STATUSES: ReadonlySet<string> = new Set<SarReportStatus>(['DRAFT', 'APPROVED']);
 
 export function createSarReportStatus(value: string): SarReportStatus {
   if (!VALID_STATUSES.has(value)) {
-    throw invariantViolation('SarReportStatus must be DRAFT', { value });
+    throw invariantViolation('SarReportStatus must be DRAFT or APPROVED', { value });
   }
   return value as SarReportStatus;
 }
