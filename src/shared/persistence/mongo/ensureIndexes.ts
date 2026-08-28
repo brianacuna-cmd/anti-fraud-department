@@ -422,4 +422,12 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db
     .collection('customer_webhook_subscriptions')
     .createIndex({ organization_id: 1, active: 1 }, { name: 'customer_webhook_subscriptions_org_active_idx' });
+
+  await db
+    .collection('scheduled_jobs')
+    .createIndex({ name: 1 }, { unique: true, name: 'scheduled_jobs_name_unique' });
+
+  await db
+    .collection('scheduled_jobs')
+    .createIndex({ next_run_at: 1, enabled: 1 }, { name: 'idx_next_run_at' });
 }

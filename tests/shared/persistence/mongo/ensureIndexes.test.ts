@@ -761,4 +761,61 @@ describe('ensureIndexes (integration, real Mongo)', () => {
 
     await db.collection('customer_webhook_subscriptions').deleteMany({});
   });
+
+  it('creates unique scheduled_jobs_name_unique and idx_next_run_at on scheduled_jobs', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+    await ensureIndexes(db);
+
+    const indexes = await db.collection('scheduled_jobs').indexes();
+
+    const nameUnique = indexes.find((index) => index.name === 'scheduled_jobs_name_unique');
+    expect(nameUnique).toBeDefined();
+    expect(nameUnique?.key).toEqual({ name: 1 });
+    expect(nameUnique?.unique).toBe(true);
+    expect(indexes.filter((index) => index.name === 'scheduled_jobs_name_unique')).toHaveLength(1);
+
+    const nextRunIndex = indexes.find((index) => index.name === 'idx_next_run_at');
+    expect(nextRunIndex).toBeDefined();
+    expect(nextRunIndex?.key).toEqual({ next_run_at: 1, enabled: 1 });
+    expect(indexes.filter((index) => index.name === 'idx_next_run_at')).toHaveLength(1);
+  });
+
+  it('rejects a second scheduled_jobs insert with the same name with E11000', async () => {
+    await restoreScoringRulesCollection();
+    await ensureIndexes(db);
+
+    const now = new Date('2026-01-01T00:00:00.000Z');
+    await db.collection('scheduled_jobs').insertOne({
+      _id: new ObjectId(),
+      organization_id: null,
+      name: 'sla_sweep',
+      description: 'Sweep SLA tracking rows',
+      cron_expression: 'every 60s',
+      enabled: true,
+      last_run_at: null,
+      next_run_at: now,
+      last_result: null,
+      last_error: null,
+      created_at: now,
+    });
+
+    await expect(
+      db.collection('scheduled_jobs').insertOne({
+        _id: new ObjectId(),
+        organization_id: null,
+        name: 'sla_sweep',
+        description: 'duplicate',
+        cron_expression: 'every 60s',
+        enabled: true,
+        last_run_at: null,
+        next_run_at: now,
+        last_result: null,
+        last_error: null,
+        created_at: now,
+      }),
+    ).rejects.toMatchObject({ code: 11000 });
+
+    await db.collection('scheduled_jobs').deleteMany({});
+  });
 });
