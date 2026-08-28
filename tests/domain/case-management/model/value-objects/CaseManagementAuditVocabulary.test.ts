@@ -13,4 +13,9 @@ describe('CaseManagementAuditVocabulary', () => {
     const resource: CaseManagementAuditResource = 'organization_fraud_config';
     expect(resource).toBe('organization_fraud_config');
   });
+
+  it('accepts UPDATE_ROUTING_RULE as a closed action', () => {
+    const action: CaseManagementAuditAction = 'UPDATE_ROUTING_RULE';
+    expect(action).toBe('UPDATE_ROUTING_RULE');
+  });
 });

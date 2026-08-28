@@ -16,6 +16,7 @@ import { createListRoutingRulesUseCase } from '../../../../src/modules/case-mana
 import { createGetRoutingRuleUseCase } from '../../../../src/modules/case-management/application/GetRoutingRule.js';
 import { createActivateRoutingRuleUseCase } from '../../../../src/modules/case-management/application/ActivateRoutingRule.js';
 import { createDeactivateRoutingRuleUseCase } from '../../../../src/modules/case-management/application/DeactivateRoutingRule.js';
+import { createUpdateRoutingRuleUseCase } from '../../../../src/modules/case-management/application/UpdateRoutingRule.js';
 import { generateCaseRoutingRuleId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseRoutingRuleId.js';
 import { InMemoryCaseRoutingRuleRepository } from '../../../helpers/case-management/InMemoryCaseRoutingRuleRepository.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
@@ -45,6 +46,12 @@ function buildApp(actorPerRequest: () => AuthContext, clockNow: typeof NOW = NOW
   const createPriorityAssignmentRule = createCreatePriorityAssignmentRuleUseCase({ createRoutingRule });
   const listRoutingRules = createListRoutingRulesUseCase({ routingRules });
   const getRoutingRule = createGetRoutingRuleUseCase({ routingRules });
+  const updateRoutingRule = createUpdateRoutingRuleUseCase({
+    routingRules,
+    auditRecorder,
+    unitOfWork,
+    clock,
+  });
   const activateRoutingRule = createActivateRoutingRuleUseCase({
     routingRules,
     auditRecorder,
@@ -69,6 +76,7 @@ function buildApp(actorPerRequest: () => AuthContext, clockNow: typeof NOW = NOW
       createPriorityAssignmentRule,
       listRoutingRules,
       getRoutingRule,
+      updateRoutingRule,
       activateRoutingRule,
       deactivateRoutingRule,
       /* El motor de verdad: una prueba en seco con un doble no prueba nada. */
@@ -366,6 +374,157 @@ describe('routingRuleRouter (HTTP)', () => {
     );
 
     await request(app).post(`/api/v1/case-routing-rules/${oid('missing-rule')}/activate`).expect(404);
+  });
+});
+
+describe('PATCH /case-routing-rules/:id', () => {
+  it('lets SUPERVISOR patch an INACTIVE draft name and conditions', async () => {
+    const { app, routingRules, auditRecorder } = buildApp(
+      () =>
+        createAuthContext({
+          userId: oid('user-1'),
+          organizationId: oid('org-1'),
+          roleId: 'SUPERVISOR',
+        }),
+      LATER,
+    );
+
+    const created = await request(app)
+      .post('/api/v1/case-routing-rules')
+      .send({ name: 'draft', conditions: VALID_JDM })
+      .expect(201);
+
+    const patched = await request(app)
+      .patch(`/api/v1/case-routing-rules/${created.body.id}`)
+      .send({ name: 'renamed', conditions: { ...VALID_JDM, nodes: [{ id: 'n2', type: 'inputNode' }] } })
+      .expect(200);
+
+    expect(patched.body.name).toBe('renamed');
+    expect(patched.body.status).toBe('INACTIVE');
+    expect(patched.body.conditionsVersion).toBe(created.body.conditionsVersion + 1);
+    expect(routingRules.all()[0]?.name).toBe('renamed');
+    expect(auditRecorder.all().map((e) => e.action)).toContain('UPDATE_ROUTING_RULE');
+  });
+
+  it('lets SUPERVISOR patch an ACTIVE rule without changing status', async () => {
+    const { app } = buildApp(
+      () =>
+        createAuthContext({
+          userId: oid('user-1'),
+          organizationId: oid('org-1'),
+          roleId: 'SUPERVISOR',
+        }),
+      LATER,
+    );
+
+    const created = await request(app)
+      .post('/api/v1/case-routing-rules')
+      .send({ name: 'live', conditions: VALID_JDM })
+      .expect(201);
+    await request(app).post(`/api/v1/case-routing-rules/${created.body.id}/activate`).expect(200);
+
+    const patched = await request(app)
+      .patch(`/api/v1/case-routing-rules/${created.body.id}`)
+      .send({ name: 'live-renamed' })
+      .expect(200);
+
+    expect(patched.body.name).toBe('live-renamed');
+    expect(patched.body.status).toBe('ACTIVE');
+    expect(patched.body.conditionsVersion).toBe(created.body.conditionsVersion);
+  });
+
+  it('rejects ANALYST PATCH with 403 and leaves the rule unchanged', async () => {
+    const org = oid('org-1');
+    let roleId: string = 'SUPERVISOR';
+    const { app, routingRules } = buildApp(() =>
+      createAuthContext({
+        userId: oid('user-1'),
+        organizationId: org,
+        roleId,
+      }),
+    );
+
+    const created = await request(app)
+      .post('/api/v1/case-routing-rules')
+      .send({ name: 'draft', conditions: VALID_JDM })
+      .expect(201);
+
+    roleId = 'ANALYST';
+    await request(app)
+      .patch(`/api/v1/case-routing-rules/${created.body.id}`)
+      .send({ name: 'hijacked' })
+      .expect(403);
+
+    expect(routingRules.all()[0]?.name).toBe('draft');
+  });
+
+  it('rejects invalid JDM without changing the stored rule', async () => {
+    const { app, routingRules } = buildApp(() =>
+      createAuthContext({
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
+        roleId: 'SUPERVISOR',
+      }),
+    );
+
+    const created = await request(app)
+      .post('/api/v1/case-routing-rules')
+      .send({ name: 'draft', conditions: VALID_JDM })
+      .expect(201);
+
+    await request(app)
+      .patch(`/api/v1/case-routing-rules/${created.body.id}`)
+      .send({
+        conditions: { contentType: 'application/vnd.gorules.decision', nodes: [], edges: [] },
+      })
+      .expect(400);
+
+    expect(routingRules.all()[0]?.name).toBe('draft');
+    expect(routingRules.all()[0]?.conditionsVersion).toBe(created.body.conditionsVersion);
+  });
+
+  it('rejects status on PATCH with 400 and leaves status unchanged', async () => {
+    const { app, routingRules } = buildApp(() =>
+      createAuthContext({
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
+        roleId: 'SUPERVISOR',
+      }),
+    );
+
+    const created = await request(app)
+      .post('/api/v1/case-routing-rules')
+      .send({ name: 'draft', conditions: VALID_JDM })
+      .expect(201);
+
+    await request(app)
+      .patch(`/api/v1/case-routing-rules/${created.body.id}`)
+      .send({ status: 'ACTIVE' })
+      .expect(400);
+
+    expect(routingRules.all()[0]?.status).toBe('INACTIVE');
+  });
+
+  it('still serves list, get, activate, and deactivate after PATCH exists', async () => {
+    const { app } = buildApp(
+      () =>
+        createAuthContext({
+          userId: oid('user-1'),
+          organizationId: oid('org-1'),
+          roleId: 'SUPERVISOR',
+        }),
+      LATER,
+    );
+
+    const created = await request(app)
+      .post('/api/v1/case-routing-rules')
+      .send({ name: 'draft', conditions: VALID_JDM })
+      .expect(201);
+
+    await request(app).get('/api/v1/case-routing-rules').expect(200);
+    await request(app).get(`/api/v1/case-routing-rules/${created.body.id}`).expect(200);
+    await request(app).post(`/api/v1/case-routing-rules/${created.body.id}/activate`).expect(200);
+    await request(app).post(`/api/v1/case-routing-rules/${created.body.id}/deactivate`).expect(200);
   });
 });
 

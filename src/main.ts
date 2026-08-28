@@ -218,6 +218,7 @@ import { createListRoutingRulesUseCase } from './modules/case-management/applica
 import { createGetRoutingRuleUseCase } from './modules/case-management/application/GetRoutingRule.js';
 import { createActivateRoutingRuleUseCase } from './modules/case-management/application/ActivateRoutingRule.js';
 import { createDeactivateRoutingRuleUseCase } from './modules/case-management/application/DeactivateRoutingRule.js';
+import { createUpdateRoutingRuleUseCase } from './modules/case-management/application/UpdateRoutingRule.js';
 import { createCreateWebhookSubscriptionUseCase } from './modules/case-management/application/CreateWebhookSubscription.js';
 import { createListWebhookSubscriptionUseCase } from './modules/case-management/application/ListWebhookSubscription.js';
 import { createGetWebhookSubscriptionUseCase } from './modules/case-management/application/GetWebhookSubscription.js';
@@ -1222,6 +1223,12 @@ async function bootstrap(): Promise<void> {
       auditRecorder: caseManagementAuditRecorder,
     }),
     getRoutingRule: createGetRoutingRuleUseCase({ routingRules: caseRoutingRules }),
+    updateRoutingRule: createUpdateRoutingRuleUseCase({
+      routingRules: caseRoutingRules,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+    }),
     activateRoutingRule: createActivateRoutingRuleUseCase({
       routingRules: caseRoutingRules,
       auditRecorder: caseManagementAuditRecorder,

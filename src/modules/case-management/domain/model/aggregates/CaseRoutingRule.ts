@@ -29,6 +29,13 @@ export interface CreateCaseRoutingRuleInput {
   readonly now: Instant;
 }
 
+export interface UpdateCaseRoutingRuleInput {
+  readonly name?: string;
+  readonly conditions?: Readonly<Record<string, unknown>>;
+  readonly targetRoleId?: string | null;
+  readonly targetUserId?: string | null;
+}
+
 /**
  * Tenant-scoped routing rule (design: "CaseRoutingRules"). Each document holds
  * one JDM graph evaluated by ZEN Engine during T1 auto-routing.
@@ -68,6 +75,34 @@ export class CaseRoutingRule {
   /** Marks this rule as INACTIVE (immutable). Caller persists via repository. */
   deactivate(now: Instant): CaseRoutingRule {
     return new CaseRoutingRule({ ...this.props, status: 'INACTIVE', updatedAt: now });
+  }
+
+  /**
+   * Patches name, conditions, and/or targets. Status is not patchable —
+   * activate/deactivate own that transition. conditionsVersion increments
+   * only when conditions JSON differs (JSON.stringify).
+   */
+  update(changes: UpdateCaseRoutingRuleInput, now: Instant): CaseRoutingRule {
+    if ('status' in changes) {
+      throw invariantViolation('CaseRoutingRule status cannot be changed via update; use activate or deactivate', {
+        field: 'status',
+      });
+    }
+    const name = changes.name ?? this.props.name;
+    assertNonEmpty('name', name);
+    const conditions = changes.conditions ?? this.props.conditions;
+    const conditionsChanged =
+      changes.conditions !== undefined &&
+      JSON.stringify(changes.conditions) !== JSON.stringify(this.props.conditions);
+    return new CaseRoutingRule({
+      ...this.props,
+      name,
+      conditions,
+      conditionsVersion: conditionsChanged ? this.props.conditionsVersion + 1 : this.props.conditionsVersion,
+      targetRoleId: changes.targetRoleId !== undefined ? changes.targetRoleId : this.props.targetRoleId,
+      targetUserId: changes.targetUserId !== undefined ? changes.targetUserId : this.props.targetUserId,
+      updatedAt: now,
+    });
   }
 
   get id(): CaseRoutingRuleId {

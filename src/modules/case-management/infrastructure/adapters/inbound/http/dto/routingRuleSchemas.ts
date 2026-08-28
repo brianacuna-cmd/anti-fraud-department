@@ -68,3 +68,19 @@ export const simulateRoutingRuleSchema = z
   .strict();
 
 export type SimulateRoutingRuleBody = z.infer<typeof simulateRoutingRuleSchema>;
+
+/**
+ * PATCH /case-routing-rules/:id body. All fields optional. Status and
+ * executionOrder are rejected via `.strict()` — activate/deactivate and
+ * reorder own those transitions.
+ */
+export const updateRoutingRuleSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    conditions: jdmGraphSchema.optional(),
+    targetRoleId: z.string().min(1).nullable().optional(),
+    targetUserId: z.string().min(1).nullable().optional(),
+  })
+  .strict();
+
+export type UpdateRoutingRuleBody = z.infer<typeof updateRoutingRuleSchema>;

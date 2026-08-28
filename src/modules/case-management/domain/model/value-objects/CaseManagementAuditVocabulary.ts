@@ -40,6 +40,12 @@ export type CaseManagementAuditAction =
   | 'EXECUTE_ENFORCEMENT_ACTION'
   | 'REVERT_ENFORCEMENT_ACTION'
   | 'CREATE_ROUTING_RULE'
+  /**
+   * SUPERVISOR PATCH of name, conditions, and/or targets. Status changes
+   * only via ACTIVATE_ROUTING_RULE / DEACTIVATE_ROUTING_RULE. A no-op PATCH
+   * does not emit this action.
+   */
+  | 'UPDATE_ROUTING_RULE'
   | 'ACTIVATE_ROUTING_RULE'
   | 'DEACTIVATE_ROUTING_RULE'
   | 'SIMULATE_ROUTING_RULE'
