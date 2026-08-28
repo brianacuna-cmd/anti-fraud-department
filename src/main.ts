@@ -260,6 +260,14 @@ import { riskScoreRouter } from './modules/risk-assessment/infrastructure/adapte
 import { scoringRuleRouter } from './modules/risk-assessment/infrastructure/adapters/inbound/http/scoringRuleRouter.js';
 import { riskAssessmentErrorStatus } from './modules/risk-assessment/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createRiskAssessmentAuditRecorderAdapter } from './composition/riskAssessmentAuditRecorderAdapter.js';
+import { MongoSarReportRepository } from './modules/sar/infrastructure/adapters/outbound/mongo/MongoSarReportRepository.js';
+import { MongoUnitOfWork as SarMongoUnitOfWork } from './modules/sar/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
+import { createCreateSarReportDraftUseCase } from './modules/sar/application/CreateSarReportDraft.js';
+import { generateSarReportId } from './modules/sar/domain/model/value-objects/SarReportId.js';
+import { sarReportRouter } from './modules/sar/infrastructure/adapters/inbound/http/sarReportRouter.js';
+import { sarErrorStatus } from './modules/sar/infrastructure/adapters/inbound/http/errorStatus.js';
+import { createSarSourceVerifier } from './composition/sarSourceVerifier.js';
+import { createSarAuditRecorderAdapter } from './composition/sarAuditRecorderAdapter.js';
 import { createScoreToCaseOrchestrator } from './composition/scoreToCaseOrchestrator.js';
 import type { ScoreToCaseOrchestratorInput, ScoreToCaseOrchestratorResult } from './composition/scoreToCaseOrchestrator.js';
 import { scoreToCaseProcessRouter } from './composition/scoreToCaseProcessRouter.js';
@@ -1773,6 +1781,22 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
+  // SAR-001: draft a Suspicious Activity Report against a confirmed case or
+  // AML alert. `sarSourceVerifier` is the one legal cross-module seam
+  // (composition root) wrapping the ALREADY-CONSTRUCTED `cases`,
+  // `analystDecisions`, and `amlAlerts` repositories from above.
+  const sarSourceVerifier = createSarSourceVerifier(cases, analystDecisions, amlAlerts);
+  const sarReportHttpRouter = sarReportRouter({
+    createSarReportDraft: createCreateSarReportDraftUseCase({
+      reports: new MongoSarReportRepository(db),
+      sourceVerifier: sarSourceVerifier,
+      auditRecorder: createSarAuditRecorderAdapter(recordAuditLog),
+      unitOfWork: new SarMongoUnitOfWork(client),
+      clock,
+      generateSarReportId,
+    }),
+  });
+
   const identityAccessRouter = Router();
   identityAccessRouter.use(authContextMiddleware);
   identityAccessRouter.use(identityAccessAuthRouter);
@@ -1808,6 +1832,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(watchlistsHttpRouter);
   identityAccessRouter.use(bulkScreeningHttpRouter);
   identityAccessRouter.use(inboundWebhookSecretHttpRouter);
+  identityAccessRouter.use(sarReportHttpRouter);
 
   const app = createApp({
     routers: [
@@ -1828,6 +1853,7 @@ async function bootstrap(): Promise<void> {
       ...caseManagementErrorStatus,
       ...riskAssessmentErrorStatus,
       ...screeningErrorStatus,
+      ...sarErrorStatus,
       ...ingestErrorStatus,
     }),
     trustProxy: TRUST_PROXY,
