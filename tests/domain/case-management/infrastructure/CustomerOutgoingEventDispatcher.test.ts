@@ -47,6 +47,9 @@ function buildDispatcher(opts?: {
   sleeper?: FakeSleeper;
   claimLimit?: number;
   fraudConfig?: InMemoryOrganizationFraudConfigRepository;
+  wrapTick?: (
+    tick: () => Promise<{ processed: number; sent: number; failed: number }>,
+  ) => Promise<{ processed: number; sent: number; failed: number }>;
 }) {
   const clock = opts?.clock ?? new ControllableClock(T0);
   const client = opts?.client ?? new FakeOutgoingWebhookClient();
@@ -59,6 +62,7 @@ function buildDispatcher(opts?: {
     sleeper: (ms) => sleeper.sleep(ms),
     claimLimit: opts?.claimLimit,
     ...(opts?.fraudConfig === undefined ? {} : { fraudConfig: opts.fraudConfig }),
+    ...(opts?.wrapTick === undefined ? {} : { wrapTick: opts.wrapTick }),
   });
   return { dispatcher, clock, client, events, sleeper };
 }
@@ -235,6 +239,80 @@ describe('CustomerOutgoingEventDispatcher', () => {
     handle.stop();
     sleepGate.release?.();
     await new Promise((resolve) => setImmediate(resolve));
+  });
+
+  it('invokes wrapTick around dispatchOnce and still processes the claimed events', async () => {
+    const wrapCalls: string[] = [];
+    const events = new InMemoryCustomerOutgoingEventRepository();
+    await events.save(buildPending());
+    const { dispatcher, client } = buildDispatcher({
+      events,
+      wrapTick: async (tick) => {
+        wrapCalls.push('wrap');
+        const result = await tick();
+        wrapCalls.push('inner');
+        return result;
+      },
+    });
+
+    const result = await dispatcher.dispatchOnce();
+
+    expect(wrapCalls).toEqual(['wrap', 'inner']);
+    expect(result.processed).toBe(1);
+    expect(result.sent).toBe(1);
+    expect(client.posts).toHaveLength(1);
+    expect((await events.findById(createCustomerOutgoingEventId(oid('outbox-dispatch-1'))))?.status).toBe(
+      'SENT',
+    );
+  });
+
+  it('start() and returned dispatchOnce share the wrapped tick', async () => {
+    const wrapCount = { n: 0 };
+    const events = new InMemoryCustomerOutgoingEventRepository();
+    await events.save(buildPending());
+
+    const sleeps: number[] = [];
+    const sleepGate: { release?: () => void } = {};
+    const gatedSleeper = async (ms: number): Promise<void> => {
+      sleeps.push(ms);
+      await new Promise<void>((resolve) => {
+        sleepGate.release = resolve;
+      });
+    };
+
+    const dispatcher = createCustomerOutgoingEventDispatcher({
+      outgoingEvents: events,
+      webhookClient: new FakeOutgoingWebhookClient(),
+      clock: new ControllableClock(T0),
+      sleeper: gatedSleeper,
+      wrapTick: async (tick) => {
+        wrapCount.n += 1;
+        return tick();
+      },
+    });
+
+    const handle = dispatcher.start(1000);
+    const deadline = Date.now() + 2000;
+    while (sleeps.length === 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+
+    expect(sleeps).toEqual([1000]);
+    expect(wrapCount.n).toBe(1);
+    expect((await events.findById(createCustomerOutgoingEventId(oid('outbox-dispatch-1'))))?.status).toBe(
+      'SENT',
+    );
+
+    handle.stop();
+    sleepGate.release?.();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    await events.save(
+      buildPending({ id: createCustomerOutgoingEventId(oid('outbox-dispatch-2')) }),
+    );
+    const second = await dispatcher.dispatchOnce();
+    expect(second.processed).toBe(1);
+    expect(wrapCount.n).toBe(2);
   });
 });
 
