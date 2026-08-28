@@ -966,6 +966,8 @@ async function bootstrap(): Promise<void> {
     upsertOrganizationFraudConfig: createUpsertOrganizationFraudConfigUseCase({
       repository: organizationFraudConfig,
       clock,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
     }),
   });
   const webhookSubscriptionHttpRouter = webhookSubscriptionRouter({
