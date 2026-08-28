@@ -73,7 +73,12 @@ export type CaseManagementAuditAction =
    */
   | 'CREATE_WEBHOOK_SUBSCRIPTION'
   | 'UPDATE_WEBHOOK_SUBSCRIPTION'
-  | 'DELETE_WEBHOOK_SUBSCRIPTION';
+  | 'DELETE_WEBHOOK_SUBSCRIPTION'
+  /**
+   * PUT `/organization-fraud-config` singleton upsert. One action for create
+   * and re-upsert. GET is not audited.
+   */
+  | 'UPSERT_ORGANIZATION_FRAUD_CONFIG';
 
 export type CaseManagementAuditResource =
   | 'case'
@@ -94,4 +99,9 @@ export type CaseManagementAuditResource =
    * Catalog row in `customer_webhook_subscriptions`. Mutation-only
    * (CREATE/UPDATE/DELETE); list/get are not audited.
    */
-  | 'webhook_subscription';
+  | 'webhook_subscription'
+  /**
+   * Per-tenant singleton in `organization_fraud_config`. Mutation-only
+   * (PUT upsert); GET is not audited.
+   */
+  | 'organization_fraud_config';
