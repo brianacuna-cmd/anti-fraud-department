@@ -5,6 +5,10 @@ import { createErrorHandler } from './shared/http/errorHandler.js';
 import { connectMongo } from './shared/persistence/mongo/connect.js';
 import { ensureIndexes } from './shared/persistence/mongo/ensureIndexes.js';
 import { ensureRoles } from './shared/persistence/mongo/ensureRoles.js';
+import { fromDate, toDate, type Instant } from './shared/time/Instant.js';
+import { recordAround } from './shared/scheduled-jobs/recordAround.js';
+import { seedScheduledJobs } from './shared/scheduled-jobs/seedScheduledJobs.js';
+import { MongoScheduledJobRepository } from './shared/scheduled-jobs/mongo/MongoScheduledJobRepository.js';
 import { backfillRoutingRuleExecutionOrder } from './modules/case-management/infrastructure/adapters/outbound/mongo/backfillRoutingRuleExecutionOrder.js';
 import { SystemClock } from './shared/time/SystemClock.js';
 import { generateObjectIdHex } from './shared/kernel/ObjectIdHex.js';
@@ -342,7 +346,10 @@ import { MongoInboundWebhookSecretRepository } from './modules/ingest/infrastruc
 import { MongoProviderIngestEventRepository } from './modules/ingest/infrastructure/adapters/outbound/mongo/MongoProviderIngestEventRepository.js';
 import { MongoScreeningWatermarkRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoScreeningWatermarkRepository.js';
 import { createRescreenWalletSanctionsUseCase } from './modules/screening/application/RescreenWalletSanctions.js';
-import { createWalletSanctionsRescreenScheduler } from './modules/screening/application/WalletSanctionsRescreenScheduler.js';
+import {
+  createWalletSanctionsRescreenScheduler,
+  msUntilNextMidnightBogota,
+} from './modules/screening/application/WalletSanctionsRescreenScheduler.js';
 import { createFinturuWalletSource } from './composition/finturuWalletSource.js';
 import { createWalletRescreenCaseLinker } from './composition/walletRescreenCaseLinker.js';
 
@@ -456,6 +463,12 @@ const OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS = Number(
  */
 const SLA_SWEEP_INTERVAL_MS = Number(process.env.SLA_SWEEP_INTERVAL_MS ?? 60_000);
 const OUTBOX_PUBLISH_INTERVAL_MS = Number(process.env.OUTBOX_PUBLISH_INTERVAL_MS ?? 60_000);
+const FINTURU_DIRECTORY_SYNC_MINUTES = Number(process.env.FINTURU_DIRECTORY_SYNC_MINUTES ?? 360);
+
+function nextRunAtAfterMs(intervalMs: number): (now: Instant) => Instant {
+  return (now) => fromDate(new Date(toDate(now).getTime() + intervalMs));
+}
+
 const KAFKA_BROKERS = optionalEnv('KAFKA_BROKERS');
 const KAFKA_OUTBOX_TOPIC = process.env.KAFKA_OUTBOX_TOPIC ?? 'outbox.events';
 
@@ -506,6 +519,15 @@ async function bootstrap(): Promise<void> {
   const { client, db } = await connectMongo(MONGO_URI, MONGO_DB_NAME);
   const clock = new SystemClock();
   await ensureIndexes(db);
+  const scheduledJobs = new MongoScheduledJobRepository(db);
+  await seedScheduledJobs(scheduledJobs, {
+    now: clock.now(),
+    slaSweepIntervalMs: SLA_SWEEP_INTERVAL_MS,
+    outboxPublishIntervalMs: OUTBOX_PUBLISH_INTERVAL_MS,
+    outgoingWebhookDispatchIntervalMs: OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS,
+    directorySyncIntervalMinutes: FINTURU_DIRECTORY_SYNC_MINUTES,
+    walletRescreenEnabled: WALLET_RESCREEN_ENABLED,
+  });
   await backfillRoutingRuleExecutionOrder(db);
   // user-roles PR-1a: idempotent fixed role-catalog seed (ADMIN/SUPERVISOR/
   // ANALYST/AUDITOR) — must run before any request that could reference a
@@ -732,10 +754,17 @@ async function bootstrap(): Promise<void> {
     directory: finturuDirectory,
     clock,
   });
+  const recordedSyncFinturuDirectory = () =>
+    recordAround(() => syncFinturuDirectory(), {
+      name: 'directory_sync',
+      recorder: scheduledJobs,
+      clock,
+      nextRunAt: nextRunAtAfterMs(FINTURU_DIRECTORY_SYNC_MINUTES * 60_000),
+    });
 
   const directorySyncScheduler = new DirectorySyncScheduler({
-    syncDirectory: syncFinturuDirectory,
-    intervalMinutes: Number(process.env.FINTURU_DIRECTORY_SYNC_MINUTES ?? 360),
+    syncDirectory: recordedSyncFinturuDirectory,
+    intervalMinutes: FINTURU_DIRECTORY_SYNC_MINUTES,
   });
 
   const openFraudCase = createOpenFraudCaseUseCase({
@@ -772,7 +801,15 @@ async function bootstrap(): Promise<void> {
     retryPolicy: outboxRetryPolicy,
   });
 
-  const outboxPublishScheduler = createOutboxPublishScheduler({ publishOutboxEvents });
+  const outboxPublishScheduler = createOutboxPublishScheduler({
+    publishOutboxEvents: () =>
+      recordAround(() => publishOutboxEvents(), {
+        name: 'outbox_publish',
+        recorder: scheduledJobs,
+        clock,
+        nextRunAt: nextRunAtAfterMs(OUTBOX_PUBLISH_INTERVAL_MS),
+      }),
+  });
 
   const caseManagementFinturuRouter = finturuRouter({
     syncFinturuData,
@@ -1118,6 +1155,13 @@ async function bootstrap(): Promise<void> {
     webhookClient: outgoingWebhookClient,
     fraudConfig: organizationFraudConfig,
     clock,
+    wrapTick: (tick) =>
+      recordAround(tick, {
+        name: 'customer_outgoing_webhook_dispatch',
+        recorder: scheduledJobs,
+        clock,
+        nextRunAt: nextRunAtAfterMs(OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS),
+      }),
   });
   // casemgmt-notifications-sla-sweep PR2 (Slice 13): advances due
   // `CaseSlaTracking` rows and sends SLA_DUE_SOON via the same
@@ -1132,7 +1176,15 @@ async function bootstrap(): Promise<void> {
     outbox: outboxEvents,
     generateOutboxEventId,
   });
-  const slaSweepScheduler = createSlaSweepScheduler({ sweepSlaTracking });
+  const slaSweepScheduler = createSlaSweepScheduler({
+    sweepSlaTracking: () =>
+      recordAround(() => sweepSlaTracking(), {
+        name: 'sla_sweep',
+        recorder: scheduledJobs,
+        clock,
+        nextRunAt: nextRunAtAfterMs(SLA_SWEEP_INTERVAL_MS),
+      }),
+  });
   const enforcementHttpRouter = enforcementRouter({
     recordAnalystDecision: createRecordAnalystDecisionUseCase({
       cases,
@@ -1964,7 +2016,14 @@ async function bootstrap(): Promise<void> {
     backfill: WALLET_RESCREEN_BACKFILL,
   });
   const walletRescreenScheduler = createWalletSanctionsRescreenScheduler({
-    runRescreen: () => rescreenWalletSanctions({ auth: walletRescreenAuth }),
+    runRescreen: () =>
+      recordAround(() => rescreenWalletSanctions({ auth: walletRescreenAuth }), {
+        name: 'wallet_sanctions_rescreen',
+        recorder: scheduledJobs,
+        clock,
+        nextRunAt: (now) =>
+          fromDate(new Date(toDate(now).getTime() + msUntilNextMidnightBogota(toDate(now)))),
+      }),
     clock,
   });
 
