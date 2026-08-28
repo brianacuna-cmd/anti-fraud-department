@@ -1,5 +1,6 @@
 import { oid } from '../../../support/oid.js';
 import { createSimulateRoutingRuleUseCase } from '../../../../src/modules/case-management/application/SimulateRoutingRule.js';
+import { createDeleteRoutingRuleUseCase } from '../../../../src/modules/case-management/application/DeleteRoutingRule.js';
 import { ZenRoutingEngine } from '../../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import request from 'supertest';
@@ -87,6 +88,12 @@ function buildApp(actorPerRequest: () => AuthContext, clockNow: typeof NOW = NOW
       reorderRoutingRules,
       activateRoutingRule,
       deactivateRoutingRule,
+      deleteRoutingRule: createDeleteRoutingRuleUseCase({
+        routingRules,
+        auditRecorder,
+        unitOfWork,
+        clock,
+      }),
       /* El motor de verdad: una prueba en seco con un doble no prueba nada. */
       simulateRoutingRule: createSimulateRoutingRuleUseCase({
         simulationEngine: new ZenRoutingEngine(),
@@ -757,5 +764,45 @@ describe('PUT /case-routing-rules/reorder', () => {
       .expect(200);
     expect(patched.body.name).toBe('still-patchable');
     expect(patched.body.executionOrder).toBe(0);
+  });
+});
+
+describe('DELETE /case-routing-rules/:id', () => {
+  const SUPERVISOR = () =>
+    createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), roleId: 'SUPERVISOR' });
+
+  it('removes an inactive rule from the list', async () => {
+    const { app, routingRules, auditRecorder } = buildApp(SUPERVISOR);
+    const created = await request(app)
+      .post('/api/v1/case-routing-rules')
+      .send({ name: 'borrable', conditions: VALID_JDM })
+      .expect(201);
+
+    await request(app).delete(`/api/v1/case-routing-rules/${created.body.id}`).expect(200);
+
+    expect(routingRules.all()[0]?.deletedAt).not.toBeNull();
+    expect(auditRecorder.all().map((e) => e.action)).toContain('DELETE_ROUTING_RULE');
+  });
+
+  /*
+   * Desactivar primero: borrar una viva cambiaria a quien le toca el
+   * siguiente caso sin que eso conste como un cambio de enrutamiento.
+   */
+  it('refuses to delete an ACTIVE rule', async () => {
+    const { app } = buildApp(SUPERVISOR);
+    const created = await request(app)
+      .post('/api/v1/case-routing-rules')
+      .send({ name: 'viva', conditions: VALID_JDM })
+      .expect(201);
+    await request(app).post(`/api/v1/case-routing-rules/${created.body.id}/activate`).send({}).expect(200);
+
+    await request(app).delete(`/api/v1/case-routing-rules/${created.body.id}`).expect(400);
+  });
+
+  it('rejects ANALYST with 403', async () => {
+    const { app } = buildApp(() =>
+      createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), roleId: 'ANALYST' }),
+    );
+    await request(app).delete(`/api/v1/case-routing-rules/${oid('any')}`).expect(403);
   });
 });

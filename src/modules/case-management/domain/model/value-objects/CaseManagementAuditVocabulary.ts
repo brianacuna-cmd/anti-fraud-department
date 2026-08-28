@@ -54,6 +54,8 @@ export type CaseManagementAuditAction =
   | 'REORDER_ROUTING_RULES'
   | 'ACTIVATE_ROUTING_RULE'
   | 'DEACTIVATE_ROUTING_RULE'
+  /** Soft delete: the rule leaves the list, the row stays for traceability. */
+  | 'DELETE_ROUTING_RULE'
   | 'SIMULATE_ROUTING_RULE'
   /**
    * CASE-002 (T1): a rule whose JDM could not be evaluated was SKIPPED rather
