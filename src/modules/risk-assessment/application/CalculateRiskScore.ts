@@ -31,7 +31,7 @@ export interface CalculateRiskScoreDeps {
 }
 
 /** JDM context — omit `rawPayload` only. */
-function toScoringContext(event: CanonicalRiskEvent): Readonly<Record<string, unknown>> {
+export function toScoringContext(event: CanonicalRiskEvent): Readonly<Record<string, unknown>> {
   const context: Record<string, unknown> = { ...event };
   delete context.rawPayload;
   return context;

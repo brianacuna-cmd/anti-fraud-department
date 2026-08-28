@@ -101,7 +101,16 @@ export function createRouteCaseUseCase(deps: RouteCaseDeps) {
         continue;
       }
 
-      const targetValid = await deps.assigneeDirectory.belongsToOrganization(organizationId, assignedTo);
+      const inOrg = await deps.assigneeDirectory.belongsToOrganization(organizationId, assignedTo);
+      /*
+       * Belonging to the tenant is not enough: ADMIN administers people and
+       * AUDITOR audits, and neither instructs a case. The rule may have been
+       * written before that mattered, or its target promoted since. Skipping
+       * the rule beats parking the case in an inbox nobody works — and the
+       * audit row below is what separates this from "the rule did not match".
+       */
+      const targetValid =
+        inOrg && (await deps.assigneeDirectory.canWorkCases(organizationId, assignedTo));
       if (!targetValid) {
         await deps.auditRecorder.record(
           {
@@ -117,6 +126,9 @@ export function createRouteCaseUseCase(deps: RouteCaseDeps) {
               conditionsVersion: rule.conditionsVersion,
               assignedToType: assignedTo.type,
               assignedToId: assignedTo.id,
+              reason: inOrg
+                ? 'assignee is governance, not operations'
+                : 'assignee does not belong to the organization',
             },
             ipAddress: input.ipAddress,
           },

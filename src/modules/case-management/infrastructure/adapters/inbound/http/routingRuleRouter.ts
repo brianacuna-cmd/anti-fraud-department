@@ -6,8 +6,11 @@ import type { createListRoutingRulesUseCase } from '../../../../application/List
 import type { createGetRoutingRuleUseCase } from '../../../../application/GetRoutingRule.js';
 import type { createActivateRoutingRuleUseCase } from '../../../../application/ActivateRoutingRule.js';
 import type { createDeactivateRoutingRuleUseCase } from '../../../../application/DeactivateRoutingRule.js';
-import { createRoutingRuleSchema, createPriorityAssignmentRuleSchema } from './dto/routingRuleSchemas.js';
+import {
+  simulateRoutingRuleSchema,
+  createRoutingRuleSchema, createPriorityAssignmentRuleSchema } from './dto/routingRuleSchemas.js';
 import { toRoutingRuleResponse } from './mappers/RoutingRuleHttpMapper.js';
+import type { createSimulateRoutingRuleUseCase } from '../../../../application/SimulateRoutingRule.js';
 import { parseRequest } from './parseRequest.js';
 
 export interface RoutingRuleRouterDeps {
@@ -17,6 +20,7 @@ export interface RoutingRuleRouterDeps {
   readonly getRoutingRule: ReturnType<typeof createGetRoutingRuleUseCase>;
   readonly activateRoutingRule: ReturnType<typeof createActivateRoutingRuleUseCase>;
   readonly deactivateRoutingRule: ReturnType<typeof createDeactivateRoutingRuleUseCase>;
+  readonly simulateRoutingRule: ReturnType<typeof createSimulateRoutingRuleUseCase>;
 }
 
 /**
@@ -49,6 +53,23 @@ export function routingRuleRouter(deps: RoutingRuleRouterDeps): Router {
       mappings: body.mappings,
     });
     res.status(201).json(toRoutingRuleResponse(rule));
+  });
+
+  /*
+   * Dry run from the decision editor. Returns 200 even when the graph fails:
+   * that it does not compile is the answer the caller came for, not a server
+   * error. Declared before `/:id` out of defensive habit — the day someone
+   * adds `POST /case-routing-rules/:id`, "simulate" would stop being a route.
+   */
+  router.post('/case-routing-rules/simulate', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(simulateRoutingRuleSchema, req.body);
+    const outcome = await deps.simulateRoutingRule({
+      auth,
+      conditions: body.conditions,
+      context: body.case,
+    });
+    res.status(200).json(outcome);
   });
 
   router.get('/case-routing-rules', async (req, res) => {

@@ -5,6 +5,7 @@ import type { RoleRepository } from '../modules/identity-access/domain/ports/Rol
 import { createOrganizationId } from '../modules/identity-access/domain/model/value-objects/OrganizationId.js';
 import { createUserId } from '../modules/identity-access/domain/model/value-objects/UserId.js';
 import { createRoleId } from '../modules/identity-access/domain/model/value-objects/RoleId.js';
+import { OPERATIONAL_ROLES } from '../shared/kernel/AccessTier.js';
 
 /**
  * Composition-root bridge: implements case-management's `AssigneeDirectory`
@@ -25,6 +26,13 @@ export function createIdentityAssigneeDirectory(
         return userBelongsToOrganization(userRepositoryFactory, organizationId, assignedTo.id);
       }
       return roleIsAssignable(roleRepository, assignedTo.id);
+    },
+    async canWorkCases(organizationId: string, assignedTo: AssignedTo): Promise<boolean> {
+      if (assignedTo.type === 'ROLE') {
+        return OPERATIONAL_ROLES.includes(assignedTo.id);
+      }
+      const roleId = await userRoleId(userRepositoryFactory, organizationId, assignedTo.id);
+      return roleId !== null && OPERATIONAL_ROLES.includes(roleId);
     },
     async listRoleRecipients(organizationId: string, roleId: string): Promise<readonly string[]> {
       try {
@@ -118,5 +126,27 @@ async function roleIsAssignable(roleRepository: RoleRepository, roleIdRaw: strin
     return await roleRepository.isAssignableToUser(createRoleId(roleIdRaw));
   } catch {
     return false;
+  }
+}
+
+/**
+ * The user's role, or `null` when the id does not resolve.
+ *
+ * An unresolvable id counts as "cannot instruct" rather than an error, for the
+ * same reason as `belongsToOrganization`: the caller is deciding whether to
+ * assign, and when in doubt it does not assign.
+ */
+async function userRoleId(
+  userRepositoryFactory: UserRepositoryFactory,
+  organizationId: string,
+  userIdRaw: string,
+): Promise<string | null> {
+  try {
+    const user = await userRepositoryFactory
+      .forTenant(createOrganizationId(organizationId))
+      .findById(createUserId(userIdRaw));
+    return user === null ? null : (user.roleId as string);
+  } catch {
+    return null;
   }
 }

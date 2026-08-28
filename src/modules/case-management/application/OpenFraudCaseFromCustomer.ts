@@ -5,6 +5,7 @@ import type { TimelineRecorder } from '../domain/ports/TimelineRecorder.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { AssigneeDirectory } from '../domain/ports/AssigneeDirectory.js';
+import type { OrganizationFraudConfigRepository } from '../domain/ports/OrganizationFraudConfigRepository.js';
 import type { CaseRoutingRuleRepository } from '../domain/ports/CaseRoutingRuleRepository.js';
 import type { InitializeCaseSlaService } from './InitializeCaseSla.js';
 import type { RouteCaseInput } from './RouteCase.js';
@@ -18,7 +19,12 @@ import { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
 import { createRiskScore } from '../domain/model/value-objects/RiskScore.js';
 import { createCasePriority } from '../domain/model/value-objects/CasePriority.js';
 import { createAssignedTo, type AssignedTo } from '../domain/model/value-objects/AssignedTo.js';
-import { forbiddenCrossTenant, noActiveRoutingRule } from '../domain/errors/CaseManagementError.js';
+import {
+  assigneeCannotWorkCases,
+  forbiddenCrossTenant,
+  noActiveRoutingRule,
+  organizationFraudConfigNotFound,
+} from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireAssignmentRole } from './authorization/policy.js';
 
@@ -48,6 +54,13 @@ export interface OpenFraudCaseDeps {
   readonly generateTimelineEventId: () => TimelineEventId;
   readonly generateOutboxEventId: () => OutboxEventId;
   readonly auditRecorder: AuditRecorder;
+  /**
+   * Read to REQUIRE it, not to compute: `initializeCaseSla` knows how to fall
+   * back to house defaults when it is missing, and that fallback is right for
+   * the automated paths. Not for this one — here somebody is standing in
+   * front of the screen and can go configure it.
+   */
+  readonly fraudConfig: OrganizationFraudConfigRepository;
   readonly initializeCaseSla: InitializeCaseSlaService;
   readonly assigneeDirectory: AssigneeDirectory;
   readonly routingRules: CaseRoutingRuleRepository;
@@ -96,7 +109,31 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
       assignedTo = createAssignedTo('USER', input.auth.userId);
     }
 
+    /*
+     * Whoever ends up holding it must actually instruct cases. Placed after
+     * the whole chain on purpose so it also covers "assign it to me": an
+     * ADMIN ticking that box would otherwise park the case in an inbox that
+     * never works one. ADMIN administers people and AUDITOR audits — a case
+     * in their tray breaks the segregation of duties the access policy rests
+     * on, and no inbox ever shows it.
+     */
+    if (assignedTo !== null && !(await deps.assigneeDirectory.canWorkCases(organizationId, assignedTo))) {
+      throw assigneeCannotWorkCases(assignedTo.type, assignedTo.id);
+    }
+
     return deps.unitOfWork.withTransaction(async (tx) => {
+      /*
+       * First of all, before writing: a case whose SLA is computed from
+       * values the tenant never chose is born with a deadline nobody agreed
+       * to, and that is the deadline that later gets breached. The automated
+       * paths deliberately keep the house defaults — rejecting a webhook
+       * loses the event and there is nobody there to tell.
+       */
+      const config = await deps.fraudConfig.findByOrganization(organizationId, tx);
+      if (!config) {
+        throw organizationFraudConfigNotFound(organizationId);
+      }
+
       // Check if a case already exists
       // Without `statuses`: unlike webhook ingestion, opening a case by
       // hand on a customer with a closed case must reopen that one, not

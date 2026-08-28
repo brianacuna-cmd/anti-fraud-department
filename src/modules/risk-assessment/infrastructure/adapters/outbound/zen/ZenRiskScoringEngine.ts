@@ -3,6 +3,10 @@ import type {
   RiskScoringEngine,
   RiskScoringEvaluation,
 } from '../../../../domain/ports/RiskScoringEngine.js';
+import type {
+  RuleSimulation,
+  RuleSimulationEngine,
+} from '../../../../domain/ports/RuleSimulationEngine.js';
 
 /**
  * `@gorules/zen-engine` adapter for the `RiskScoringEngine` port. The only
@@ -15,7 +19,7 @@ import type {
  * folds the integer `riskScore`. Missing or non-integer `riskScore` throws so
  * `CalculateRiskScore` can fail closed. Missing/non-array `hits` defaults to `[]`.
  */
-export class ZenRiskScoringEngine implements RiskScoringEngine {
+export class ZenRiskScoringEngine implements RiskScoringEngine, RuleSimulationEngine {
   private readonly engine: ZenEngine;
 
   constructor(engine: ZenEngine = new ZenEngine()) {
@@ -29,6 +33,27 @@ export class ZenRiskScoringEngine implements RiskScoringEngine {
     const decision = this.engine.createDecision(conditions);
     const { result } = await decision.evaluate(context);
     return toEvaluation(result);
+  }
+
+  /**
+   * Traced evaluation, for the editor's dry run.
+   *
+   * `trace: true` is what separates this from `evaluate`: it returns what went
+   * into and out of each node, which is what the editor paints over the graph.
+   * It stays off in `evaluate` because production evaluates once per incoming
+   * event and nobody reads that trace.
+   */
+  async simulate(
+    conditions: Readonly<Record<string, unknown>>,
+    context: Readonly<Record<string, unknown>>,
+  ): Promise<RuleSimulation> {
+    const decision = this.engine.createDecision(conditions);
+    const response = await decision.evaluate(context, { trace: true });
+    return {
+      performance: response.performance,
+      result: response.result,
+      ...(response.trace === undefined ? {} : { trace: response.trace }),
+    };
   }
 
   /** Releases the native ZEN engine handle. Call at composition-root shutdown. */

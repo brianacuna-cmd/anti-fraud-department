@@ -4,6 +4,10 @@ import type {
   RoutingEngine,
   RoutingEvaluation,
 } from '../../../../domain/ports/RoutingEngine.js';
+import type {
+  RuleSimulation,
+  RuleSimulationEngine,
+} from '../../../../domain/ports/RuleSimulationEngine.js';
 
 /**
  * `@gorules/zen-engine` adapter for the `RoutingEngine` port (design: "ZEN
@@ -19,7 +23,7 @@ import type {
  * under the `first` hit policy) maps to null targets, which `RouteCase` reads
  * as "this rule did not assign anyone".
  */
-export class ZenRoutingEngine implements RoutingEngine {
+export class ZenRoutingEngine implements RoutingEngine, RuleSimulationEngine {
   private readonly engine: ZenEngine;
 
   constructor(engine: ZenEngine = new ZenEngine()) {
@@ -38,6 +42,32 @@ export class ZenRoutingEngine implements RoutingEngine {
       tags: context.tags,
     });
     return toEvaluation(result);
+  }
+
+  /**
+   * Traced evaluation, for the editor's dry run. `trace: true` is what returns
+   * what went into and out of each node, which is what the editor paints over
+   * the graph.
+   */
+  async simulate(
+    conditions: Readonly<Record<string, unknown>>,
+    context: CaseRoutingContext,
+  ): Promise<RuleSimulation> {
+    const decision = this.engine.createDecision(conditions);
+    const response = await decision.evaluate(
+      {
+        riskScore: context.riskScore,
+        status: context.status,
+        priority: context.priority,
+        tags: context.tags,
+      },
+      { trace: true },
+    );
+    return {
+      performance: response.performance,
+      result: response.result,
+      ...(response.trace === undefined ? {} : { trace: response.trace }),
+    };
   }
 
   /** Releases the native ZEN engine handle. Call at composition-root shutdown. */

@@ -43,4 +43,7 @@ export const caseManagementErrorStatus: StatusByCode = {
   DLQ_EVENT_NOT_FOUND: 404,
   WEBHOOK_SUBSCRIPTION_NOT_FOUND: 404,
   WEBHOOK_SUBSCRIPTION_URL_TAKEN: 409,
+  // 422 and not 403: the request is well formed and the caller does have
+  // permission; the problem is WHO it is being assigned to.
+  ASSIGNEE_CANNOT_WORK_CASES: 422,
 };

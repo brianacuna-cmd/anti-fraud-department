@@ -1,4 +1,6 @@
 import { oid } from '../../../support/oid.js';
+import { createSimulateRoutingRuleUseCase } from '../../../../src/modules/case-management/application/SimulateRoutingRule.js';
+import { ZenRoutingEngine } from '../../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import request from 'supertest';
 import { createApp } from '../../../../src/shared/http/createApp.js';
@@ -69,6 +71,11 @@ function buildApp(actorPerRequest: () => AuthContext, clockNow: typeof NOW = NOW
       getRoutingRule,
       activateRoutingRule,
       deactivateRoutingRule,
+      /* El motor de verdad: una prueba en seco con un doble no prueba nada. */
+      simulateRoutingRule: createSimulateRoutingRuleUseCase({
+        simulationEngine: new ZenRoutingEngine(),
+        auditRecorder,
+      }),
     }),
   );
 
@@ -359,5 +366,132 @@ describe('routingRuleRouter (HTTP)', () => {
     );
 
     await request(app).post(`/api/v1/case-routing-rules/${oid('missing-rule')}/activate`).expect(404);
+  });
+});
+
+/**
+ * Ensayo en seco desde el editor de decisiones: evalúa el grafo que se está
+ * dibujando sin guardar nada, con el MISMO motor que enruta en producción.
+ */
+describe('POST /case-routing-rules/simulate', () => {
+  const SUPERVISOR = () =>
+    createAuthContext({
+      userId: oid('user-1'),
+      organizationId: oid('org-1'),
+      roleId: 'SUPERVISOR',
+    });
+
+  const CASE = { riskScore: 90, status: 'OPEN', priority: 'HIGH', tags: [] };
+
+  /** Tabla mínima: prioridad ALTA -> la cola de supervisores. */
+  const ROUTING_GRAPH = {
+    contentType: 'application/vnd.gorules.decision',
+    nodes: [
+      { id: 'input', type: 'inputNode', name: 'Caso', position: { x: 0, y: 0 } },
+      {
+        id: 'table',
+        type: 'decisionTableNode',
+        name: 'Reparto',
+        position: { x: 200, y: 0 },
+        content: {
+          hitPolicy: 'first',
+          inputs: [{ id: 'i1', name: 'Prioridad', field: 'priority' }],
+          outputs: [{ id: 'o1', name: 'Rol', field: 'targetRoleId' }],
+          rules: [{ _id: 'r1', i1: '"HIGH"', o1: '"SUPERVISOR"' }],
+        },
+      },
+      { id: 'output', type: 'outputNode', name: 'Salida', position: { x: 400, y: 0 } },
+    ],
+    edges: [
+      { id: 'e1', sourceId: 'input', targetId: 'table' },
+      { id: 'e2', sourceId: 'table', targetId: 'output' },
+    ],
+  };
+
+  it('evalúa un grafo en borrador sin persistir nada', async () => {
+    const { app, routingRules, auditRecorder } = buildApp(SUPERVISOR);
+
+    const response = await request(app)
+      .post('/api/v1/case-routing-rules/simulate')
+      .send({ conditions: ROUTING_GRAPH, case: CASE })
+      .expect(200);
+
+    expect(response.body.ok).toBe(true);
+    expect(response.body.targetRoleId).toBe('SUPERVISOR');
+    expect(response.body.targetUserId).toBeNull();
+    /*
+     * La traza nodo a nodo es lo que el editor pinta sobre el grafo. Llega
+     * indexada por id de nodo, no en orden: el recorrido lo da `order`.
+     */
+    expect(
+      Object.values(response.body.trace as Record<string, { name: string; order: number }>)
+        .sort((a, b) => a.order - b.order)
+        .map((entry) => entry.name),
+    ).toEqual(['Caso', 'Reparto', 'Salida']);
+    expect(routingRules.all()).toHaveLength(0);
+    expect(auditRecorder.all().map((e) => e.action)).toContain('SIMULATE_ROUTING_RULE');
+  });
+
+  /*
+   * Ambos destinos nulos NO es un fallo: es lo que `RouteCase` lee como «esta
+   * regla no asigna con este caso» antes de pasar a la siguiente.
+   */
+  it('distingue «no asigna a nadie» de «el grafo está roto»', async () => {
+    const { app } = buildApp(SUPERVISOR);
+
+    const response = await request(app)
+      .post('/api/v1/case-routing-rules/simulate')
+      .send({ conditions: ROUTING_GRAPH, case: { ...CASE, priority: 'LOW' } })
+      .expect(200);
+
+    expect(response.body.ok).toBe(true);
+    expect(response.body.targetUserId).toBeNull();
+    expect(response.body.targetRoleId).toBeNull();
+  });
+
+  /*
+   * Que el grafo no compile es el resultado que se ha venido a buscar: con un
+   * 500 el editor solo podría decir «algo falló».
+   */
+  it('devuelve un grafo roto como resultado, no como error del servidor', async () => {
+    const { app } = buildApp(SUPERVISOR);
+
+    const response = await request(app)
+      .post('/api/v1/case-routing-rules/simulate')
+      .send({
+        conditions: {
+          ...ROUTING_GRAPH,
+          nodes: [{ id: 'solo', type: 'decisionTableNode', content: { hitPolicy: 'first' } }],
+          edges: [],
+        },
+        case: CASE,
+      })
+      .expect(200);
+
+    expect(response.body.ok).toBe(false);
+  });
+
+  it('rechaza un contexto de caso que el motor no podría recibir', async () => {
+    const { app } = buildApp(SUPERVISOR);
+
+    await request(app)
+      .post('/api/v1/case-routing-rules/simulate')
+      .send({ conditions: ROUTING_GRAPH, case: { ...CASE, priority: 'URGENT' } })
+      .expect(400);
+  });
+
+  it('rechaza a ANALYST con 403', async () => {
+    const { app } = buildApp(() =>
+      createAuthContext({
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
+        roleId: 'ANALYST',
+      }),
+    );
+
+    await request(app)
+      .post('/api/v1/case-routing-rules/simulate')
+      .send({ conditions: ROUTING_GRAPH, case: CASE })
+      .expect(403);
   });
 });

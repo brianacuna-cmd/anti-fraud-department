@@ -280,3 +280,22 @@ export function webhookSubscriptionUrlTaken(url: string): CaseManagementError {
     { url },
   );
 }
+
+/**
+ * A case must never land with someone who does not work cases.
+ *
+ * ADMIN administers people and AUDITOR audits: neither acts on a case.
+ * Assigning them one leaves it out of every useful inbox and breaks the
+ * segregation of duties — whoever grants the permissions must not also use
+ * them — that the rest of the access policy rests on.
+ */
+export function assigneeCannotWorkCases(
+  assignedToType: string,
+  assignedToId: string,
+): CaseManagementError {
+  return new CaseManagementError(
+    'ASSIGNEE_CANNOT_WORK_CASES',
+    'the assignee is governance, not operations: only analysts and supervisors can be given a case',
+    { assignedToType, assignedToId },
+  );
+}

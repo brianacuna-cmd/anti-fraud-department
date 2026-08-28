@@ -87,4 +87,9 @@ export type CaseManagementErrorCode =
    * Unique `(organization_id, url)` collision, including inactive rows.
    * Reactivate the existing row via PATCH instead of inserting a duplicate.
    */
-  | 'WEBHOOK_SUBSCRIPTION_URL_TAKEN';
+  | 'WEBHOOK_SUBSCRIPTION_URL_TAKEN'
+  /**
+   * The assignee exists and belongs to the tenant, but sits in the
+   * governance plane (ADMIN or AUDITOR) and therefore never works cases.
+   */
+  | 'ASSIGNEE_CANNOT_WORK_CASES';
