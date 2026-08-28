@@ -13,6 +13,7 @@ import { createActivateScoringRuleUseCase } from '../../../../src/modules/risk-a
 import { createListScoringRulesUseCase } from '../../../../src/modules/risk-assessment/application/ListScoringRules.js';
 import { createGetScoringRuleUseCase } from '../../../../src/modules/risk-assessment/application/GetScoringRule.js';
 import { createSimulateScoringRuleUseCase } from '../../../../src/modules/risk-assessment/application/SimulateScoringRule.js';
+import { createDeleteScoringRuleUseCase } from '../../../../src/modules/risk-assessment/application/DeleteScoringRule.js';
 import { ZenRiskScoringEngine } from '../../../../src/modules/risk-assessment/infrastructure/adapters/outbound/zen/ZenRiskScoringEngine.js';
 import { generateRiskScoringRuleId } from '../../../../src/modules/risk-assessment/domain/model/value-objects/RiskScoringRuleId.js';
 import { InMemoryRiskScoringRuleRepository } from '../../../helpers/risk-assessment/InMemoryRiskScoringRuleRepository.js';
@@ -66,6 +67,12 @@ function buildApp(actorPerRequest: () => AuthContext) {
       activateScoringRule,
       listScoringRules,
       getScoringRule,
+      deleteScoringRule: createDeleteScoringRuleUseCase({
+        scoringRules,
+        auditRecorder,
+        unitOfWork: new PassthroughUnitOfWork(),
+        clock,
+      }),
       simulateScoringRule: createSimulateScoringRuleUseCase({
         simulationEngine: scoringEngine,
         auditRecorder,
@@ -361,5 +368,47 @@ describe('scoringRuleRouter (HTTP)', () => {
     );
     expect(byName).toEqual({ A: 'INACTIVE', B: 'ACTIVE' });
     expect(auditRecorder.all().some((e) => e.action === 'ACTIVATE_SCORING_RULE')).toBe(true);
+  });
+});
+
+describe('DELETE /risk-scoring-rules/:id', () => {
+  const SUPERVISOR = () =>
+    createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), roleId: 'SUPERVISOR' });
+
+  it('removes a draft from the list', async () => {
+    const { app, scoringRules, auditRecorder } = buildApp(SUPERVISOR);
+    const created = await request(app)
+      .post('/api/v1/risk-scoring-rules')
+      .send({ name: 'borrable', conditions: VALID_JDM })
+      .expect(201);
+
+    await request(app).delete(`/api/v1/risk-scoring-rules/${created.body.id}`).expect(200);
+
+    /* Sigue en la coleccion —el rastro se conserva— pero ya no se lista. */
+    expect(scoringRules.all()).toHaveLength(1);
+    expect(scoringRules.all()[0]?.deletedAt).not.toBeNull();
+    expect(auditRecorder.all().map((e) => e.action)).toContain('DELETE_SCORING_RULE');
+  });
+
+  /*
+   * Borrar la ACTIVA dejaria al inquilino sin puntuar, y en silencio:
+   * `CalculateRiskScore` falla cerrado y nada en el panel diria por que.
+   */
+  it('refuses to delete the ACTIVE rule', async () => {
+    const { app } = buildApp(SUPERVISOR);
+    const created = await request(app)
+      .post('/api/v1/risk-scoring-rules')
+      .send({ name: 'viva', conditions: VALID_JDM })
+      .expect(201);
+    await request(app).post(`/api/v1/risk-scoring-rules/${created.body.id}/activate`).send({}).expect(200);
+
+    await request(app).delete(`/api/v1/risk-scoring-rules/${created.body.id}`).expect(400);
+  });
+
+  it('rejects ANALYST with 403', async () => {
+    const { app } = buildApp(() =>
+      createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), roleId: 'ANALYST' }),
+    );
+    await request(app).delete(`/api/v1/risk-scoring-rules/${oid('any')}`).expect(403);
   });
 });

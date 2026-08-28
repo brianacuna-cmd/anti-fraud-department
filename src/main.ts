@@ -124,6 +124,7 @@ import { createCreateCaseUseCase } from './modules/case-management/application/C
 import { createCalculateSlaUseCase } from './modules/case-management/application/CalculateSla.js';
 import { createRouteCaseUseCase } from './modules/case-management/application/RouteCase.js';
 import { createSimulateRoutingRuleUseCase } from './modules/case-management/application/SimulateRoutingRule.js';
+import { createDeleteRoutingRuleUseCase } from './modules/case-management/application/DeleteRoutingRule.js';
 import { createReassignCaseUseCase } from './modules/case-management/application/ReassignCase.js';
 import { createListCasesUseCase } from './modules/case-management/application/ListCases.js';
 import { createExportCasesUseCase } from './modules/case-management/application/ExportCases.js';
@@ -257,6 +258,7 @@ import { MongoRiskScoringRuleRepository } from './modules/risk-assessment/infras
 import { MongoUnitOfWork as RiskAssessmentMongoUnitOfWork } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { ZenRiskScoringEngine } from './modules/risk-assessment/infrastructure/adapters/outbound/zen/ZenRiskScoringEngine.js';
 import { createSimulateScoringRuleUseCase } from './modules/risk-assessment/application/SimulateScoringRule.js';
+import { createDeleteScoringRuleUseCase } from './modules/risk-assessment/application/DeleteScoringRule.js';
 import { createCalculateRiskScoreUseCase } from './modules/risk-assessment/application/CalculateRiskScore.js';
 import { createCreateScoringRuleUseCase } from './modules/risk-assessment/application/CreateScoringRule.js';
 import { createActivateScoringRuleUseCase } from './modules/risk-assessment/application/ActivateScoringRule.js';
@@ -1290,6 +1292,12 @@ async function bootstrap(): Promise<void> {
     }),
     listRoutingRules: createListRoutingRulesUseCase({ routingRules: caseRoutingRules }),
     // Dry run for the decision editor: the same engine that routes in production.
+    deleteRoutingRule: createDeleteRoutingRuleUseCase({
+      routingRules: caseRoutingRules,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+    }),
     simulateRoutingRule: createSimulateRoutingRuleUseCase({
       simulationEngine: caseRoutingEngine,
       auditRecorder: caseManagementAuditRecorder,
@@ -1363,6 +1371,12 @@ async function bootstrap(): Promise<void> {
     listScoringRules,
     getScoringRule,
     // Dry run for the decision editor: the same engine that scores in production.
+    deleteScoringRule: createDeleteScoringRuleUseCase({
+      scoringRules,
+      auditRecorder: riskAssessmentAuditRecorder,
+      unitOfWork: riskAssessmentUnitOfWork,
+      clock,
+    }),
     simulateScoringRule: createSimulateScoringRuleUseCase({
       simulationEngine: scoringEngine,
       auditRecorder: riskAssessmentAuditRecorder,

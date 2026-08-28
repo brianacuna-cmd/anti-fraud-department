@@ -16,6 +16,12 @@ export interface RiskScoringRuleDocument {
   readonly conditions: Readonly<Record<string, unknown>>;
   readonly conditions_version: number;
   readonly status: string;
+  /**
+   * Optional because documents written before soft delete existed have no
+   * such key at all — the mapper's `?? null` is what makes those readable,
+   * and a required field here would make that fallback a lie.
+   */
+  readonly deleted_at?: Date | null;
   readonly created_at: Date;
   readonly updated_at: Date;
 }
