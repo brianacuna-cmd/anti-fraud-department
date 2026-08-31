@@ -232,6 +232,8 @@ import { createUpdateWebhookSubscriptionUseCase } from './modules/case-managemen
 import { createDeleteWebhookSubscriptionUseCase } from './modules/case-management/application/DeleteWebhookSubscription.js';
 import { organizationFraudConfigRouter } from './modules/case-management/infrastructure/adapters/inbound/http/organizationFraudConfigRouter.js';
 import { webhookSubscriptionRouter } from './modules/case-management/infrastructure/adapters/inbound/http/webhookSubscriptionRouter.js';
+import { webhookTestRouter } from './modules/case-management/infrastructure/adapters/inbound/http/webhookTestRouter.js';
+import { createTestOutgoingWebhookUseCase } from './modules/case-management/application/TestOutgoingWebhook.js';
 import { enforcementRouter } from './modules/case-management/infrastructure/adapters/inbound/http/enforcementRouter.js';
 import { approvalRequestRouter } from './modules/case-management/infrastructure/adapters/inbound/http/approvalRequestRouter.js';
 import { createReviewApprovalRequestUseCase } from './modules/case-management/application/ReviewApprovalRequest.js';
@@ -1156,6 +1158,17 @@ async function bootstrap(): Promise<void> {
   });
   const customerOutgoingEvents = new MongoCustomerOutgoingEventRepository(db);
   const outgoingWebhookClient = new HttpOutgoingWebhookClient();
+  const webhookTestHttpRouter = webhookTestRouter({
+    testOutgoingWebhook: createTestOutgoingWebhookUseCase({
+      fraudConfig: organizationFraudConfig,
+      webhookClient: outgoingWebhookClient,
+      outgoingEvents: customerOutgoingEvents,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateCustomerOutgoingEventId,
+    }),
+  });
   const customerOutgoingEventDispatcher = createCustomerOutgoingEventDispatcher({
     outgoingEvents: customerOutgoingEvents,
     webhookClient: outgoingWebhookClient,
@@ -1995,6 +2008,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(noteHttpRouter);
   identityAccessRouter.use(organizationFraudConfigHttpRouter);
   identityAccessRouter.use(webhookSubscriptionHttpRouter);
+  identityAccessRouter.use(webhookTestHttpRouter);
   identityAccessRouter.use(enforcementHttpRouter);
   identityAccessRouter.use(approvalRequestHttpRouter);
   identityAccessRouter.use(routingRuleHttpRouter);
