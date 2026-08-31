@@ -95,7 +95,13 @@ export type CaseManagementAuditAction =
    * PLATFORM_ADMIN force-ran a seeded catalog job. Written after the job
    * (SUCCESS or FAILED) with `organizationId` null.
    */
-  | 'SCHEDULED_JOB_RUN';
+  | 'SCHEDULED_JOB_RUN'
+  /**
+   * SUPERVISOR one-shot probe of the tenant outbound URL. Audited after
+   * the POST with `resourceId` = event id; detail is `{ statusCode, latencyMs, ok }`
+   * (no secret, no URL).
+   */
+  | 'WEBHOOK_TEST';
 
 export type CaseManagementAuditResource =
   | 'case'
@@ -126,4 +132,9 @@ export type CaseManagementAuditResource =
    * Observational `scheduled_jobs` catalog row. Mutation-only (force-run);
    * list/get are not in this change.
    */
-  | 'scheduled_job';
+  | 'scheduled_job'
+  /**
+   * Outbound delivery to the tenant webhook URL (`customer_outgoing_events`
+   * test row). Mutation-only (the probe POST); catalog reads are not audited.
+   */
+  | 'outgoing_webhook';

@@ -23,4 +23,14 @@ describe('CaseManagementAuditVocabulary', () => {
     const action: CaseManagementAuditAction = 'REORDER_ROUTING_RULES';
     expect(action).toBe('REORDER_ROUTING_RULES');
   });
+
+  it('accepts WEBHOOK_TEST as a closed action', () => {
+    const action: CaseManagementAuditAction = 'WEBHOOK_TEST';
+    expect(action).toBe('WEBHOOK_TEST');
+  });
+
+  it('accepts outgoing_webhook as a closed resource', () => {
+    const resource: CaseManagementAuditResource = 'outgoing_webhook';
+    expect(resource).toBe('outgoing_webhook');
+  });
 });
