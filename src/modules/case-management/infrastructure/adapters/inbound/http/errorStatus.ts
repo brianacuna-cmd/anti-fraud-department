@@ -41,6 +41,8 @@ export const caseManagementErrorStatus: StatusByCode = {
   NO_ACTIVE_ROUTING_RULE: 409,
   // 404: the DLQ row was never created or was already consumed by a prior requeue.
   DLQ_EVENT_NOT_FOUND: 404,
+  // 404: unknown or unseeded scheduled job name. Unmapped codes become HTTP 500.
+  SCHEDULED_JOB_NOT_FOUND: 404,
   WEBHOOK_SUBSCRIPTION_NOT_FOUND: 404,
   WEBHOOK_SUBSCRIPTION_URL_TAKEN: 409,
   // 422 and not 403: the request is well formed and the caller does have
