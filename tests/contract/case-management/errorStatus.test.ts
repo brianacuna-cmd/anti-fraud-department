@@ -2,6 +2,7 @@ import { caseManagementErrorStatus } from '../../../src/modules/case-management/
 import {
   caseNotFound,
   forbiddenRole,
+  outboundWebhookUrlNotSet,
   scheduledJobNotFound,
   selfApprovalForbidden,
   webhookSubscriptionNotFound,
@@ -40,6 +41,7 @@ describe('caseManagementErrorStatus', () => {
       WEBHOOK_SUBSCRIPTION_URL_TAKEN: 409,
       ASSIGNEE_CANNOT_WORK_CASES: 422,
       SCHEDULED_JOB_NOT_FOUND: 404,
+      OUTBOUND_WEBHOOK_URL_NOT_SET: 422,
     });
   });
 
@@ -88,5 +90,15 @@ describe('caseManagementErrorStatus', () => {
     expect(error.code).toBe('SCHEDULED_JOB_NOT_FOUND' satisfies CaseManagementErrorCode);
     expect(error.metadata).toEqual({ jobName: 'unknown_job' });
     expect(caseManagementErrorStatus[error.code]).toBe(404);
+  });
+
+  it('maps OUTBOUND_WEBHOOK_URL_NOT_SET to 422, not 400 or 404', () => {
+    const error = outboundWebhookUrlNotSet('org-missing-url');
+    expect(error.code).toBe('OUTBOUND_WEBHOOK_URL_NOT_SET' satisfies CaseManagementErrorCode);
+    expect(error.message).toContain('org-missing-url');
+    expect(error.metadata).toEqual({ organizationId: 'org-missing-url' });
+    expect(caseManagementErrorStatus[error.code]).toBe(422);
+    expect(caseManagementErrorStatus.INVARIANT_VIOLATION).toBe(400);
+    expect(caseManagementErrorStatus.ORGANIZATION_FRAUD_CONFIG_NOT_FOUND).toBe(404);
   });
 });

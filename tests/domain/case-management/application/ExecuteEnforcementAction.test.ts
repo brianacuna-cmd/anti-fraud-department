@@ -220,7 +220,7 @@ describe('createExecuteEnforcementActionUseCase', () => {
 
     expect(result.enforcementAction.status).toBe('EXECUTED');
     expect(result.outgoingEvent).not.toBeNull();
-    expect(result.outgoingEvent!.payload.action_type).toBe('REVIEW');
+    expect(result.outgoingEvent!.payload).toEqual(expect.objectContaining({ action_type: 'REVIEW' }));
     expect(outgoingEvents.all()).toHaveLength(1);
   });
 

@@ -27,6 +27,29 @@ function buildPending(idLabel: string) {
   });
 }
 
+function buildRecordedDelivery(
+  idLabel: string,
+  status: 'SENT' | 'FAILED',
+): CustomerOutgoingEvent {
+  return CustomerOutgoingEvent.createRecordedDelivery({
+    id: createCustomerOutgoingEventId(oid(idLabel)),
+    organizationId: oid('org-1'),
+    customerId: 'WEBHOOK_TEST',
+    webhookUrl: 'https://hooks.example/fraud',
+    eventType: 'WEBHOOK_TEST',
+    payload: {
+      event_type: 'WEBHOOK_TEST',
+      organization_id: oid('org-1'),
+      event_id: oid(idLabel),
+      requested_at: '2026-01-01T00:00:00.000Z',
+    },
+    status,
+    responseStatus: status === 'SENT' ? 200 : 500,
+    latencyMs: 12,
+    now: T0,
+  });
+}
+
 describe('InMemoryCustomerOutgoingEventRepository claim-lease semantics', () => {
   it('does not re-claim an already-claimed event within the lease TTL', async () => {
     const repository = new InMemoryCustomerOutgoingEventRepository();
@@ -74,5 +97,22 @@ describe('InMemoryCustomerOutgoingEventRepository claim-lease semantics', () => 
       10,
     );
     expect(afterLeaseExpiry).toHaveLength(1);
+  });
+
+  it('does not claim SENT or FAILED WEBHOOK_TEST rows (claimPending stays PENDING-only)', async () => {
+    const repository = new InMemoryCustomerOutgoingEventRepository();
+    const sent = buildRecordedDelivery('outbox-sent', 'SENT');
+    const failed = buildRecordedDelivery('outbox-failed', 'FAILED');
+    const pending = buildPending('outbox-pending');
+    await repository.save(sent);
+    await repository.save(failed);
+    await repository.save(pending);
+
+    const claimed = await repository.claimPending(T0, 10);
+
+    expect(claimed.map((event) => event.id)).toEqual([pending.id]);
+    expect(repository.all().map((event) => event.id).sort()).toEqual(
+      [sent.id, failed.id, pending.id].sort(),
+    );
   });
 });
