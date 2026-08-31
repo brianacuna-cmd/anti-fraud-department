@@ -282,6 +282,17 @@ export function webhookSubscriptionUrlTaken(url: string): CaseManagementError {
 }
 
 /**
+ * No closed-set catalog job exists for the given name (unknown or missing row).
+ */
+export function scheduledJobNotFound(jobName: string): CaseManagementError {
+  return new CaseManagementError(
+    'SCHEDULED_JOB_NOT_FOUND',
+    `no scheduled job named "${jobName}" was found`,
+    { jobName },
+  );
+}
+
+/**
  * A case must never land with someone who does not work cases.
  *
  * ADMIN administers people and AUDITOR audits: neither acts on a case.

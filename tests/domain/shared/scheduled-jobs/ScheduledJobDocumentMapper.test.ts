@@ -91,6 +91,27 @@ describe('ScheduledJobDocumentMapper', () => {
     expect(roundTripped.createdAt).toBe(NOW);
   });
 
+  it('coerces omitted seed-only tick fields to null', () => {
+    const seedOnly = {
+      _id: new ObjectId(oid('job-seed')),
+      organization_id: null,
+      name: 'directory_sync',
+      description: 'Sync directory',
+      cron_expression: 'every 15m',
+      enabled: false,
+      created_at: toDate(NOW),
+    };
+
+    const domain = toDomain(seedOnly);
+
+    expect(domain.lastRunAt).toBeNull();
+    expect(domain.nextRunAt).toBeNull();
+    expect(domain.lastResult).toBeNull();
+    expect(domain.lastError).toBeNull();
+    expect(domain.name).toBe('directory_sync');
+    expect(domain.enabled).toBe(false);
+  });
+
   it('reads incoming ERROR last_result as FAILED', () => {
     const document = toDocument(freshJob());
     const withError = { ...document, last_result: 'ERROR', last_error: 'legacy' };

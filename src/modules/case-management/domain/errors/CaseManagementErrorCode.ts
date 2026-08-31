@@ -92,4 +92,9 @@ export type CaseManagementErrorCode =
    * The assignee exists and belongs to the tenant, but sits in the
    * governance plane (ADMIN or AUDITOR) and therefore never works cases.
    */
-  | 'ASSIGNEE_CANNOT_WORK_CASES';
+  | 'ASSIGNEE_CANNOT_WORK_CASES'
+  /**
+   * No catalog row (or closed-set registry entry) exists for the given
+   * scheduled job name. Force-run only accepts the five seeded names.
+   */
+  | 'SCHEDULED_JOB_NOT_FOUND';

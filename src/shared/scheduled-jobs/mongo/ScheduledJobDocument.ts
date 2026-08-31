@@ -12,9 +12,10 @@ export interface ScheduledJobDocument {
   readonly description: string;
   readonly cron_expression: string;
   readonly enabled: boolean;
-  readonly last_run_at: Date | null;
-  readonly next_run_at: Date | null;
-  readonly last_result: string | null;
-  readonly last_error: string | null;
+  /** Omitted on seed-only rows until the first `recordRun`. */
+  readonly last_run_at?: Date | null;
+  readonly next_run_at?: Date | null;
+  readonly last_result?: string | null;
+  readonly last_error?: string | null;
   readonly created_at: Date;
 }

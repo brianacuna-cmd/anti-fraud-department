@@ -21,6 +21,10 @@ class FakeRecorder implements ScheduledJobRepository {
     /* unused in recordAround */
   }
 
+  async findByName(_name: string): Promise<null> {
+    return null;
+  }
+
   async recordRun(input: RecordScheduledJobRunInput): Promise<void> {
     this.recordRunCalls.push(input);
     await this.recordRunImpl(input);

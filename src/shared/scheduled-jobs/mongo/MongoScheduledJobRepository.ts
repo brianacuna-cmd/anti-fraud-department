@@ -1,11 +1,13 @@
 import { ObjectId, type Collection, type Db } from 'mongodb';
 import { toDate } from '../../time/Instant.js';
+import type { ScheduledJob } from '../ScheduledJob.js';
 import type {
   RecordScheduledJobRunInput,
   ScheduledJobRepository,
   SeedScheduledJobInput,
 } from '../ScheduledJobRepository.js';
 import type { ScheduledJobDocument } from './ScheduledJobDocument.js';
+import { toDomain } from './ScheduledJobDocumentMapper.js';
 
 const COLLECTION_NAME = 'scheduled_jobs';
 
@@ -59,5 +61,10 @@ export class MongoScheduledJobRepository implements ScheduledJobRepository {
       },
       { upsert: true },
     );
+  }
+
+  async findByName(name: string): Promise<ScheduledJob | null> {
+    const document = await this.collection.findOne({ name });
+    return document === null ? null : toDomain(document);
   }
 }
