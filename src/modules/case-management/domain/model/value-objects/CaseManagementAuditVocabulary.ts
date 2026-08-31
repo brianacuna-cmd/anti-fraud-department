@@ -90,7 +90,12 @@ export type CaseManagementAuditAction =
    * PUT `/organization-fraud-config` singleton upsert. One action for create
    * and re-upsert. GET is not audited.
    */
-  | 'UPSERT_ORGANIZATION_FRAUD_CONFIG';
+  | 'UPSERT_ORGANIZATION_FRAUD_CONFIG'
+  /**
+   * PLATFORM_ADMIN force-ran a seeded catalog job. Written after the job
+   * (SUCCESS or FAILED) with `organizationId` null.
+   */
+  | 'SCHEDULED_JOB_RUN';
 
 export type CaseManagementAuditResource =
   | 'case'
@@ -116,4 +121,9 @@ export type CaseManagementAuditResource =
    * Per-tenant singleton in `organization_fraud_config`. Mutation-only
    * (PUT upsert); GET is not audited.
    */
-  | 'organization_fraud_config';
+  | 'organization_fraud_config'
+  /**
+   * Observational `scheduled_jobs` catalog row. Mutation-only (force-run);
+   * list/get are not in this change.
+   */
+  | 'scheduled_job';
