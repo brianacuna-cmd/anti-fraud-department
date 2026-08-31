@@ -14,6 +14,30 @@ import { fromDate, type Instant } from '../../../src/shared/time/Instant.js';
 
 jest.setTimeout(120_000);
 
+function buildRecordedDelivery(
+  status: 'SENT' | 'FAILED',
+  createdAt: string,
+  latencyMs: number,
+): CustomerOutgoingEvent {
+  return CustomerOutgoingEvent.createRecordedDelivery({
+    id: generateCustomerOutgoingEventId(),
+    organizationId: oid('org-1'),
+    customerId: 'WEBHOOK_TEST',
+    webhookUrl: 'https://example.com/webhook',
+    eventType: 'WEBHOOK_TEST',
+    payload: {
+      event_type: 'WEBHOOK_TEST',
+      organization_id: oid('org-1'),
+      event_id: oid(`probe-${status}-${createdAt}`),
+      requested_at: createdAt,
+    },
+    status,
+    responseStatus: status === 'SENT' ? 200 : 500,
+    latencyMs,
+    now: fromDate(new Date(createdAt)),
+  });
+}
+
 function buildEvent(
   label: string,
   createdAt: string,
@@ -184,6 +208,50 @@ describe('MongoCustomerOutgoingEventRepository (integration, real replica-set Mo
       .findOne({ _id: raw_id(event) });
     expect(raw?.claimed_at ?? null).toBeNull();
     expect(raw?.status).toBe('SENT');
+  });
+
+  it('persists WEBHOOK_TEST rows with null enforcement_action_id and latency_ms', async () => {
+    const event = buildRecordedDelivery('SENT', '2026-01-01T00:00:00.000Z', 42);
+
+    await repository.save(event);
+
+    const loaded = await repository.findById(event.id);
+    expect(loaded?.enforcementActionId).toBeNull();
+    expect(loaded?.latencyMs).toBe(42);
+    expect(loaded?.status).toBe('SENT');
+
+    const raw = await db
+      .collection<CustomerOutgoingEventDocument>('customer_outgoing_events')
+      .findOne({ _id: raw_id(event) });
+    expect(raw?.enforcement_action_id).toBeNull();
+    expect(raw?.latency_ms).toBe(42);
+  });
+
+  it('rehydrates a missing latency_ms field as null so pre-probe rows still read', async () => {
+    const event = buildEvent('legacy-latency', '2026-01-01T00:00:00.000Z');
+    const document = toDocument(event);
+    const { latency_ms: _omitted, ...withoutLatency } = document as CustomerOutgoingEventDocument & {
+      readonly latency_ms?: number | null;
+    };
+    await db.collection<CustomerOutgoingEventDocument>('customer_outgoing_events').insertOne(withoutLatency);
+
+    const loaded = await repository.findById(event.id);
+
+    expect(loaded?.latencyMs).toBeNull();
+    expect(loaded?.enforcementActionId).toBe(event.enforcementActionId);
+  });
+
+  it('does not claim SENT or FAILED WEBHOOK_TEST rows (claimPending stays PENDING-only)', async () => {
+    const sent = buildRecordedDelivery('SENT', '2026-01-01T00:00:00.000Z', 9);
+    const failed = buildRecordedDelivery('FAILED', '2026-01-01T00:00:01.000Z', 11);
+    const pending = buildEvent('still-pending', '2026-01-01T00:00:02.000Z');
+    await repository.save(sent);
+    await repository.save(failed);
+    await repository.save(pending);
+
+    const claimed = await repository.claimPending(fromDate(new Date('2026-01-01T00:10:00.000Z')), 10);
+
+    expect(claimed.map((row) => row.id)).toEqual([pending.id]);
   });
 });
 

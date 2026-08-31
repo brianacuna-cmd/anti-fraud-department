@@ -9,19 +9,35 @@ export interface CustomerOutgoingEventPayloadDocument {
   readonly organization_id: string;
 }
 
+export interface WebhookTestPayloadDocument {
+  readonly event_type: 'WEBHOOK_TEST';
+  readonly organization_id: string;
+  readonly event_id: string;
+  readonly requested_at: string;
+}
+
+export type CustomerOutgoingEventStoredPayloadDocument =
+  | CustomerOutgoingEventPayloadDocument
+  | WebhookTestPayloadDocument;
+
 export interface CustomerOutgoingEventDocument {
   readonly _id: ObjectId;
   readonly organization_id: ObjectId;
   readonly customer_id: string;
-  readonly enforcement_action_id: ObjectId;
+  readonly enforcement_action_id: ObjectId | null;
   readonly webhook_url: string;
   readonly event_type: string;
-  readonly payload: CustomerOutgoingEventPayloadDocument;
+  readonly payload: CustomerOutgoingEventStoredPayloadDocument;
   readonly status: string;
   readonly response_status: number | null;
   readonly attempts: number;
   readonly last_attempt_at: Date | null;
   readonly created_at: Date;
+  /**
+   * Optional on documents written before the webhook-test probe. Mapper
+   * rehydrates a missing field as `null` (`latency_ms ?? null`).
+   */
+  readonly latency_ms?: number | null;
   /**
    * Infra-only claim lease marker (not part of the domain aggregate).
    * Set by `claimPending`'s atomic `findOneAndUpdate`; dropped on every

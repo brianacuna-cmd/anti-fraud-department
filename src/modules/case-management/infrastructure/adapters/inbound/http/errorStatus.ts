@@ -48,4 +48,6 @@ export const caseManagementErrorStatus: StatusByCode = {
   // 422 and not 403: the request is well formed and the caller does have
   // permission; the problem is WHO it is being assigned to.
   ASSIGNEE_CANNOT_WORK_CASES: 422,
+  // 422 not 400/404: empty body is valid; missing URL is a config gap.
+  OUTBOUND_WEBHOOK_URL_NOT_SET: 422,
 };

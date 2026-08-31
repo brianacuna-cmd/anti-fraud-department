@@ -32,6 +32,31 @@ function build(
   });
 }
 
+const WEBHOOK_TEST_PAYLOAD = {
+  event_type: 'WEBHOOK_TEST' as const,
+  organization_id: oid('org-1'),
+  event_id: oid('outbox-test-1'),
+  requested_at: '2026-01-01T00:00:00.000Z',
+};
+
+function buildRecordedDelivery(
+  overrides: Partial<Parameters<typeof CustomerOutgoingEvent.createRecordedDelivery>[0]> = {},
+) {
+  return CustomerOutgoingEvent.createRecordedDelivery({
+    id: createCustomerOutgoingEventId(oid('outbox-test-1')),
+    organizationId: oid('org-1'),
+    customerId: 'WEBHOOK_TEST',
+    webhookUrl: 'https://example.com/hooks/fraud',
+    eventType: 'WEBHOOK_TEST',
+    payload: WEBHOOK_TEST_PAYLOAD,
+    status: 'SENT',
+    responseStatus: 200,
+    latencyMs: 42,
+    now: NOW,
+    ...overrides,
+  });
+}
+
 describe('CustomerOutgoingEvent.create', () => {
   it('starts PENDING with attempts 0 and the minimal webhook payload', () => {
     const event = build();
@@ -42,6 +67,41 @@ describe('CustomerOutgoingEvent.create', () => {
     expect(event.lastAttemptAt).toBeNull();
     expect(event.payload).toEqual(MINIMAL_PAYLOAD);
     expect(event.webhookUrl).toBe('https://example.com/hooks/fraud');
+    expect(event.enforcementActionId).toBe(createEnforcementActionId(oid('action-1')));
+    expect(event.latencyMs).toBeNull();
+  });
+});
+
+describe('CustomerOutgoingEvent.createRecordedDelivery', () => {
+  it('records SENT with attempts 1, null enforcement action, and latency', () => {
+    const event = buildRecordedDelivery();
+
+    expect(event.status).toBe('SENT');
+    expect(event.attempts).toBe(1);
+    expect(event.lastAttemptAt).toBe(NOW);
+    expect(event.enforcementActionId).toBeNull();
+    expect(event.latencyMs).toBe(42);
+    expect(event.responseStatus).toBe(200);
+    expect(event.payload).toEqual(WEBHOOK_TEST_PAYLOAD);
+    expect(event.customerId).toBe('WEBHOOK_TEST');
+    expect(event.eventType).toBe('WEBHOOK_TEST');
+  });
+
+  it('records FAILED with attempts 1 and never PENDING', () => {
+    const event = buildRecordedDelivery({ status: 'FAILED', responseStatus: 0, latencyMs: 17 });
+
+    expect(event.status).toBe('FAILED');
+    expect(event.attempts).toBe(1);
+    expect(event.lastAttemptAt).toBe(NOW);
+    expect(event.enforcementActionId).toBeNull();
+    expect(event.latencyMs).toBe(17);
+    expect(event.responseStatus).toBe(0);
+  });
+
+  it('rejects PENDING so a test row cannot enter the dispatcher claim set', () => {
+    expect(() => buildRecordedDelivery({ status: 'PENDING' as 'SENT' })).toThrow(
+      'CustomerOutgoingEvent recorded delivery status must be SENT or FAILED',
+    );
   });
 });
 
