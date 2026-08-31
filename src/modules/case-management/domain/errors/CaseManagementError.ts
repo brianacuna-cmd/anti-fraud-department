@@ -293,6 +293,18 @@ export function scheduledJobNotFound(jobName: string): CaseManagementError {
 }
 
 /**
+ * SUPERVISOR probe cannot POST: the tenant has no outbound webhook URL
+ * (missing fraud-config is treated the same as an unset URL).
+ */
+export function outboundWebhookUrlNotSet(organizationId: string): CaseManagementError {
+  return new CaseManagementError(
+    'OUTBOUND_WEBHOOK_URL_NOT_SET',
+    `outbound webhook URL is not set for organization "${organizationId}"`,
+    { organizationId },
+  );
+}
+
+/**
  * A case must never land with someone who does not work cases.
  *
  * ADMIN administers people and AUDITOR audits: neither acts on a case.
