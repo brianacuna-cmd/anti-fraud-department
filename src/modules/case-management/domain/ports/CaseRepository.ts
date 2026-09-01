@@ -13,6 +13,7 @@ import type { Transaction } from './UnitOfWork.js';
  */
 export interface CaseListQuery {
   readonly organizationId: string;
+  readonly customerId?: string;
   readonly status?: readonly CaseStatus[];
   readonly priority?: readonly CasePriority[];
   readonly assignedToId?: string;

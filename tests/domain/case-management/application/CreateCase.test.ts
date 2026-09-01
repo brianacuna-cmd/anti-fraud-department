@@ -20,6 +20,10 @@ import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate, toDate } from '../../../../src/shared/time/Instant.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { CaseManagementError } from '../../../../src/modules/case-management/domain/errors/CaseManagementError.js';
+import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
+import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
+import type { OutboxEventRepository } from '../../../../src/shared/outbox/OutboxEventRepository.js';
+import type { OutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ANALYST = createAuthContext({ userId: oid('analyst-1'), organizationId: oid('org-1'), actorType: 'USER' });
@@ -57,7 +61,12 @@ function seedFraudConfig(
   );
 }
 
-function buildCreateCase(options: { seedConfig?: boolean; slaMinutes?: { low: number; medium: number; high: number; critical: number } } = {}) {
+function buildCreateCase(options: {
+  seedConfig?: boolean;
+  slaMinutes?: { low: number; medium: number; high: number; critical: number };
+  outbox?: OutboxEventRepository;
+  generateOutboxEventId?: () => OutboxEventId;
+} = {}) {
   const cases = new InMemoryCaseRepository();
   const timelineRecorder = new InMemoryTimelineRecorder();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
@@ -99,6 +108,8 @@ function buildCreateCase(options: { seedConfig?: boolean; slaMinutes?: { low: nu
     auditRecorder,
     routeCase,
     calculateSla,
+    outbox: options.outbox,
+    generateOutboxEventId: options.generateOutboxEventId,
   });
 
   return { createCase, cases, slaTracking, timelineRecorder, auditRecorder };
@@ -342,5 +353,77 @@ describe('createCreateCaseUseCase optional finturuCacheSnapshot', () => {
     expect(kase.finturuCacheSnapshot).toBeNull();
     expect(cases.all()[0]?.finturuCacheSnapshot).toBeNull();
     expect(kase.priority).toBe('MEDIUM');
+  });
+});
+
+describe('createCreateCaseUseCase case.created outbox', () => {
+  it('writes Ingest camelCase case.created after route+SLA and never CASE_OPENED', async () => {
+    const outbox = new InMemoryOutboxEventRepository();
+    const { createCase, timelineRecorder } = buildCreateCase({
+      outbox,
+      generateOutboxEventId,
+    });
+
+    const kase = await createCase({
+      auth: ANALYST,
+      customerId: 'customer-1',
+      customerEmail: 'a@b.com',
+      bridgeUserId: 'bridge-1',
+      bridgeWallet: '0xabc',
+      stripeCustomerId: 'cus_1',
+      riskScore: 42,
+      priority: 'HIGH',
+    });
+
+    expect(outbox.all()).toHaveLength(1);
+    const event = outbox.all()[0]!;
+    expect(event.eventType).toBe('case.created');
+    expect(event.aggregateType).toBe('Case');
+    expect(event.aggregateId).toBe(kase.id);
+    expect(event.organizationId).toBe(kase.organizationId);
+    expect(event.payload).toEqual({
+      caseId: kase.id,
+      organizationId: kase.organizationId,
+      customerId: 'customer-1',
+      customerEmail: 'a@b.com',
+      bridgeUserId: 'bridge-1',
+      bridgeWallet: '0xabc',
+      stripeCustomerId: 'cus_1',
+      riskScore: 42,
+      status: kase.status,
+      priority: 'HIGH',
+      assignedTo: kase.assignedTo?.id ?? null,
+      createdAt: kase.createdAt,
+    });
+    expect(timelineRecorder.all().map((row) => row.eventType)).toEqual(['CASE_CREATED']);
+  });
+
+  it('skips outbox on idempotent replay and writes nothing when either dep is missing', async () => {
+    const outbox = new InMemoryOutboxEventRepository();
+    const withBoth = buildCreateCase({ outbox, generateOutboxEventId });
+    await withBoth.createCase({
+      auth: ANALYST,
+      customerId: 'customer-1',
+      riskScore: 90,
+      priority: 'HIGH',
+      idempotencyKey: 'retry-outbox',
+    });
+    await withBoth.createCase({
+      auth: ANALYST,
+      customerId: 'customer-1',
+      riskScore: 90,
+      priority: 'HIGH',
+      idempotencyKey: 'retry-outbox',
+    });
+    expect(outbox.all()).toHaveLength(1);
+
+    const onlyOutbox = new InMemoryOutboxEventRepository();
+    await buildCreateCase({ outbox: onlyOutbox }).createCase({
+      auth: ANALYST,
+      customerId: 'customer-2',
+      riskScore: 10,
+      priority: 'LOW',
+    });
+    expect(onlyOutbox.all()).toHaveLength(0);
   });
 });

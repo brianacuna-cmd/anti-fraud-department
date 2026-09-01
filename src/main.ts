@@ -694,6 +694,8 @@ async function bootstrap(): Promise<void> {
     auditRecorder: caseManagementAuditRecorder,
     routeCase,
     calculateSla,
+    outbox: outboxEvents,
+    generateOutboxEventId,
   });
   // ---------------------------------------------------------------------
   // Finturu integration (this fork's own).

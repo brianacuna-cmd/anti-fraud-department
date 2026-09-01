@@ -41,6 +41,7 @@ function asStringArray(value: unknown): string[] | undefined {
  * context — not from the query string.
  */
 export const listCasesQuerySchema = z.object({
+  customerId: z.string().min(1).optional(),
   status: z.preprocess(asStringArray, z.array(caseStatusEnum).optional()),
   priority: z.preprocess(asStringArray, z.array(casePriorityEnum).optional()),
   assignedTo: z.string().min(1).optional(),

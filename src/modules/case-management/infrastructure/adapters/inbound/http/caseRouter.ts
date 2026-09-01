@@ -61,6 +61,7 @@ export function caseRouter(deps: CaseRouterDeps): Router {
     const query = parseRequest(listCasesQuerySchema, req.query);
     const page = await deps.listCases({
       auth,
+      customerId: query.customerId,
       status: query.status,
       priority: query.priority,
       assignedToId: query.assignedTo,
