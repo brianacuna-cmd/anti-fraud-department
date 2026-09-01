@@ -108,7 +108,7 @@ function writeRuleContext(
 ): void {
   const rowId = nonEmptyString(rule._id);
   if (rowId !== undefined) {
-    writeCell(rule, columnIds.id, JSON.stringify(rowId));
+    writeCell(rule, columnIds.id, zenStringLiteral(rowId));
   }
 
   const filledInputs = inputs.filter((input) => {
@@ -119,12 +119,12 @@ function writeRuleContext(
   const name =
     firstNonEmptyInputName(filledInputs) ?? rowId ?? nodeName;
   if (name !== undefined) {
-    writeCell(rule, columnIds.name, JSON.stringify(name));
+    writeCell(rule, columnIds.name, zenStringLiteral(name));
   }
 
   const because = deriveBecause(rule, filledInputs, rowId);
   if (because !== undefined) {
-    writeCell(rule, columnIds.because, JSON.stringify(because));
+    writeCell(rule, columnIds.because, zenStringLiteral(because));
   }
 }
 
@@ -188,6 +188,19 @@ function unusedOutputId(outputs: Array<Record<string, unknown>>, preferredId: st
     candidate = `${preferredId}${suffix}`;
   }
   return candidate;
+}
+
+/**
+ * ZEN 0.54 output cells evaluate as expressions. `JSON.stringify` is correct
+ * for ordinary strings, but a value that contains `"` becomes `"…\"…"`,
+ * which this engine version silently drops from collect matches. Prefer a
+ * single-quoted literal when the value has double quotes and no apostrophe.
+ */
+function zenStringLiteral(value: string): string {
+  if (value.includes('"') && !value.includes("'")) {
+    return `'${value}'`;
+  }
+  return JSON.stringify(value);
 }
 
 function writeCell(rule: Record<string, unknown>, columnId: string, value: string): void {

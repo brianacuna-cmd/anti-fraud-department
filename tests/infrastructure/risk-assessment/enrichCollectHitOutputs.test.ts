@@ -223,7 +223,7 @@ describe('enrichCollectHitOutputs', () => {
     });
   });
 
-  it('writes id, name, and because cells as JSON.stringify including >= and quotes', () => {
+  it('writes id, name, and because cells as ZEN string literals including >= and quotes', () => {
     const graph = collectGraph({
       rules: [
         { _id: 'r1', i1: '>= 10000', i2: '', i3: '', o1: '20' },
@@ -249,7 +249,7 @@ describe('enrichCollectHitOutputs', () => {
     expect(cellForField(content, content.rules[2], 'id')).toBe(JSON.stringify('r3'));
     expect(cellForField(content, content.rules[2], 'name')).toBe(JSON.stringify('Event Type'));
     expect(cellForField(content, content.rules[2], 'because')).toBe(
-      JSON.stringify('r3: Event Type "CHARGEBACK"'),
+      `'r3: Event Type "CHARGEBACK"'`,
     );
 
     expect(content.rules[0].o1).toBe('20');
