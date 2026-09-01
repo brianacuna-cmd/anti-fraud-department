@@ -8,4 +8,8 @@ describe('createActorType', () => {
   it('rejects an unknown value as an invariant violation', () => {
     expect(() => createActorType('SUPERUSER')).toThrow(/ActorType/);
   });
+
+  it('rejects SERVICE', () => {
+    expect(() => createActorType('SERVICE')).toThrow(/ActorType/);
+  });
 });

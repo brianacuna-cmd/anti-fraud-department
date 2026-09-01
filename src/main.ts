@@ -26,6 +26,7 @@ import { createAuthContextMiddleware } from './modules/identity-access/infrastru
 import { MongoOrganizationRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoOrganizationRepository.js';
 import { MongoUserRepositoryFactory } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUserRepositoryFactory.js';
 import { MongoSessionRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoSessionRepository.js';
+import { MongoAgentApiKeyRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoAgentApiKeyRepository.js';
 import { UserActorGateway } from './modules/identity-access/infrastructure/adapters/outbound/mongo/UserActorGateway.js';
 import { OrganizationActorGateway } from './modules/identity-access/infrastructure/adapters/outbound/mongo/OrganizationActorGateway.js';
 import { MongoUnitOfWork } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
@@ -545,6 +546,7 @@ async function bootstrap(): Promise<void> {
   const organizations = new MongoOrganizationRepository(db);
   const userRepositoryFactory = new MongoUserRepositoryFactory(db);
   const sessions = new MongoSessionRepository(db);
+  const agentApiKeys = new MongoAgentApiKeyRepository(db);
   const admins = new MongoAdminOrganizationRepository(db);
   // user-roles PR-1b: first real consumer — construction was deferred out of
   // PR-1a to avoid dead code with no caller yet (this file's existing
@@ -1893,6 +1895,7 @@ async function bootstrap(): Promise<void> {
       sessionRepository: sessions,
       userRepositoryFactory,
       platformAdminAuth: PLATFORM_ADMIN_AUTH,
+      agentApiKeyRepository: agentApiKeys,
     }),
   );
 

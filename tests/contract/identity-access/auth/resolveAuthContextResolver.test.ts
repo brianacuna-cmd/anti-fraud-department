@@ -1,11 +1,19 @@
+import { createHash } from 'node:crypto';
 import { oid } from '../../../support/oid.js';
-import { resolveAuthContextResolver } from '../../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/resolveAuthContextResolver.js';
+import {
+  resolveAuthContextResolver,
+  SessionAgentAuthContextResolver,
+} from '../../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/resolveAuthContextResolver.js';
 import { TrustedHeaderAuthContextResolver } from '../../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/TrustedHeaderAuthContextResolver.js';
-import { TieredAuthContextResolver } from '../../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/TieredAuthContextResolver.js';
 import { AesGcmSecretCipher } from '../../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSecretCipher.js';
 import { AesGcmSessionTokenService } from '../../../../src/modules/identity-access/infrastructure/adapters/outbound/crypto/AesGcmSessionTokenService.js';
 import { InMemorySessionRepository } from '../../../helpers/identity-access/InMemorySessionRepository.js';
 import { InMemoryUserRepositoryFactory } from '../../../helpers/identity-access/InMemoryUserRepositoryFactory.js';
+import { InMemoryAgentApiKeyRepository } from '../../../helpers/identity-access/InMemoryAgentApiKeyRepository.js';
+import { AgentApiKey, createAgentApiKeyId } from '../../../../src/modules/identity-access/domain/model/aggregates/AgentApiKey.js';
+import { createOrganizationId } from '../../../../src/modules/identity-access/domain/model/value-objects/OrganizationId.js';
+import { createAuthContext, SYSTEM_AGENT_USER_ID } from '../../../../src/shared/kernel/AuthContext.js';
+import type { AuthContextResolver } from '../../../../src/modules/identity-access/infrastructure/adapters/inbound/http/auth/AuthContextResolver.js';
 
 describe('resolveAuthContextResolver', () => {
   it('returns a TrustedHeaderAuthContextResolver for AUTH_MODE=trusted-header (unchanged, global dev/staging bypass)', () => {
@@ -18,7 +26,7 @@ describe('resolveAuthContextResolver', () => {
     expect(() => resolveAuthContextResolver('jwt')).toThrow(/AUTH_MODE/);
   });
 
-  it('returns a TieredAuthContextResolver for AUTH_MODE=session when deps are given (design D6)', () => {
+  it('returns a SessionAgentAuthContextResolver for AUTH_MODE=session when deps are given', () => {
     const sessionTokenService = new AesGcmSessionTokenService(new AesGcmSecretCipher('secret', 1));
     const sessionRepository = new InMemorySessionRepository();
 
@@ -28,7 +36,7 @@ describe('resolveAuthContextResolver', () => {
       userRepositoryFactory: new InMemoryUserRepositoryFactory(),
     });
 
-    expect(resolver).toBeInstanceOf(TieredAuthContextResolver);
+    expect(resolver).toBeInstanceOf(SessionAgentAuthContextResolver);
   });
 
   it('throws an actionable error for AUTH_MODE=session when deps are missing', () => {
@@ -87,4 +95,60 @@ describe('resolveAuthContextResolver', () => {
 
     await expect(resolver.resolve(req)).resolves.toBeNull();
   });
+
+  it('resolves a valid X-Agent-Api-Key as system:agent ANALYST when session is missing', async () => {
+    const sessionTokenService = new AesGcmSessionTokenService(new AesGcmSecretCipher('secret', 1));
+    const agentApiKeys = new InMemoryAgentApiKeyRepository();
+    const plaintext = 'd'.repeat(64);
+    await agentApiKeys.save(
+      AgentApiKey.create({
+        id: createAgentApiKeyId(oid('agent-key-1')),
+        secretHash: createHash('sha256').update(plaintext, 'utf8').digest('hex'),
+        organizationId: createOrganizationId(oid('org-1')),
+      }),
+    );
+    const auth = await resolveAuthContextResolver('session', {
+      sessionTokenService,
+      sessionRepository: new InMemorySessionRepository(),
+      userRepositoryFactory: new InMemoryUserRepositoryFactory(),
+      agentApiKeyRepository: agentApiKeys,
+    }).resolve({ headers: { 'x-agent-api-key': plaintext } } as unknown as import('express').Request);
+    expect(auth).toMatchObject({ userId: SYSTEM_AGENT_USER_ID, actorType: 'USER', roleId: 'ANALYST', purpose: 'full' });
+  });
+
+  it('does not fall through to admin interim when X-Agent-Api-Key is present but invalid', async () => {
+    const resolver = resolveAuthContextResolver('session', {
+      sessionTokenService: new AesGcmSessionTokenService(new AesGcmSecretCipher('secret', 1)),
+      sessionRepository: new InMemorySessionRepository(),
+      userRepositoryFactory: new InMemoryUserRepositoryFactory(),
+      agentApiKeyRepository: new InMemoryAgentApiKeyRepository(),
+      platformAdminAuth: 'trusted-header',
+    });
+    await expect(
+      resolver.resolve({
+        headers: { 'x-agent-api-key': 'invalid-key', 'x-actor-user-id': 'admin1', 'x-actor-is-platform-admin': 'true' },
+      } as unknown as import('express').Request),
+    ).resolves.toBeNull();
+  });
 });
+
+describe('SessionAgentAuthContextResolver', () => {
+  const fake = (result: ReturnType<typeof createAuthContext> | null): AuthContextResolver => ({
+    resolve: async () => result,
+  });
+  const sessionCtx = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), actorType: 'USER' });
+  const agentCtx = createAuthContext({
+    userId: SYSTEM_AGENT_USER_ID,
+    organizationId: oid('org-1'),
+    actorType: 'USER',
+    roleId: 'ANALYST',
+  });
+
+  it('prefers session even when X-Agent-Api-Key is also present', async () => {
+    const auth = await new SessionAgentAuthContextResolver(fake(sessionCtx), fake(agentCtx), null).resolve({
+      headers: { 'x-agent-api-key': 'present' },
+    } as unknown as import('express').Request);
+    expect(auth?.userId).toBe(oid('user-1'));
+  });
+});
+
