@@ -26,6 +26,10 @@ import { createAuthContext } from '../../../src/shared/kernel/AuthContext.js';
 import { generateCaseId } from '../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from '../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { generateCaseSlaTrackingId } from '../../../src/modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
+import { generateOutboxEventId } from '../../../src/shared/outbox/OutboxEventId.js';
+import { MongoOutboxEventRepository } from '../../../src/shared/outbox/mongo/MongoOutboxEventRepository.js';
+import type { OutboxEvent } from '../../../src/shared/outbox/OutboxEvent.js';
+import type { OutboxEventRepository } from '../../../src/shared/outbox/OutboxEventRepository.js';
 
 jest.setTimeout(120_000);
 
@@ -78,6 +82,7 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
     await db.collection('case_routing_rules').deleteMany({});
     await db.collection('organization_fraud_config').deleteMany({});
     await db.collection('case_sla_tracking').deleteMany({});
+    await db.collection('outbox_events').deleteMany({});
   });
 
   async function seedFraudConfig(overrides: Record<string, unknown> = {}): Promise<void> {
@@ -154,7 +159,10 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
     );
   }
 
-  function buildUseCase(auditRecorder: AuditRecorder) {
+  function buildUseCase(
+    auditRecorder: AuditRecorder,
+    outbox: OutboxEventRepository = new MongoOutboxEventRepository(db),
+  ) {
     const clock = new SystemClock();
     const fraudConfig = new MongoOrganizationFraudConfigRepository(db);
     const routeCase = createRouteCaseUseCase({
@@ -185,6 +193,8 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
       auditRecorder,
       routeCase,
       calculateSla,
+      outbox,
+      generateOutboxEventId,
     });
   }
 
@@ -209,6 +219,17 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
     expect(auditRows).toHaveLength(1);
     expect(auditRows[0]?.action).toBe('CREATE_CASE');
     expect(auditRows[0]?.resource).toBe('case');
+
+    const outboxRows = await db.collection('outbox_events').find({}).toArray();
+    expect(outboxRows).toHaveLength(1);
+    expect(outboxRows[0]?.event_type).toBe('case.created');
+    expect(outboxRows[0]?.aggregate_type).toBe('Case');
+    expect(outboxRows[0]?.payload).toMatchObject({
+      caseId: kase.id,
+      organizationId: oid('org-1'),
+      customerId: 'customer-1',
+      assignedTo: null,
+    });
   });
 
   it('rolls back the Case write and the timeline entry when the audit write fails mid-transaction (proves the write is truly inside the tx)', async () => {
@@ -225,6 +246,25 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
     expect(timelineRows).toHaveLength(0);
     const auditRows = await db.collection('audit_logs').find({}).toArray();
     expect(auditRows).toHaveLength(0);
+    expect(await db.collection('outbox_events').countDocuments({})).toBe(0);
+  });
+
+  it('rolls back the case.created outbox row when save succeeds and the transaction then fails', async () => {
+    await seedFraudConfig();
+    const inner = new MongoOutboxEventRepository(db);
+    const createCase = buildUseCase(realAuditRecorder(), {
+      async save(event: OutboxEvent, tx?: unknown): Promise<void> {
+        await inner.save(event, tx);
+        throw new Error('induced outbox post-save failure');
+      },
+    });
+
+    await expect(
+      createCase({ auth: ANALYST, customerId: 'customer-1', riskScore: 42 }),
+    ).rejects.toThrow('induced outbox post-save failure');
+
+    expect(await db.collection('cases').countDocuments({})).toBe(0);
+    expect(await db.collection('outbox_events').countDocuments({})).toBe(0);
   });
 
   /**

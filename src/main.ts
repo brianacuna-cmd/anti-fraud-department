@@ -26,6 +26,7 @@ import { createAuthContextMiddleware } from './modules/identity-access/infrastru
 import { MongoOrganizationRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoOrganizationRepository.js';
 import { MongoUserRepositoryFactory } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUserRepositoryFactory.js';
 import { MongoSessionRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoSessionRepository.js';
+import { MongoAgentApiKeyRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoAgentApiKeyRepository.js';
 import { UserActorGateway } from './modules/identity-access/infrastructure/adapters/outbound/mongo/UserActorGateway.js';
 import { OrganizationActorGateway } from './modules/identity-access/infrastructure/adapters/outbound/mongo/OrganizationActorGateway.js';
 import { MongoUnitOfWork } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
@@ -134,6 +135,7 @@ import { createBulkCaseActionUseCase } from './modules/case-management/applicati
 import { createGetCaseUseCase } from './modules/case-management/application/GetCase.js';
 import { createGetCaseTimelineUseCase } from './modules/case-management/application/GetCaseTimeline.js';
 import { createAddCaseNoteUseCase } from './modules/case-management/application/AddCaseNote.js';
+import { createPutAgentBriefUseCase } from './modules/case-management/application/PutAgentBrief.js';
 import { createListCaseNotesUseCase } from './modules/case-management/application/ListCaseNotes.js';
 import { generateCaseNoteId } from './modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { createResolveCaseUseCase } from './modules/case-management/application/ResolveCase.js';
@@ -289,6 +291,7 @@ import { generateOrganizationSarFilingProfileId } from './modules/sar/domain/mod
 import { sarErrorStatus } from './modules/sar/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createSarSourceVerifier } from './composition/sarSourceVerifier.js';
 import { createSarAuditRecorderAdapter } from './composition/sarAuditRecorderAdapter.js';
+import { createGetCaseAnalysisPack } from './composition/getCaseAnalysisPack.js';
 import { createScoreToCaseOrchestrator } from './composition/scoreToCaseOrchestrator.js';
 import type { ScoreToCaseOrchestratorInput, ScoreToCaseOrchestratorResult } from './composition/scoreToCaseOrchestrator.js';
 import { scoreToCaseProcessRouter } from './composition/scoreToCaseProcessRouter.js';
@@ -544,6 +547,7 @@ async function bootstrap(): Promise<void> {
   const organizations = new MongoOrganizationRepository(db);
   const userRepositoryFactory = new MongoUserRepositoryFactory(db);
   const sessions = new MongoSessionRepository(db);
+  const agentApiKeys = new MongoAgentApiKeyRepository(db);
   const admins = new MongoAdminOrganizationRepository(db);
   // user-roles PR-1b: first real consumer — construction was deferred out of
   // PR-1a to avoid dead code with no caller yet (this file's existing
@@ -693,6 +697,8 @@ async function bootstrap(): Promise<void> {
     auditRecorder: caseManagementAuditRecorder,
     routeCase,
     calculateSla,
+    outbox: outboxEvents,
+    generateOutboxEventId,
   });
   // ---------------------------------------------------------------------
   // Finturu integration (this fork's own).
@@ -886,6 +892,20 @@ async function bootstrap(): Promise<void> {
     clock,
   });
 
+  const amlAlerts = new MongoAmlAlertRepository(db);
+  const listAmlAlerts = createListAmlAlertsUseCase({ amlAlertRepository: amlAlerts });
+  const getCase = createGetCaseUseCase({ cases });
+  const getCaseTimeline = createGetCaseTimelineUseCase({
+    cases,
+    timelineReader: caseTimelineReader,
+  });
+  const getCaseAnalysisPack = createGetCaseAnalysisPack({
+    getCase,
+    getCaseTimeline,
+    listAmlAlerts,
+    cases,
+  });
+
   const caseManagementCasesRouter = caseRouter({
     createCase,
     reassignCase: createReassignCaseUseCase({
@@ -930,8 +950,17 @@ async function bootstrap(): Promise<void> {
       clock,
       generateTimelineEventId,
     }),
-    getCase: createGetCaseUseCase({ cases }),
-    getCaseTimeline: createGetCaseTimelineUseCase({ cases, timelineReader: caseTimelineReader }),
+    getCase,
+    getCaseTimeline,
+    getCaseAnalysisPack,
+    putAgentBrief: createPutAgentBriefUseCase({
+      cases,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateTimelineEventId,
+    }),
     addCaseNote: createAddCaseNoteUseCase({
       cases,
       notes: caseNotes,
@@ -1400,7 +1429,6 @@ async function bootstrap(): Promise<void> {
   // one-line swap back to it. `OpenAmlAlert` owns the transactional
   // aml_alerts + case_timeline + outbox_events write (natural-key unique
   // index still backs RF-6 idempotency against races).
-  const amlAlerts = new MongoAmlAlertRepository(db);
   const amlAlertTimeline = new MongoAmlAlertTimelineRecorder(db);
   const screeningUnitOfWork = new ScreeningMongoUnitOfWork(client);
   const openAmlAlert = createOpenAmlAlertUseCase({
@@ -1414,7 +1442,6 @@ async function bootstrap(): Promise<void> {
     generateOutboxEventId,
   });
   const getAmlAlert = createGetAmlAlertUseCase({ amlAlertRepository: amlAlerts });
-  const listAmlAlerts = createListAmlAlertsUseCase({ amlAlertRepository: amlAlerts });
   const getAmlAlertTimeline = createGetAmlAlertTimelineUseCase({
     getAmlAlert,
     timelineRecorder: amlAlertTimeline,
@@ -1877,6 +1904,7 @@ async function bootstrap(): Promise<void> {
       sessionRepository: sessions,
       userRepositoryFactory,
       platformAdminAuth: PLATFORM_ADMIN_AUTH,
+      agentApiKeyRepository: agentApiKeys,
     }),
   );
 

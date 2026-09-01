@@ -264,6 +264,19 @@ describe('createCalculateRiskScoreUseCase', () => {
     expect(auditRecorder.all().some((event) => event.action === 'CALCULATE_RISK_SCORE')).toBe(false);
   });
 
+  it('accepts points-only hits with an integer score and does not synthesize because', async () => {
+    const hits = [{ points: 10 }];
+    const engine = new ScriptedRiskScoringEngine([{ riskScore: 42, hits }]);
+    const { calculateRiskScore } = buildUseCase(engine, [buildRule()]);
+
+    const result = await calculateRiskScore({ auth: tenantAuth(), event: buildEvent() });
+
+    expect(result.riskScore).toBe(42);
+    expect(result.hits).toEqual([{ points: 10 }]);
+    expect(result.hits[0]).not.toHaveProperty('because');
+    expect(Object.keys(result.hits[0] as object)).toEqual(['points']);
+  });
+
   it('rejects a non-integer engine output without clamping', async () => {
     const engine = new ScriptedRiskScoringEngine([{ riskScore: 50.5 }]);
     const { calculateRiskScore } = buildUseCase(engine, [buildRule()]);
@@ -271,6 +284,17 @@ describe('createCalculateRiskScoreUseCase', () => {
     await expect(calculateRiskScore({ auth: tenantAuth(), event: buildEvent() })).rejects.toMatchObject({
       code: 'INVARIANT_VIOLATION',
     });
+  });
+
+  it('fails closed on non-integer riskScore with points-only hits and does not open a case', async () => {
+    const engine = new ScriptedRiskScoringEngine([{ riskScore: 12.7, hits: [{ points: 10 }] }]);
+    const { calculateRiskScore, auditRecorder } = buildUseCase(engine, [buildRule()]);
+
+    await expect(calculateRiskScore({ auth: tenantAuth(), event: buildEvent() })).rejects.toMatchObject({
+      code: 'INVARIANT_VIOLATION',
+    });
+    // Fail-closed before success audit or any case-opening side effect — this use case has no Case port.
+    expect(auditRecorder.all()).toEqual([]);
   });
 
   it('rejects a missing tenant context before loading rules', async () => {

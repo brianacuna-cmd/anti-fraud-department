@@ -41,6 +41,7 @@ function asStringArray(value: unknown): string[] | undefined {
  * context — not from the query string.
  */
 export const listCasesQuerySchema = z.object({
+  customerId: z.string().min(1).optional(),
   status: z.preprocess(asStringArray, z.array(caseStatusEnum).optional()),
   priority: z.preprocess(asStringArray, z.array(casePriorityEnum).optional()),
   assignedTo: z.string().min(1).optional(),
@@ -121,6 +122,13 @@ export const addCaseNoteSchema = z.object({
 });
 
 export type AddCaseNoteBody = z.infer<typeof addCaseNoteSchema>;
+
+/** PUT /cases/:caseId/agent-brief body. Last-write-wins companion brief. */
+export const putAgentBriefSchema = z.object({
+  brief: z.string().trim().min(1),
+});
+
+export type PutAgentBriefBody = z.infer<typeof putAgentBriefSchema>;
 
 /** POST /cases/:caseId/resolve and /archive body (formal closure). */
 export const closeCaseSchema = z.object({

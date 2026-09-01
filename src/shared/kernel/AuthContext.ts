@@ -7,6 +7,9 @@
  */
 export type ActorType = 'USER' | 'ORGANIZATION' | 'PLATFORM_ADMIN';
 
+/** Machine companion principal. Not a User row — `UserId` is ObjectId-only. */
+export const SYSTEM_AGENT_USER_ID = 'system:agent';
+
 /**
  * The scope a resolved `AuthContext` is authorized for (design D3,
  * two-step-login). `'full'` is a real `Sessions`-backed login — every

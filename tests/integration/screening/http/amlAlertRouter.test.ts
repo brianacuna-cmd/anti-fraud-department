@@ -37,11 +37,11 @@ const ORG_1_ANALYST = createAuthContext({
 });
 const CASE_ID = oid('fraud-case-1');
 
-function buildAlert(id: string, organizationId = ORG_1): AmlAlert {
+function buildAlert(id: string, organizationId = ORG_1, customerId = oid('customer-1')): AmlAlert {
   return AmlAlert.create({
     id: createAmlAlertId(id),
     organizationId,
-    customerId: oid('customer-1'),
+    customerId,
     suspectedEntity: 'John Smith',
     confidence: createMatchScore(82),
     detectionSource: 'index',
@@ -129,6 +129,25 @@ describe('GET /api/v1/aml-alerts (compliance inbox)', () => {
     expect(response.body.items[0].id).toBe(oid('inbox-open'));
     expect(response.body.items[0].status).toBe('OPEN');
     expect(response.body.items[0].caseId).toBeNull();
+  });
+
+  it('filters the inbox by customerId and returns only matching tenant alerts', async () => {
+    const { app, amlAlertRepository } = buildApp();
+    await amlAlertRepository.save(buildAlert(oid('cust-a-alert'), ORG_1, oid('customer-a')));
+    await amlAlertRepository.save(buildAlert(oid('cust-b-alert'), ORG_1, oid('customer-b')));
+    await amlAlertRepository.save(buildAlert(oid('foreign-alert'), ORG_2, oid('customer-a')));
+
+    const match = await request(app).get('/api/v1/aml-alerts').query({ customerId: oid('customer-a') });
+    expect(match.status).toBe(200);
+    expect(match.body.total).toBe(1);
+    expect(match.body.items).toHaveLength(1);
+    expect(match.body.items[0].id).toBe(oid('cust-a-alert'));
+    expect(match.body.items[0].customerId).toBe(oid('customer-a'));
+
+    const empty = await request(app).get('/api/v1/aml-alerts').query({ customerId: oid('customer-none') });
+    expect(empty.status).toBe(200);
+    expect(empty.body.total).toBe(0);
+    expect(empty.body.items).toEqual([]);
   });
 
   it('returns 400 for invalid query params', async () => {

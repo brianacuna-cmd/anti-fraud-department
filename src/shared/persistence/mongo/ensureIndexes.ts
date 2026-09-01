@@ -32,6 +32,10 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection('sessions').createIndex({ token_hash: 1 }, { unique: true, name: 'session_token_hash_unique' });
 
   await db
+    .collection('agent_api_keys')
+    .createIndex({ secret_hash: 1 }, { unique: true, name: 'agent_api_key_secret_hash_unique' });
+
+  await db
     .collection('sessions')
     .createIndex({ expira_en: 1, deleted_at: 1 }, { name: 'idx_expired_active' });
 

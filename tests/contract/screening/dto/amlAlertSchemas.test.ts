@@ -26,6 +26,17 @@ describe('listAmlAlertsQuerySchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts optional customerId and rejects an empty string', () => {
+    const accepted = listAmlAlertsQuerySchema.safeParse({ customerId: 'cus_9aFbZ' });
+    expect(accepted.success).toBe(true);
+    if (accepted.success) {
+      expect(accepted.data.customerId).toBe('cus_9aFbZ');
+    }
+
+    const rejected = listAmlAlertsQuerySchema.safeParse({ customerId: '' });
+    expect(rejected.success).toBe(false);
+  });
+
   it('rejects an unknown severity value', () => {
     const result = listAmlAlertsQuerySchema.safeParse({ severity: 'BOGUS' });
 

@@ -181,6 +181,23 @@ describe('createResolveCaseUseCase', () => {
     ).rejects.toMatchObject({ code: 'FORBIDDEN_ROLE' });
   });
 
+  it('rejects system:agent ANALYST with FORBIDDEN_ROLE and leaves repositories unchanged', async () => {
+    const { cases, resolutions, decisions, timelineRecorder, auditRecorder, resolveCase } = build();
+    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
+    await seedDecision(decisions);
+    await expect(
+      resolveCase({
+        auth: createAuthContext({ userId: 'system:agent', organizationId: ORG_1, actorType: 'USER', roleId: 'ANALYST' }),
+        caseId: oid('case-1'),
+        reason: 'x',
+      }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN_ROLE' });
+    expect((await cases.findById(createCaseId(oid('case-1'))))?.status).toBe('IN_REVIEW');
+    expect(await resolutions.listByCaseId(createCaseId(oid('case-1')))).toHaveLength(0);
+    expect(timelineRecorder.all()).toHaveLength(0);
+    expect(auditRecorder.all()).toHaveLength(0);
+  });
+
   it('throws caseNotFound when the case does not exist', async () => {
     const { resolveCase } = build();
     await expect(

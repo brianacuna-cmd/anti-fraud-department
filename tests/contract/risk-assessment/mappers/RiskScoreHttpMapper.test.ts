@@ -79,13 +79,13 @@ describe('toCanonicalRiskEvent', () => {
 });
 
 describe('toRiskScoreResponse', () => {
-  it('returns score and provenance and never includes rawPayload', () => {
+  it('returns score, provenance, and hits and never includes rawPayload', () => {
     const dto = toRiskScoreResponse({
       riskScore: createRiskScore(65),
       ruleId: createRiskScoringRuleId(oid('rule-1')),
       name: 'dispute-score',
       conditionsVersion: 2,
-      hits: [{ points: 20 }],
+      hits: [{ points: 10 }],
     });
 
     expect(dto).toEqual({
@@ -93,7 +93,21 @@ describe('toRiskScoreResponse', () => {
       ruleId: oid('rule-1'),
       name: 'dispute-score',
       conditionsVersion: 2,
+      hits: [{ points: 10 }],
     });
+    expect(dto).not.toHaveProperty('rawPayload');
+  });
+
+  it('passthroughs empty hits without inventing because', () => {
+    const dto = toRiskScoreResponse({
+      riskScore: createRiskScore(0),
+      ruleId: createRiskScoringRuleId(oid('rule-2')),
+      name: 'empty-hits',
+      conditionsVersion: 1,
+      hits: [],
+    });
+
+    expect(dto.hits).toEqual([]);
     expect(dto).not.toHaveProperty('rawPayload');
   });
 });

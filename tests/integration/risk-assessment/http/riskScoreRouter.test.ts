@@ -206,6 +206,12 @@ function buildApp(actorPerRequest: () => AuthContext, engine: RiskScoringEngine,
     listCases: createListCasesUseCase({ cases }),
     getCase: createGetCaseUseCase({ cases }),
     getCaseTimeline: createGetCaseTimelineUseCase({ cases, timelineReader: timelineRecorder }),
+    getCaseAnalysisPack: async () => {
+      throw new Error('unused');
+    },
+    putAgentBrief: async () => {
+      throw new Error('unused');
+    },
     addCaseNote: createAddCaseNoteUseCase({ cases, notes: caseNotes, timelineRecorder, auditRecorder: caseAuditRecorder, unitOfWork, clock, generateCaseNoteId, generateTimelineEventId }),
     listCaseNotes: createListCaseNotesUseCase({ cases, notes: caseNotes }),
     resolveCase: createResolveCaseUseCase({
@@ -280,6 +286,7 @@ describe('riskScoreRouter (e2e, in-memory repository)', () => {
       ruleId: rule.id,
       name: 'dispute-score',
       conditionsVersion: 4,
+      hits: [],
     });
     expect(response.body).not.toHaveProperty('rawPayload');
     expect(JSON.stringify(response.body)).not.toContain('do-not-echo');
