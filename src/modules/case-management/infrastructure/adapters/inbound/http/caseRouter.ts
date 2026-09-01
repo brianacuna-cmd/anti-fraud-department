@@ -13,6 +13,7 @@ import type { createListCaseNotesUseCase } from '../../../../application/ListCas
 import type { createResolveCaseUseCase } from '../../../../application/ResolveCase.js';
 import type { createArchiveCaseUseCase } from '../../../../application/ArchiveCase.js';
 import type { createStartReviewUseCase } from '../../../../application/StartReview.js';
+import type { createGetCaseAnalysisPack } from '../../../../../../composition/getCaseAnalysisPack.js';
 import {
   createCaseSchema,
   reassignCaseSchema,
@@ -38,6 +39,7 @@ export interface CaseRouterDeps {
   readonly bulkCaseAction: ReturnType<typeof createBulkCaseActionUseCase>;
   readonly getCase: ReturnType<typeof createGetCaseUseCase>;
   readonly getCaseTimeline: ReturnType<typeof createGetCaseTimelineUseCase>;
+  readonly getCaseAnalysisPack: ReturnType<typeof createGetCaseAnalysisPack>;
   readonly addCaseNote: ReturnType<typeof createAddCaseNoteUseCase>;
   readonly listCaseNotes: ReturnType<typeof createListCaseNotesUseCase>;
   readonly resolveCase: ReturnType<typeof createResolveCaseUseCase>;
@@ -107,6 +109,12 @@ export function caseRouter(deps: CaseRouterDeps): Router {
     const auth = requireAuthContext(req);
     const events = await deps.getCaseTimeline({ auth, caseId: req.params.caseId! });
     res.status(200).json({ items: events.map(toTimelineEventResponse) });
+  });
+
+  router.get('/cases/:caseId/analysis-pack', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const pack = await deps.getCaseAnalysisPack({ auth, caseId: req.params.caseId! });
+    res.status(200).json(pack);
   });
 
   router.post('/cases/:caseId/notes', async (req, res) => {

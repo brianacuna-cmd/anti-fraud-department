@@ -17,11 +17,11 @@ const ORG_2 = oid('org-2');
 const ANALYST = createAuthContext({ userId: oid('analyst-1'), organizationId: ORG_1, actorType: 'USER' });
 const NO_TENANT = createAuthContext({ userId: oid('admin'), organizationId: null, actorType: 'PLATFORM_ADMIN' });
 
-function buildAlert(id: string, organizationId: string, now = NOW): AmlAlert {
+function buildAlert(id: string, organizationId: string, now = NOW, customerId = oid('customer-1')): AmlAlert {
   return AmlAlert.create({
     id: createAmlAlertId(id),
     organizationId,
-    customerId: oid('customer-1'),
+    customerId,
     suspectedEntity: 'John Smith',
     confidence: createMatchScore(82),
     detectionSource: 'index',
@@ -113,5 +113,30 @@ describe('createListAmlAlertsUseCase (compliance inbox)', () => {
     await expect(listAmlAlerts({ auth: NO_TENANT, limit: 20, offset: 0 })).rejects.toMatchObject({
       code: 'FORBIDDEN_CROSS_TENANT',
     });
+  });
+
+  it('filters by customerId within the tenant and returns empty when none match', async () => {
+    const amlAlertRepository = new InMemoryAmlAlertRepository();
+    await amlAlertRepository.save(buildAlert(oid('match'), ORG_1));
+    await amlAlertRepository.save(buildAlert(oid('other-customer'), ORG_1, NOW, oid('customer-2')));
+    const listAmlAlerts = createListAmlAlertsUseCase({ amlAlertRepository });
+
+    const match = await listAmlAlerts({
+      auth: ANALYST,
+      customerId: oid('customer-1'),
+      limit: 20,
+      offset: 0,
+    });
+    expect(match.total).toBe(1);
+    expect(String(match.items[0]?.id)).toBe(oid('match'));
+
+    const empty = await listAmlAlerts({
+      auth: ANALYST,
+      customerId: oid('customer-none'),
+      limit: 20,
+      offset: 0,
+    });
+    expect(empty.total).toBe(0);
+    expect(empty.items).toEqual([]);
   });
 });

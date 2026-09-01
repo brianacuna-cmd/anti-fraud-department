@@ -289,6 +289,7 @@ import { generateOrganizationSarFilingProfileId } from './modules/sar/domain/mod
 import { sarErrorStatus } from './modules/sar/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createSarSourceVerifier } from './composition/sarSourceVerifier.js';
 import { createSarAuditRecorderAdapter } from './composition/sarAuditRecorderAdapter.js';
+import { createGetCaseAnalysisPack } from './composition/getCaseAnalysisPack.js';
 import { createScoreToCaseOrchestrator } from './composition/scoreToCaseOrchestrator.js';
 import type { ScoreToCaseOrchestratorInput, ScoreToCaseOrchestratorResult } from './composition/scoreToCaseOrchestrator.js';
 import { scoreToCaseProcessRouter } from './composition/scoreToCaseProcessRouter.js';
@@ -886,6 +887,20 @@ async function bootstrap(): Promise<void> {
     clock,
   });
 
+  const amlAlerts = new MongoAmlAlertRepository(db);
+  const listAmlAlerts = createListAmlAlertsUseCase({ amlAlertRepository: amlAlerts });
+  const getCase = createGetCaseUseCase({ cases });
+  const getCaseTimeline = createGetCaseTimelineUseCase({
+    cases,
+    timelineReader: caseTimelineReader,
+  });
+  const getCaseAnalysisPack = createGetCaseAnalysisPack({
+    getCase,
+    getCaseTimeline,
+    listAmlAlerts,
+    cases,
+  });
+
   const caseManagementCasesRouter = caseRouter({
     createCase,
     reassignCase: createReassignCaseUseCase({
@@ -930,8 +945,9 @@ async function bootstrap(): Promise<void> {
       clock,
       generateTimelineEventId,
     }),
-    getCase: createGetCaseUseCase({ cases }),
-    getCaseTimeline: createGetCaseTimelineUseCase({ cases, timelineReader: caseTimelineReader }),
+    getCase,
+    getCaseTimeline,
+    getCaseAnalysisPack,
     addCaseNote: createAddCaseNoteUseCase({
       cases,
       notes: caseNotes,
@@ -1400,7 +1416,6 @@ async function bootstrap(): Promise<void> {
   // one-line swap back to it. `OpenAmlAlert` owns the transactional
   // aml_alerts + case_timeline + outbox_events write (natural-key unique
   // index still backs RF-6 idempotency against races).
-  const amlAlerts = new MongoAmlAlertRepository(db);
   const amlAlertTimeline = new MongoAmlAlertTimelineRecorder(db);
   const screeningUnitOfWork = new ScreeningMongoUnitOfWork(client);
   const openAmlAlert = createOpenAmlAlertUseCase({
@@ -1414,7 +1429,6 @@ async function bootstrap(): Promise<void> {
     generateOutboxEventId,
   });
   const getAmlAlert = createGetAmlAlertUseCase({ amlAlertRepository: amlAlerts });
-  const listAmlAlerts = createListAmlAlertsUseCase({ amlAlertRepository: amlAlerts });
   const getAmlAlertTimeline = createGetAmlAlertTimelineUseCase({
     getAmlAlert,
     timelineRecorder: amlAlertTimeline,

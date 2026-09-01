@@ -206,6 +206,9 @@ function buildApp(actorPerRequest: () => AuthContext, engine: RiskScoringEngine,
     listCases: createListCasesUseCase({ cases }),
     getCase: createGetCaseUseCase({ cases }),
     getCaseTimeline: createGetCaseTimelineUseCase({ cases, timelineReader: timelineRecorder }),
+    getCaseAnalysisPack: async () => {
+      throw new Error('unused');
+    },
     addCaseNote: createAddCaseNoteUseCase({ cases, notes: caseNotes, timelineRecorder, auditRecorder: caseAuditRecorder, unitOfWork, clock, generateCaseNoteId, generateTimelineEventId }),
     listCaseNotes: createListCaseNotesUseCase({ cases, notes: caseNotes }),
     resolveCase: createResolveCaseUseCase({
