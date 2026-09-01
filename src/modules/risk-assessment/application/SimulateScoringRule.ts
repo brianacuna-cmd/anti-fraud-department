@@ -104,13 +104,43 @@ async function simulate(
    */
   const raw = (simulation.result as Record<string, unknown> | null)?.riskScore;
   try {
-    return { ok: true, riskScore: createRiskScore(raw as number), warning: null, ...simulation };
+    return okSimulation(simulation, createRiskScore(raw as number), null);
   } catch (error) {
-    return {
-      ok: true,
-      riskScore: null,
-      warning: error instanceof Error ? error.message : String(error),
-      ...simulation,
-    };
+    return okSimulation(
+      simulation,
+      null,
+      error instanceof Error ? error.message : String(error),
+    );
   }
+}
+
+const MISSING_BECAUSE_WARNING = 'scoring hit lacks string because';
+
+function okSimulation(
+  simulation: RuleSimulation,
+  riskScore: number | null,
+  warning: string | null,
+): SimulateScoringRuleResult {
+  return {
+    ok: true,
+    ...simulation,
+    riskScore,
+    warning: appendMissingBecauseWarning(simulation.result, warning),
+  };
+}
+
+/** Warn-only: missing `because` must not fail-close evaluate or this dry run. */
+function appendMissingBecauseWarning(result: unknown, warning: string | null): string | null {
+  const hits = (result as Record<string, unknown> | null)?.hits;
+  if (!Array.isArray(hits)) {
+    return warning;
+  }
+  if (!hits.some(objectHitLacksStringBecause)) {
+    return warning;
+  }
+  return warning === null ? MISSING_BECAUSE_WARNING : `${warning}; ${MISSING_BECAUSE_WARNING}`;
+}
+
+function objectHitLacksStringBecause(hit: unknown): boolean {
+  return hit !== null && typeof hit === 'object' && typeof (hit as { because?: unknown }).because !== 'string';
 }
