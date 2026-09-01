@@ -23,7 +23,7 @@ export interface CaseAnalysisPack {
   readonly snapshot: Record<string, unknown> | null;
   readonly amlAlerts: ReturnType<typeof toAmlAlertResponse>[];
   readonly relatedCases: ReturnType<typeof toCaseResponse>[];
-  readonly agentBrief: null;
+  readonly agentBrief: string | null;
 }
 
 export interface GetCaseAnalysisPackDeps {
@@ -65,7 +65,7 @@ export function createGetCaseAnalysisPack(deps: GetCaseAnalysisPackDeps) {
       snapshot: kase.finturuCacheSnapshot,
       amlAlerts: aml.items.map(toAmlAlertResponse),
       relatedCases: related.map(toCaseResponse),
-      agentBrief: null,
+      agentBrief: kase.agentBrief,
     };
   };
 }

@@ -14,6 +14,7 @@ import type { createResolveCaseUseCase } from '../../../../application/ResolveCa
 import type { createArchiveCaseUseCase } from '../../../../application/ArchiveCase.js';
 import type { createStartReviewUseCase } from '../../../../application/StartReview.js';
 import type { createGetCaseAnalysisPack } from '../../../../../../composition/getCaseAnalysisPack.js';
+import type { createPutAgentBriefUseCase } from '../../../../application/PutAgentBrief.js';
 import {
   createCaseSchema,
   reassignCaseSchema,
@@ -23,6 +24,7 @@ import {
   bulkCaseActionSchema,
   addCaseNoteSchema,
   closeCaseSchema,
+  putAgentBriefSchema,
 } from './dto/caseSchemas.js';
 import { toCaseResponse } from './mappers/CaseHttpMapper.js';
 import { toTimelineEventResponse } from './mappers/CaseTimelineHttpMapper.js';
@@ -40,6 +42,7 @@ export interface CaseRouterDeps {
   readonly getCase: ReturnType<typeof createGetCaseUseCase>;
   readonly getCaseTimeline: ReturnType<typeof createGetCaseTimelineUseCase>;
   readonly getCaseAnalysisPack: ReturnType<typeof createGetCaseAnalysisPack>;
+  readonly putAgentBrief: ReturnType<typeof createPutAgentBriefUseCase>;
   readonly addCaseNote: ReturnType<typeof createAddCaseNoteUseCase>;
   readonly listCaseNotes: ReturnType<typeof createListCaseNotesUseCase>;
   readonly resolveCase: ReturnType<typeof createResolveCaseUseCase>;
@@ -116,6 +119,13 @@ export function caseRouter(deps: CaseRouterDeps): Router {
     const auth = requireAuthContext(req);
     const pack = await deps.getCaseAnalysisPack({ auth, caseId: req.params.caseId! });
     res.status(200).json(pack);
+  });
+
+  router.put('/cases/:caseId/agent-brief', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(putAgentBriefSchema, req.body);
+    const kase = await deps.putAgentBrief({ auth, caseId: req.params.caseId!, brief: body.brief });
+    res.status(200).json(toCaseResponse(kase));
   });
 
   router.post('/cases/:caseId/notes', async (req, res) => {

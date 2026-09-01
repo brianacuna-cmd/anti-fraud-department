@@ -135,6 +135,7 @@ import { createBulkCaseActionUseCase } from './modules/case-management/applicati
 import { createGetCaseUseCase } from './modules/case-management/application/GetCase.js';
 import { createGetCaseTimelineUseCase } from './modules/case-management/application/GetCaseTimeline.js';
 import { createAddCaseNoteUseCase } from './modules/case-management/application/AddCaseNote.js';
+import { createPutAgentBriefUseCase } from './modules/case-management/application/PutAgentBrief.js';
 import { createListCaseNotesUseCase } from './modules/case-management/application/ListCaseNotes.js';
 import { generateCaseNoteId } from './modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { createResolveCaseUseCase } from './modules/case-management/application/ResolveCase.js';
@@ -952,6 +953,14 @@ async function bootstrap(): Promise<void> {
     getCase,
     getCaseTimeline,
     getCaseAnalysisPack,
+    putAgentBrief: createPutAgentBriefUseCase({
+      cases,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateTimelineEventId,
+    }),
     addCaseNote: createAddCaseNoteUseCase({
       cases,
       notes: caseNotes,

@@ -146,4 +146,12 @@ describe('createGetCaseAnalysisPack', () => {
     expect(pack.amlAlerts).toHaveLength(100);
     expect(pack.amlAlerts.every((alert) => alert.customerId === 'cust-1')).toBe(true);
   });
+
+  it('returns a stored agent brief instead of hardcoded null', async () => {
+    const getPack = await buildPack({
+      cases: [buildCase(SUBJECT_ID).withAgentBrief('stored companion brief', NOW)],
+    });
+    const pack = await getPack({ auth: AUTH, caseId: SUBJECT_ID });
+    expect(pack.agentBrief).toBe('stored companion brief');
+  });
 });

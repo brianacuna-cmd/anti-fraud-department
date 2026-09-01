@@ -143,6 +143,9 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
     getCaseAnalysisPack: async () => {
       throw new Error('unused');
     },
+    putAgentBrief: async () => {
+      throw new Error('unused');
+    },
     addCaseNote: createAddCaseNoteUseCase({ cases, notes: caseNotes, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateCaseNoteId, generateTimelineEventId }),
     listCaseNotes: createListCaseNotesUseCase({ cases, notes: caseNotes }),
     resolveCase: createResolveCaseUseCase({

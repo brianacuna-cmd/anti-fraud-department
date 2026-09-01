@@ -28,7 +28,8 @@ export type TimelineEventType =
   // milestone, the standalone request left no trace in the timeline and the
   // case told an incomplete story: the sanction appeared without a record of
   // who requested it or when.
-  | 'ENFORCEMENT_REQUESTED';
+  | 'ENFORCEMENT_REQUESTED'
+  | 'AGENT_BRIEFING';
 
 const VALID_EVENT_TYPES: ReadonlySet<string> = new Set<TimelineEventType>([
   'STATE_CHANGED',
@@ -45,12 +46,13 @@ const VALID_EVENT_TYPES: ReadonlySet<string> = new Set<TimelineEventType>([
   'CASE_LINKED_TO_INVESTIGATION',
   'SNAPSHOT_REFRESHED',
   'ENFORCEMENT_REQUESTED',
+  'AGENT_BRIEFING',
 ]);
 
 export function createTimelineEventType(value: string): TimelineEventType {
   if (!VALID_EVENT_TYPES.has(value)) {
     throw invariantViolation(
-      'TimelineEventType must be one of STATE_CHANGED, ASSIGNED, NOTE_ADDED, DECISION_MADE, CASE_CREATED, CASE_REOPENED, EVIDENCE_ADDED, PRIORITY_CHANGED, TAGS_UPDATED, EVIDENCE_DELETED, NOTE_DELETED, CASE_LINKED_TO_INVESTIGATION, SNAPSHOT_REFRESHED, ENFORCEMENT_REQUESTED',
+      'TimelineEventType must be one of STATE_CHANGED, ASSIGNED, NOTE_ADDED, DECISION_MADE, CASE_CREATED, CASE_REOPENED, EVIDENCE_ADDED, PRIORITY_CHANGED, TAGS_UPDATED, EVIDENCE_DELETED, NOTE_DELETED, CASE_LINKED_TO_INVESTIGATION, SNAPSHOT_REFRESHED, ENFORCEMENT_REQUESTED, AGENT_BRIEFING',
       { value },
     );
   }

@@ -24,6 +24,7 @@ export interface CaseResponseDto {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly deletedAt: string | null;
+  readonly agentBrief: string | null;
 }
 
 export function toCaseResponse(kase: Case): CaseResponseDto {
@@ -45,5 +46,6 @@ export function toCaseResponse(kase: Case): CaseResponseDto {
     createdAt: kase.createdAt,
     updatedAt: kase.updatedAt,
     deletedAt: kase.deletedAt,
+    agentBrief: kase.agentBrief,
   };
 }
