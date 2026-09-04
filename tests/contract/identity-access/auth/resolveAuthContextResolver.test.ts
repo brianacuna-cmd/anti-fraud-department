@@ -116,6 +116,40 @@ describe('resolveAuthContextResolver', () => {
     expect(auth).toMatchObject({ userId: SYSTEM_AGENT_USER_ID, actorType: 'USER', roleId: 'ANALYST', purpose: 'full' });
   });
 
+  it('resolves demo USER trusted-header as SUPERVISOR when demoUserTrustedHeader is on', async () => {
+    const auth = await resolveAuthContextResolver('session', {
+      sessionTokenService: new AesGcmSessionTokenService(new AesGcmSecretCipher('secret', 1)),
+      sessionRepository: new InMemorySessionRepository(),
+      userRepositoryFactory: new InMemoryUserRepositoryFactory(),
+      demoUserTrustedHeader: true,
+    }).resolve({
+      headers: { 'x-actor-user-id': oid('u1'), 'x-actor-organization-id': oid('org-1') },
+    } as unknown as import('express').Request);
+    expect(auth).toMatchObject({
+      userId: oid('u1'),
+      organizationId: oid('org-1'),
+      actorType: 'USER',
+      roleId: 'SUPERVISOR',
+    });
+  });
+
+  it('does not fall through to demo USER trusted-header when X-Agent-Api-Key is present but invalid', async () => {
+    await expect(
+      resolveAuthContextResolver('session', {
+        sessionTokenService: new AesGcmSessionTokenService(new AesGcmSecretCipher('secret', 1)),
+        sessionRepository: new InMemorySessionRepository(),
+        userRepositoryFactory: new InMemoryUserRepositoryFactory(),
+        demoUserTrustedHeader: true,
+      }).resolve({
+        headers: {
+          'x-agent-api-key': 'invalid-key',
+          'x-actor-user-id': oid('u1'),
+          'x-actor-organization-id': oid('org-1'),
+        },
+      } as unknown as import('express').Request),
+    ).resolves.toBeNull();
+  });
+
   it('does not fall through to admin interim when X-Agent-Api-Key is present but invalid', async () => {
     const resolver = resolveAuthContextResolver('session', {
       sessionTokenService: new AesGcmSessionTokenService(new AesGcmSecretCipher('secret', 1)),

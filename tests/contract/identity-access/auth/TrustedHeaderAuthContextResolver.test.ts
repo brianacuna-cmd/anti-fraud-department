@@ -38,6 +38,19 @@ describe('TrustedHeaderAuthContextResolver', () => {
 
     expect(auth?.isPlatformAdmin).toBe(false);
     expect(auth?.actorType).toBe('USER');
+    expect(auth?.roleId).toBe('SUPERVISOR');
+  });
+
+  it('honors x-actor-role-id for a USER when present', async () => {
+    const request = buildRequest({
+      'x-actor-user-id': oid('user-1'),
+      'x-actor-organization-id': oid('org-1'),
+      'x-actor-role-id': 'ANALYST',
+    });
+
+    const auth = await resolver.resolve(request);
+
+    expect(auth?.roleId).toBe('ANALYST');
   });
 
   it('resolves organizationId: null when the header is absent (design D11 — a platform admin has no organization)', async () => {

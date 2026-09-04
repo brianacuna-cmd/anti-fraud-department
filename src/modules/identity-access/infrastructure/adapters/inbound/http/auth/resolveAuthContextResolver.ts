@@ -30,6 +30,12 @@ export interface AuthContextResolverDeps {
    */
   readonly platformAdminAuth?: string;
   readonly agentApiKeyRepository?: AgentApiKeyRepository;
+  /**
+   * Local-demo only: when true, AUTH_MODE=session also accepts the demo
+   * frontend's `x-actor-*` USER headers (SUPERVISOR by default). Off in
+   * production. Invalid `X-Agent-Api-Key` still does not fall through.
+   */
+  readonly demoUserTrustedHeader?: boolean;
 }
 
 /** AUTH_MODE selector. Session: Bearer, then X-Agent-Api-Key, then opt-in admin. */
@@ -57,9 +63,11 @@ export function resolveAuthContextResolver(
       deps.userRepositoryFactory,
     );
     const agent = new AgentApiKeyAuthContextResolver(deps.agentApiKeyRepository ?? null);
+    const trustedHeader = new TrustedHeaderAuthContextResolver();
     const adminInterim =
-      deps.platformAdminAuth === PLATFORM_ADMIN_AUTH_TRUSTED_HEADER ? new TrustedHeaderAuthContextResolver() : null;
-    return new SessionAgentAuthContextResolver(session, agent, adminInterim);
+      deps.platformAdminAuth === PLATFORM_ADMIN_AUTH_TRUSTED_HEADER ? trustedHeader : null;
+    const userInterim = deps.demoUserTrustedHeader === true ? trustedHeader : null;
+    return new SessionAgentAuthContextResolver(session, agent, adminInterim, userInterim);
   }
   throw new Error(
     `Unsupported AUTH_MODE "${authMode}": only "${TRUSTED_HEADER_MODE}" or "${SESSION_MODE}" is currently supported.`,
@@ -68,12 +76,13 @@ export function resolveAuthContextResolver(
 
 const PLATFORM_ADMIN = 'PLATFORM_ADMIN';
 
-/** Session → agent header (no admin fallthrough) → opt-in PLATFORM_ADMIN. */
+/** Session → agent header (no fallthrough) → opt-in demo USER → opt-in PLATFORM_ADMIN. */
 export class SessionAgentAuthContextResolver implements AuthContextResolver {
   constructor(
     private readonly session: AuthContextResolver,
     private readonly agent: AuthContextResolver,
     private readonly adminInterim: AuthContextResolver | null,
+    private readonly userInterim: AuthContextResolver | null = null,
   ) {}
 
   async resolve(req: Request): Promise<AuthContext | null> {
@@ -83,6 +92,12 @@ export class SessionAgentAuthContextResolver implements AuthContextResolver {
     }
     if (agentApiKeyHeaderPresent(req)) {
       return this.agent.resolve(req);
+    }
+    if (this.userInterim) {
+      const userContext = await this.userInterim.resolve(req);
+      if (userContext) {
+        return userContext;
+      }
     }
     if (!this.adminInterim) {
       return null;

@@ -1905,6 +1905,7 @@ async function bootstrap(): Promise<void> {
       userRepositoryFactory,
       platformAdminAuth: PLATFORM_ADMIN_AUTH,
       agentApiKeyRepository: agentApiKeys,
+      demoUserTrustedHeader: process.env.DEMO_TRUSTED_HEADER === 'true',
     }),
   );
 
