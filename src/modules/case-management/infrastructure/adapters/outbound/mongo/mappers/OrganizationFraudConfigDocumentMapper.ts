@@ -61,7 +61,7 @@ export function toDomain(document: OrganizationFraudConfigDocument): Organizatio
     riskThresholdMedium: document.risk_threshold_medium,
     riskThresholdHigh: document.risk_threshold_high,
     riskThresholdCritical: document.risk_threshold_critical,
-    featureFlags: document.feature_flags,
+    featureFlags: document.feature_flags ?? {},
     outboundWebhookUrl: document.outbound_webhook_url ?? null,
     outboundWebhookSecret: document.outbound_webhook_secret ?? null,
     createdAt: fromDate(document.created_at),
