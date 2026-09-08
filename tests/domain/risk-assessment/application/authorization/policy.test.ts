@@ -61,24 +61,18 @@ describe('scoring rule policy', () => {
 });
 
 describe('requireRuleAuthoringRole', () => {
-  it('allows SUPERVISOR', () => {
-    expect(() => requireRuleAuthoringRole(user('SUPERVISOR'))).not.toThrow();
-  });
-
   /**
    * The whole point of this guard, distinct from `requireOperationalRole`
    * above: a small tenant can run with just the owner login, and scoring
-   * configuration is squarely the owner's call.
+   * configuration is squarely the owner's call — so `ORGANIZATION` passes.
    */
-  it('allows the ORGANIZATION actor, unlike requireOperationalRole', () => {
+  it('allows SUPERVISOR and the ORGANIZATION actor', () => {
+    expect(() => requireRuleAuthoringRole(user('SUPERVISOR'))).not.toThrow();
     expect(() => requireRuleAuthoringRole(ORGANIZATION)).not.toThrow();
   });
 
-  it('rejects ANALYST', () => {
+  it('rejects ANALYST and ADMIN', () => {
     expectForbidden(() => requireRuleAuthoringRole(user('ANALYST')));
-  });
-
-  it('rejects ADMIN', () => {
     expectForbidden(() => requireRuleAuthoringRole(user('ADMIN')));
   });
 });

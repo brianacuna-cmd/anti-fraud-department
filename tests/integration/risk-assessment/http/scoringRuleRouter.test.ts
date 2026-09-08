@@ -509,10 +509,12 @@ describe('POST /risk-scoring-rules/factor-scoring', () => {
   it('is not swallowed by the /:id route', async () => {
     const { app } = buildApp(SUPERVISOR);
 
-    await request(app)
+    const res = await request(app)
       .post('/api/v1/risk-scoring-rules/factor-scoring')
       .send({ name: 'x', factors: [{ field: 'amountCents', operator: 'GT', value: 1, points: 1, reason: 'x' }] })
       .expect(201);
+
+    expect(res.body.name).toBe('x');
   });
 
   it('rejects ANALYST with 403', async () => {
@@ -520,10 +522,12 @@ describe('POST /risk-scoring-rules/factor-scoring', () => {
       createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), roleId: 'ANALYST' }),
     );
 
-    await request(app)
+    const res = await request(app)
       .post('/api/v1/risk-scoring-rules/factor-scoring')
       .send({ name: 'x', factors: [{ field: 'amountCents', operator: 'GT', value: 1, points: 1, reason: 'x' }] })
       .expect(403);
+
+    expect(res.body.error.code).toBe('FORBIDDEN_ROLE');
   });
 });
 
@@ -578,9 +582,11 @@ describe('ORGANIZATION actor can author scoring rules', () => {
   it('creates a factor-scoring rule', async () => {
     const { app } = buildApp(ORGANIZATION);
 
-    await request(app)
+    const res = await request(app)
       .post('/api/v1/risk-scoring-rules/factor-scoring')
       .send({ name: 'org-factors', factors: [{ field: 'amountCents', operator: 'GT', value: 1, points: 1, reason: 'x' }] })
       .expect(201);
+
+    expect(res.body.status).toBe('INACTIVE');
   });
 });

@@ -893,9 +893,11 @@ describe('ORGANIZATION actor can author routing rules', () => {
   it('creates a priority-mapping rule', async () => {
     const { app } = buildApp(ORGANIZATION);
 
-    await request(app)
+    const res = await request(app)
       .post('/api/v1/case-routing-rules/priority-mapping')
       .send({ name: 'org-priority', mappings: [{ priority: 'HIGH', target: { type: 'ROLE', id: 'SUPERVISOR' } }] })
       .expect(201);
+
+    expect(res.body.status).toBe('INACTIVE');
   });
 });

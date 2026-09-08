@@ -99,24 +99,19 @@ describe('requireReadRole', () => {
 });
 
 describe('requireRuleAuthoringRole', () => {
-  it('allows SUPERVISOR', () => {
-    expect(() => requireRuleAuthoringRole(user('SUPERVISOR'))).not.toThrow();
-  });
-
   /**
    * The whole point of this guard, distinct from `requireOperationalRole`:
    * a small tenant can run with just the owner login, and routing
-   * configuration is squarely the owner's call.
+   * configuration is squarely the owner's call — so `ORGANIZATION` passes
+   * here, unlike every other operational guard.
    */
-  it('allows the ORGANIZATION actor, unlike every other operational guard', () => {
+  it('allows SUPERVISOR and the ORGANIZATION actor', () => {
+    expect(() => requireRuleAuthoringRole(user('SUPERVISOR'))).not.toThrow();
     expect(() => requireRuleAuthoringRole(ORGANIZATION)).not.toThrow();
   });
 
-  it('rejects ANALYST', () => {
+  it('rejects ANALYST and ADMIN', () => {
     expectForbidden(() => requireRuleAuthoringRole(user('ANALYST')));
-  });
-
-  it('rejects ADMIN as read-only', () => {
     const error = expectForbidden(() => requireRuleAuthoringRole(user('ADMIN')));
     expect(error.metadata).toMatchObject({ roleId: 'ADMIN' });
   });
