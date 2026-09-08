@@ -7,7 +7,7 @@ import type { RiskScoringRuleRepository } from '../domain/ports/RiskScoringRuleR
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import { forbiddenCrossTenant, scoringRuleByIdNotFound } from '../domain/errors/RiskAssessmentError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireOperationalRole, SCORING_RULE_WRITE_ROLES } from './authorization/policy.js';
+import { requireRuleAuthoringRole } from './authorization/policy.js';
 
 export interface DeleteScoringRuleInput {
   readonly auth: AuthContext;
@@ -33,7 +33,7 @@ export interface DeleteScoringRuleDeps {
  */
 export function createDeleteScoringRuleUseCase(deps: DeleteScoringRuleDeps) {
   return async function deleteScoringRule(input: DeleteScoringRuleInput): Promise<RiskScoringRule> {
-    requireOperationalRole(input.auth, SCORING_RULE_WRITE_ROLES);
+    requireRuleAuthoringRole(input.auth);
     const organizationId = requireTenantContext(input.auth);
     const ruleId = createRiskScoringRuleId(input.ruleId);
 

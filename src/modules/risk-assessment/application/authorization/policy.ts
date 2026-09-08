@@ -33,6 +33,27 @@ export function requireOperationalRole(auth: AuthContext, allowed: readonly stri
   }
 }
 
+/**
+ * RULE-AUTHORING guard: create/activate/delete/simulate scoring rules.
+ *
+ * Mirrors `requireAssignmentRole`/`requireRuleAuthoringRole` in
+ * case-management: `ORGANIZATION` passes unconditionally — a small tenant
+ * can run with just the owner login, and scoring configuration is squarely
+ * the owner's call even before a SUPERVISOR user exists.
+ */
+export function requireRuleAuthoringRole(auth: AuthContext): void {
+  if (auth.actorType === 'ORGANIZATION') {
+    return;
+  }
+  if (
+    auth.actorType !== 'USER' ||
+    auth.roleId === null ||
+    !SCORING_RULE_WRITE_ROLES.includes(auth.roleId)
+  ) {
+    throw forbiddenRole(auth.roleId, SCORING_RULE_WRITE_ROLES);
+  }
+}
+
 /** The ORGANIZATION actor owns the tenant: they read everything their users read. */
 export function requireReadRole(auth: AuthContext, allowed: readonly string[]): void {
   if (auth.actorType === 'ORGANIZATION') {

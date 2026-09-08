@@ -1,7 +1,11 @@
-import { ObjectId, type ClientSession, type Collection, type Db } from 'mongodb';
+import { ObjectId, type ClientSession, type Collection, type Db, type Filter } from 'mongodb';
 import type { SarReport } from '../../../../domain/model/aggregates/SarReport.js';
 import type { SarReportId } from '../../../../domain/model/value-objects/SarReportId.js';
-import type { SarReportRepository } from '../../../../domain/ports/SarReportRepository.js';
+import type {
+  SarReportListQuery,
+  SarReportListResult,
+  SarReportRepository,
+} from '../../../../domain/ports/SarReportRepository.js';
 import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
 import type { SarReportDocument } from './documents/SarReportDocument.js';
 import { toDocument, toDomain } from './mappers/SarReportDocumentMapper.js';
@@ -31,5 +35,23 @@ export class MongoSarReportRepository implements SarReportRepository {
   async findById(id: SarReportId, tx?: Transaction): Promise<SarReport | null> {
     const document = await this.collection.findOne({ _id: new ObjectId(id) }, { session: toSession(tx) });
     return document ? toDomain(document) : null;
+  }
+
+  async list(query: SarReportListQuery, tx?: Transaction): Promise<SarReportListResult> {
+    const filter: Filter<SarReportDocument> = {
+      organization_id: new ObjectId(query.organizationId),
+      ...(query.status !== undefined && query.status.length > 0
+        ? { status: { $in: [...query.status] } }
+        : {}),
+    } as Filter<SarReportDocument>;
+    const session = toSession(tx);
+    const total = await this.collection.countDocuments(filter, { session });
+    const documents = await this.collection
+      .find(filter, { session })
+      .sort({ created_at: -1 })
+      .skip(query.offset)
+      .limit(query.limit)
+      .toArray();
+    return { items: documents.map(toDomain), total };
   }
 }

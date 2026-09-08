@@ -6,7 +6,7 @@ import type { RiskScoringRuleId } from '../domain/model/value-objects/RiskScorin
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { RiskScoringRuleRepository } from '../domain/ports/RiskScoringRuleRepository.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireOperationalRole, SCORING_RULE_WRITE_ROLES } from './authorization/policy.js';
+import { requireRuleAuthoringRole } from './authorization/policy.js';
 
 export interface CreateScoringRuleInput {
   readonly auth: AuthContext;
@@ -28,7 +28,7 @@ export interface CreateScoringRuleDeps {
  */
 export function createCreateScoringRuleUseCase(deps: CreateScoringRuleDeps) {
   return async function createScoringRule(input: CreateScoringRuleInput): Promise<RiskScoringRule> {
-    requireOperationalRole(input.auth, SCORING_RULE_WRITE_ROLES);
+    requireRuleAuthoringRole(input.auth);
     const organizationId = requireTenantContext(input.auth);
     const now = deps.clock.now();
 

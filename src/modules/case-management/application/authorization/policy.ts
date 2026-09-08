@@ -84,6 +84,26 @@ export function requireAssignmentRole(auth: AuthContext): void {
   }
 }
 
+/**
+ * RULE-AUTHORING guard: create/update/activate/deactivate/delete/reorder/
+ * simulate routing rules.
+ *
+ * Deliberately its own guard instead of widening `SUPERVISION_ROLES` (which
+ * also covers closing cases, approving/executing sanctions, and deleting
+ * evidence — far more than "who configures routing"). `ORGANIZATION` passes
+ * unconditionally, same reasoning as `requireAssignmentRole`: a small tenant
+ * can run with just the owner login, and routing configuration is squarely
+ * the owner's call even before a SUPERVISOR user exists.
+ */
+export function requireRuleAuthoringRole(auth: AuthContext): void {
+  if (auth.actorType === 'ORGANIZATION') {
+    return;
+  }
+  if (auth.actorType !== 'USER' || auth.roleId === null || !SUPERVISION_ROLES.includes(auth.roleId)) {
+    throw forbiddenRole(auth.roleId, SUPERVISION_ROLES);
+  }
+}
+
 /** Oversight reads: sanction queue, rules, exports. */
 export const OVERSIGHT_READ_ROLES: readonly string[] = [ROLE_SUPERVISOR, ROLE_ADMIN, ROLE_AUDITOR];
 

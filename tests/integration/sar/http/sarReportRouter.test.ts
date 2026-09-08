@@ -22,6 +22,8 @@ import { createGetSarFilingProfileUseCase } from '../../../../src/modules/sar/ap
 import { createUpsertSarFilingProfileUseCase } from '../../../../src/modules/sar/application/UpsertSarFilingProfile.js';
 import { generateOrganizationSarFilingProfileId } from '../../../../src/modules/sar/domain/model/value-objects/OrganizationSarFilingProfileId.js';
 import { InMemorySarFilingProfileRepository } from '../../../helpers/sar/InMemorySarFilingProfileRepository.js';
+import { createGetSarReportUseCase } from '../../../../src/modules/sar/application/GetSarReport.js';
+import { createListSarReportsUseCase } from '../../../../src/modules/sar/application/ListSarReports.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ORG_1 = oid('org-1');
@@ -83,6 +85,8 @@ function buildApp(actorPerRequest: () => AuthContext) {
       recordSarFilingStatus,
       getSarFilingProfile,
       upsertSarFilingProfile,
+      getSarReport: createGetSarReportUseCase({ reports }),
+      listSarReports: createListSarReportsUseCase({ reports }),
     }),
   );
 
@@ -518,5 +522,113 @@ describe('PATCH /sar-reports/:id/filing-status', () => {
       .patch(`/api/v1/sar-reports/${oid('any')}/filing-status`)
       .send({ outcome: 'REJECTED', reason: 'x' })
       .expect(403);
+  });
+});
+
+describe('GET /sar-reports/:id', () => {
+  it('devuelve el detalle a cualquier actor autenticado del tenant (200)', async () => {
+    const { app, sourceVerifier } = buildApp(SUPERVISOR);
+    sourceVerifier.allowCase(oid('case-1'), true);
+
+    const created = await request(app)
+      .post('/api/v1/sar-reports')
+      .send({ caseId: oid('case-1'), narrative: 'x' })
+      .expect(201);
+
+    const res = await request(app).get(`/api/v1/sar-reports/${created.body.id}`).expect(200);
+    expect(res.body.id).toBe(created.body.id);
+    expect(res.body.status).toBe('DRAFT');
+  });
+
+  it('un ANALYST también puede leer el detalle (no es un acto de autoridad)', async () => {
+    let currentActor = SUPERVISOR;
+    const { app, sourceVerifier } = buildApp(() => currentActor());
+    sourceVerifier.allowCase(oid('case-1'), true);
+
+    const created = await request(app)
+      .post('/api/v1/sar-reports')
+      .send({ caseId: oid('case-1'), narrative: 'x' })
+      .expect(201);
+
+    currentActor = ANALYST;
+    await request(app).get(`/api/v1/sar-reports/${created.body.id}`).expect(200);
+  });
+
+  it('devuelve 404 para un id inexistente', async () => {
+    const { app } = buildApp(SUPERVISOR);
+    const res = await request(app).get(`/api/v1/sar-reports/${oid('missing')}`).expect(404);
+    expect(res.body.error.code).toBe('SAR_REPORT_NOT_FOUND');
+  });
+});
+
+describe('GET /sar-reports', () => {
+  it('lista los reportes del tenant, más reciente primero, paginado', async () => {
+    const { app, sourceVerifier } = buildApp(SUPERVISOR);
+    sourceVerifier.allowCase(oid('case-1'), true);
+    sourceVerifier.allowCase(oid('case-2'), true);
+
+    const first = await request(app)
+      .post('/api/v1/sar-reports')
+      .send({ caseId: oid('case-1'), narrative: 'primero' })
+      .expect(201);
+    const second = await request(app)
+      .post('/api/v1/sar-reports')
+      .send({ caseId: oid('case-2'), narrative: 'segundo' })
+      .expect(201);
+
+    const res = await request(app).get('/api/v1/sar-reports').expect(200);
+    expect(res.body.total).toBe(2);
+    expect(res.body.items.map((i: { id: string }) => i.id).sort()).toEqual(
+      [first.body.id, second.body.id].sort(),
+    );
+  });
+
+  it('filtra por status', async () => {
+    let currentActor = SUPERVISOR;
+    const { app, sourceVerifier } = buildApp(() => currentActor());
+    sourceVerifier.allowCase(oid('case-1'), true);
+    sourceVerifier.allowCase(oid('case-2'), true);
+
+    await request(app)
+      .post('/api/v1/sar-reports')
+      .send({ caseId: oid('case-1'), narrative: 'sin aprobar' })
+      .expect(201);
+    const toApprove = await request(app)
+      .post('/api/v1/sar-reports')
+      .send({ caseId: oid('case-2'), narrative: 'se aprueba' })
+      .expect(201);
+
+    currentActor = SUPERVISOR_2;
+    await request(app).patch(`/api/v1/sar-reports/${toApprove.body.id}/approve`).send({}).expect(200);
+
+    const res = await request(app).get('/api/v1/sar-reports?status=APPROVED').expect(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.items[0].id).toBe(toApprove.body.id);
+  });
+
+  it('respeta limit/offset', async () => {
+    const { app, sourceVerifier } = buildApp(SUPERVISOR);
+    sourceVerifier.allowCase(oid('case-1'), true);
+    sourceVerifier.allowCase(oid('case-2'), true);
+    await request(app).post('/api/v1/sar-reports').send({ caseId: oid('case-1'), narrative: 'a' }).expect(201);
+    await request(app).post('/api/v1/sar-reports').send({ caseId: oid('case-2'), narrative: 'b' }).expect(201);
+
+    const res = await request(app).get('/api/v1/sar-reports?limit=1&offset=1').expect(200);
+    expect(res.body.total).toBe(2);
+    expect(res.body.items).toHaveLength(1);
+  });
+
+  it('no incluye reportes de otra organización', async () => {
+    const org2 = oid('org-2');
+    const OTHER_ORG_SUPERVISOR = () =>
+      createAuthContext({ userId: oid('sup-x'), organizationId: org2, actorType: 'USER', roleId: 'SUPERVISOR' });
+    let currentActor = SUPERVISOR;
+    const { app, sourceVerifier } = buildApp(() => currentActor());
+    sourceVerifier.allowCase(oid('case-1'), true);
+    await request(app).post('/api/v1/sar-reports').send({ caseId: oid('case-1'), narrative: 'a' }).expect(201);
+
+    currentActor = OTHER_ORG_SUPERVISOR;
+    const res = await request(app).get('/api/v1/sar-reports').expect(200);
+    expect(res.body.total).toBe(0);
   });
 });

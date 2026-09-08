@@ -4,7 +4,7 @@ import { createRiskScore } from '../domain/model/value-objects/RiskScore.js';
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { RuleSimulation, RuleSimulationEngine } from '../domain/ports/RuleSimulationEngine.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireOperationalRole, SCORING_RULE_WRITE_ROLES } from './authorization/policy.js';
+import { requireRuleAuthoringRole } from './authorization/policy.js';
 import { toScoringContext } from './CalculateRiskScore.js';
 
 export interface SimulateScoringRuleInput {
@@ -54,7 +54,7 @@ export function createSimulateScoringRuleUseCase(deps: SimulateScoringRuleDeps) 
   return async function simulateScoringRule(
     input: SimulateScoringRuleInput,
   ): Promise<SimulateScoringRuleResult> {
-    requireOperationalRole(input.auth, SCORING_RULE_WRITE_ROLES);
+    requireRuleAuthoringRole(input.auth);
     const organizationId = requireTenantContext(input.auth);
 
     const outcome = await simulate(deps, input);

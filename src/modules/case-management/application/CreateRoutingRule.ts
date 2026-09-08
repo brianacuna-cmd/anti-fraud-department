@@ -7,7 +7,7 @@ import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { CaseRoutingRuleRepository } from '../domain/ports/CaseRoutingRuleRepository.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
+import { requireRuleAuthoringRole } from './authorization/policy.js';
 
 export interface CreateRoutingRuleInput {
   readonly auth: AuthContext;
@@ -36,7 +36,7 @@ export interface CreateRoutingRuleDeps {
  */
 export function createCreateRoutingRuleUseCase(deps: CreateRoutingRuleDeps) {
   return async function createRoutingRule(input: CreateRoutingRuleInput): Promise<CaseRoutingRule> {
-    requireOperationalRole(input.auth, SUPERVISION_ROLES);
+    requireRuleAuthoringRole(input.auth);
     const organizationId = requireTenantContext(input.auth);
     const now = deps.clock.now();
 

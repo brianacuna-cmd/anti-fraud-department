@@ -31,7 +31,7 @@ export class InMemoryRiskScoringRuleRepository implements RiskScoringRuleReposit
 
   async listByOrganization(organizationId: string, _tx?: Transaction): Promise<readonly RiskScoringRule[]> {
     return this.rules
-      .filter((rule) => rule.organizationId === organizationId)
+      .filter((rule) => rule.organizationId === organizationId && rule.deletedAt === null)
       .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
   }
 

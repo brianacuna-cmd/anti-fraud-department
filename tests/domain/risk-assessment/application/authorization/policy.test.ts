@@ -3,6 +3,7 @@ import { createAuthContext } from '../../../../../src/shared/kernel/AuthContext.
 import {
   requireOperationalRole,
   requireReadRole,
+  requireRuleAuthoringRole,
   SCORING_RULE_READ_ROLES,
   SCORING_RULE_WRITE_ROLES,
 } from '../../../../../src/modules/risk-assessment/application/authorization/policy.js';
@@ -56,5 +57,22 @@ describe('scoring rule policy', () => {
   it('rejects ANALYST on both planes', () => {
     expectForbidden(() => requireOperationalRole(user('ANALYST'), SCORING_RULE_WRITE_ROLES));
     expectForbidden(() => requireReadRole(user('ANALYST'), SCORING_RULE_READ_ROLES));
+  });
+});
+
+describe('requireRuleAuthoringRole', () => {
+  /**
+   * The whole point of this guard, distinct from `requireOperationalRole`
+   * above: a small tenant can run with just the owner login, and scoring
+   * configuration is squarely the owner's call — so `ORGANIZATION` passes.
+   */
+  it('allows SUPERVISOR and the ORGANIZATION actor', () => {
+    expect(() => requireRuleAuthoringRole(user('SUPERVISOR'))).not.toThrow();
+    expect(() => requireRuleAuthoringRole(ORGANIZATION)).not.toThrow();
+  });
+
+  it('rejects ANALYST and ADMIN', () => {
+    expectForbidden(() => requireRuleAuthoringRole(user('ANALYST')));
+    expectForbidden(() => requireRuleAuthoringRole(user('ADMIN')));
   });
 });

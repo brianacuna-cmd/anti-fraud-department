@@ -7,7 +7,7 @@ import type { CaseRoutingRuleRepository } from '../domain/ports/CaseRoutingRuleR
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import { forbiddenCrossTenant, invariantViolation } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
+import { requireRuleAuthoringRole } from './authorization/policy.js';
 
 export interface ReorderRoutingRulesInput {
   readonly auth: AuthContext;
@@ -31,7 +31,7 @@ export function createReorderRoutingRulesUseCase(deps: ReorderRoutingRulesDeps) 
   return async function reorderRoutingRules(
     input: ReorderRoutingRulesInput,
   ): Promise<readonly CaseRoutingRule[]> {
-    requireOperationalRole(input.auth, SUPERVISION_ROLES);
+    requireRuleAuthoringRole(input.auth);
     const organizationId = requireTenantContext(input.auth);
     const requested = input.ids.map(createCaseRoutingRuleId);
     const unique = new Set(requested);

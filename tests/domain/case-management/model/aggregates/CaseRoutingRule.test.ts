@@ -154,4 +154,17 @@ describe('CaseRoutingRule#withExecutionOrder', () => {
     expect(() => rule.withExecutionOrder(-1, LATER)).toThrow(/executionOrder/);
     expect(rule.executionOrder).toBe(0);
   });
+
+  it('delete sets deletedAt without mutating the original, defaults null on create, and is idempotent', () => {
+    const rule = create();
+    expect(rule.deletedAt).toBeNull();
+
+    const deleted = rule.delete(LATER);
+    expect(deleted.deletedAt).toBe(LATER);
+    expect(rule.deletedAt).toBeNull();
+
+    const deletedAgain = deleted.delete(fromDate(new Date('2026-03-01T00:00:00.000Z')));
+    expect(deletedAgain).toBe(deleted);
+    expect(deletedAgain.deletedAt).toBe(LATER);
+  });
 });

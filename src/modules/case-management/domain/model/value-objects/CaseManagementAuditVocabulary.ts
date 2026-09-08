@@ -58,6 +58,8 @@ export type CaseManagementAuditAction =
   /** Soft delete: the rule leaves the list, the row stays for traceability. */
   | 'DELETE_ROUTING_RULE'
   | 'SIMULATE_ROUTING_RULE'
+  /** SUPERVISOR DELETE — logical delete only, rejected while ACTIVE. */
+  | 'DELETE_ROUTING_RULE'
   /**
    * CASE-002 (T1): a rule whose JDM could not be evaluated was SKIPPED rather
    * than aborting case creation. Not a user action — it is the only durable

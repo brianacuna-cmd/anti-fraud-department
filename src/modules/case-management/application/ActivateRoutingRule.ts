@@ -10,7 +10,7 @@ import {
   routingRuleNotFound,
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
+import { requireRuleAuthoringRole } from './authorization/policy.js';
 
 export interface ActivateRoutingRuleInput {
   readonly auth: AuthContext;
@@ -33,7 +33,7 @@ export interface ActivateRoutingRuleDeps {
  */
 export function createActivateRoutingRuleUseCase(deps: ActivateRoutingRuleDeps) {
   return async function activateRoutingRule(input: ActivateRoutingRuleInput): Promise<CaseRoutingRule> {
-    requireOperationalRole(input.auth, SUPERVISION_ROLES);
+    requireRuleAuthoringRole(input.auth);
     const organizationId = requireTenantContext(input.auth);
     const ruleId = createCaseRoutingRuleId(input.ruleId);
 

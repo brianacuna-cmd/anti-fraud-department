@@ -3,7 +3,7 @@ import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { CaseRoutingContext } from '../domain/ports/RoutingEngine.js';
 import type { RuleSimulation, RuleSimulationEngine } from '../domain/ports/RuleSimulationEngine.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
+import { requireRuleAuthoringRole } from './authorization/policy.js';
 
 export interface SimulateRoutingRuleInput {
   readonly auth: AuthContext;
@@ -40,7 +40,7 @@ export function createSimulateRoutingRuleUseCase(deps: SimulateRoutingRuleDeps) 
   return async function simulateRoutingRule(
     input: SimulateRoutingRuleInput,
   ): Promise<SimulateRoutingRuleResult> {
-    requireOperationalRole(input.auth, SUPERVISION_ROLES);
+    requireRuleAuthoringRole(input.auth);
     const organizationId = requireTenantContext(input.auth);
 
     const outcome = await simulate(deps, input);

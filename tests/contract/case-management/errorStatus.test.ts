@@ -3,6 +3,7 @@ import {
   caseNotFound,
   forbiddenRole,
   outboundWebhookUrlNotSet,
+  routingRuleActive,
   scheduledJobNotFound,
   selfApprovalForbidden,
   webhookSubscriptionNotFound,
@@ -42,6 +43,7 @@ describe('caseManagementErrorStatus', () => {
       ASSIGNEE_CANNOT_WORK_CASES: 422,
       SCHEDULED_JOB_NOT_FOUND: 404,
       OUTBOUND_WEBHOOK_URL_NOT_SET: 422,
+      ROUTING_RULE_ACTIVE: 409,
     });
   });
 
@@ -100,5 +102,13 @@ describe('caseManagementErrorStatus', () => {
     expect(caseManagementErrorStatus[error.code]).toBe(422);
     expect(caseManagementErrorStatus.INVARIANT_VIOLATION).toBe(400);
     expect(caseManagementErrorStatus.ORGANIZATION_FRAUD_CONFIG_NOT_FOUND).toBe(404);
+  });
+
+  it('maps ROUTING_RULE_ACTIVE to 409, not 403 or 422', () => {
+    const error = routingRuleActive('rule-1');
+    expect(error.code).toBe('ROUTING_RULE_ACTIVE' satisfies CaseManagementErrorCode);
+    expect(error.message).toContain('rule-1');
+    expect(error.metadata).toEqual({ ruleId: 'rule-1' });
+    expect(caseManagementErrorStatus[error.code]).toBe(409);
   });
 });

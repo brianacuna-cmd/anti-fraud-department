@@ -7,7 +7,7 @@ import type { CaseRoutingRuleRepository } from '../domain/ports/CaseRoutingRuleR
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import { forbiddenCrossTenant, routingRuleNotFound } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
-import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
+import { requireRuleAuthoringRole } from './authorization/policy.js';
 
 export interface DeleteRoutingRuleInput {
   readonly auth: AuthContext;
@@ -32,7 +32,7 @@ export interface DeleteRoutingRuleDeps {
  */
 export function createDeleteRoutingRuleUseCase(deps: DeleteRoutingRuleDeps) {
   return async function deleteRoutingRule(input: DeleteRoutingRuleInput): Promise<CaseRoutingRule> {
-    requireOperationalRole(input.auth, SUPERVISION_ROLES);
+    requireRuleAuthoringRole(input.auth);
     const organizationId = requireTenantContext(input.auth);
     const ruleId = createCaseRoutingRuleId(input.ruleId);
 
