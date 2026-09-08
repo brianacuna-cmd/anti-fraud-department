@@ -23,4 +23,8 @@ export type SarErrorCode =
    * Four eyes (SAR-002): whoever drafted the report cannot be the one who
    * approves and locks it.
    */
-  | 'SELF_APPROVAL_FORBIDDEN';
+  | 'SELF_APPROVAL_FORBIDDEN'
+  /** SAR-003: filing XML can only be compiled from an APPROVED (locked) report. */
+  | 'SAR_NOT_APPROVED'
+  /** SAR-003: the report is APPROVED but is missing fields the filing format requires. */
+  | 'SAR_XML_VALIDATION_FAILED';

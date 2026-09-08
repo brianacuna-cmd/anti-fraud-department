@@ -10,6 +10,7 @@ import { sarErrorStatus } from '../../../../src/modules/sar/infrastructure/adapt
 import { sarReportRouter } from '../../../../src/modules/sar/infrastructure/adapters/inbound/http/sarReportRouter.js';
 import { createCreateSarReportDraftUseCase } from '../../../../src/modules/sar/application/CreateSarReportDraft.js';
 import { createApproveSarReportDraftUseCase } from '../../../../src/modules/sar/application/ApproveSarReportDraft.js';
+import { createGetSarReportUseCase } from '../../../../src/modules/sar/application/GetSarReport.js';
 import { generateSarReportId } from '../../../../src/modules/sar/domain/model/value-objects/SarReportId.js';
 import { InMemorySarReportRepository } from '../../../helpers/sar/InMemorySarReportRepository.js';
 import { InMemorySarAuditRecorder } from '../../../helpers/sar/InMemorySarAuditRecorder.js';
@@ -41,13 +42,14 @@ function buildApp(actorPerRequest: () => AuthContext) {
     unitOfWork,
     clock,
   });
+  const getSarReport = createGetSarReportUseCase({ reports });
 
   const api = Router();
   api.use((req: Request, _res: Response, next: NextFunction) => {
     attachAuthContext(req, actorPerRequest());
     next();
   });
-  api.use(sarReportRouter({ createSarReportDraft, approveSarReportDraft }));
+  api.use(sarReportRouter({ createSarReportDraft, approveSarReportDraft, getSarReport }));
 
   return {
     app: createApp({
@@ -230,5 +232,122 @@ describe('sarReportRouter (HTTP) — PATCH /sar-reports/:id/approve', () => {
       .expect(422);
 
     expect(res.body.error.code).toBe('INVALID_TRANSITION');
+  });
+});
+
+describe('sarReportRouter (HTTP) — GET /sar-reports/:id', () => {
+  it('devuelve el detalle a cualquier actor autenticado del tenant (200)', async () => {
+    let currentActor = SUPERVISOR;
+    const { app, sourceVerifier } = buildApp(() => currentActor());
+    sourceVerifier.allowCase(oid('case-1'), true);
+
+    const created = await request(app)
+      .post('/api/v1/sar-reports')
+      .send({ caseId: oid('case-1'), narrative: 'x' })
+      .expect(201);
+
+    currentActor = ANALYST;
+    const res = await request(app).get(`/api/v1/sar-reports/${created.body.id}`).expect(200);
+
+    expect(res.body.id).toBe(created.body.id);
+  });
+
+  it('devuelve 404 cuando el reporte no existe', async () => {
+    const { app } = buildApp(SUPERVISOR);
+
+    const res = await request(app).get(`/api/v1/sar-reports/${oid('missing')}`).expect(404);
+
+    expect(res.body.error.code).toBe('SAR_REPORT_NOT_FOUND');
+  });
+});
+
+describe('sarReportRouter (HTTP) — GET /sar-reports/:id/xml', () => {
+  const FILING_READY_BODY = {
+    caseId: oid('case-1'),
+    narrative: 'Volumen atípico de transferencias fuera del patrón habitual del cliente.',
+    subjectName: 'Jane Doe',
+    suspiciousAmount: 15000,
+    activityStartDate: NOW,
+  };
+
+  it('compila el XML de filing para un reporte APROBADO y completo (200)', async () => {
+    let currentActor = SUPERVISOR;
+    const { app, sourceVerifier } = buildApp(() => currentActor());
+    sourceVerifier.allowCase(oid('case-1'), true);
+
+    const created = await request(app)
+      .post('/api/v1/sar-reports')
+      .send(FILING_READY_BODY)
+      .expect(201);
+
+    currentActor = SUPERVISOR_2;
+    await request(app).patch(`/api/v1/sar-reports/${created.body.id}/approve`).send({}).expect(200);
+
+    const res = await request(app)
+      .get(`/api/v1/sar-reports/${created.body.id}/xml`)
+      .expect(200);
+
+    expect(res.headers['content-type']).toContain('application/xml');
+    expect(res.headers['content-disposition']).toContain(`sar-${created.body.id}.xml`);
+    expect(res.text).toContain('<SARFiling');
+    expect(res.text).toContain(`<ReportId>${created.body.id}</ReportId>`);
+  });
+
+  it('devuelve 409 SAR_NOT_APPROVED para un reporte en DRAFT', async () => {
+    const { app, sourceVerifier } = buildApp(SUPERVISOR);
+    sourceVerifier.allowCase(oid('case-1'), true);
+
+    const created = await request(app)
+      .post('/api/v1/sar-reports')
+      .send(FILING_READY_BODY)
+      .expect(201);
+
+    const res = await request(app)
+      .get(`/api/v1/sar-reports/${created.body.id}/xml`)
+      .expect(409);
+
+    expect(res.body.error.code).toBe('SAR_NOT_APPROVED');
+  });
+
+  it('devuelve 422 SAR_XML_VALIDATION_FAILED para un reporte APROBADO pero incompleto', async () => {
+    let currentActor = SUPERVISOR;
+    const { app, sourceVerifier } = buildApp(() => currentActor());
+    sourceVerifier.allowCase(oid('case-1'), true);
+
+    const created = await request(app)
+      .post('/api/v1/sar-reports')
+      .send({ caseId: oid('case-1'), narrative: 'x'.repeat(25) })
+      .expect(201);
+
+    currentActor = SUPERVISOR_2;
+    await request(app).patch(`/api/v1/sar-reports/${created.body.id}/approve`).send({}).expect(200);
+
+    const res = await request(app)
+      .get(`/api/v1/sar-reports/${created.body.id}/xml`)
+      .expect(422);
+
+    expect(res.body.error.code).toBe('SAR_XML_VALIDATION_FAILED');
+    expect(res.body.error.metadata.errors.length).toBeGreaterThan(0);
+  });
+
+  it('rechaza a un ANALYST con 403', async () => {
+    let currentActor = SUPERVISOR;
+    const { app, sourceVerifier } = buildApp(() => currentActor());
+    sourceVerifier.allowCase(oid('case-1'), true);
+
+    const created = await request(app)
+      .post('/api/v1/sar-reports')
+      .send(FILING_READY_BODY)
+      .expect(201);
+
+    currentActor = SUPERVISOR_2;
+    await request(app).patch(`/api/v1/sar-reports/${created.body.id}/approve`).send({}).expect(200);
+
+    currentActor = ANALYST;
+    const res = await request(app)
+      .get(`/api/v1/sar-reports/${created.body.id}/xml`)
+      .expect(403);
+
+    expect(res.body.error.code).toBe('FORBIDDEN_ROLE');
   });
 });

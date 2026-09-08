@@ -102,3 +102,21 @@ export function selfApprovalForbidden(createdBy: string, reportId: string): SarE
     { createdBy, reportId },
   );
 }
+
+/** SAR-003: the official filing XML can only be compiled once the dossier is locked. */
+export function sarNotApproved(reportId: string, status: string): SarError {
+  return new SarError(
+    'SAR_NOT_APPROVED',
+    `SAR report "${reportId}" must be APPROVED before filing XML can be generated (current status: ${status})`,
+    { reportId, status },
+  );
+}
+
+/** SAR-003: named after every missing/invalid field at once, not just the first. */
+export function sarXmlValidationFailed(reportId: string, errors: readonly string[]): SarError {
+  return new SarError(
+    'SAR_XML_VALIDATION_FAILED',
+    `SAR report "${reportId}" is not complete enough to compile a filing XML`,
+    { reportId, errors: [...errors] },
+  );
+}
