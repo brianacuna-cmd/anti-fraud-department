@@ -8,7 +8,7 @@ export type RiskAssessmentAuditAction =
   | 'CREATE_SCORING_RULE'
   | 'ACTIVATE_SCORING_RULE'
   | 'SIMULATE_SCORING_RULE'
-  /** SUPERVISOR DELETE — logical delete only, rejected while ACTIVE. */
+  /** Soft delete: the rule leaves the list, the row stays for traceability. */
   | 'DELETE_SCORING_RULE';
 
 export type RiskAssessmentAuditResource = 'rule';

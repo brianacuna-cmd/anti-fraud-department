@@ -5,11 +5,7 @@ import { createCaseRoutingRuleId } from '../domain/model/value-objects/CaseRouti
 import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { CaseRoutingRuleRepository } from '../domain/ports/CaseRoutingRuleRepository.js';
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
-import {
-  forbiddenCrossTenant,
-  routingRuleActive,
-  routingRuleNotFound,
-} from '../domain/errors/CaseManagementError.js';
+import { forbiddenCrossTenant, routingRuleNotFound } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireRuleAuthoringRole } from './authorization/policy.js';
 
@@ -26,12 +22,13 @@ export interface DeleteRoutingRuleDeps {
 }
 
 /**
- * DELETE /case-routing-rules/:id — logical (soft) delete. SUPERVISOR only.
- * Never hard-deleted: routing decisions on frozen case snapshots keep the
- * `ruleId` that fired, so the row must survive. Rejects an ACTIVE rule
- * (`ROUTING_RULE_ACTIVE`, 409) — deactivate it first, so the change of who
- * gets the next case is on record as such and not as a disappearance.
- * Idempotent: re-deleting an already-deleted rule is a no-op.
+ * Removes a routing rule from the list.
+ *
+ * Soft delete: `REASSIGN_CASE` audit rows name the winning rule by id, so the
+ * row has to survive for "who decided this assignment?" to stay answerable.
+ * `CaseRoutingRule.delete` refuses on an ACTIVE rule — deactivate it first, so
+ * that a change in who gets the next case shows up as a routing change and
+ * not as a deletion nobody connects to it.
  */
 export function createDeleteRoutingRuleUseCase(deps: DeleteRoutingRuleDeps) {
   return async function deleteRoutingRule(input: DeleteRoutingRuleInput): Promise<CaseRoutingRule> {
@@ -39,24 +36,17 @@ export function createDeleteRoutingRuleUseCase(deps: DeleteRoutingRuleDeps) {
     const organizationId = requireTenantContext(input.auth);
     const ruleId = createCaseRoutingRuleId(input.ruleId);
 
-    const rule = await deps.routingRules.findById(ruleId);
-    if (rule === null) {
-      throw routingRuleNotFound(ruleId);
-    }
-    if (rule.organizationId !== organizationId) {
-      throw forbiddenCrossTenant('routing rule does not belong to the actor organization');
-    }
-    if (rule.deletedAt !== null) {
-      return rule;
-    }
-    if (rule.status === 'ACTIVE') {
-      throw routingRuleActive(ruleId);
-    }
-
-    const now = deps.clock.now();
-    const deleted = rule.softDelete(now);
-
     return deps.unitOfWork.withTransaction(async (tx) => {
+      const existing = await deps.routingRules.findById(ruleId, tx);
+      if (existing === null) {
+        throw routingRuleNotFound(ruleId);
+      }
+      if (existing.organizationId !== organizationId) {
+        throw forbiddenCrossTenant('the routing rule does not belong to the actor organization');
+      }
+
+      const now = deps.clock.now();
+      const deleted = existing.delete(now);
       await deps.routingRules.save(deleted, tx);
 
       await deps.auditRecorder.record(
@@ -67,7 +57,7 @@ export function createDeleteRoutingRuleUseCase(deps: DeleteRoutingRuleDeps) {
           action: 'DELETE_ROUTING_RULE',
           resource: 'rule',
           resourceId: deleted.id,
-          detail: { name: deleted.name },
+          detail: { name: deleted.name, conditionsVersion: deleted.conditionsVersion },
           ipAddress: input.auth.ipAddress,
         },
         tx,

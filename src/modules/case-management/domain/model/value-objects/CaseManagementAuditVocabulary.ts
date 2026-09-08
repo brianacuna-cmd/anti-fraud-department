@@ -55,6 +55,8 @@ export type CaseManagementAuditAction =
   | 'REORDER_ROUTING_RULES'
   | 'ACTIVATE_ROUTING_RULE'
   | 'DEACTIVATE_ROUTING_RULE'
+  /** Soft delete: the rule leaves the list, the row stays for traceability. */
+  | 'DELETE_ROUTING_RULE'
   | 'SIMULATE_ROUTING_RULE'
   /** SUPERVISOR DELETE — logical delete only, rejected while ACTIVE. */
   | 'DELETE_ROUTING_RULE'

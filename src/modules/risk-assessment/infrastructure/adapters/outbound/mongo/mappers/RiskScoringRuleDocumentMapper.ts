@@ -14,6 +14,7 @@ export function toDomain(document: RiskScoringRuleDocument): RiskScoringRule {
     conditions: document.conditions,
     conditionsVersion: document.conditions_version,
     status: createScoringRuleStatus(document.status),
+    /* Rules written before soft delete existed have no key: `?? null`. */
     deletedAt: document.deleted_at ? fromDate(document.deleted_at) : null,
     createdAt: fromDate(document.created_at),
     updatedAt: fromDate(document.updated_at),

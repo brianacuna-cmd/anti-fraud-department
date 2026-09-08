@@ -15,7 +15,12 @@ export interface CaseRoutingRuleProps {
   readonly status: RoutingRuleStatus;
   /** Catalog position; duplicates allowed; list/findActive tie-break on createdAt ASC. */
   readonly executionOrder: number;
-  /** Set only once `softDelete()` has been called. */
+  /**
+   * Soft delete. The row survives because cases carry `ruleId` and
+   * `conditionsVersion` in their frozen snapshot and audit rows: erasing the
+   * rule would leave "which rule did this?" unanswerable months later, which
+   * is exactly the question an auditor asks.
+   */
   readonly deletedAt: Instant | null;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
@@ -64,8 +69,8 @@ export class CaseRoutingRule {
       targetRoleId: input.targetRoleId ?? null,
       targetUserId: input.targetUserId ?? null,
       status: input.status ?? 'INACTIVE',
-      executionOrder,
       deletedAt: null,
+      executionOrder,
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -124,14 +129,26 @@ export class CaseRoutingRule {
   }
 
   /**
-   * Soft-delete (idempotent): a routing rule is never hard-deleted because
-   * cases keep `ruleId` in their frozen routing snapshot. Rejecting an
-   * ACTIVE rule is a use-case concern (DeleteRoutingRule.ts), not an
-   * aggregate invariant.
+   * Hides the rule from the list without erasing it.
+   *
+   * Refuses on an ACTIVE rule: deactivate it first. Deleting one that is live
+   * would change who gets the next case without that showing anywhere as a
+   * routing change — deactivating says so out loud.
    */
-  softDelete(now: Instant): CaseRoutingRule {
-    if (this.props.deletedAt !== null) return this;
-    return new CaseRoutingRule({ ...this.props, deletedAt: now });
+  delete(now: Instant): CaseRoutingRule {
+    if (this.props.status === 'ACTIVE') {
+      throw invariantViolation('an ACTIVE routing rule cannot be deleted: deactivate it first', {
+        ruleId: this.props.id,
+      });
+    }
+    if (this.props.deletedAt !== null) {
+      return this;
+    }
+    return new CaseRoutingRule({ ...this.props, deletedAt: now, updatedAt: now });
+  }
+
+  get deletedAt(): Instant | null {
+    return this.props.deletedAt;
   }
 
   get id(): CaseRoutingRuleId {
@@ -168,10 +185,6 @@ export class CaseRoutingRule {
 
   get executionOrder(): number {
     return this.props.executionOrder;
-  }
-
-  get deletedAt(): Instant | null {
-    return this.props.deletedAt;
   }
 
   get createdAt(): Instant {

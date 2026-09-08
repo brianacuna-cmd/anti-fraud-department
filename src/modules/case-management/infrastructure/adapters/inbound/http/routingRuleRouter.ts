@@ -6,7 +6,6 @@ import type { createListRoutingRulesUseCase } from '../../../../application/List
 import type { createGetRoutingRuleUseCase } from '../../../../application/GetRoutingRule.js';
 import type { createActivateRoutingRuleUseCase } from '../../../../application/ActivateRoutingRule.js';
 import type { createDeactivateRoutingRuleUseCase } from '../../../../application/DeactivateRoutingRule.js';
-import type { createDeleteRoutingRuleUseCase } from '../../../../application/DeleteRoutingRule.js';
 import type { createUpdateRoutingRuleUseCase } from '../../../../application/UpdateRoutingRule.js';
 import type { createReorderRoutingRulesUseCase } from '../../../../application/ReorderRoutingRules.js';
 import {
@@ -18,6 +17,7 @@ import {
 } from './dto/routingRuleSchemas.js';
 import { toRoutingRuleResponse, toUpdateRoutingRuleFields } from './mappers/RoutingRuleHttpMapper.js';
 import type { createSimulateRoutingRuleUseCase } from '../../../../application/SimulateRoutingRule.js';
+import type { createDeleteRoutingRuleUseCase } from '../../../../application/DeleteRoutingRule.js';
 import { parseRequest } from './parseRequest.js';
 
 export interface RoutingRuleRouterDeps {
@@ -29,8 +29,8 @@ export interface RoutingRuleRouterDeps {
   readonly reorderRoutingRules: ReturnType<typeof createReorderRoutingRulesUseCase>;
   readonly activateRoutingRule: ReturnType<typeof createActivateRoutingRuleUseCase>;
   readonly deactivateRoutingRule: ReturnType<typeof createDeactivateRoutingRuleUseCase>;
-  readonly deleteRoutingRule: ReturnType<typeof createDeleteRoutingRuleUseCase>;
   readonly simulateRoutingRule: ReturnType<typeof createSimulateRoutingRuleUseCase>;
+  readonly deleteRoutingRule: ReturnType<typeof createDeleteRoutingRuleUseCase>;
 }
 
 /**
@@ -130,11 +130,7 @@ export function routingRuleRouter(deps: RoutingRuleRouterDeps): Router {
     res.status(200).json(toRoutingRuleResponse(rule));
   });
 
-  /*
-   * Logical delete, 200 with the rule (not 204): it still exists, it is
-   * just hidden from the catalog. Rejects an ACTIVE rule (409) — mirrors
-   * the frontend's own documented contract in `api/routingRules.ts`.
-   */
+  /* Soft delete: returns the rule, not 204 — the row still exists. */
   router.delete('/case-routing-rules/:id', async (req, res) => {
     const auth = requireAuthContext(req);
     const rule = await deps.deleteRoutingRule({ auth, ruleId: req.params.id! });

@@ -11,7 +11,12 @@ export interface RiskScoringRuleProps {
   readonly conditions: Readonly<Record<string, unknown>>;
   readonly conditionsVersion: number;
   readonly status: ScoringRuleStatus;
-  /** Set only once `softDelete()` has been called. */
+  /**
+   * Soft delete. The row survives because cases carry `ruleId` and
+   * `conditionsVersion` in their frozen snapshot and audit rows: erasing the
+   * rule would leave "which rule did this?" unanswerable months later, which
+   * is exactly the question an auditor asks.
+   */
   readonly deletedAt: Instant | null;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
@@ -68,14 +73,28 @@ export class RiskScoringRule {
   }
 
   /**
-   * Soft-delete (idempotent): never hard-deleted because frozen case
-   * snapshots keep the `ruleId` that scored them. Rejecting an ACTIVE rule
-   * is a use-case concern (DeleteScoringRule.ts), not an aggregate
-   * invariant.
+   * Hides the rule from the list without erasing it.
+   *
+   * Refuses on an ACTIVE rule: it is the ONLY thing scoring incoming events,
+   * so removing it stops every case from opening — silently, because
+   * `CalculateRiskScore` fails closed and nothing in the panel would say why.
+   * Activate a replacement first; that retires this one on its own.
    */
-  softDelete(now: Instant): RiskScoringRule {
-    if (this.props.deletedAt !== null) return this;
-    return new RiskScoringRule({ ...this.props, deletedAt: now });
+  delete(now: Instant): RiskScoringRule {
+    if (this.props.status === 'ACTIVE') {
+      throw invariantViolation(
+        'the ACTIVE scoring rule cannot be deleted: activate a replacement first',
+        { ruleId: this.props.id },
+      );
+    }
+    if (this.props.deletedAt !== null) {
+      return this;
+    }
+    return new RiskScoringRule({ ...this.props, deletedAt: now, updatedAt: now });
+  }
+
+  get deletedAt(): Instant | null {
+    return this.props.deletedAt;
   }
 
   get id(): RiskScoringRuleId {
@@ -100,10 +119,6 @@ export class RiskScoringRule {
 
   get status(): ScoringRuleStatus {
     return this.props.status;
-  }
-
-  get deletedAt(): Instant | null {
-    return this.props.deletedAt;
   }
 
   get createdAt(): Instant {

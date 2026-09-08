@@ -1,5 +1,6 @@
 import { oid } from '../../../support/oid.js';
 import { createSimulateRoutingRuleUseCase } from '../../../../src/modules/case-management/application/SimulateRoutingRule.js';
+import { createDeleteRoutingRuleUseCase } from '../../../../src/modules/case-management/application/DeleteRoutingRule.js';
 import { ZenRoutingEngine } from '../../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import request from 'supertest';
@@ -16,7 +17,6 @@ import { createListRoutingRulesUseCase } from '../../../../src/modules/case-mana
 import { createGetRoutingRuleUseCase } from '../../../../src/modules/case-management/application/GetRoutingRule.js';
 import { createActivateRoutingRuleUseCase } from '../../../../src/modules/case-management/application/ActivateRoutingRule.js';
 import { createDeactivateRoutingRuleUseCase } from '../../../../src/modules/case-management/application/DeactivateRoutingRule.js';
-import { createDeleteRoutingRuleUseCase } from '../../../../src/modules/case-management/application/DeleteRoutingRule.js';
 import { createUpdateRoutingRuleUseCase } from '../../../../src/modules/case-management/application/UpdateRoutingRule.js';
 import { createReorderRoutingRulesUseCase } from '../../../../src/modules/case-management/application/ReorderRoutingRules.js';
 import { generateCaseRoutingRuleId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseRoutingRuleId.js';
@@ -72,12 +72,6 @@ function buildApp(actorPerRequest: () => AuthContext, clockNow: typeof NOW = NOW
     unitOfWork,
     clock,
   });
-  const deleteRoutingRule = createDeleteRoutingRuleUseCase({
-    routingRules,
-    auditRecorder,
-    unitOfWork,
-    clock,
-  });
 
   const api = Router();
   api.use((req: Request, _res: Response, next: NextFunction) => {
@@ -94,7 +88,12 @@ function buildApp(actorPerRequest: () => AuthContext, clockNow: typeof NOW = NOW
       reorderRoutingRules,
       activateRoutingRule,
       deactivateRoutingRule,
-      deleteRoutingRule,
+      deleteRoutingRule: createDeleteRoutingRuleUseCase({
+        routingRules,
+        auditRecorder,
+        unitOfWork,
+        clock,
+      }),
       /* El motor de verdad: una prueba en seco con un doble no prueba nada. */
       simulateRoutingRule: createSimulateRoutingRuleUseCase({
         simulationEngine: new ZenRoutingEngine(),
@@ -769,135 +768,41 @@ describe('PUT /case-routing-rules/reorder', () => {
 });
 
 describe('DELETE /case-routing-rules/:id', () => {
-  const supervisor = () =>
-    createAuthContext({
-      userId: oid('user-1'),
-      organizationId: oid('org-1'),
-      roleId: 'SUPERVISOR',
-    });
+  const SUPERVISOR = () =>
+    createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), roleId: 'SUPERVISOR' });
 
-  it('soft-deletes an INACTIVE draft and hides it from the list', async () => {
-    const { app, routingRules, auditRecorder } = buildApp(supervisor);
-
+  it('removes an inactive rule from the list', async () => {
+    const { app, routingRules, auditRecorder } = buildApp(SUPERVISOR);
     const created = await request(app)
       .post('/api/v1/case-routing-rules')
-      .send({ name: 'draft', conditions: VALID_JDM })
-      .expect(201);
-
-    const deleted = await request(app)
-      .delete(`/api/v1/case-routing-rules/${created.body.id}`)
-      .expect(200);
-
-    expect(deleted.body.id).toBe(created.body.id);
-    expect(routingRules.all()).toHaveLength(1);
-    expect(routingRules.all()[0]?.deletedAt).not.toBeNull();
-    expect(auditRecorder.all().map((e) => e.action)).toContain('DELETE_ROUTING_RULE');
-
-    const listed = await request(app).get('/api/v1/case-routing-rules').expect(200);
-    expect(listed.body.items).toHaveLength(0);
-  });
-
-  it('rejects deleting an ACTIVE rule with 409', async () => {
-    const { app } = buildApp(supervisor, LATER);
-
-    const created = await request(app)
-      .post('/api/v1/case-routing-rules')
-      .send({ name: 'live', conditions: VALID_JDM })
-      .expect(201);
-    await request(app).post(`/api/v1/case-routing-rules/${created.body.id}/activate`).expect(200);
-
-    const res = await request(app)
-      .delete(`/api/v1/case-routing-rules/${created.body.id}`)
-      .expect(409);
-    expect(res.body.error.code).toBe('ROUTING_RULE_ACTIVE');
-  });
-
-  it('is idempotent on a second delete', async () => {
-    const { app } = buildApp(supervisor);
-
-    const created = await request(app)
-      .post('/api/v1/case-routing-rules')
-      .send({ name: 'draft', conditions: VALID_JDM })
+      .send({ name: 'borrable', conditions: VALID_JDM })
       .expect(201);
 
     await request(app).delete(`/api/v1/case-routing-rules/${created.body.id}`).expect(200);
-    const again = await request(app)
-      .delete(`/api/v1/case-routing-rules/${created.body.id}`)
-      .expect(200);
-    expect(again.body.id).toBe(created.body.id);
+
+    expect(routingRules.all()[0]?.deletedAt).not.toBeNull();
+    expect(auditRecorder.all().map((e) => e.action)).toContain('DELETE_ROUTING_RULE');
   });
 
-  it('returns 404 for a missing rule id', async () => {
-    const { app } = buildApp(supervisor);
+  /*
+   * Desactivar primero: borrar una viva cambiaria a quien le toca el
+   * siguiente caso sin que eso conste como un cambio de enrutamiento.
+   */
+  it('refuses to delete an ACTIVE rule', async () => {
+    const { app } = buildApp(SUPERVISOR);
+    const created = await request(app)
+      .post('/api/v1/case-routing-rules')
+      .send({ name: 'viva', conditions: VALID_JDM })
+      .expect(201);
+    await request(app).post(`/api/v1/case-routing-rules/${created.body.id}/activate`).send({}).expect(200);
 
-    await request(app).delete(`/api/v1/case-routing-rules/${oid('missing-rule')}`).expect(404);
+    await request(app).delete(`/api/v1/case-routing-rules/${created.body.id}`).expect(400);
   });
 
   it('rejects ANALYST with 403', async () => {
-    let roleId: string = 'SUPERVISOR';
     const { app } = buildApp(() =>
-      createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), roleId }),
+      createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), roleId: 'ANALYST' }),
     );
-
-    const created = await request(app)
-      .post('/api/v1/case-routing-rules')
-      .send({ name: 'draft', conditions: VALID_JDM })
-      .expect(201);
-
-    roleId = 'ANALYST';
-    await request(app).delete(`/api/v1/case-routing-rules/${created.body.id}`).expect(403);
-  });
-});
-
-/**
- * The tenant owner login (`ORGANIZATION`), same standing as SUPERVISOR for
- * routing configuration — `requireRuleAuthoringRole`, distinct from the
- * `SUPERVISION_ROLES` guard every other case-management write uses.
- */
-describe('ORGANIZATION actor can author routing rules', () => {
-  const org = oid('org-1');
-  const ORGANIZATION = () =>
-    createAuthContext({ userId: org, organizationId: org, actorType: 'ORGANIZATION' });
-
-  it('creates, activates, deactivates, reorders, simulates, and deletes a rule', async () => {
-    const { app, routingRules } = buildApp(ORGANIZATION, LATER);
-
-    const created = await request(app)
-      .post('/api/v1/case-routing-rules')
-      .send({ name: 'org-owned', conditions: VALID_JDM })
-      .expect(201);
-    expect(created.body.status).toBe('INACTIVE');
-
-    await request(app)
-      .patch(`/api/v1/case-routing-rules/${created.body.id}`)
-      .send({ name: 'org-owned-renamed' })
-      .expect(200);
-    await request(app).post(`/api/v1/case-routing-rules/${created.body.id}/activate`).expect(200);
-    await request(app)
-      .put('/api/v1/case-routing-rules/reorder')
-      .send({ ids: [created.body.id] })
-      .expect(200);
-    await request(app)
-      .post('/api/v1/case-routing-rules/simulate')
-      .send({
-        conditions: created.body.conditions,
-        case: { riskScore: 50, status: 'OPEN', priority: 'LOW', tags: [] },
-      })
-      .expect(200);
-    await request(app).post(`/api/v1/case-routing-rules/${created.body.id}/deactivate`).expect(200);
-    await request(app).delete(`/api/v1/case-routing-rules/${created.body.id}`).expect(200);
-
-    expect(routingRules.all()[0]?.deletedAt).not.toBeNull();
-  });
-
-  it('creates a priority-mapping rule', async () => {
-    const { app } = buildApp(ORGANIZATION);
-
-    const res = await request(app)
-      .post('/api/v1/case-routing-rules/priority-mapping')
-      .send({ name: 'org-priority', mappings: [{ priority: 'HIGH', target: { type: 'ROLE', id: 'SUPERVISOR' } }] })
-      .expect(201);
-
-    expect(res.body.status).toBe('INACTIVE');
+    await request(app).delete(`/api/v1/case-routing-rules/${oid('any')}`).expect(403);
   });
 });

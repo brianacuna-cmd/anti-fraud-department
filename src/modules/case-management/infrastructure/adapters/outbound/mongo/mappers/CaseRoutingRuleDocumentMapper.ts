@@ -17,6 +17,7 @@ export function toDomain(document: CaseRoutingRuleDocument): CaseRoutingRule {
     targetUserId: document.target_user_id,
     status: createRoutingRuleStatus(document.status),
     executionOrder: document.execution_order ?? 0,
+    /* Rules written before soft delete existed have no key: `?? null`. */
     deletedAt: document.deleted_at ? fromDate(document.deleted_at) : null,
     createdAt: fromDate(document.created_at),
     updatedAt: fromDate(document.updated_at),

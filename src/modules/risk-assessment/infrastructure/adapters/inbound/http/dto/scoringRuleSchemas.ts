@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { jdmGraphSchema, type JdmGraph } from '../../../../../../../shared/http/dto/jdmGraphSchema.js';
+import { SCORING_OPERATORS } from '../../../../../domain/services/factorScoringJdm.js';
 
 import { calculateRiskScoreSchema } from './riskScoreSchemas.js';
 
@@ -36,11 +37,17 @@ export const simulateScoringRuleSchema = z
 export type SimulateScoringRuleBody = z.infer<typeof simulateScoringRuleSchema>;
 
 /**
- * POST /risk-scoring-rules/factor-scoring body — the guided builder. The
- * JDM graph is assembled server-side (`CreateFactorScoringRule.ts`), so
- * unlike `createScoringRuleSchema` this never touches `jdmGraphSchema`.
+ * POST /risk-scoring-rules/factor-scoring body — the panel's guided builder.
+ *
+ * No JDM graph travels here: the weighted factors arrive and the domain
+ * builds the graph (`buildFactorScoringJdm`). The client describes what raises
+ * risk; how that gets evaluated is decided by whoever evaluates it — the same
+ * split as `/case-routing-rules/priority-mapping`.
+ *
+ * The schema checks shape and ranges; whether a field is scorable is the
+ * domain's allowlist to decide, which is where the reason it is lives.
  */
-export const factorScoringRuleSchema = z
+export const createFactorScoringRuleSchema = z
   .object({
     name: z.string().min(1),
     factors: z
@@ -48,12 +55,12 @@ export const factorScoringRuleSchema = z
         z
           .object({
             field: z.string().min(1),
-            operator: z.enum(['GT', 'GTE', 'LT', 'LTE', 'EQ', 'NEQ', 'CONTAINS', 'IN', 'BETWEEN']),
+            operator: z.enum(SCORING_OPERATORS),
             value: z.union([
               z.string(),
               z.number(),
               z.boolean(),
-              z.array(z.union([z.string(), z.number()])),
+              z.array(z.union([z.string(), z.number()])).min(1),
             ]),
             points: z.number().int().min(-100).max(100),
             reason: z.string().min(1),
@@ -64,4 +71,4 @@ export const factorScoringRuleSchema = z
   })
   .strict();
 
-export type FactorScoringRuleBody = z.infer<typeof factorScoringRuleSchema>;
+export type CreateFactorScoringRuleBody = z.infer<typeof createFactorScoringRuleSchema>;
