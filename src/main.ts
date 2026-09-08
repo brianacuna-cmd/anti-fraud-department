@@ -26,6 +26,7 @@ import { createAuthContextMiddleware } from './modules/identity-access/infrastru
 import { MongoOrganizationRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoOrganizationRepository.js';
 import { MongoUserRepositoryFactory } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUserRepositoryFactory.js';
 import { MongoSessionRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoSessionRepository.js';
+import { MongoAgentApiKeyRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoAgentApiKeyRepository.js';
 import { UserActorGateway } from './modules/identity-access/infrastructure/adapters/outbound/mongo/UserActorGateway.js';
 import { OrganizationActorGateway } from './modules/identity-access/infrastructure/adapters/outbound/mongo/OrganizationActorGateway.js';
 import { MongoUnitOfWork } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
@@ -135,6 +136,7 @@ import { createBulkCaseActionUseCase } from './modules/case-management/applicati
 import { createGetCaseUseCase } from './modules/case-management/application/GetCase.js';
 import { createGetCaseTimelineUseCase } from './modules/case-management/application/GetCaseTimeline.js';
 import { createAddCaseNoteUseCase } from './modules/case-management/application/AddCaseNote.js';
+import { createPutAgentBriefUseCase } from './modules/case-management/application/PutAgentBrief.js';
 import { createListCaseNotesUseCase } from './modules/case-management/application/ListCaseNotes.js';
 import { generateCaseNoteId } from './modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { createResolveCaseUseCase } from './modules/case-management/application/ResolveCase.js';
@@ -233,15 +235,22 @@ import { createUpdateWebhookSubscriptionUseCase } from './modules/case-managemen
 import { createDeleteWebhookSubscriptionUseCase } from './modules/case-management/application/DeleteWebhookSubscription.js';
 import { organizationFraudConfigRouter } from './modules/case-management/infrastructure/adapters/inbound/http/organizationFraudConfigRouter.js';
 import { webhookSubscriptionRouter } from './modules/case-management/infrastructure/adapters/inbound/http/webhookSubscriptionRouter.js';
+import { webhookTestRouter } from './modules/case-management/infrastructure/adapters/inbound/http/webhookTestRouter.js';
+import { createTestOutgoingWebhookUseCase } from './modules/case-management/application/TestOutgoingWebhook.js';
 import { enforcementRouter } from './modules/case-management/infrastructure/adapters/inbound/http/enforcementRouter.js';
 import { approvalRequestRouter } from './modules/case-management/infrastructure/adapters/inbound/http/approvalRequestRouter.js';
 import { createReviewApprovalRequestUseCase } from './modules/case-management/application/ReviewApprovalRequest.js';
 import { createListApprovalRequestsUseCase } from './modules/case-management/application/ListApprovalRequests.js';
 import { routingRuleRouter } from './modules/case-management/infrastructure/adapters/inbound/http/routingRuleRouter.js';
 import { dlqAdminRouter } from './modules/case-management/infrastructure/adapters/inbound/http/dlqAdminRouter.js';
+import { scheduledJobAdminRouter } from './modules/case-management/infrastructure/adapters/inbound/http/scheduledJobAdminRouter.js';
 import { createListDlqEventsUseCase } from './modules/case-management/application/ListDlqEvents.js';
 import { createGetDlqEventUseCase } from './modules/case-management/application/GetDlqEvent.js';
 import { createRequeueDlqEventUseCase } from './modules/case-management/application/RequeueDlqEvent.js';
+import {
+  createRunScheduledJobUseCase,
+  type ScheduledJobRunnerRegistry,
+} from './modules/case-management/application/RunScheduledJob.js';
 import { MongoAnalystDecisionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoAnalystDecisionRepository.js';
 import { MongoEnforcementActionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoEnforcementActionRepository.js';
 import { MongoApprovalRequestRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoApprovalRequestRepository.js';
@@ -284,6 +293,7 @@ import { generateOrganizationSarFilingProfileId } from './modules/sar/domain/mod
 import { sarErrorStatus } from './modules/sar/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createSarSourceVerifier } from './composition/sarSourceVerifier.js';
 import { createSarAuditRecorderAdapter } from './composition/sarAuditRecorderAdapter.js';
+import { createGetCaseAnalysisPack } from './composition/getCaseAnalysisPack.js';
 import { createScoreToCaseOrchestrator } from './composition/scoreToCaseOrchestrator.js';
 import type { ScoreToCaseOrchestratorInput, ScoreToCaseOrchestratorResult } from './composition/scoreToCaseOrchestrator.js';
 import { scoreToCaseProcessRouter } from './composition/scoreToCaseProcessRouter.js';
@@ -539,6 +549,7 @@ async function bootstrap(): Promise<void> {
   const organizations = new MongoOrganizationRepository(db);
   const userRepositoryFactory = new MongoUserRepositoryFactory(db);
   const sessions = new MongoSessionRepository(db);
+  const agentApiKeys = new MongoAgentApiKeyRepository(db);
   const admins = new MongoAdminOrganizationRepository(db);
   // user-roles PR-1b: first real consumer — construction was deferred out of
   // PR-1a to avoid dead code with no caller yet (this file's existing
@@ -688,6 +699,8 @@ async function bootstrap(): Promise<void> {
     auditRecorder: caseManagementAuditRecorder,
     routeCase,
     calculateSla,
+    outbox: outboxEvents,
+    generateOutboxEventId,
   });
   // ---------------------------------------------------------------------
   // Finturu integration (this fork's own).
@@ -803,14 +816,15 @@ async function bootstrap(): Promise<void> {
     retryPolicy: outboxRetryPolicy,
   });
 
+  const recordedPublishOutbox = () =>
+    recordAround(() => publishOutboxEvents(), {
+      name: 'outbox_publish',
+      recorder: scheduledJobs,
+      clock,
+      nextRunAt: nextRunAtAfterMs(OUTBOX_PUBLISH_INTERVAL_MS),
+    });
   const outboxPublishScheduler = createOutboxPublishScheduler({
-    publishOutboxEvents: () =>
-      recordAround(() => publishOutboxEvents(), {
-        name: 'outbox_publish',
-        recorder: scheduledJobs,
-        clock,
-        nextRunAt: nextRunAtAfterMs(OUTBOX_PUBLISH_INTERVAL_MS),
-      }),
+    publishOutboxEvents: recordedPublishOutbox,
   });
 
   const caseManagementFinturuRouter = finturuRouter({
@@ -880,6 +894,20 @@ async function bootstrap(): Promise<void> {
     clock,
   });
 
+  const amlAlerts = new MongoAmlAlertRepository(db);
+  const listAmlAlerts = createListAmlAlertsUseCase({ amlAlertRepository: amlAlerts });
+  const getCase = createGetCaseUseCase({ cases });
+  const getCaseTimeline = createGetCaseTimelineUseCase({
+    cases,
+    timelineReader: caseTimelineReader,
+  });
+  const getCaseAnalysisPack = createGetCaseAnalysisPack({
+    getCase,
+    getCaseTimeline,
+    listAmlAlerts,
+    cases,
+  });
+
   const caseManagementCasesRouter = caseRouter({
     createCase,
     reassignCase: createReassignCaseUseCase({
@@ -924,8 +952,17 @@ async function bootstrap(): Promise<void> {
       clock,
       generateTimelineEventId,
     }),
-    getCase: createGetCaseUseCase({ cases }),
-    getCaseTimeline: createGetCaseTimelineUseCase({ cases, timelineReader: caseTimelineReader }),
+    getCase,
+    getCaseTimeline,
+    getCaseAnalysisPack,
+    putAgentBrief: createPutAgentBriefUseCase({
+      cases,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateTimelineEventId,
+    }),
     addCaseNote: createAddCaseNoteUseCase({
       cases,
       notes: caseNotes,
@@ -1152,6 +1189,17 @@ async function bootstrap(): Promise<void> {
   });
   const customerOutgoingEvents = new MongoCustomerOutgoingEventRepository(db);
   const outgoingWebhookClient = new HttpOutgoingWebhookClient();
+  const webhookTestHttpRouter = webhookTestRouter({
+    testOutgoingWebhook: createTestOutgoingWebhookUseCase({
+      fraudConfig: organizationFraudConfig,
+      webhookClient: outgoingWebhookClient,
+      outgoingEvents: customerOutgoingEvents,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateCustomerOutgoingEventId,
+    }),
+  });
   const customerOutgoingEventDispatcher = createCustomerOutgoingEventDispatcher({
     outgoingEvents: customerOutgoingEvents,
     webhookClient: outgoingWebhookClient,
@@ -1178,14 +1226,15 @@ async function bootstrap(): Promise<void> {
     outbox: outboxEvents,
     generateOutboxEventId,
   });
+  const recordedSweep = () =>
+    recordAround(() => sweepSlaTracking(), {
+      name: 'sla_sweep',
+      recorder: scheduledJobs,
+      clock,
+      nextRunAt: nextRunAtAfterMs(SLA_SWEEP_INTERVAL_MS),
+    });
   const slaSweepScheduler = createSlaSweepScheduler({
-    sweepSlaTracking: () =>
-      recordAround(() => sweepSlaTracking(), {
-        name: 'sla_sweep',
-        recorder: scheduledJobs,
-        clock,
-        nextRunAt: nextRunAtAfterMs(SLA_SWEEP_INTERVAL_MS),
-      }),
+    sweepSlaTracking: recordedSweep,
   });
   const enforcementHttpRouter = enforcementRouter({
     recordAnalystDecision: createRecordAnalystDecisionUseCase({
@@ -1394,7 +1443,6 @@ async function bootstrap(): Promise<void> {
   // one-line swap back to it. `OpenAmlAlert` owns the transactional
   // aml_alerts + case_timeline + outbox_events write (natural-key unique
   // index still backs RF-6 idempotency against races).
-  const amlAlerts = new MongoAmlAlertRepository(db);
   const amlAlertTimeline = new MongoAmlAlertTimelineRecorder(db);
   const screeningUnitOfWork = new ScreeningMongoUnitOfWork(client);
   const openAmlAlert = createOpenAmlAlertUseCase({
@@ -1408,7 +1456,6 @@ async function bootstrap(): Promise<void> {
     generateOutboxEventId,
   });
   const getAmlAlert = createGetAmlAlertUseCase({ amlAlertRepository: amlAlerts });
-  const listAmlAlerts = createListAmlAlertsUseCase({ amlAlertRepository: amlAlerts });
   const getAmlAlertTimeline = createGetAmlAlertTimelineUseCase({
     getAmlAlert,
     timelineRecorder: amlAlertTimeline,
@@ -1871,6 +1918,8 @@ async function bootstrap(): Promise<void> {
       sessionRepository: sessions,
       userRepositoryFactory,
       platformAdminAuth: PLATFORM_ADMIN_AUTH,
+      agentApiKeyRepository: agentApiKeys,
+      demoUserTrustedHeader: process.env.DEMO_TRUSTED_HEADER === 'true',
     }),
   );
 
@@ -1922,6 +1971,62 @@ async function bootstrap(): Promise<void> {
     }),
   });
 
+  // wallet-sanctions-rescreen wrap is hoisted here (not start()) so the
+  // admin force-run registry can share the same recordAround as the sleeper.
+  // Screening application layer must not import case-management; bridges live here.
+  const walletRescreenAuth = createAuthContext({
+    userId: 'system:wallet-rescreen',
+    organizationId: DEFAULT_ORGANIZATION_ID,
+    actorType: 'ORGANIZATION',
+  });
+  const walletWatermarkRepository = new MongoScreeningWatermarkRepository(db);
+  const walletSource = createFinturuWalletSource(finturuDirectory);
+  const walletCaseLinker = createWalletRescreenCaseLinker(cases);
+  const rescreenWalletSanctions = createRescreenWalletSanctionsUseCase({
+    clock,
+    watchlistRepository: watchlists,
+    watchlistEntryRepository: watchlistEntries,
+    watermarkRepository: walletWatermarkRepository,
+    walletSource,
+    openAmlAlert,
+    amlAlertRepository: amlAlerts,
+    unitOfWork: screeningUnitOfWork,
+    isOrganizationActive: async (id: string) => {
+      const org = await organizations.findById(createOrganizationId(id));
+      return org?.status === 'ACTIVE';
+    },
+    caseLinker: walletCaseLinker,
+    backfill: WALLET_RESCREEN_BACKFILL,
+  });
+  const recordedWalletRescreen = () =>
+    recordAround(() => rescreenWalletSanctions({ auth: walletRescreenAuth }), {
+      name: 'wallet_sanctions_rescreen',
+      recorder: scheduledJobs,
+      clock,
+      nextRunAt: (now) =>
+        fromDate(new Date(toDate(now).getTime() + msUntilNextMidnightBogota(toDate(now)))),
+    });
+  const walletRescreenScheduler = createWalletSanctionsRescreenScheduler({
+    runRescreen: recordedWalletRescreen,
+    clock,
+  });
+
+  const scheduledJobRunners: ScheduledJobRunnerRegistry = {
+    sla_sweep: recordedSweep,
+    outbox_publish: recordedPublishOutbox,
+    customer_outgoing_webhook_dispatch: customerOutgoingEventDispatcher.dispatchOnce,
+    directory_sync: recordedSyncFinturuDirectory,
+    wallet_sanctions_rescreen: recordedWalletRescreen,
+  };
+  const scheduledJobAdminHttpRouter = scheduledJobAdminRouter({
+    runScheduledJob: createRunScheduledJobUseCase({
+      catalog: scheduledJobs,
+      runners: scheduledJobRunners,
+      unitOfWork: caseManagementUnitOfWork,
+      auditRecorder: caseManagementAuditRecorder,
+    }),
+  });
+
   const identityAccessRouter = Router();
   identityAccessRouter.use(authContextMiddleware);
   identityAccessRouter.use(identityAccessAuthRouter);
@@ -1946,10 +2051,12 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(noteHttpRouter);
   identityAccessRouter.use(organizationFraudConfigHttpRouter);
   identityAccessRouter.use(webhookSubscriptionHttpRouter);
+  identityAccessRouter.use(webhookTestHttpRouter);
   identityAccessRouter.use(enforcementHttpRouter);
   identityAccessRouter.use(approvalRequestHttpRouter);
   identityAccessRouter.use(routingRuleHttpRouter);
   identityAccessRouter.use(dlqAdminHttpRouter);
+  identityAccessRouter.use(scheduledJobAdminHttpRouter);
   identityAccessRouter.use(riskScoresRouter);
   identityAccessRouter.use(riskScoreProcessRouter);
   identityAccessRouter.use(riskScoringRulesRouter);
@@ -2003,44 +2110,6 @@ async function bootstrap(): Promise<void> {
       : 'PLATFORM_ADMIN auth: disabled until identity-access-super-admin-auth ships a real admin login',
   );
 
-  // wallet-sanctions-rescreen PR4 (D4/D5/D8): composition bridges + scheduler.
-  // Screening application layer must not import case-management; bridges live here.
-  const walletRescreenAuth = createAuthContext({
-    userId: 'system:wallet-rescreen',
-    organizationId: DEFAULT_ORGANIZATION_ID,
-    actorType: 'ORGANIZATION',
-  });
-  const walletWatermarkRepository = new MongoScreeningWatermarkRepository(db);
-  const walletSource = createFinturuWalletSource(finturuDirectory);
-  const walletCaseLinker = createWalletRescreenCaseLinker(cases);
-  const rescreenWalletSanctions = createRescreenWalletSanctionsUseCase({
-    clock,
-    watchlistRepository: watchlists,
-    watchlistEntryRepository: watchlistEntries,
-    watermarkRepository: walletWatermarkRepository,
-    walletSource,
-    openAmlAlert,
-    amlAlertRepository: amlAlerts,
-    unitOfWork: screeningUnitOfWork,
-    isOrganizationActive: async (id: string) => {
-      const org = await organizations.findById(createOrganizationId(id));
-      return org?.status === 'ACTIVE';
-    },
-    caseLinker: walletCaseLinker,
-    backfill: WALLET_RESCREEN_BACKFILL,
-  });
-  const walletRescreenScheduler = createWalletSanctionsRescreenScheduler({
-    runRescreen: () =>
-      recordAround(() => rescreenWalletSanctions({ auth: walletRescreenAuth }), {
-        name: 'wallet_sanctions_rescreen',
-        recorder: scheduledJobs,
-        clock,
-        nextRunAt: (now) =>
-          fromDate(new Date(toDate(now).getTime() + msUntilNextMidnightBogota(toDate(now)))),
-      }),
-    clock,
-  });
-
   customerOutgoingEventDispatcher.start(OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS);
   console.log(
     `Customer outgoing webhook dispatcher started (interval=${OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS}ms)`,
@@ -2062,9 +2131,15 @@ async function bootstrap(): Promise<void> {
   outboxPublishScheduler.start(OUTBOX_PUBLISH_INTERVAL_MS);
   console.log(`Outbox publish scheduler started (interval=${OUTBOX_PUBLISH_INTERVAL_MS}ms)`);
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`anti-fraud-department listening on port ${PORT}`);
   });
+  // Clients must wait at least 630s for a force-run of directory_sync:
+  // default FINTURU_SYNC_TIMEOUT_MS is 600_000 plus 30s slack so Node
+  // does not close the socket while the recorded runner is still walking.
+  const requestTimeout = Number(process.env.FINTURU_SYNC_TIMEOUT_MS ?? 600_000) + 30_000;
+  server.requestTimeout = requestTimeout;
+  server.headersTimeout = requestTimeout + 5_000;
 }
 
 /**

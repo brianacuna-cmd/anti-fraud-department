@@ -79,6 +79,7 @@ const LABELS: Readonly<Record<Translatable, string>> = {
   CASE_LINKED_TO_INVESTIGATION: 'Vinculado a una investigación',
   SNAPSHOT_REFRESHED: 'Datos del cliente actualizados',
   ENFORCEMENT_REQUESTED: 'Medida cautelar solicitada',
+  AGENT_BRIEFING: 'Informe del agente',
   // Decision and closure
   FRAUD_CONFIRMED: 'Fraude confirmado',
   FALSE_POSITIVE: 'Falso positivo',

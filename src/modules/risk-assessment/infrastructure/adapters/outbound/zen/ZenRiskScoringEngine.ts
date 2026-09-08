@@ -7,6 +7,7 @@ import type {
   RuleSimulation,
   RuleSimulationEngine,
 } from '../../../../domain/ports/RuleSimulationEngine.js';
+import { enrichCollectHitOutputs } from './enrichCollectHitOutputs.js';
 
 /**
  * `@gorules/zen-engine` adapter for the `RiskScoringEngine` port. The only
@@ -30,7 +31,7 @@ export class ZenRiskScoringEngine implements RiskScoringEngine, RuleSimulationEn
     conditions: Readonly<Record<string, unknown>>,
     context: Readonly<Record<string, unknown>>,
   ): Promise<RiskScoringEvaluation> {
-    const decision = this.engine.createDecision(conditions);
+    const decision = this.engine.createDecision(enrichCollectHitOutputs(conditions));
     const { result } = await decision.evaluate(context);
     return toEvaluation(result);
   }
@@ -47,7 +48,7 @@ export class ZenRiskScoringEngine implements RiskScoringEngine, RuleSimulationEn
     conditions: Readonly<Record<string, unknown>>,
     context: Readonly<Record<string, unknown>>,
   ): Promise<RuleSimulation> {
-    const decision = this.engine.createDecision(conditions);
+    const decision = this.engine.createDecision(enrichCollectHitOutputs(conditions));
     const response = await decision.evaluate(context, { trace: true });
     return {
       performance: response.performance,

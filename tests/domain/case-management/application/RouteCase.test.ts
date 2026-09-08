@@ -372,6 +372,33 @@ describe('createRouteCaseUseCase (T1 auto-routing)', () => {
       expect(result.assignedTo).toEqual({ type: 'USER', id: 'user-9' });
     });
 
+    it('routes when persisted featureFlags is null (legacy docs; missing != disabled)', async () => {
+      const seeded = buildFraudConfig({});
+      const legacy = OrganizationFraudConfig.rehydrate({
+        id: seeded.id,
+        organizationId: seeded.organizationId,
+        slaLowMinutes: seeded.slaLowMinutes,
+        slaMediumMinutes: seeded.slaMediumMinutes,
+        slaHighMinutes: seeded.slaHighMinutes,
+        slaCriticalMinutes: seeded.slaCriticalMinutes,
+        riskThresholdLow: seeded.riskThresholdLow,
+        riskThresholdMedium: seeded.riskThresholdMedium,
+        riskThresholdHigh: seeded.riskThresholdHigh,
+        riskThresholdCritical: seeded.riskThresholdCritical,
+        featureFlags: null as unknown as Record<string, boolean>,
+        outboundWebhookUrl: seeded.outboundWebhookUrl,
+        outboundWebhookSecret: seeded.outboundWebhookSecret,
+        createdAt: seeded.createdAt,
+        updatedAt: seeded.updatedAt,
+      });
+      const engine = new ScriptedRoutingEngine([{ targetUserId: 'user-9', targetRoleId: null }]);
+      const { routeCase } = buildUseCase(engine, [buildRule()], legacy);
+
+      const result = await routeCase({ kase: buildCase(), ...ROUTE });
+
+      expect(result.assignedTo).toEqual({ type: 'USER', id: 'user-9' });
+    });
+
     it('routes when the tenant has no fraud config at all (missing != disabled)', async () => {
       const engine = new ScriptedRoutingEngine([{ targetUserId: 'user-9', targetRoleId: null }]);
       const { routeCase } = buildUseCase(engine, [buildRule()]);

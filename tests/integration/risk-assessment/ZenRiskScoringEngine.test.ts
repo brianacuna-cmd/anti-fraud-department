@@ -118,6 +118,29 @@ const HIGH_CHARGEBACK = {
   riskSignals: { providerRiskScore: 90 },
 };
 
+const RICH_HIT_AMOUNT = {
+  id: 'r1',
+  name: 'Amount',
+  points: 20,
+  because: 'r1: Amount >= 10000',
+};
+
+const RICH_HIT_PROVIDER = {
+  id: 'r2',
+  name: 'Provider Score',
+  points: 30,
+  because: 'r2: Provider Score >= 80',
+};
+
+const RICH_HIT_CHARGEBACK = {
+  id: 'r3',
+  name: 'Event Type',
+  points: 15,
+  because: 'r3: Event Type "CHARGEBACK"',
+};
+
+const HIGH_CHARGEBACK_RICH_HITS = [RICH_HIT_AMOUNT, RICH_HIT_PROVIDER, RICH_HIT_CHARGEBACK];
+
 describe('ZenRiskScoringEngine (real @gorules/zen-engine collect+Expression)', () => {
   let engine: ZenRiskScoringEngine;
 
@@ -133,7 +156,19 @@ describe('ZenRiskScoringEngine (real @gorules/zen-engine collect+Expression)', (
     const result = await engine.evaluate(collectThenExpressionJdm(), HIGH_CHARGEBACK);
 
     expect(result.riskScore).toBe(65);
-    expect(result.hits).toEqual([{ points: 20 }, { points: 30 }, { points: 15 }]);
+    expect(result.hits).toEqual(HIGH_CHARGEBACK_RICH_HITS);
+  });
+
+  it('simulate matches evaluate hits and riskScore for the same HIGH_CHARGEBACK fixture', async () => {
+    const graph = collectThenExpressionJdm();
+    const evaluated = await engine.evaluate(graph, HIGH_CHARGEBACK);
+    const simulated = await engine.simulate(graph, HIGH_CHARGEBACK);
+    const simulatedResult = simulated.result as { riskScore: unknown; hits: unknown };
+
+    expect(evaluated.riskScore).toBe(65);
+    expect(simulatedResult.riskScore).toBe(evaluated.riskScore);
+    expect(simulatedResult.hits).toEqual(evaluated.hits);
+    expect(evaluated.hits).toEqual(HIGH_CHARGEBACK_RICH_HITS);
   });
 
   it('fixture-locks collect+Expression JDM contract: contentType, collect outputPath, Expression fold', () => {
@@ -167,7 +202,7 @@ describe('ZenRiskScoringEngine (real @gorules/zen-engine collect+Expression)', (
     });
 
     expect(result.riskScore).toBe(20);
-    expect(result.hits).toEqual([{ points: 20 }]);
+    expect(result.hits).toEqual([RICH_HIT_AMOUNT]);
   });
 
   it('produces a different integer when only providerEventType collect row matches', async () => {
@@ -178,7 +213,7 @@ describe('ZenRiskScoringEngine (real @gorules/zen-engine collect+Expression)', (
     });
 
     expect(result.riskScore).toBe(15);
-    expect(result.hits).toEqual([{ points: 15 }]);
+    expect(result.hits).toEqual([RICH_HIT_CHARGEBACK]);
   });
 
   it('defaults hits to [] when Expression emits riskScore without a hits array', async () => {

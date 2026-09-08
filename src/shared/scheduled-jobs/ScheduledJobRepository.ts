@@ -1,4 +1,5 @@
 import type { Instant } from '../time/Instant.js';
+import type { ScheduledJob } from './ScheduledJob.js';
 import type { ScheduledJobResult } from './ScheduledJobResult.js';
 
 export interface SeedScheduledJobInput {
@@ -26,4 +27,5 @@ export interface RecordScheduledJobRunInput {
 export interface ScheduledJobRepository {
   seed(input: SeedScheduledJobInput): Promise<void>;
   recordRun(input: RecordScheduledJobRunInput): Promise<void>;
+  findByName(name: string): Promise<ScheduledJob | null>;
 }

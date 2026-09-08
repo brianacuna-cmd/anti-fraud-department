@@ -18,6 +18,7 @@ export type CaseManagementAuditAction =
   | 'UPDATE_PRIORITY_TAGS'
   | 'BULK_CASE_ACTION'
   | 'ADD_CASE_NOTE'
+  | 'PUT_AGENT_BRIEF'
   | 'OPEN_INVESTIGATION'
   | 'CLOSE_INVESTIGATION'
   | 'UPDATE_INVESTIGATION_FINDINGS'
@@ -92,7 +93,18 @@ export type CaseManagementAuditAction =
    * PUT `/organization-fraud-config` singleton upsert. One action for create
    * and re-upsert. GET is not audited.
    */
-  | 'UPSERT_ORGANIZATION_FRAUD_CONFIG';
+  | 'UPSERT_ORGANIZATION_FRAUD_CONFIG'
+  /**
+   * PLATFORM_ADMIN force-ran a seeded catalog job. Written after the job
+   * (SUCCESS or FAILED) with `organizationId` null.
+   */
+  | 'SCHEDULED_JOB_RUN'
+  /**
+   * SUPERVISOR one-shot probe of the tenant outbound URL. Audited after
+   * the POST with `resourceId` = event id; detail is `{ statusCode, latencyMs, ok }`
+   * (no secret, no URL).
+   */
+  | 'WEBHOOK_TEST';
 
 export type CaseManagementAuditResource =
   | 'case'
@@ -118,4 +130,14 @@ export type CaseManagementAuditResource =
    * Per-tenant singleton in `organization_fraud_config`. Mutation-only
    * (PUT upsert); GET is not audited.
    */
-  | 'organization_fraud_config';
+  | 'organization_fraud_config'
+  /**
+   * Observational `scheduled_jobs` catalog row. Mutation-only (force-run);
+   * list/get are not in this change.
+   */
+  | 'scheduled_job'
+  /**
+   * Outbound delivery to the tenant webhook URL (`customer_outgoing_events`
+   * test row). Mutation-only (the probe POST); catalog reads are not audited.
+   */
+  | 'outgoing_webhook';

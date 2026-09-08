@@ -110,6 +110,7 @@ export class InMemoryCaseRepository implements CaseRepository {
 function matchesListQuery(kase: Case, query: CaseListQuery): boolean {
   if (kase.deletedAt !== null) return false;
   if (kase.organizationId !== query.organizationId) return false;
+  if (query.customerId !== undefined && kase.customerId !== query.customerId) return false;
   if (query.status !== undefined && query.status.length > 0 && !query.status.includes(kase.status)) {
     return false;
   }

@@ -60,6 +60,7 @@ function createdAtFilterFragment(query: AmlAlertListQuery): Record<string, unkno
 function listFilter(query: AmlAlertListQuery): Filter<AmlAlertDocument> {
   const filter: Record<string, unknown> = {
     organization_id: new ObjectId(query.organizationId),
+    ...(query.customerId !== undefined ? { customer_id: query.customerId } : {}),
     ...statusFilterFragment(query),
     ...severityFilterFragment(query),
     ...watchlistFilterFragment(query),

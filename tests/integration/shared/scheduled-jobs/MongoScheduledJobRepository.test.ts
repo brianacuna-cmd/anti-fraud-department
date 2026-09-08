@@ -129,6 +129,78 @@ describe('MongoScheduledJobRepository (integration, real replica-set Mongo)', ()
     expect(await db.collection('scheduled_jobs').countDocuments({ name: 'directory_sync' })).toBe(1);
   });
 
+  it('findByName returns the domain row for a recorded name', async () => {
+    await repository.seed({
+      name: 'outbox_publish',
+      description: 'Publish outbox events',
+      cronExpression: 'every 5s',
+      enabled: true,
+      organizationId: null,
+      now: NOW,
+    });
+    await repository.recordRun({
+      name: 'outbox_publish',
+      lastRunAt: LATER,
+      lastResult: 'SUCCESS',
+      lastError: null,
+      nextRunAt: NEXT,
+    });
+
+    const found = await repository.findByName('outbox_publish');
+
+    expect(found).not.toBeNull();
+    expect(found!.name).toBe('outbox_publish');
+    expect(found!.description).toBe('Publish outbox events');
+    expect(found!.enabled).toBe(true);
+    expect(found!.organizationId).toBeNull();
+    expect(found!.lastResult).toBe('SUCCESS');
+    expect(found!.lastError).toBeNull();
+    expect(found!.lastRunAt).toBe(LATER);
+    expect(found!.nextRunAt).toBe(NEXT);
+    expect(found!.createdAt).toBe(NOW);
+  });
+
+  it('findByName returns null when no catalog row matches', async () => {
+    await repository.seed({
+      name: 'sla_sweep',
+      description: 'Sweep SLA tracking rows',
+      cronExpression: 'every 60s',
+      enabled: true,
+      organizationId: null,
+      now: NOW,
+    });
+
+    await expect(repository.findByName('unknown_job')).resolves.toBeNull();
+  });
+
+  it('findByName coerces omitted seed-only tick fields to null', async () => {
+    await repository.seed({
+      name: 'directory_sync',
+      description: 'Sync directory',
+      cronExpression: 'every 15m',
+      enabled: false,
+      organizationId: null,
+      now: NOW,
+    });
+
+    const raw = await db.collection<ScheduledJobDocument>('scheduled_jobs').findOne({ name: 'directory_sync' });
+    expect(raw).not.toBeNull();
+    expect(raw!).not.toHaveProperty('last_run_at');
+    expect(raw!).not.toHaveProperty('next_run_at');
+    expect(raw!).not.toHaveProperty('last_result');
+    expect(raw!).not.toHaveProperty('last_error');
+
+    const found = await repository.findByName('directory_sync');
+
+    expect(found).not.toBeNull();
+    expect(found!.name).toBe('directory_sync');
+    expect(found!.enabled).toBe(false);
+    expect(found!.lastRunAt).toBeNull();
+    expect(found!.nextRunAt).toBeNull();
+    expect(found!.lastResult).toBeNull();
+    expect(found!.lastError).toBeNull();
+  });
+
   it('keeps distinct names as separate documents', async () => {
     await repository.recordRun({
       name: 'sla_sweep',

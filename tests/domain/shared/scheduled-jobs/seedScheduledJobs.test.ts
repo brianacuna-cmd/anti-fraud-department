@@ -23,6 +23,10 @@ class FakeCatalog implements ScheduledJobRepository {
     this.seeds.push(input);
   }
 
+  async findByName(_name: string): Promise<null> {
+    return null;
+  }
+
   async recordRun(_input: RecordScheduledJobRunInput): Promise<void> {
     /* unused */
   }

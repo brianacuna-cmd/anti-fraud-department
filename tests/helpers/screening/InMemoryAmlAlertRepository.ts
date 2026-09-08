@@ -46,6 +46,7 @@ export class InMemoryAmlAlertRepository implements AmlAlertRepository {
   async list(query: AmlAlertListQuery): Promise<AmlAlertListResult> {
     const filtered = [...this.byId.values()]
       .filter((alert) => alert.organizationId === query.organizationId)
+      .filter((alert) => query.customerId === undefined || alert.customerId === query.customerId)
       .filter((alert) => query.status === undefined || query.status.length === 0 || query.status.includes(alert.status))
       .filter(
         (alert) =>

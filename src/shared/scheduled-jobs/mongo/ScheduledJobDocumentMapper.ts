@@ -6,7 +6,8 @@ import { createScheduledJobResult } from '../ScheduledJobResult.js';
 import type { ScheduledJobDocument } from './ScheduledJobDocument.js';
 
 const instantToDate = (value: Instant | null): Date | null => (value === null ? null : toDate(value));
-const dateToInstant = (value: Date | null): Instant | null => (value === null ? null : fromDate(value));
+const dateToInstant = (value: Date | null | undefined): Instant | null =>
+  value == null ? null : fromDate(value);
 
 /** camelCase (domain) -> snake_case (Mongo). Instant fields become BSON `Date`. */
 export function toDocument(job: ScheduledJob): ScheduledJobDocument {
@@ -36,8 +37,8 @@ export function toDomain(document: ScheduledJobDocument): ScheduledJob {
     enabled: document.enabled,
     lastRunAt: dateToInstant(document.last_run_at),
     nextRunAt: dateToInstant(document.next_run_at),
-    lastResult: document.last_result === null ? null : createScheduledJobResult(document.last_result),
-    lastError: document.last_error,
+    lastResult: document.last_result == null ? null : createScheduledJobResult(document.last_result),
+    lastError: document.last_error ?? null,
     createdAt: fromDate(document.created_at),
   });
 }

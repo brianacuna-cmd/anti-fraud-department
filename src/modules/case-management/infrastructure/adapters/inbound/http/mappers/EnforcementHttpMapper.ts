@@ -61,7 +61,7 @@ export interface CustomerOutgoingEventResponseDto {
   readonly id: string;
   readonly organizationId: string;
   readonly customerId: string;
-  readonly enforcementActionId: string;
+  readonly enforcementActionId: string | null;
   readonly webhookUrl: string;
   readonly eventType: string;
   readonly payload: {
@@ -71,6 +71,11 @@ export interface CustomerOutgoingEventResponseDto {
     readonly target_type: string;
     readonly target_id: string;
     readonly organization_id: string;
+  } | {
+    readonly event_type: 'WEBHOOK_TEST';
+    readonly organization_id: string;
+    readonly event_id: string;
+    readonly requested_at: string;
   };
   readonly status: string;
   readonly responseStatus: number | null;

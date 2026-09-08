@@ -7,6 +7,7 @@ import { requireTenantContext } from './authorization/requireTenantContext.js';
 
 export interface ListCasesInput {
   readonly auth: AuthContext;
+  readonly customerId?: string;
   readonly status?: readonly CaseStatus[];
   readonly priority?: readonly CasePriority[];
   readonly assignedToId?: string;
@@ -32,6 +33,7 @@ export function createListCasesUseCase(deps: ListCasesDeps) {
     const organizationId = requireTenantContext(input.auth);
     return deps.cases.list({
       organizationId,
+      customerId: input.customerId,
       status: input.status,
       priority: input.priority,
       assignedToId: input.assignedToId,

@@ -92,4 +92,15 @@ export type CaseManagementErrorCode =
    * The assignee exists and belongs to the tenant, but sits in the
    * governance plane (ADMIN or AUDITOR) and therefore never works cases.
    */
-  | 'ASSIGNEE_CANNOT_WORK_CASES';
+  | 'ASSIGNEE_CANNOT_WORK_CASES'
+  /**
+   * No catalog row (or closed-set registry entry) exists for the given
+   * scheduled job name. Force-run only accepts the five seeded names.
+   */
+  | 'SCHEDULED_JOB_NOT_FOUND'
+  /**
+   * Tenant outbound webhook URL is unset or the fraud-config row is missing.
+   * Probe request is well formed; this is not INVARIANT_VIOLATION (400) or
+   * ORGANIZATION_FRAUD_CONFIG_NOT_FOUND (404).
+   */
+  | 'OUTBOUND_WEBHOOK_URL_NOT_SET';

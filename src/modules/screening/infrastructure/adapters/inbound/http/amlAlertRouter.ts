@@ -33,6 +33,7 @@ export function amlAlertRouter(deps: AmlAlertRouterDeps): Router {
     const query = parseRequest(listAmlAlertsQuerySchema, req.query);
     const page = await deps.listAmlAlerts({
       auth,
+      customerId: query.customerId,
       status: query.status,
       severity: query.severity,
       watchlistId: query.watchlist_id,

@@ -32,6 +32,7 @@ export function toDocument(kase: Case): CaseDocument {
     created_at: toDate(kase.createdAt),
     updated_at: toDate(kase.updatedAt),
     deleted_at: kase.deletedAt === null ? null : toDate(kase.deletedAt),
+    agent_brief: kase.agentBrief,
   };
 }
 
@@ -60,5 +61,6 @@ export function toDomain(document: CaseDocument): Case {
     createdAt: fromDate(document.created_at),
     updatedAt: fromDate(document.updated_at),
     deletedAt: document.deleted_at === null ? null : fromDate(document.deleted_at),
+    agentBrief: document.agent_brief ?? null,
   });
 }

@@ -14,11 +14,16 @@ const ORG_2 = oid('org-2');
 const ANALYST = createAuthContext({ userId: oid('analyst-1'), organizationId: ORG_1, actorType: 'USER' });
 const NO_TENANT = createAuthContext({ userId: oid('admin'), organizationId: null, actorType: 'USER' });
 
-function seedCase(id: string, organizationId = ORG_1, priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' = 'MEDIUM'): Case {
+function seedCase(
+  id: string,
+  organizationId = ORG_1,
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' = 'MEDIUM',
+  customerId = 'customer-1',
+): Case {
   return Case.create({
     id: createCaseId(id),
     organizationId,
-    customerId: 'customer-1',
+    customerId,
     riskScore: createRiskScore(50),
     priority,
     now: NOW,
@@ -43,6 +48,34 @@ describe('createListCasesUseCase (inbox)', () => {
     expect(page.total).toBe(1);
     expect(page.items).toHaveLength(1);
     expect(page.items[0]?.id).toBe(oid('c-high'));
+  });
+
+  it('filters by customerId within the tenant and returns empty when none match', async () => {
+    const cases = new InMemoryCaseRepository();
+    await cases.save(seedCase(oid('c-match'), ORG_1, 'MEDIUM', 'cust-a'));
+    await cases.save(seedCase(oid('c-other'), ORG_1, 'MEDIUM', 'cust-b'));
+    await cases.save(seedCase(oid('c-foreign'), ORG_2, 'MEDIUM', 'cust-a'));
+    const listCases = createListCasesUseCase({ cases });
+
+    const match = await listCases({
+      auth: ANALYST,
+      customerId: 'cust-a',
+      limit: 20,
+      offset: 0,
+    });
+    expect(match.total).toBe(1);
+    expect(match.items).toHaveLength(1);
+    expect(match.items[0]?.id).toBe(oid('c-match'));
+    expect(match.items[0]?.customerId).toBe('cust-a');
+
+    const empty = await listCases({
+      auth: ANALYST,
+      customerId: 'cust-none',
+      limit: 20,
+      offset: 0,
+    });
+    expect(empty.total).toBe(0);
+    expect(empty.items).toEqual([]);
   });
 
   it('rejects callers without an organization context', async () => {

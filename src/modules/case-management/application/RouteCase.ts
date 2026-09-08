@@ -188,7 +188,7 @@ async function isAutoRoutingEnabled(
   tx: Transaction,
 ): Promise<boolean> {
   const config = await deps.fraudConfig.findByOrganization(organizationId, tx);
-  return config?.featureFlags.autoRouting !== false;
+  return config?.featureFlags?.autoRouting !== false;
 }
 
 /**

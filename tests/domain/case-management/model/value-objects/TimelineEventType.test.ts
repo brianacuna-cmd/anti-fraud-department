@@ -15,6 +15,7 @@ describe('createTimelineEventType', () => {
     'EVIDENCE_DELETED',
     'NOTE_DELETED',
     'CASE_LINKED_TO_INVESTIGATION',
+    'AGENT_BRIEFING',
   ])('accepts %s', (value) => {
     expect(createTimelineEventType(value)).toBe(value);
   });

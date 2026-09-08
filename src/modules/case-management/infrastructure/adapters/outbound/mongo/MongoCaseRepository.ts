@@ -232,6 +232,7 @@ function buildListFilter(query: CaseListQuery): Filter<CaseDocument> {
   const filter: Record<string, unknown> = {
     organization_id: new ObjectId(query.organizationId),
     deleted_at: null,
+    ...(query.customerId !== undefined ? { customer_id: query.customerId } : {}),
     ...statusFilterFragment(query),
     ...priorityFilterFragment(query),
     ...assignedToFilterFragment(query),
