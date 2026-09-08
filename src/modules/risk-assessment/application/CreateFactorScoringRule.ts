@@ -3,6 +3,7 @@ import type { RiskScoringRule } from '../domain/model/aggregates/RiskScoringRule
 import type { createCreateScoringRuleUseCase } from './CreateScoringRule.js';
 import { createScoringOperator, type ScoringOperator } from '../domain/model/value-objects/ScoringOperator.js';
 import { invariantViolation } from '../domain/errors/RiskAssessmentError.js';
+import { zenExpressionLiteral as expressionLiteral } from '../../../shared/rules/zenExpressionLiteral.js';
 
 export type ScoringFactorValue = string | number | boolean | readonly (string | number)[];
 
@@ -219,9 +220,4 @@ function asArray(factor: ResolvedFactor): readonly (string | number)[] {
 function scalarLiteral(value: string | number | boolean): string {
   if (typeof value === 'string') return expressionLiteral(value);
   return String(value);
-}
-
-/** Quotes a value for the ZEN expression language, escaping embedded quotes/backslashes. */
-function expressionLiteral(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }

@@ -4,6 +4,7 @@ import type { createCreateRoutingRuleUseCase } from './CreateRoutingRule.js';
 import { createCasePriority, type CasePriority } from '../domain/model/value-objects/CasePriority.js';
 import { createAssignedTo, type AssignedTo } from '../domain/model/value-objects/AssignedTo.js';
 import { invariantViolation } from '../domain/errors/CaseManagementError.js';
+import { zenExpressionLiteral as expressionLiteral } from '../../../shared/rules/zenExpressionLiteral.js';
 
 export interface PriorityAssignmentMappingInput {
   readonly priority: string;
@@ -111,9 +112,4 @@ export function buildPriorityAssignmentJdm(
       { id: 'e2', sourceId: 'table', targetId: 'output' },
     ],
   };
-}
-
-/** Quotes a value for the ZEN expression language, escaping embedded quotes/backslashes. */
-function expressionLiteral(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
