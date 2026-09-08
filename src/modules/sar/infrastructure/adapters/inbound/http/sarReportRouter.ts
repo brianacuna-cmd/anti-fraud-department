@@ -3,8 +3,11 @@ import { requireAuthContext } from '../../../../../../shared/http/requestAuthCon
 import { fromDate } from '../../../../../../shared/time/Instant.js';
 import type { createCreateSarReportDraftUseCase } from '../../../../application/CreateSarReportDraft.js';
 import type { createApproveSarReportDraftUseCase } from '../../../../application/ApproveSarReportDraft.js';
+import type { createGetSarReportUseCase } from '../../../../application/GetSarReport.js';
+import type { createListSarReportsUseCase } from '../../../../application/ListSarReports.js';
 import {
   createSarReportSchema,
+  listSarReportsQuerySchema,
   recordSarFilingStatusSchema,
   upsertSarFilingProfileSchema,
 } from './dto/sarReportSchemas.js';
@@ -25,10 +28,13 @@ export interface SarReportRouterDeps {
   readonly recordSarFilingStatus: ReturnType<typeof createRecordSarFilingStatusUseCase>;
   readonly getSarFilingProfile: ReturnType<typeof createGetSarFilingProfileUseCase>;
   readonly upsertSarFilingProfile: ReturnType<typeof createUpsertSarFilingProfileUseCase>;
+  readonly getSarReport: ReturnType<typeof createGetSarReportUseCase>;
+  readonly listSarReports: ReturnType<typeof createListSarReportsUseCase>;
 }
 
 /**
- * `/sar-reports` routes — SAR-001 only (draft create). Express 5 forwards
+ * `/sar-reports` routes: create/approve/xml/filing-status/filing-profile,
+ * plus the list/detail reads the SAR screen needs. Express 5 forwards
  * rejected handler promises to `errorHandler`.
  */
 export function sarReportRouter(deps: SarReportRouterDeps): Router {
@@ -53,6 +59,24 @@ export function sarReportRouter(deps: SarReportRouterDeps): Router {
       activityCategories: (body.activityCategories ?? []).map(createSuspiciousActivityCategory),
     });
     res.status(201).json(toSarReportResponse(report));
+  });
+
+  router.get('/sar-reports', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const query = parseRequest(listSarReportsQuerySchema, req.query);
+    const page = await deps.listSarReports({
+      auth,
+      status: query.status,
+      limit: query.limit,
+      offset: query.offset,
+    });
+    res.status(200).json({ items: page.items.map(toSarReportResponse), total: page.total });
+  });
+
+  router.get('/sar-reports/:id', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const report = await deps.getSarReport({ auth, sarReportId: req.params.id! });
+    res.status(200).json(toSarReportResponse(report));
   });
 
   router.patch('/sar-reports/:id/approve', async (req, res) => {

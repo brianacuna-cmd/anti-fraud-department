@@ -88,3 +88,22 @@ export const recordSarFilingStatusSchema = z.discriminatedUnion('outcome', [
 ]);
 
 export type RecordSarFilingStatusBody = z.infer<typeof recordSarFilingStatusSchema>;
+
+/** Coerces Express query `string | string[]` into a string array. */
+function asStringArray(value: unknown): string[] | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (Array.isArray(value)) return value.map(String);
+  return [String(value)];
+}
+
+/** GET /sar-reports query — tenant-scoped, paginated, filterable by status. */
+export const listSarReportsQuerySchema = z.object({
+  status: z.preprocess(
+    asStringArray,
+    z.array(z.enum(['DRAFT', 'APPROVED', 'FILED', 'FILING_REJECTED'])).optional(),
+  ),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+export type ListSarReportsQuery = z.infer<typeof listSarReportsQuerySchema>;

@@ -283,6 +283,8 @@ import { MongoSarReportRepository } from './modules/sar/infrastructure/adapters/
 import { MongoUnitOfWork as SarMongoUnitOfWork } from './modules/sar/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { createCreateSarReportDraftUseCase } from './modules/sar/application/CreateSarReportDraft.js';
 import { createApproveSarReportDraftUseCase } from './modules/sar/application/ApproveSarReportDraft.js';
+import { createGetSarReportUseCase } from './modules/sar/application/GetSarReport.js';
+import { createListSarReportsUseCase } from './modules/sar/application/ListSarReports.js';
 import { generateSarReportId } from './modules/sar/domain/model/value-objects/SarReportId.js';
 import { sarReportRouter } from './modules/sar/infrastructure/adapters/inbound/http/sarReportRouter.js';
 import { createGenerateSarReportXmlUseCase } from './modules/sar/application/GenerateSarReportXml.js';
@@ -1971,6 +1973,8 @@ async function bootstrap(): Promise<void> {
       clock,
       generateOrganizationSarFilingProfileId,
     }),
+    getSarReport: createGetSarReportUseCase({ reports: sarReports }),
+    listSarReports: createListSarReportsUseCase({ reports: sarReports }),
   });
 
   // wallet-sanctions-rescreen wrap is hoisted here (not start()) so the
