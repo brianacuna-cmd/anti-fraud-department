@@ -118,6 +118,14 @@ export function routingRuleNotFound(ruleId: string): CaseManagementError {
   );
 }
 
+export function routingRuleActive(ruleId: string): CaseManagementError {
+  return new CaseManagementError(
+    'ROUTING_RULE_ACTIVE',
+    `routing rule "${ruleId}" is ACTIVE: deactivate it before deleting it`,
+    { ruleId },
+  );
+}
+
 export function investigationNotFound(investigationId: string): CaseManagementError {
   return new CaseManagementError(
     'INVESTIGATION_NOT_FOUND',

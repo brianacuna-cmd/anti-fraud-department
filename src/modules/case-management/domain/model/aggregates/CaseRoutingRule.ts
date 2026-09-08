@@ -15,6 +15,8 @@ export interface CaseRoutingRuleProps {
   readonly status: RoutingRuleStatus;
   /** Catalog position; duplicates allowed; list/findActive tie-break on createdAt ASC. */
   readonly executionOrder: number;
+  /** Set only once `softDelete()` has been called. */
+  readonly deletedAt: Instant | null;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
 }
@@ -63,6 +65,7 @@ export class CaseRoutingRule {
       targetUserId: input.targetUserId ?? null,
       status: input.status ?? 'INACTIVE',
       executionOrder,
+      deletedAt: null,
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -120,6 +123,17 @@ export class CaseRoutingRule {
     return new CaseRoutingRule({ ...this.props, executionOrder, updatedAt: now });
   }
 
+  /**
+   * Soft-delete (idempotent): a routing rule is never hard-deleted because
+   * cases keep `ruleId` in their frozen routing snapshot. Rejecting an
+   * ACTIVE rule is a use-case concern (DeleteRoutingRule.ts), not an
+   * aggregate invariant.
+   */
+  softDelete(now: Instant): CaseRoutingRule {
+    if (this.props.deletedAt !== null) return this;
+    return new CaseRoutingRule({ ...this.props, deletedAt: now });
+  }
+
   get id(): CaseRoutingRuleId {
     return this.props.id;
   }
@@ -154,6 +168,10 @@ export class CaseRoutingRule {
 
   get executionOrder(): number {
     return this.props.executionOrder;
+  }
+
+  get deletedAt(): Instant | null {
+    return this.props.deletedAt;
   }
 
   get createdAt(): Instant {

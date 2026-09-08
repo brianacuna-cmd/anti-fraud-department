@@ -5,6 +5,7 @@ import {
   OVERSIGHT_READ_ROLES,
   requireOperationalRole,
   requireReadRole,
+  requireRuleAuthoringRole,
   SUPERVISION_ROLES,
 } from '../../../../../src/modules/case-management/application/authorization/policy.js';
 import { CaseManagementError } from '../../../../../src/modules/case-management/domain/errors/CaseManagementError.js';
@@ -94,5 +95,29 @@ describe('requireReadRole', () => {
 
   it('rejects ANALYST on oversight-only reads', () => {
     expectForbidden(() => requireReadRole(user('ANALYST'), OVERSIGHT_READ_ROLES));
+  });
+});
+
+describe('requireRuleAuthoringRole', () => {
+  it('allows SUPERVISOR', () => {
+    expect(() => requireRuleAuthoringRole(user('SUPERVISOR'))).not.toThrow();
+  });
+
+  /**
+   * The whole point of this guard, distinct from `requireOperationalRole`:
+   * a small tenant can run with just the owner login, and routing
+   * configuration is squarely the owner's call.
+   */
+  it('allows the ORGANIZATION actor, unlike every other operational guard', () => {
+    expect(() => requireRuleAuthoringRole(ORGANIZATION)).not.toThrow();
+  });
+
+  it('rejects ANALYST', () => {
+    expectForbidden(() => requireRuleAuthoringRole(user('ANALYST')));
+  });
+
+  it('rejects ADMIN as read-only', () => {
+    const error = expectForbidden(() => requireRuleAuthoringRole(user('ADMIN')));
+    expect(error.metadata).toMatchObject({ roleId: 'ADMIN' });
   });
 });

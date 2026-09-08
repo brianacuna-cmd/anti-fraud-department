@@ -79,4 +79,26 @@ describe('RiskScoringRule', () => {
     expect(rehydrated.name).toBe(created.name);
     expect(rehydrated.status).toBe('ACTIVE');
   });
+
+  describe('softDelete', () => {
+    it('defaults deletedAt to null on create', () => {
+      expect(create().deletedAt).toBeNull();
+    });
+
+    it('sets deletedAt without mutating the original', () => {
+      const rule = create();
+      const deleted = rule.softDelete(LATER);
+
+      expect(deleted.deletedAt).toBe(LATER);
+      expect(rule.deletedAt).toBeNull();
+    });
+
+    it('is idempotent: deleting an already-deleted rule returns the same instance', () => {
+      const deleted = create().softDelete(LATER);
+      const deletedAgain = deleted.softDelete(fromDate(new Date('2026-01-03T00:00:00.000Z')));
+
+      expect(deletedAgain).toBe(deleted);
+      expect(deletedAgain.deletedAt).toBe(LATER);
+    });
+  });
 });

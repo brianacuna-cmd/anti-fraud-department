@@ -103,4 +103,10 @@ export type CaseManagementErrorCode =
    * Probe request is well formed; this is not INVARIANT_VIOLATION (400) or
    * ORGANIZATION_FRAUD_CONFIG_NOT_FOUND (404).
    */
-  | 'OUTBOUND_WEBHOOK_URL_NOT_SET';
+  | 'OUTBOUND_WEBHOOK_URL_NOT_SET'
+  /**
+   * A routing rule cannot be deleted while ACTIVE: it is still what T1
+   * auto-routing evaluates. Deactivate it first, so the change of "who gets
+   * the next case" is on record as such and not as a disappearance.
+   */
+  | 'ROUTING_RULE_ACTIVE';

@@ -34,3 +34,34 @@ export const simulateScoringRuleSchema = z
   .strict();
 
 export type SimulateScoringRuleBody = z.infer<typeof simulateScoringRuleSchema>;
+
+/**
+ * POST /risk-scoring-rules/factor-scoring body — the guided builder. The
+ * JDM graph is assembled server-side (`CreateFactorScoringRule.ts`), so
+ * unlike `createScoringRuleSchema` this never touches `jdmGraphSchema`.
+ */
+export const factorScoringRuleSchema = z
+  .object({
+    name: z.string().min(1),
+    factors: z
+      .array(
+        z
+          .object({
+            field: z.string().min(1),
+            operator: z.enum(['GT', 'GTE', 'LT', 'LTE', 'EQ', 'NEQ', 'CONTAINS', 'IN', 'BETWEEN']),
+            value: z.union([
+              z.string(),
+              z.number(),
+              z.boolean(),
+              z.array(z.union([z.string(), z.number()])),
+            ]),
+            points: z.number().int().min(-100).max(100),
+            reason: z.string().min(1),
+          })
+          .strict(),
+      )
+      .min(1),
+  })
+  .strict();
+
+export type FactorScoringRuleBody = z.infer<typeof factorScoringRuleSchema>;

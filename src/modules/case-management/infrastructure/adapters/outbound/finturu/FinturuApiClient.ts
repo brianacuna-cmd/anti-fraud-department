@@ -83,10 +83,11 @@ export class FinturuApiClient {
 
   /**
    * Never propagates the failure: a down Finturu API degrades the reply to
-   * `fallback` instead of taking the endpoint down. It DOES leave a trail in
-   * the log and cuts at `timeoutMs`: without that cutoff a route that does not
-   * respond leaves the request hanging indefinitely and the frontend spinning
-   * forever.
+   * `fallback` instead of taking the endpoint down. Silent on purpose — most
+   * failures here are expected 404s for data a customer simply doesn't have
+   * (virtual accounts, ACH history) — and cuts at `timeoutMs`: without that
+   * cutoff a route that does not respond leaves the request hanging
+   * indefinitely and the frontend spinning forever.
    *
    * `fallback` is a parameter because `[]` lies on the listings that do not
    * exist upstream yet: a 404 showed on screen as a "0" as confident as a real
@@ -104,24 +105,18 @@ export class FinturuApiClient {
       });
 
       if (!res.ok) {
-        console.warn(`[finturu] ${res.status} en GET ${url}`);
         return fallback;
       }
 
       const body = await res.json();
       if (isEncryptedPayload(body)) {
         if (!this.encryptionKey) {
-          console.warn(`[finturu] respuesta cifrada en GET ${url} pero falta FRAUD_DEPARTMENT_KEY`);
           return fallback;
         }
         return decryptFinturuPayload(body, this.encryptionKey) as T;
       }
       return body as T;
-    } catch (error) {
-      const reason = error instanceof Error && error.name === 'TimeoutError'
-        ? `sin respuesta en ${this.timeoutMs} ms`
-        : (error as Error).message;
-      console.warn(`[finturu] GET ${url} failed: ${reason}`);
+    } catch {
       return fallback;
     }
   }

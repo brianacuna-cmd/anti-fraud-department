@@ -7,6 +7,7 @@ describe('riskAssessmentErrorStatus', () => {
       FORBIDDEN_CROSS_TENANT: 403,
       FORBIDDEN_ROLE: 403,
       SCORING_RULE_NOT_FOUND: 404,
+      SCORING_RULE_ACTIVE: 409,
     });
   });
 });

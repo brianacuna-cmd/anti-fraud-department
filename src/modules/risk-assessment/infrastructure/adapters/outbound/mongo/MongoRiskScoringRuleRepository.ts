@@ -17,6 +17,10 @@ const COLLECTION_NAME = 'risk_scoring_rules';
  * Mongo adapter for `RiskScoringRuleRepository`. Scoring reads ACTIVE rules;
  * draft/activate flows use save/findById/listByOrganization. The unique
  * partial ACTIVE index guarantees at most one ACTIVE per org.
+ *
+ * `findById` returns rows regardless of `deleted_at` so the soft-delete
+ * path (`DeleteScoringRule.ts`) stays idempotent; `listByOrganization`
+ * hides soft-deleted rows, mirroring `MongoCaseNoteRepository`.
  */
 export class MongoRiskScoringRuleRepository implements RiskScoringRuleRepository {
   private readonly collection: Collection<RiskScoringRuleDocument>;
@@ -43,7 +47,10 @@ export class MongoRiskScoringRuleRepository implements RiskScoringRuleRepository
 
   async listByOrganization(organizationId: string, tx?: Transaction): Promise<readonly RiskScoringRule[]> {
     const documents = await this.collection
-      .find({ organization_id: new ObjectId(organizationId) }, { session: toSession(tx) })
+      .find(
+        { organization_id: new ObjectId(organizationId), deleted_at: null },
+        { session: toSession(tx) },
+      )
       .sort({ created_at: 1 })
       .toArray();
     return documents.map(toDomain);

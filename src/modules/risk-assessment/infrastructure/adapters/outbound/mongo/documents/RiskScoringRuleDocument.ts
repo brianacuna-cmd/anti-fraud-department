@@ -16,6 +16,7 @@ export interface RiskScoringRuleDocument {
   readonly conditions: Readonly<Record<string, unknown>>;
   readonly conditions_version: number;
   readonly status: string;
+  readonly deleted_at?: Date | null;
   readonly created_at: Date;
   readonly updated_at: Date;
 }

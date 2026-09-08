@@ -225,6 +225,7 @@ import { createListRoutingRulesUseCase } from './modules/case-management/applica
 import { createGetRoutingRuleUseCase } from './modules/case-management/application/GetRoutingRule.js';
 import { createActivateRoutingRuleUseCase } from './modules/case-management/application/ActivateRoutingRule.js';
 import { createDeactivateRoutingRuleUseCase } from './modules/case-management/application/DeactivateRoutingRule.js';
+import { createDeleteRoutingRuleUseCase } from './modules/case-management/application/DeleteRoutingRule.js';
 import { createUpdateRoutingRuleUseCase } from './modules/case-management/application/UpdateRoutingRule.js';
 import { createReorderRoutingRulesUseCase } from './modules/case-management/application/ReorderRoutingRules.js';
 import { createCreateWebhookSubscriptionUseCase } from './modules/case-management/application/CreateWebhookSubscription.js';
@@ -269,6 +270,8 @@ import { createSimulateScoringRuleUseCase } from './modules/risk-assessment/appl
 import { createCalculateRiskScoreUseCase } from './modules/risk-assessment/application/CalculateRiskScore.js';
 import { createCreateScoringRuleUseCase } from './modules/risk-assessment/application/CreateScoringRule.js';
 import { createActivateScoringRuleUseCase } from './modules/risk-assessment/application/ActivateScoringRule.js';
+import { createDeleteScoringRuleUseCase } from './modules/risk-assessment/application/DeleteScoringRule.js';
+import { createCreateFactorScoringRuleUseCase } from './modules/risk-assessment/application/CreateFactorScoringRule.js';
 import { createListScoringRulesUseCase } from './modules/risk-assessment/application/ListScoringRules.js';
 import { createGetScoringRuleUseCase } from './modules/risk-assessment/application/GetScoringRule.js';
 import { generateRiskScoringRuleId } from './modules/risk-assessment/domain/model/value-objects/RiskScoringRuleId.js';
@@ -1368,6 +1371,12 @@ async function bootstrap(): Promise<void> {
       unitOfWork: caseManagementUnitOfWork,
       clock,
     }),
+    deleteRoutingRule: createDeleteRoutingRuleUseCase({
+      routingRules: caseRoutingRules,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+    }),
   });
   const dlqAdminHttpRouter = dlqAdminRouter({
     listDlqEvents: createListDlqEventsUseCase({ dlq: dlqEvents }),
@@ -1408,7 +1417,14 @@ async function bootstrap(): Promise<void> {
   const riskScoresRouter = riskScoreRouter({ calculateRiskScore });
   const riskScoringRulesRouter = scoringRuleRouter({
     createScoringRule,
+    createFactorScoringRule: createCreateFactorScoringRuleUseCase({ createScoringRule }),
     activateScoringRule,
+    deleteScoringRule: createDeleteScoringRuleUseCase({
+      scoringRules,
+      unitOfWork: riskAssessmentUnitOfWork,
+      auditRecorder: riskAssessmentAuditRecorder,
+      clock,
+    }),
     listScoringRules,
     getScoringRule,
     // Dry run for the decision editor: the same engine that scores in production.

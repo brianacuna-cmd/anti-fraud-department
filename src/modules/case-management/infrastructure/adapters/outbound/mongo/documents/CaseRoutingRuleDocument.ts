@@ -19,6 +19,7 @@ export interface CaseRoutingRuleDocument {
   readonly target_user_id: string | null;
   readonly status: string;
   readonly execution_order?: number;
+  readonly deleted_at?: Date | null;
   readonly created_at: Date;
   readonly updated_at: Date;
 }

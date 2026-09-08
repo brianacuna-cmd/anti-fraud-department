@@ -7,17 +7,18 @@ import type { CaseRoutingRuleRepository } from '../domain/ports/CaseRoutingRuleR
 import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import {
   forbiddenCrossTenant,
+  routingRuleActive,
   routingRuleNotFound,
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireRuleAuthoringRole } from './authorization/policy.js';
 
-export interface DeactivateRoutingRuleInput {
+export interface DeleteRoutingRuleInput {
   readonly auth: AuthContext;
   readonly ruleId: string;
 }
 
-export interface DeactivateRoutingRuleDeps {
+export interface DeleteRoutingRuleDeps {
   readonly routingRules: CaseRoutingRuleRepository;
   readonly auditRecorder: AuditRecorder;
   readonly unitOfWork: UnitOfWork;
@@ -25,16 +26,15 @@ export interface DeactivateRoutingRuleDeps {
 }
 
 /**
- * Deactivates one ACTIVE rule to INACTIVE without affecting siblings.
- * SUPERVISOR only. Already-INACTIVE is a no-op — no save, no audit
- * event (mirrors ActivateRoutingRule's REQ-E2 no-op suppression). A real
- * transition's save+audit pair runs inside one UnitOfWork (REQ-E1, folded
- * into this slice for invariant consistency with create/activate).
+ * DELETE /case-routing-rules/:id — logical (soft) delete. SUPERVISOR only.
+ * Never hard-deleted: routing decisions on frozen case snapshots keep the
+ * `ruleId` that fired, so the row must survive. Rejects an ACTIVE rule
+ * (`ROUTING_RULE_ACTIVE`, 409) — deactivate it first, so the change of who
+ * gets the next case is on record as such and not as a disappearance.
+ * Idempotent: re-deleting an already-deleted rule is a no-op.
  */
-export function createDeactivateRoutingRuleUseCase(deps: DeactivateRoutingRuleDeps) {
-  return async function deactivateRoutingRule(
-    input: DeactivateRoutingRuleInput,
-  ): Promise<CaseRoutingRule> {
+export function createDeleteRoutingRuleUseCase(deps: DeleteRoutingRuleDeps) {
+  return async function deleteRoutingRule(input: DeleteRoutingRuleInput): Promise<CaseRoutingRule> {
     requireRuleAuthoringRole(input.auth);
     const organizationId = requireTenantContext(input.auth);
     const ruleId = createCaseRoutingRuleId(input.ruleId);
@@ -46,34 +46,34 @@ export function createDeactivateRoutingRuleUseCase(deps: DeactivateRoutingRuleDe
     if (rule.organizationId !== organizationId) {
       throw forbiddenCrossTenant('routing rule does not belong to the actor organization');
     }
-    if (rule.status === 'INACTIVE') {
+    if (rule.deletedAt !== null) {
       return rule;
+    }
+    if (rule.status === 'ACTIVE') {
+      throw routingRuleActive(ruleId);
     }
 
     const now = deps.clock.now();
-    const deactivated = rule.deactivate(now);
+    const deleted = rule.softDelete(now);
 
     return deps.unitOfWork.withTransaction(async (tx) => {
-      await deps.routingRules.save(deactivated, tx);
+      await deps.routingRules.save(deleted, tx);
 
       await deps.auditRecorder.record(
         {
           organizationId,
           actorType: input.auth.actorType,
           actorId: input.auth.userId,
-          action: 'DEACTIVATE_ROUTING_RULE',
+          action: 'DELETE_ROUTING_RULE',
           resource: 'rule',
-          resourceId: deactivated.id,
-          detail: {
-            name: deactivated.name,
-            previousStatus: rule.status,
-          },
+          resourceId: deleted.id,
+          detail: { name: deleted.name },
           ipAddress: input.auth.ipAddress,
         },
         tx,
       );
 
-      return deactivated;
+      return deleted;
     });
   };
 }

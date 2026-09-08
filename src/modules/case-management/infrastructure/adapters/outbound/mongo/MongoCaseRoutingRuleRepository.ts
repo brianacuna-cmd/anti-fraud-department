@@ -19,6 +19,10 @@ const COLLECTION_NAME = 'case_routing_rules';
  * `created_at` ascending so `RouteCase`'s first-match-wins semantics follow
  * catalog reorder. Draft CRUD uses save/findById/listByOrganization.
  * The `{ organization_id, status }` index stays non-unique (multi-ACTIVE OK).
+ *
+ * `findById` returns rows regardless of `deleted_at` so the soft-delete path
+ * (`DeleteRoutingRule.ts`) stays idempotent; `listByOrganization` hides
+ * soft-deleted rows, mirroring `MongoCaseNoteRepository`.
  */
 export class MongoCaseRoutingRuleRepository implements CaseRoutingRuleRepository {
   private readonly collection: Collection<CaseRoutingRuleDocument>;
@@ -45,7 +49,10 @@ export class MongoCaseRoutingRuleRepository implements CaseRoutingRuleRepository
 
   async listByOrganization(organizationId: string, tx?: Transaction): Promise<readonly CaseRoutingRule[]> {
     const documents = await this.collection
-      .find({ organization_id: new ObjectId(organizationId) }, { session: toSession(tx) })
+      .find(
+        { organization_id: new ObjectId(organizationId), deleted_at: null },
+        { session: toSession(tx) },
+      )
       .sort({ execution_order: 1, created_at: 1 })
       .toArray();
     return documents.map(toDomain);

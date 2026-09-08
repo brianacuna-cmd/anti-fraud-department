@@ -9,7 +9,9 @@ import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { riskAssessmentErrorStatus } from '../../../../src/modules/risk-assessment/infrastructure/adapters/inbound/http/errorStatus.js';
 import { scoringRuleRouter } from '../../../../src/modules/risk-assessment/infrastructure/adapters/inbound/http/scoringRuleRouter.js';
 import { createCreateScoringRuleUseCase } from '../../../../src/modules/risk-assessment/application/CreateScoringRule.js';
+import { createCreateFactorScoringRuleUseCase } from '../../../../src/modules/risk-assessment/application/CreateFactorScoringRule.js';
 import { createActivateScoringRuleUseCase } from '../../../../src/modules/risk-assessment/application/ActivateScoringRule.js';
+import { createDeleteScoringRuleUseCase } from '../../../../src/modules/risk-assessment/application/DeleteScoringRule.js';
 import { createListScoringRulesUseCase } from '../../../../src/modules/risk-assessment/application/ListScoringRules.js';
 import { createGetScoringRuleUseCase } from '../../../../src/modules/risk-assessment/application/GetScoringRule.js';
 import { createSimulateScoringRuleUseCase } from '../../../../src/modules/risk-assessment/application/SimulateScoringRule.js';
@@ -44,9 +46,16 @@ function buildApp(actorPerRequest: () => AuthContext) {
     clock,
     generateRiskScoringRuleId,
   });
+  const unitOfWork = new PassthroughUnitOfWork();
   const activateScoringRule = createActivateScoringRuleUseCase({
     scoringRules,
-    unitOfWork: new PassthroughUnitOfWork(),
+    unitOfWork,
+    auditRecorder,
+    clock,
+  });
+  const deleteScoringRule = createDeleteScoringRuleUseCase({
+    scoringRules,
+    unitOfWork,
     auditRecorder,
     clock,
   });
@@ -63,7 +72,9 @@ function buildApp(actorPerRequest: () => AuthContext) {
   api.use(
     scoringRuleRouter({
       createScoringRule,
+      createFactorScoringRule: createCreateFactorScoringRuleUseCase({ createScoringRule }),
       activateScoringRule,
+      deleteScoringRule,
       listScoringRules,
       getScoringRule,
       simulateScoringRule: createSimulateScoringRuleUseCase({
@@ -361,5 +372,215 @@ describe('scoringRuleRouter (HTTP)', () => {
     );
     expect(byName).toEqual({ A: 'INACTIVE', B: 'ACTIVE' });
     expect(auditRecorder.all().some((e) => e.action === 'ACTIVATE_SCORING_RULE')).toBe(true);
+  });
+});
+
+describe('DELETE /risk-scoring-rules/:id', () => {
+  const SUPERVISOR = () =>
+    createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), roleId: 'SUPERVISOR' });
+
+  it('soft-deletes an INACTIVE draft and hides it from the list', async () => {
+    const { app, scoringRules, auditRecorder } = buildApp(SUPERVISOR);
+
+    const created = await request(app)
+      .post('/api/v1/risk-scoring-rules')
+      .send({ name: 'draft', conditions: VALID_JDM })
+      .expect(201);
+
+    const deleted = await request(app)
+      .delete(`/api/v1/risk-scoring-rules/${created.body.id}`)
+      .expect(200);
+
+    expect(deleted.body.id).toBe(created.body.id);
+    expect(scoringRules.all()).toHaveLength(1);
+    expect(scoringRules.all()[0]?.deletedAt).not.toBeNull();
+    expect(auditRecorder.all().map((e) => e.action)).toContain('DELETE_SCORING_RULE');
+
+    const listed = await request(app).get('/api/v1/risk-scoring-rules').expect(200);
+    expect(listed.body.items).toHaveLength(0);
+  });
+
+  it('rejects deleting an ACTIVE rule with 409', async () => {
+    const { app } = buildApp(SUPERVISOR);
+
+    const created = await request(app)
+      .post('/api/v1/risk-scoring-rules')
+      .send({ name: 'live', conditions: VALID_JDM })
+      .expect(201);
+    await request(app).post(`/api/v1/risk-scoring-rules/${created.body.id}/activate`).expect(200);
+
+    const res = await request(app)
+      .delete(`/api/v1/risk-scoring-rules/${created.body.id}`)
+      .expect(409);
+    expect(res.body.error.code).toBe('SCORING_RULE_ACTIVE');
+  });
+
+  it('is idempotent on a second delete', async () => {
+    const { app } = buildApp(SUPERVISOR);
+
+    const created = await request(app)
+      .post('/api/v1/risk-scoring-rules')
+      .send({ name: 'draft', conditions: VALID_JDM })
+      .expect(201);
+
+    await request(app).delete(`/api/v1/risk-scoring-rules/${created.body.id}`).expect(200);
+    const again = await request(app)
+      .delete(`/api/v1/risk-scoring-rules/${created.body.id}`)
+      .expect(200);
+    expect(again.body.id).toBe(created.body.id);
+  });
+
+  it('returns 404 for a missing rule id', async () => {
+    const { app } = buildApp(SUPERVISOR);
+
+    await request(app).delete(`/api/v1/risk-scoring-rules/${oid('missing-rule')}`).expect(404);
+  });
+
+  it('rejects ANALYST with 403', async () => {
+    let roleId: string = 'SUPERVISOR';
+    const { app } = buildApp(() =>
+      createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), roleId }),
+    );
+
+    const created = await request(app)
+      .post('/api/v1/risk-scoring-rules')
+      .send({ name: 'draft', conditions: VALID_JDM })
+      .expect(201);
+
+    roleId = 'ANALYST';
+    await request(app).delete(`/api/v1/risk-scoring-rules/${created.body.id}`).expect(403);
+  });
+});
+
+describe('POST /risk-scoring-rules/factor-scoring', () => {
+  const SUPERVISOR = () =>
+    createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), roleId: 'SUPERVISOR' });
+
+  it('builds an INACTIVE rule from weighted factors and scores it correctly end-to-end', async () => {
+    const { app, scoringRules, auditRecorder } = buildApp(SUPERVISOR);
+
+    const created = await request(app)
+      .post('/api/v1/risk-scoring-rules/factor-scoring')
+      .send({
+        name: 'factor-rule',
+        factors: [
+          { field: 'amountCents', operator: 'GT', value: 500000, points: 40, reason: 'High amount' },
+          { field: 'provider', operator: 'IN', value: ['stripe', 'bridge'], points: 10, reason: 'Known provider' },
+        ],
+      })
+      .expect(201);
+
+    expect(created.body.status).toBe('INACTIVE');
+    expect(created.body.name).toBe('factor-rule');
+    expect(scoringRules.all()).toHaveLength(1);
+    expect(auditRecorder.all()[0]?.action).toBe('CREATE_SCORING_RULE');
+
+    // The generated graph must score exactly like a hand-authored one would.
+    const simulated = await request(app)
+      .post('/api/v1/risk-scoring-rules/simulate')
+      .send({
+        conditions: created.body.conditions,
+        event: {
+          provider: 'stripe',
+          providerEventType: 'charge.succeeded',
+          caseCustomerId: 'customer-1',
+          amountCents: 900000,
+          currency: 'usd',
+          riskSignals: {},
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      })
+      .expect(200);
+
+    expect(simulated.body.ok).toBe(true);
+    expect(simulated.body.riskScore).toBe(50);
+  });
+
+  it('rejects an empty factors list', async () => {
+    const { app, scoringRules } = buildApp(SUPERVISOR);
+
+    await request(app)
+      .post('/api/v1/risk-scoring-rules/factor-scoring')
+      .send({ name: 'empty', factors: [] })
+      .expect(400);
+    expect(scoringRules.all()).toHaveLength(0);
+  });
+
+  it('is not swallowed by the /:id route', async () => {
+    const { app } = buildApp(SUPERVISOR);
+
+    await request(app)
+      .post('/api/v1/risk-scoring-rules/factor-scoring')
+      .send({ name: 'x', factors: [{ field: 'amountCents', operator: 'GT', value: 1, points: 1, reason: 'x' }] })
+      .expect(201);
+  });
+
+  it('rejects ANALYST with 403', async () => {
+    const { app } = buildApp(() =>
+      createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), roleId: 'ANALYST' }),
+    );
+
+    await request(app)
+      .post('/api/v1/risk-scoring-rules/factor-scoring')
+      .send({ name: 'x', factors: [{ field: 'amountCents', operator: 'GT', value: 1, points: 1, reason: 'x' }] })
+      .expect(403);
+  });
+});
+
+/**
+ * The tenant owner login (`ORGANIZATION`), same standing as SUPERVISOR for
+ * scoring configuration — `requireRuleAuthoringRole`, distinct from the
+ * `requireOperationalRole`/`SCORING_RULE_WRITE_ROLES` pair every other
+ * scoring-rule write used before it.
+ */
+describe('ORGANIZATION actor can author scoring rules', () => {
+  const org = oid('org-1');
+  const ORGANIZATION = () =>
+    createAuthContext({ userId: org, organizationId: org, actorType: 'ORGANIZATION' });
+
+  it('creates, activates, simulates, and deletes a rule', async () => {
+    const { app, scoringRules } = buildApp(ORGANIZATION);
+
+    const created = await request(app)
+      .post('/api/v1/risk-scoring-rules')
+      .send({ name: 'org-owned', conditions: VALID_JDM })
+      .expect(201);
+    expect(created.body.status).toBe('INACTIVE');
+
+    await request(app).post(`/api/v1/risk-scoring-rules/${created.body.id}/activate`).expect(200);
+    await request(app)
+      .post('/api/v1/risk-scoring-rules/simulate')
+      .send({
+        conditions: created.body.conditions,
+        event: {
+          provider: 'stripe',
+          providerEventType: 'charge.succeeded',
+          caseCustomerId: 'customer-1',
+          amountCents: 900000,
+          currency: 'usd',
+          riskSignals: {},
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      })
+      .expect(200);
+
+    // Deactivate first (delete rejects ACTIVE): activate a fresh draft to relieve it.
+    const other = await request(app)
+      .post('/api/v1/risk-scoring-rules')
+      .send({ name: 'relief', conditions: VALID_JDM })
+      .expect(201);
+    await request(app).post(`/api/v1/risk-scoring-rules/${other.body.id}/activate`).expect(200);
+
+    await request(app).delete(`/api/v1/risk-scoring-rules/${created.body.id}`).expect(200);
+    expect(scoringRules.all().find((r) => r.id === created.body.id)?.deletedAt).not.toBeNull();
+  });
+
+  it('creates a factor-scoring rule', async () => {
+    const { app } = buildApp(ORGANIZATION);
+
+    await request(app)
+      .post('/api/v1/risk-scoring-rules/factor-scoring')
+      .send({ name: 'org-factors', factors: [{ field: 'amountCents', operator: 'GT', value: 1, points: 1, reason: 'x' }] })
+      .expect(201);
   });
 });

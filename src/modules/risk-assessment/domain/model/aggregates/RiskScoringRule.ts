@@ -11,6 +11,8 @@ export interface RiskScoringRuleProps {
   readonly conditions: Readonly<Record<string, unknown>>;
   readonly conditionsVersion: number;
   readonly status: ScoringRuleStatus;
+  /** Set only once `softDelete()` has been called. */
+  readonly deletedAt: Instant | null;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
 }
@@ -44,6 +46,7 @@ export class RiskScoringRule {
       conditions: input.conditions,
       conditionsVersion: input.conditionsVersion,
       status: input.status ?? 'INACTIVE',
+      deletedAt: null,
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -62,6 +65,17 @@ export class RiskScoringRule {
   /** Marks this rule as INACTIVE (immutable). Caller persists via repository. */
   deactivate(now: Instant): RiskScoringRule {
     return new RiskScoringRule({ ...this.props, status: 'INACTIVE', updatedAt: now });
+  }
+
+  /**
+   * Soft-delete (idempotent): never hard-deleted because frozen case
+   * snapshots keep the `ruleId` that scored them. Rejecting an ACTIVE rule
+   * is a use-case concern (DeleteScoringRule.ts), not an aggregate
+   * invariant.
+   */
+  softDelete(now: Instant): RiskScoringRule {
+    if (this.props.deletedAt !== null) return this;
+    return new RiskScoringRule({ ...this.props, deletedAt: now });
   }
 
   get id(): RiskScoringRuleId {
@@ -86,6 +100,10 @@ export class RiskScoringRule {
 
   get status(): ScoringRuleStatus {
     return this.props.status;
+  }
+
+  get deletedAt(): Instant | null {
+    return this.props.deletedAt;
   }
 
   get createdAt(): Instant {

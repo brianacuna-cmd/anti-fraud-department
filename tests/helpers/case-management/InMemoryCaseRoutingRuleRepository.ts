@@ -34,7 +34,9 @@ export class InMemoryCaseRoutingRuleRepository implements CaseRoutingRuleReposit
   }
 
   async listByOrganization(organizationId: string, _tx?: Transaction): Promise<readonly CaseRoutingRule[]> {
-    return this.rules.filter((rule) => rule.organizationId === organizationId).sort(compareCatalogOrder);
+    return this.rules
+      .filter((rule) => rule.organizationId === organizationId && rule.deletedAt === null)
+      .sort(compareCatalogOrder);
   }
 
   async save(rule: CaseRoutingRule, _tx?: Transaction): Promise<void> {
