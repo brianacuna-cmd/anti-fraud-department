@@ -16,6 +16,7 @@ export function toDomain(document: CaseRoutingRuleDocument): CaseRoutingRule {
     targetRoleId: document.target_role_id,
     targetUserId: document.target_user_id,
     status: createRoutingRuleStatus(document.status),
+    executionOrder: document.execution_order ?? 0,
     createdAt: fromDate(document.created_at),
     updatedAt: fromDate(document.updated_at),
   });
@@ -32,6 +33,7 @@ export function toDocument(rule: CaseRoutingRule): CaseRoutingRuleDocument {
     target_role_id: rule.targetRoleId,
     target_user_id: rule.targetUserId,
     status: rule.status,
+    execution_order: rule.executionOrder,
     created_at: toDate(rule.createdAt),
     updated_at: toDate(rule.updatedAt),
   };

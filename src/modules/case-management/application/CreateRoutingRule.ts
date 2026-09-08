@@ -29,6 +29,7 @@ export interface CreateRoutingRuleDeps {
 /**
  * Draft create: SUPERVISOR only. Always persists INACTIVE. Structural
  * JDM validation happens at the HTTP boundary before this use case.
+ * Appends at max(executionOrder)+1 (0 when the catalog is empty).
  * REQ-E1: save + audit run inside one UnitOfWork (mirrors
  * ApproveEnforcementAction.ts) so the rule is never persisted without its
  * audit trail.
@@ -39,18 +40,20 @@ export function createCreateRoutingRuleUseCase(deps: CreateRoutingRuleDeps) {
     const organizationId = requireTenantContext(input.auth);
     const now = deps.clock.now();
 
-    const rule = CaseRoutingRuleAggregate.create({
-      id: deps.generateCaseRoutingRuleId(),
-      organizationId,
-      name: input.name,
-      conditions: input.conditions,
-      conditionsVersion: input.conditionsVersion ?? 1,
-      targetRoleId: input.targetRoleId ?? null,
-      targetUserId: input.targetUserId ?? null,
-      now,
-    });
-
     return deps.unitOfWork.withTransaction(async (tx) => {
+      const existing = await deps.routingRules.listByOrganization(organizationId, tx);
+      const rule = CaseRoutingRuleAggregate.create({
+        id: deps.generateCaseRoutingRuleId(),
+        organizationId,
+        name: input.name,
+        conditions: input.conditions,
+        conditionsVersion: input.conditionsVersion ?? 1,
+        targetRoleId: input.targetRoleId ?? null,
+        targetUserId: input.targetUserId ?? null,
+        executionOrder: nextExecutionOrder(existing),
+        now,
+      });
+
       await deps.routingRules.save(rule, tx);
 
       await deps.auditRecorder.record(
@@ -76,4 +79,11 @@ export function createCreateRoutingRuleUseCase(deps: CreateRoutingRuleDeps) {
       return rule;
     });
   };
+}
+
+function nextExecutionOrder(rules: readonly CaseRoutingRule[]): number {
+  if (rules.length === 0) {
+    return 0;
+  }
+  return Math.max(...rules.map((rule) => rule.executionOrder)) + 1;
 }

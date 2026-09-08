@@ -220,7 +220,7 @@ describe('createExecuteEnforcementActionUseCase', () => {
 
     expect(result.enforcementAction.status).toBe('EXECUTED');
     expect(result.outgoingEvent).not.toBeNull();
-    expect(result.outgoingEvent!.payload.action_type).toBe('REVIEW');
+    expect(result.outgoingEvent!.payload).toEqual(expect.objectContaining({ action_type: 'REVIEW' }));
     expect(outgoingEvents.all()).toHaveLength(1);
   });
 
@@ -345,6 +345,22 @@ describe('createExecuteEnforcementActionUseCase', () => {
   });
 
   /** ADMIN incluido: ejecutar una sancion es operacion, no gobierno (SoD). */
+  it('rejects system:agent ANALYST with FORBIDDEN_ROLE and leaves repositories unchanged', async () => {
+    const { executeEnforcementAction, enforcementActions, outgoingEvents, auditRecorder, outbox } = buildUseCase({
+      seedAction: buildApprovedAction(),
+    });
+    await expect(
+      executeEnforcementAction({
+        auth: createAuthContext({ userId: 'system:agent', organizationId: ORG_1, actorType: 'USER', roleId: 'ANALYST' }),
+        enforcementActionId: ACTION_ID,
+      }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN_ROLE' } satisfies Partial<CaseManagementError>);
+    expect((await enforcementActions.findById(ACTION_ID))?.status).toBe('APPROVED');
+    expect(outgoingEvents.all()).toHaveLength(0);
+    expect(auditRecorder.all()).toHaveLength(0);
+    expect(outbox.all()).toHaveLength(0);
+  });
+
   it.each([
     ['ANALYST', () => ANALYST],
     ['AUDITOR', () => AUDITOR],

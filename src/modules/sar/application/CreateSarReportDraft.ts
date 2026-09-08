@@ -11,6 +11,9 @@ import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import { invariantViolation, sarSourceNotFound, sarSourceNotEligible } from '../domain/errors/SarError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireOperationalRole, SAR_WRITE_ROLES } from './authorization/policy.js';
+import type { PostalAddress } from '../domain/model/value-objects/PostalAddress.js';
+import type { SuspiciousActivityCategory } from '../domain/model/value-objects/SuspiciousActivityCategory.js';
+import type { TinType } from '../domain/model/value-objects/TinType.js';
 
 export interface CreateSarReportDraftInput {
   readonly auth: AuthContext;
@@ -18,9 +21,14 @@ export interface CreateSarReportDraftInput {
   readonly amlAlertId?: string | null;
   readonly narrative: string;
   readonly subjectName?: string | null;
+  readonly subjectAddress?: PostalAddress | null;
+  readonly subjectTin?: string | null;
+  readonly subjectTinType?: TinType | null;
+  readonly subjectBirthDate?: Instant | null;
   readonly suspiciousAmount?: number | null;
   readonly activityStartDate?: Instant | null;
   readonly activityEndDate?: Instant | null;
+  readonly activityCategories?: readonly SuspiciousActivityCategory[];
 }
 
 export interface CreateSarReportDraftDeps {
@@ -73,9 +81,14 @@ export function createCreateSarReportDraftUseCase(deps: CreateSarReportDraftDeps
       amlAlertId,
       narrative: input.narrative,
       subjectName: input.subjectName ?? null,
+      subjectAddress: input.subjectAddress ?? null,
+      subjectTin: input.subjectTin ?? null,
+      subjectTinType: input.subjectTinType ?? null,
+      subjectBirthDate: input.subjectBirthDate ?? null,
       suspiciousAmount: input.suspiciousAmount ?? null,
       activityStartDate: input.activityStartDate ?? null,
       activityEndDate: input.activityEndDate ?? null,
+      activityCategories: input.activityCategories ?? [],
       createdBy: input.auth.userId ?? 'SUPERVISOR',
       now,
     });

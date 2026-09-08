@@ -18,6 +18,7 @@ export type CaseManagementAuditAction =
   | 'UPDATE_PRIORITY_TAGS'
   | 'BULK_CASE_ACTION'
   | 'ADD_CASE_NOTE'
+  | 'PUT_AGENT_BRIEF'
   | 'OPEN_INVESTIGATION'
   | 'CLOSE_INVESTIGATION'
   | 'UPDATE_INVESTIGATION_FINDINGS'
@@ -40,6 +41,18 @@ export type CaseManagementAuditAction =
   | 'EXECUTE_ENFORCEMENT_ACTION'
   | 'REVERT_ENFORCEMENT_ACTION'
   | 'CREATE_ROUTING_RULE'
+  /**
+   * SUPERVISOR PATCH of name, conditions, and/or targets. Status changes
+   * only via ACTIVATE_ROUTING_RULE / DEACTIVATE_ROUTING_RULE. A no-op PATCH
+   * does not emit this action.
+   */
+  | 'UPDATE_ROUTING_RULE'
+  /**
+   * SUPERVISOR PUT `/case-routing-rules/reorder`. Catalog-wide permutation;
+   * `resourceId` is null and `detail.ids` is the requested order. Identity
+   * order does not emit this action.
+   */
+  | 'REORDER_ROUTING_RULES'
   | 'ACTIVATE_ROUTING_RULE'
   | 'DEACTIVATE_ROUTING_RULE'
   | 'SIMULATE_ROUTING_RULE'
@@ -73,7 +86,23 @@ export type CaseManagementAuditAction =
    */
   | 'CREATE_WEBHOOK_SUBSCRIPTION'
   | 'UPDATE_WEBHOOK_SUBSCRIPTION'
-  | 'DELETE_WEBHOOK_SUBSCRIPTION';
+  | 'DELETE_WEBHOOK_SUBSCRIPTION'
+  /**
+   * PUT `/organization-fraud-config` singleton upsert. One action for create
+   * and re-upsert. GET is not audited.
+   */
+  | 'UPSERT_ORGANIZATION_FRAUD_CONFIG'
+  /**
+   * PLATFORM_ADMIN force-ran a seeded catalog job. Written after the job
+   * (SUCCESS or FAILED) with `organizationId` null.
+   */
+  | 'SCHEDULED_JOB_RUN'
+  /**
+   * SUPERVISOR one-shot probe of the tenant outbound URL. Audited after
+   * the POST with `resourceId` = event id; detail is `{ statusCode, latencyMs, ok }`
+   * (no secret, no URL).
+   */
+  | 'WEBHOOK_TEST';
 
 export type CaseManagementAuditResource =
   | 'case'
@@ -94,4 +123,19 @@ export type CaseManagementAuditResource =
    * Catalog row in `customer_webhook_subscriptions`. Mutation-only
    * (CREATE/UPDATE/DELETE); list/get are not audited.
    */
-  | 'webhook_subscription';
+  | 'webhook_subscription'
+  /**
+   * Per-tenant singleton in `organization_fraud_config`. Mutation-only
+   * (PUT upsert); GET is not audited.
+   */
+  | 'organization_fraud_config'
+  /**
+   * Observational `scheduled_jobs` catalog row. Mutation-only (force-run);
+   * list/get are not in this change.
+   */
+  | 'scheduled_job'
+  /**
+   * Outbound delivery to the tenant webhook URL (`customer_outgoing_events`
+   * test row). Mutation-only (the probe POST); catalog reads are not audited.
+   */
+  | 'outgoing_webhook';

@@ -7,6 +7,7 @@ import {
   buildPriorityAssignmentJdm,
 } from '../../../../src/modules/case-management/application/CreatePriorityAssignmentRule.js';
 import { CaseManagementError } from '../../../../src/modules/case-management/domain/errors/CaseManagementError.js';
+import { CaseRoutingRule } from '../../../../src/modules/case-management/domain/model/aggregates/CaseRoutingRule.js';
 import { generateCaseRoutingRuleId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseRoutingRuleId.js';
 import { createAssignedTo } from '../../../../src/modules/case-management/domain/model/value-objects/AssignedTo.js';
 import { InMemoryCaseRoutingRuleRepository } from '../../../helpers/case-management/InMemoryCaseRoutingRuleRepository.js';
@@ -80,6 +81,29 @@ describe('createCreatePriorityAssignmentRuleUseCase', () => {
     expect(rule.targetRoleId).toBeNull();
     expect(rule.targetUserId).toBeNull();
     expect(routingRules.all()).toHaveLength(1);
+  });
+
+  it('inherits create append: executionOrder is max+1 of the org catalog', async () => {
+    const { createPriorityAssignmentRule, routingRules } = build();
+    routingRules.add(
+      CaseRoutingRule.create({
+        id: generateCaseRoutingRuleId(),
+        organizationId: ORG,
+        name: 'existing',
+        conditions: { contentType: 'application/vnd.gorules.decision', nodes: [{ id: 'n1', type: 'inputNode' }], edges: [] },
+        conditionsVersion: 1,
+        executionOrder: 2,
+        now: NOW,
+      }),
+    );
+
+    const rule = await createPriorityAssignmentRule({
+      auth: supervisorAuth(),
+      name: 'priority-routing',
+      mappings: [{ priority: 'HIGH', target: { type: 'ROLE', id: 'ANALYST' } }],
+    });
+
+    expect(rule.executionOrder).toBe(3);
   });
 
   it('rechaza una lista de mappings vacía', async () => {

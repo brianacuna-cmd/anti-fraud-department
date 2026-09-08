@@ -16,7 +16,7 @@ jest.setTimeout(120_000);
 function buildRule(
   name: string,
   createdAt: string,
-  overrides: { organizationId?: string; status?: 'ACTIVE' | 'INACTIVE' } = {},
+  overrides: { organizationId?: string; status?: 'ACTIVE' | 'INACTIVE'; executionOrder?: number } = {},
 ): CaseRoutingRule {
   return CaseRoutingRule.create({
     id: generateCaseRoutingRuleId(),
@@ -25,6 +25,7 @@ function buildRule(
     conditions: { contentType: 'application/vnd.gorules.decision', nodes: [], edges: [] },
     conditionsVersion: 1,
     status: overrides.status ?? 'ACTIVE',
+    executionOrder: overrides.executionOrder,
     now: fromDate(new Date(createdAt)),
   });
 }
@@ -98,5 +99,46 @@ describe('MongoCaseRoutingRuleRepository (integration, real replica-set Mongo)',
 
     const listed = await repository.listByOrganization(oid('org-1'));
     expect(listed.map((r) => r.name)).toEqual(['live', 'draft']);
+  });
+
+  it('sorts findActive and list by execution_order ASC then created_at ASC', async () => {
+    await seed(db, buildRule('later-created-first-order', '2026-01-03T00:00:00.000Z', { executionOrder: 0 }));
+    await seed(db, buildRule('earlier-created-second-order', '2026-01-01T00:00:00.000Z', { executionOrder: 1 }));
+    await seed(
+      db,
+      buildRule('same-order-later', '2026-01-05T00:00:00.000Z', { executionOrder: 1 }),
+    );
+    await seed(db, buildRule('inactive', '2026-01-01T00:00:00.000Z', { status: 'INACTIVE', executionOrder: 0 }));
+
+    const active = await repository.findActiveByOrganization(oid('org-1'));
+    expect(active.map((r) => r.name)).toEqual([
+      'later-created-first-order',
+      'earlier-created-second-order',
+      'same-order-later',
+    ]);
+
+    const listed = await repository.listByOrganization(oid('org-1'));
+    expect(listed.map((r) => r.name)).toEqual([
+      'inactive',
+      'later-created-first-order',
+      'earlier-created-second-order',
+      'same-order-later',
+    ]);
+  });
+
+  it('orders documents missing execution_order the same as CreatedAt ASC (backfill-equivalent)', async () => {
+    const first = buildRule('first', '2026-01-01T00:00:00.000Z');
+    const second = buildRule('second', '2026-01-02T00:00:00.000Z');
+    const firstDoc = toDocument(first);
+    const secondDoc = toDocument(second);
+    const { execution_order: _firstOrder, ...firstLegacy } = firstDoc;
+    const { execution_order: _secondOrder, ...secondLegacy } = secondDoc;
+    void _firstOrder;
+    void _secondOrder;
+    await db.collection('case_routing_rules').insertOne(firstLegacy);
+    await db.collection('case_routing_rules').insertOne(secondLegacy);
+
+    const active = await repository.findActiveByOrganization(oid('org-1'));
+    expect(active.map((r) => r.name)).toEqual(['first', 'second']);
   });
 });

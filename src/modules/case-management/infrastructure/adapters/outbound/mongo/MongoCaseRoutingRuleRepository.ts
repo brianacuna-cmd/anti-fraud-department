@@ -15,9 +15,9 @@ const COLLECTION_NAME = 'case_routing_rules';
 
 /**
  * Mongo adapter for `CaseRoutingRuleRepository`. T1 auto-routing only reads
- * ACTIVE rules for an organization, ordered by `created_at` ascending so
- * `RouteCase`'s first-match-wins semantics are deterministic (oldest rule
- * takes precedence). Draft CRUD uses save/findById/listByOrganization.
+ * ACTIVE rules for an organization, ordered by `execution_order` then
+ * `created_at` ascending so `RouteCase`'s first-match-wins semantics follow
+ * catalog reorder. Draft CRUD uses save/findById/listByOrganization.
  * The `{ organization_id, status }` index stays non-unique (multi-ACTIVE OK).
  */
 export class MongoCaseRoutingRuleRepository implements CaseRoutingRuleRepository {
@@ -33,7 +33,7 @@ export class MongoCaseRoutingRuleRepository implements CaseRoutingRuleRepository
   ): Promise<readonly CaseRoutingRule[]> {
     const documents = await this.collection
       .find({ organization_id: new ObjectId(organizationId), status: 'ACTIVE' }, { session: toSession(tx) })
-      .sort({ created_at: 1 })
+      .sort({ execution_order: 1, created_at: 1 })
       .toArray();
     return documents.map(toDomain);
   }
@@ -46,7 +46,7 @@ export class MongoCaseRoutingRuleRepository implements CaseRoutingRuleRepository
   async listByOrganization(organizationId: string, tx?: Transaction): Promise<readonly CaseRoutingRule[]> {
     const documents = await this.collection
       .find({ organization_id: new ObjectId(organizationId) }, { session: toSession(tx) })
-      .sort({ created_at: 1 })
+      .sort({ execution_order: 1, created_at: 1 })
       .toArray();
     return documents.map(toDomain);
   }

@@ -133,6 +133,12 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
     listCases: createListCasesUseCase({ cases }),
     getCase: createGetCaseUseCase({ cases }),
     getCaseTimeline: createGetCaseTimelineUseCase({ cases, timelineReader: timelineRecorder }),
+    getCaseAnalysisPack: async () => {
+      throw new Error('unused');
+    },
+    putAgentBrief: async () => {
+      throw new Error('unused');
+    },
     addCaseNote: createAddCaseNoteUseCase({ cases, notes: caseNotes, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateCaseNoteId, generateTimelineEventId }),
     listCaseNotes: createListCaseNotesUseCase({ cases, notes: caseNotes }),
     resolveCase: createResolveCaseUseCase({
@@ -261,6 +267,42 @@ describe('GET /api/v1/cases (inbox list)', () => {
     expect(response.body.items).toHaveLength(1);
     expect(response.body.items[0].id).toBe(oid('inbox-match'));
     expect(response.body.items[0].dueDate).toBe(MID);
+  });
+
+  it('filters the inbox by customerId and returns only matching tenant cases', async () => {
+    const { app, cases } = buildApp();
+    await cases.save(
+      Case.create({
+        id: createCaseId(oid('cust-a-case')),
+        organizationId: ORG_1,
+        customerId: 'cust-a',
+        riskScore: createRiskScore(10),
+        priority: 'LOW',
+        now: NOW,
+      }),
+    );
+    await cases.save(
+      Case.create({
+        id: createCaseId(oid('cust-b-case')),
+        organizationId: ORG_1,
+        customerId: 'cust-b',
+        riskScore: createRiskScore(10),
+        priority: 'LOW',
+        now: NOW,
+      }),
+    );
+
+    const match = await request(app).get('/api/v1/cases').query({ customerId: 'cust-a' });
+    expect(match.status).toBe(200);
+    expect(match.body.total).toBe(1);
+    expect(match.body.items).toHaveLength(1);
+    expect(match.body.items[0].id).toBe(oid('cust-a-case'));
+    expect(match.body.items[0].customerId).toBe('cust-a');
+
+    const empty = await request(app).get('/api/v1/cases').query({ customerId: 'cust-none' });
+    expect(empty.status).toBe(200);
+    expect(empty.body.total).toBe(0);
+    expect(empty.body.items).toEqual([]);
   });
 
   it('orders null dueDate after non-null dueDates', async () => {

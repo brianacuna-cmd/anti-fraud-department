@@ -15,6 +15,7 @@ function asStringArray(value: unknown): string[] | undefined {
  * the tenant auth context — not from the query string.
  */
 export const listAmlAlertsQuerySchema = z.object({
+  customerId: z.string().min(1).optional(),
   status: z.preprocess(asStringArray, z.array(amlAlertStatusEnum).optional()),
   severity: z.preprocess(asStringArray, z.array(amlAlertSeverityEnum).optional()),
   watchlist_id: z.string().min(1).optional(),

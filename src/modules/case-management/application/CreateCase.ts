@@ -14,6 +14,9 @@ import { createRiskScore } from '../domain/model/value-objects/RiskScore.js';
 import { createCasePriority } from '../domain/model/value-objects/CasePriority.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { isDuplicateKeyError } from '../../../shared/persistence/mongo/duplicateKey.js';
+import type { OutboxEventRepository } from '../../../shared/outbox/OutboxEventRepository.js';
+import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
+import { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
 
 export interface CreateCaseInput {
   readonly auth: AuthContext;
@@ -59,6 +62,8 @@ export interface CreateCaseDeps {
    * Fail-closed when OrganizationFraudConfig is missing.
    */
   readonly calculateSla: (input: CalculateSlaInput) => Promise<Case>;
+  readonly outbox?: OutboxEventRepository;
+  readonly generateOutboxEventId?: () => OutboxEventId;
 }
 
 /**
@@ -177,5 +182,34 @@ async function createAndRoute(
     ipAddress: input.auth.ipAddress,
   });
 
-  return deps.calculateSla({ kase: routed, tx });
+  const routedCase = await deps.calculateSla({ kase: routed, tx });
+
+  if (deps.outbox !== undefined && deps.generateOutboxEventId !== undefined) {
+    const outboxEventId = deps.generateOutboxEventId();
+    const outboxEvent = OutboxEvent.create({
+      id: outboxEventId,
+      organizationId: routedCase.organizationId,
+      aggregateType: 'Case',
+      aggregateId: routedCase.id,
+      eventType: 'case.created',
+      payload: {
+        caseId: routedCase.id,
+        organizationId: routedCase.organizationId,
+        customerId: routedCase.customerId,
+        customerEmail: routedCase.customerEmail,
+        bridgeUserId: routedCase.bridgeUserId,
+        bridgeWallet: routedCase.bridgeWallet,
+        stripeCustomerId: routedCase.stripeCustomerId,
+        riskScore: routedCase.riskScore,
+        status: routedCase.status,
+        priority: routedCase.priority,
+        assignedTo: routedCase.assignedTo?.id ?? null,
+        createdAt: routedCase.createdAt,
+      },
+      now,
+    });
+    await deps.outbox.save(outboxEvent, tx);
+  }
+
+  return routedCase;
 }

@@ -16,19 +16,30 @@ export interface CustomerOutgoingEventPayload {
   readonly organization_id: string;
 }
 
+/** One-shot SUPERVISOR probe payload — not the enforcement six-field shape. */
+export interface WebhookTestPayload {
+  readonly event_type: 'WEBHOOK_TEST';
+  readonly organization_id: string;
+  readonly event_id: string;
+  readonly requested_at: string;
+}
+
+export type CustomerOutgoingEventStoredPayload = CustomerOutgoingEventPayload | WebhookTestPayload;
+
 export interface CustomerOutgoingEventProps {
   readonly id: CustomerOutgoingEventId;
   readonly organizationId: string;
   readonly customerId: string;
-  readonly enforcementActionId: EnforcementActionId;
+  readonly enforcementActionId: EnforcementActionId | null;
   readonly webhookUrl: string;
   readonly eventType: string;
-  readonly payload: CustomerOutgoingEventPayload;
+  readonly payload: CustomerOutgoingEventStoredPayload;
   readonly status: CustomerOutgoingEventStatus;
   readonly responseStatus: number | null;
   readonly attempts: number;
   readonly lastAttemptAt: Instant | null;
   readonly createdAt: Instant;
+  readonly latencyMs: number | null;
 }
 
 export interface CreateCustomerOutgoingEventInput {
@@ -39,6 +50,19 @@ export interface CreateCustomerOutgoingEventInput {
   readonly webhookUrl: string;
   readonly eventType: string;
   readonly payload: CustomerOutgoingEventPayload;
+  readonly now: Instant;
+}
+
+export interface CreateRecordedDeliveryInput {
+  readonly id: CustomerOutgoingEventId;
+  readonly organizationId: string;
+  readonly customerId: string;
+  readonly webhookUrl: string;
+  readonly eventType: string;
+  readonly payload: WebhookTestPayload;
+  readonly status: 'SENT' | 'FAILED';
+  readonly responseStatus: number;
+  readonly latencyMs: number;
   readonly now: Instant;
 }
 
@@ -74,6 +98,35 @@ export class CustomerOutgoingEvent {
       attempts: 0,
       lastAttemptAt: null,
       createdAt: input.now,
+      latencyMs: null,
+    });
+  }
+
+  static createRecordedDelivery(input: CreateRecordedDeliveryInput): CustomerOutgoingEvent {
+    assertNonEmpty('organizationId', input.organizationId);
+    assertNonEmpty('customerId', input.customerId);
+    assertNonEmpty('webhookUrl', input.webhookUrl);
+    assertNonEmpty('eventType', input.eventType);
+    if (input.status !== 'SENT' && input.status !== 'FAILED') {
+      throw invariantViolation(
+        'CustomerOutgoingEvent recorded delivery status must be SENT or FAILED',
+        { status: input.status },
+      );
+    }
+    return new CustomerOutgoingEvent({
+      id: input.id,
+      organizationId: input.organizationId,
+      customerId: input.customerId,
+      enforcementActionId: null,
+      webhookUrl: input.webhookUrl,
+      eventType: input.eventType,
+      payload: input.payload,
+      status: input.status,
+      responseStatus: input.responseStatus,
+      attempts: 1,
+      lastAttemptAt: input.now,
+      createdAt: input.now,
+      latencyMs: input.latencyMs,
     });
   }
 
@@ -93,7 +146,7 @@ export class CustomerOutgoingEvent {
     return this.props.customerId;
   }
 
-  get enforcementActionId(): EnforcementActionId {
+  get enforcementActionId(): EnforcementActionId | null {
     return this.props.enforcementActionId;
   }
 
@@ -105,7 +158,7 @@ export class CustomerOutgoingEvent {
     return this.props.eventType;
   }
 
-  get payload(): CustomerOutgoingEventPayload {
+  get payload(): CustomerOutgoingEventStoredPayload {
     return this.props.payload;
   }
 
@@ -127,6 +180,10 @@ export class CustomerOutgoingEvent {
 
   get createdAt(): Instant {
     return this.props.createdAt;
+  }
+
+  get latencyMs(): number | null {
+    return this.props.latencyMs;
   }
 
   toProps(): CustomerOutgoingEventProps {

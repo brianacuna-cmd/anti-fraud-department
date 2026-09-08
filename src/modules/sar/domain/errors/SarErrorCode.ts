@@ -24,7 +24,10 @@ export type SarErrorCode =
    * approves and locks it.
    */
   | 'SELF_APPROVAL_FORBIDDEN'
-  /** SAR-003: filing XML can only be compiled from an APPROVED (locked) report. */
-  | 'SAR_NOT_APPROVED'
-  /** SAR-003: the report is APPROVED but is missing fields the filing format requires. */
-  | 'SAR_XML_VALIDATION_FAILED';
+  /**
+   * The report cannot be turned into a filing document yet: the tenant has
+   * no filing profile, or required fields are missing or out of range. The
+   * error carries the full list of defects — one per attempt would turn a
+   * form into a round trip per field.
+   */
+  | 'SAR_NOT_READY_TO_FILE';

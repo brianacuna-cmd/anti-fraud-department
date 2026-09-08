@@ -28,6 +28,7 @@ export interface CaseProps {
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
   readonly deletedAt: Instant | null;
+  readonly agentBrief?: string | null;
 }
 
 export interface CreateCaseInput {
@@ -79,12 +80,13 @@ export class Case {
       createdAt: input.now,
       updatedAt: input.now,
       deletedAt: null,
+      agentBrief: null,
     });
   }
 
   /** Reconstructs from persisted props — no business-rule validation. */
   static rehydrate(props: CaseProps): Case {
-    return new Case(props);
+    return new Case({ ...props, agentBrief: props.agentBrief ?? null });
   }
 
   get id(): CaseId {
@@ -161,6 +163,15 @@ export class Case {
 
   get deletedAt(): Instant | null {
     return this.props.deletedAt;
+  }
+
+  get agentBrief(): string | null {
+    return this.props.agentBrief ?? null;
+  }
+
+  /** Last-write-wins companion brief. Does not add a CaseNote. */
+  withAgentBrief(brief: string, now: Instant): Case {
+    return new Case({ ...this.props, agentBrief: brief, updatedAt: now });
   }
 
   toProps(): CaseProps {

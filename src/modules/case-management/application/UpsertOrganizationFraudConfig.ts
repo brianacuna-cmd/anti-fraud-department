@@ -1,6 +1,8 @@
 import type { AuthContext } from '../../../shared/kernel/AuthContext.js';
 import type { Clock } from '../../../shared/time/Clock.js';
 import type { OrganizationFraudConfigRepository } from '../domain/ports/OrganizationFraudConfigRepository.js';
+import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
+import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import { OrganizationFraudConfig } from '../domain/model/aggregates/OrganizationFraudConfig.js';
 import { generateOrganizationFraudConfigId } from '../domain/model/value-objects/OrganizationFraudConfigId.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
@@ -24,6 +26,24 @@ export interface UpsertOrganizationFraudConfigInput {
 export interface UpsertOrganizationFraudConfigDeps {
   readonly repository: OrganizationFraudConfigRepository;
   readonly clock: Clock;
+  readonly auditRecorder: AuditRecorder;
+  readonly unitOfWork: UnitOfWork;
+}
+
+function organizationFraudConfigAuditDetail(config: OrganizationFraudConfig): Record<string, unknown> {
+  return {
+    slaLowMinutes: config.slaLowMinutes,
+    slaMediumMinutes: config.slaMediumMinutes,
+    slaHighMinutes: config.slaHighMinutes,
+    slaCriticalMinutes: config.slaCriticalMinutes,
+    riskThresholdLow: config.riskThresholdLow,
+    riskThresholdMedium: config.riskThresholdMedium,
+    riskThresholdHigh: config.riskThresholdHigh,
+    riskThresholdCritical: config.riskThresholdCritical,
+    featureFlags: config.featureFlags,
+    outboundWebhookUrlSet: config.outboundWebhookUrl !== null,
+    outboundWebhookSecretSet: config.outboundWebhookSecret !== null,
+  };
 }
 
 /**
@@ -32,6 +52,9 @@ export interface UpsertOrganizationFraudConfigDeps {
  * uniqueness is ultimately enforced by `org_fraud_config_unique`, this is
  * just the "no separate read vs create branch leaking into the aggregate"
  * pattern, mirrored from `SetNotificationPreference`.
+ *
+ * Catalog mutation copies webhook Create/Update: SUPERVISOR + tenant checks
+ * stay outside the transaction; find/upsert/audit share one `tx`.
  */
 export function createUpsertOrganizationFraudConfigUseCase(deps: UpsertOrganizationFraudConfigDeps) {
   return async function upsertOrganizationFraudConfig(
@@ -39,12 +62,30 @@ export function createUpsertOrganizationFraudConfigUseCase(deps: UpsertOrganizat
   ): Promise<OrganizationFraudConfig> {
     requireOperationalRole(input.auth, SUPERVISION_ROLES);
     const organizationId = requireTenantContext(input.auth);
-    const now = deps.clock.now();
 
-    const existing = await deps.repository.findByOrganization(organizationId);
-    const desired = existing
-      ? existing.update(
-          {
+    return deps.unitOfWork.withTransaction(async (tx) => {
+      const now = deps.clock.now();
+      const existing = await deps.repository.findByOrganization(organizationId, tx);
+      const desired = existing
+        ? existing.update(
+            {
+              slaLowMinutes: input.slaLowMinutes,
+              slaMediumMinutes: input.slaMediumMinutes,
+              slaHighMinutes: input.slaHighMinutes,
+              slaCriticalMinutes: input.slaCriticalMinutes,
+              riskThresholdLow: input.riskThresholdLow,
+              riskThresholdMedium: input.riskThresholdMedium,
+              riskThresholdHigh: input.riskThresholdHigh,
+              riskThresholdCritical: input.riskThresholdCritical,
+              featureFlags: input.featureFlags,
+              outboundWebhookUrl: input.outboundWebhookUrl,
+              outboundWebhookSecret: input.outboundWebhookSecret,
+            },
+            now,
+          )
+        : OrganizationFraudConfig.create({
+            id: generateOrganizationFraudConfigId(),
+            organizationId,
             slaLowMinutes: input.slaLowMinutes,
             slaMediumMinutes: input.slaMediumMinutes,
             slaHighMinutes: input.slaHighMinutes,
@@ -56,27 +97,24 @@ export function createUpsertOrganizationFraudConfigUseCase(deps: UpsertOrganizat
             featureFlags: input.featureFlags,
             outboundWebhookUrl: input.outboundWebhookUrl,
             outboundWebhookSecret: input.outboundWebhookSecret,
-          },
-          now,
-        )
-      : OrganizationFraudConfig.create({
-          id: generateOrganizationFraudConfigId(),
-          organizationId,
-          slaLowMinutes: input.slaLowMinutes,
-          slaMediumMinutes: input.slaMediumMinutes,
-          slaHighMinutes: input.slaHighMinutes,
-          slaCriticalMinutes: input.slaCriticalMinutes,
-          riskThresholdLow: input.riskThresholdLow,
-          riskThresholdMedium: input.riskThresholdMedium,
-          riskThresholdHigh: input.riskThresholdHigh,
-          riskThresholdCritical: input.riskThresholdCritical,
-          featureFlags: input.featureFlags,
-          outboundWebhookUrl: input.outboundWebhookUrl,
-          outboundWebhookSecret: input.outboundWebhookSecret,
-          now,
-        });
+            now,
+          });
 
-    await deps.repository.upsert(desired);
-    return desired;
+      await deps.repository.upsert(desired, tx);
+      await deps.auditRecorder.record(
+        {
+          organizationId,
+          actorType: input.auth.actorType,
+          actorId: input.auth.userId,
+          action: 'UPSERT_ORGANIZATION_FRAUD_CONFIG',
+          resource: 'organization_fraud_config',
+          resourceId: String(desired.id),
+          detail: organizationFraudConfigAuditDetail(desired),
+          ipAddress: input.auth.ipAddress,
+        },
+        tx,
+      );
+      return desired;
+    });
   };
 }

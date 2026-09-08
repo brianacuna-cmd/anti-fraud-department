@@ -3,6 +3,7 @@ import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js'
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { createCreateRoutingRuleUseCase } from '../../../../src/modules/case-management/application/CreateRoutingRule.js';
 import { CaseManagementError } from '../../../../src/modules/case-management/domain/errors/CaseManagementError.js';
+import { CaseRoutingRule } from '../../../../src/modules/case-management/domain/model/aggregates/CaseRoutingRule.js';
 import { generateCaseRoutingRuleId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseRoutingRuleId.js';
 import { InMemoryCaseRoutingRuleRepository } from '../../../helpers/case-management/InMemoryCaseRoutingRuleRepository.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
@@ -86,6 +87,97 @@ describe('CreateRoutingRule', () => {
 
     expect(created.conditionsVersion).toBe(1);
     expect(created.status).toBe('INACTIVE');
+  });
+
+  it('appends executionOrder 0 when the organization catalog is empty', async () => {
+    const routingRules = new InMemoryCaseRoutingRuleRepository();
+    const create = createCreateRoutingRuleUseCase({
+      routingRules,
+      auditRecorder: new InMemoryCaseManagementAuditRecorder(),
+      unitOfWork: new PassthroughUnitOfWork(),
+      clock: { now: () => NOW },
+      generateCaseRoutingRuleId,
+    });
+
+    const created = await create({ auth: supervisorAuth(), name: 'first', conditions: VALID_JDM });
+
+    expect(created.executionOrder).toBe(0);
+  });
+
+  it('appends max(executionOrder)+1 after existing org rules, including a gap', async () => {
+    const routingRules = new InMemoryCaseRoutingRuleRepository();
+    routingRules.add(
+      CaseRoutingRule.create({
+        id: generateCaseRoutingRuleId(),
+        organizationId: ORG,
+        name: 'existing-low',
+        conditions: VALID_JDM,
+        conditionsVersion: 1,
+        executionOrder: 0,
+        now: NOW,
+      }),
+    );
+    routingRules.add(
+      CaseRoutingRule.create({
+        id: generateCaseRoutingRuleId(),
+        organizationId: ORG,
+        name: 'existing-high',
+        conditions: VALID_JDM,
+        conditionsVersion: 1,
+        executionOrder: 5,
+        now: NOW,
+      }),
+    );
+    routingRules.add(
+      CaseRoutingRule.create({
+        id: generateCaseRoutingRuleId(),
+        organizationId: oid('org-2'),
+        name: 'other-org',
+        conditions: VALID_JDM,
+        conditionsVersion: 1,
+        executionOrder: 99,
+        now: NOW,
+      }),
+    );
+    const create = createCreateRoutingRuleUseCase({
+      routingRules,
+      auditRecorder: new InMemoryCaseManagementAuditRecorder(),
+      unitOfWork: new PassthroughUnitOfWork(),
+      clock: { now: () => NOW },
+      generateCaseRoutingRuleId,
+    });
+
+    const created = await create({ auth: supervisorAuth(), name: 'appended', conditions: VALID_JDM });
+
+    expect(created.executionOrder).toBe(6);
+  });
+
+  it('lists the catalog inside the same transaction as save', async () => {
+    const routingRules = new InMemoryCaseRoutingRuleRepository();
+    const seenTx: Array<Transaction | undefined> = [];
+    const originalList = routingRules.listByOrganization.bind(routingRules);
+    routingRules.listByOrganization = async (organizationId, tx) => {
+      seenTx.push(tx);
+      return originalList(organizationId, tx);
+    };
+    const originalSave = routingRules.save.bind(routingRules);
+    routingRules.save = async (rule, tx) => {
+      seenTx.push(tx);
+      return originalSave(rule, tx);
+    };
+    const create = createCreateRoutingRuleUseCase({
+      routingRules,
+      auditRecorder: new InMemoryCaseManagementAuditRecorder(),
+      unitOfWork: new PassthroughUnitOfWork(),
+      clock: { now: () => NOW },
+      generateCaseRoutingRuleId,
+    });
+
+    await create({ auth: supervisorAuth(), name: 'tx-list', conditions: VALID_JDM });
+
+    expect(seenTx).toHaveLength(2);
+    expect(seenTx[0]).toBeDefined();
+    expect(seenTx[0]).toBe(seenTx[1]);
   });
 
   it('rejects ANALYST without persisting', async () => {

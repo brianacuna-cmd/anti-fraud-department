@@ -103,20 +103,19 @@ export function selfApprovalForbidden(createdBy: string, reportId: string): SarE
   );
 }
 
-/** SAR-003: the official filing XML can only be compiled once the dossier is locked. */
-export function sarNotApproved(reportId: string, status: string): SarError {
+/**
+ * The report is not fileable yet, with everything that is wrong.
+ *
+ * The defects travel in `metadata` so the panel can put each message next to
+ * its own field instead of printing one sentence above the form.
+ */
+export function sarNotReadyToFile(
+  reportId: string,
+  defects: readonly { readonly field: string; readonly reason: string }[],
+): SarError {
   return new SarError(
-    'SAR_NOT_APPROVED',
-    `SAR report "${reportId}" must be APPROVED before filing XML can be generated (current status: ${status})`,
-    { reportId, status },
-  );
-}
-
-/** SAR-003: named after every missing/invalid field at once, not just the first. */
-export function sarXmlValidationFailed(reportId: string, errors: readonly string[]): SarError {
-  return new SarError(
-    'SAR_XML_VALIDATION_FAILED',
-    `SAR report "${reportId}" is not complete enough to compile a filing XML`,
-    { reportId, errors: [...errors] },
+    'SAR_NOT_READY_TO_FILE',
+    `the report is missing ${defects.length} thing(s) the filing schema requires`,
+    { reportId, defects: defects.map((d) => ({ ...d })) },
   );
 }

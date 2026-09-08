@@ -5,6 +5,11 @@ import { createErrorHandler } from './shared/http/errorHandler.js';
 import { connectMongo } from './shared/persistence/mongo/connect.js';
 import { ensureIndexes } from './shared/persistence/mongo/ensureIndexes.js';
 import { ensureRoles } from './shared/persistence/mongo/ensureRoles.js';
+import { fromDate, toDate, type Instant } from './shared/time/Instant.js';
+import { recordAround } from './shared/scheduled-jobs/recordAround.js';
+import { seedScheduledJobs } from './shared/scheduled-jobs/seedScheduledJobs.js';
+import { MongoScheduledJobRepository } from './shared/scheduled-jobs/mongo/MongoScheduledJobRepository.js';
+import { backfillRoutingRuleExecutionOrder } from './modules/case-management/infrastructure/adapters/outbound/mongo/backfillRoutingRuleExecutionOrder.js';
 import { SystemClock } from './shared/time/SystemClock.js';
 import { generateObjectIdHex } from './shared/kernel/ObjectIdHex.js';
 import { identityAccessErrorStatus } from './modules/identity-access/infrastructure/adapters/inbound/http/errorStatus.js';
@@ -21,6 +26,7 @@ import { createAuthContextMiddleware } from './modules/identity-access/infrastru
 import { MongoOrganizationRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoOrganizationRepository.js';
 import { MongoUserRepositoryFactory } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUserRepositoryFactory.js';
 import { MongoSessionRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoSessionRepository.js';
+import { MongoAgentApiKeyRepository } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoAgentApiKeyRepository.js';
 import { UserActorGateway } from './modules/identity-access/infrastructure/adapters/outbound/mongo/UserActorGateway.js';
 import { OrganizationActorGateway } from './modules/identity-access/infrastructure/adapters/outbound/mongo/OrganizationActorGateway.js';
 import { MongoUnitOfWork } from './modules/identity-access/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
@@ -129,6 +135,7 @@ import { createBulkCaseActionUseCase } from './modules/case-management/applicati
 import { createGetCaseUseCase } from './modules/case-management/application/GetCase.js';
 import { createGetCaseTimelineUseCase } from './modules/case-management/application/GetCaseTimeline.js';
 import { createAddCaseNoteUseCase } from './modules/case-management/application/AddCaseNote.js';
+import { createPutAgentBriefUseCase } from './modules/case-management/application/PutAgentBrief.js';
 import { createListCaseNotesUseCase } from './modules/case-management/application/ListCaseNotes.js';
 import { generateCaseNoteId } from './modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { createResolveCaseUseCase } from './modules/case-management/application/ResolveCase.js';
@@ -218,6 +225,8 @@ import { createListRoutingRulesUseCase } from './modules/case-management/applica
 import { createGetRoutingRuleUseCase } from './modules/case-management/application/GetRoutingRule.js';
 import { createActivateRoutingRuleUseCase } from './modules/case-management/application/ActivateRoutingRule.js';
 import { createDeactivateRoutingRuleUseCase } from './modules/case-management/application/DeactivateRoutingRule.js';
+import { createUpdateRoutingRuleUseCase } from './modules/case-management/application/UpdateRoutingRule.js';
+import { createReorderRoutingRulesUseCase } from './modules/case-management/application/ReorderRoutingRules.js';
 import { createCreateWebhookSubscriptionUseCase } from './modules/case-management/application/CreateWebhookSubscription.js';
 import { createListWebhookSubscriptionUseCase } from './modules/case-management/application/ListWebhookSubscription.js';
 import { createGetWebhookSubscriptionUseCase } from './modules/case-management/application/GetWebhookSubscription.js';
@@ -225,15 +234,22 @@ import { createUpdateWebhookSubscriptionUseCase } from './modules/case-managemen
 import { createDeleteWebhookSubscriptionUseCase } from './modules/case-management/application/DeleteWebhookSubscription.js';
 import { organizationFraudConfigRouter } from './modules/case-management/infrastructure/adapters/inbound/http/organizationFraudConfigRouter.js';
 import { webhookSubscriptionRouter } from './modules/case-management/infrastructure/adapters/inbound/http/webhookSubscriptionRouter.js';
+import { webhookTestRouter } from './modules/case-management/infrastructure/adapters/inbound/http/webhookTestRouter.js';
+import { createTestOutgoingWebhookUseCase } from './modules/case-management/application/TestOutgoingWebhook.js';
 import { enforcementRouter } from './modules/case-management/infrastructure/adapters/inbound/http/enforcementRouter.js';
 import { approvalRequestRouter } from './modules/case-management/infrastructure/adapters/inbound/http/approvalRequestRouter.js';
 import { createReviewApprovalRequestUseCase } from './modules/case-management/application/ReviewApprovalRequest.js';
 import { createListApprovalRequestsUseCase } from './modules/case-management/application/ListApprovalRequests.js';
 import { routingRuleRouter } from './modules/case-management/infrastructure/adapters/inbound/http/routingRuleRouter.js';
 import { dlqAdminRouter } from './modules/case-management/infrastructure/adapters/inbound/http/dlqAdminRouter.js';
+import { scheduledJobAdminRouter } from './modules/case-management/infrastructure/adapters/inbound/http/scheduledJobAdminRouter.js';
 import { createListDlqEventsUseCase } from './modules/case-management/application/ListDlqEvents.js';
 import { createGetDlqEventUseCase } from './modules/case-management/application/GetDlqEvent.js';
 import { createRequeueDlqEventUseCase } from './modules/case-management/application/RequeueDlqEvent.js';
+import {
+  createRunScheduledJobUseCase,
+  type ScheduledJobRunnerRegistry,
+} from './modules/case-management/application/RunScheduledJob.js';
 import { MongoAnalystDecisionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoAnalystDecisionRepository.js';
 import { MongoEnforcementActionRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoEnforcementActionRepository.js';
 import { MongoApprovalRequestRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoApprovalRequestRepository.js';
@@ -264,12 +280,18 @@ import { MongoSarReportRepository } from './modules/sar/infrastructure/adapters/
 import { MongoUnitOfWork as SarMongoUnitOfWork } from './modules/sar/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { createCreateSarReportDraftUseCase } from './modules/sar/application/CreateSarReportDraft.js';
 import { createApproveSarReportDraftUseCase } from './modules/sar/application/ApproveSarReportDraft.js';
-import { createGetSarReportUseCase } from './modules/sar/application/GetSarReport.js';
 import { generateSarReportId } from './modules/sar/domain/model/value-objects/SarReportId.js';
 import { sarReportRouter } from './modules/sar/infrastructure/adapters/inbound/http/sarReportRouter.js';
+import { createGenerateSarReportXmlUseCase } from './modules/sar/application/GenerateSarReportXml.js';
+import { createRecordSarFilingStatusUseCase } from './modules/sar/application/RecordSarFilingStatus.js';
+import { createGetSarFilingProfileUseCase } from './modules/sar/application/GetSarFilingProfile.js';
+import { createUpsertSarFilingProfileUseCase } from './modules/sar/application/UpsertSarFilingProfile.js';
+import { MongoOrganizationSarFilingProfileRepository } from './modules/sar/infrastructure/adapters/outbound/mongo/MongoOrganizationSarFilingProfileRepository.js';
+import { generateOrganizationSarFilingProfileId } from './modules/sar/domain/model/value-objects/OrganizationSarFilingProfileId.js';
 import { sarErrorStatus } from './modules/sar/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createSarSourceVerifier } from './composition/sarSourceVerifier.js';
 import { createSarAuditRecorderAdapter } from './composition/sarAuditRecorderAdapter.js';
+import { createGetCaseAnalysisPack } from './composition/getCaseAnalysisPack.js';
 import { createScoreToCaseOrchestrator } from './composition/scoreToCaseOrchestrator.js';
 import type { ScoreToCaseOrchestratorInput, ScoreToCaseOrchestratorResult } from './composition/scoreToCaseOrchestrator.js';
 import { scoreToCaseProcessRouter } from './composition/scoreToCaseProcessRouter.js';
@@ -334,7 +356,10 @@ import { MongoInboundWebhookSecretRepository } from './modules/ingest/infrastruc
 import { MongoProviderIngestEventRepository } from './modules/ingest/infrastructure/adapters/outbound/mongo/MongoProviderIngestEventRepository.js';
 import { MongoScreeningWatermarkRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoScreeningWatermarkRepository.js';
 import { createRescreenWalletSanctionsUseCase } from './modules/screening/application/RescreenWalletSanctions.js';
-import { createWalletSanctionsRescreenScheduler } from './modules/screening/application/WalletSanctionsRescreenScheduler.js';
+import {
+  createWalletSanctionsRescreenScheduler,
+  msUntilNextMidnightBogota,
+} from './modules/screening/application/WalletSanctionsRescreenScheduler.js';
 import { createFinturuWalletSource } from './composition/finturuWalletSource.js';
 import { createWalletRescreenCaseLinker } from './composition/walletRescreenCaseLinker.js';
 
@@ -448,6 +473,12 @@ const OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS = Number(
  */
 const SLA_SWEEP_INTERVAL_MS = Number(process.env.SLA_SWEEP_INTERVAL_MS ?? 60_000);
 const OUTBOX_PUBLISH_INTERVAL_MS = Number(process.env.OUTBOX_PUBLISH_INTERVAL_MS ?? 60_000);
+const FINTURU_DIRECTORY_SYNC_MINUTES = Number(process.env.FINTURU_DIRECTORY_SYNC_MINUTES ?? 360);
+
+function nextRunAtAfterMs(intervalMs: number): (now: Instant) => Instant {
+  return (now) => fromDate(new Date(toDate(now).getTime() + intervalMs));
+}
+
 const KAFKA_BROKERS = optionalEnv('KAFKA_BROKERS');
 const KAFKA_OUTBOX_TOPIC = process.env.KAFKA_OUTBOX_TOPIC ?? 'outbox.events';
 
@@ -498,6 +529,16 @@ async function bootstrap(): Promise<void> {
   const { client, db } = await connectMongo(MONGO_URI, MONGO_DB_NAME);
   const clock = new SystemClock();
   await ensureIndexes(db);
+  const scheduledJobs = new MongoScheduledJobRepository(db);
+  await seedScheduledJobs(scheduledJobs, {
+    now: clock.now(),
+    slaSweepIntervalMs: SLA_SWEEP_INTERVAL_MS,
+    outboxPublishIntervalMs: OUTBOX_PUBLISH_INTERVAL_MS,
+    outgoingWebhookDispatchIntervalMs: OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS,
+    directorySyncIntervalMinutes: FINTURU_DIRECTORY_SYNC_MINUTES,
+    walletRescreenEnabled: WALLET_RESCREEN_ENABLED,
+  });
+  await backfillRoutingRuleExecutionOrder(db);
   // user-roles PR-1a: idempotent fixed role-catalog seed (ADMIN/SUPERVISOR/
   // ANALYST/AUDITOR) — must run before any request that could reference a
   // role.
@@ -506,6 +547,7 @@ async function bootstrap(): Promise<void> {
   const organizations = new MongoOrganizationRepository(db);
   const userRepositoryFactory = new MongoUserRepositoryFactory(db);
   const sessions = new MongoSessionRepository(db);
+  const agentApiKeys = new MongoAgentApiKeyRepository(db);
   const admins = new MongoAdminOrganizationRepository(db);
   // user-roles PR-1b: first real consumer — construction was deferred out of
   // PR-1a to avoid dead code with no caller yet (this file's existing
@@ -655,6 +697,8 @@ async function bootstrap(): Promise<void> {
     auditRecorder: caseManagementAuditRecorder,
     routeCase,
     calculateSla,
+    outbox: outboxEvents,
+    generateOutboxEventId,
   });
   // ---------------------------------------------------------------------
   // Finturu integration (this fork's own).
@@ -723,10 +767,17 @@ async function bootstrap(): Promise<void> {
     directory: finturuDirectory,
     clock,
   });
+  const recordedSyncFinturuDirectory = () =>
+    recordAround(() => syncFinturuDirectory(), {
+      name: 'directory_sync',
+      recorder: scheduledJobs,
+      clock,
+      nextRunAt: nextRunAtAfterMs(FINTURU_DIRECTORY_SYNC_MINUTES * 60_000),
+    });
 
   const directorySyncScheduler = new DirectorySyncScheduler({
-    syncDirectory: syncFinturuDirectory,
-    intervalMinutes: Number(process.env.FINTURU_DIRECTORY_SYNC_MINUTES ?? 360),
+    syncDirectory: recordedSyncFinturuDirectory,
+    intervalMinutes: FINTURU_DIRECTORY_SYNC_MINUTES,
   });
 
   const openFraudCase = createOpenFraudCaseUseCase({
@@ -763,7 +814,16 @@ async function bootstrap(): Promise<void> {
     retryPolicy: outboxRetryPolicy,
   });
 
-  const outboxPublishScheduler = createOutboxPublishScheduler({ publishOutboxEvents });
+  const recordedPublishOutbox = () =>
+    recordAround(() => publishOutboxEvents(), {
+      name: 'outbox_publish',
+      recorder: scheduledJobs,
+      clock,
+      nextRunAt: nextRunAtAfterMs(OUTBOX_PUBLISH_INTERVAL_MS),
+    });
+  const outboxPublishScheduler = createOutboxPublishScheduler({
+    publishOutboxEvents: recordedPublishOutbox,
+  });
 
   const caseManagementFinturuRouter = finturuRouter({
     syncFinturuData,
@@ -832,6 +892,20 @@ async function bootstrap(): Promise<void> {
     clock,
   });
 
+  const amlAlerts = new MongoAmlAlertRepository(db);
+  const listAmlAlerts = createListAmlAlertsUseCase({ amlAlertRepository: amlAlerts });
+  const getCase = createGetCaseUseCase({ cases });
+  const getCaseTimeline = createGetCaseTimelineUseCase({
+    cases,
+    timelineReader: caseTimelineReader,
+  });
+  const getCaseAnalysisPack = createGetCaseAnalysisPack({
+    getCase,
+    getCaseTimeline,
+    listAmlAlerts,
+    cases,
+  });
+
   const caseManagementCasesRouter = caseRouter({
     createCase,
     reassignCase: createReassignCaseUseCase({
@@ -876,8 +950,17 @@ async function bootstrap(): Promise<void> {
       clock,
       generateTimelineEventId,
     }),
-    getCase: createGetCaseUseCase({ cases }),
-    getCaseTimeline: createGetCaseTimelineUseCase({ cases, timelineReader: caseTimelineReader }),
+    getCase,
+    getCaseTimeline,
+    getCaseAnalysisPack,
+    putAgentBrief: createPutAgentBriefUseCase({
+      cases,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateTimelineEventId,
+    }),
     addCaseNote: createAddCaseNoteUseCase({
       cases,
       notes: caseNotes,
@@ -979,6 +1062,8 @@ async function bootstrap(): Promise<void> {
     upsertOrganizationFraudConfig: createUpsertOrganizationFraudConfigUseCase({
       repository: organizationFraudConfig,
       clock,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
     }),
   });
   const webhookSubscriptionHttpRouter = webhookSubscriptionRouter({
@@ -1102,11 +1187,29 @@ async function bootstrap(): Promise<void> {
   });
   const customerOutgoingEvents = new MongoCustomerOutgoingEventRepository(db);
   const outgoingWebhookClient = new HttpOutgoingWebhookClient();
+  const webhookTestHttpRouter = webhookTestRouter({
+    testOutgoingWebhook: createTestOutgoingWebhookUseCase({
+      fraudConfig: organizationFraudConfig,
+      webhookClient: outgoingWebhookClient,
+      outgoingEvents: customerOutgoingEvents,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateCustomerOutgoingEventId,
+    }),
+  });
   const customerOutgoingEventDispatcher = createCustomerOutgoingEventDispatcher({
     outgoingEvents: customerOutgoingEvents,
     webhookClient: outgoingWebhookClient,
     fraudConfig: organizationFraudConfig,
     clock,
+    wrapTick: (tick) =>
+      recordAround(tick, {
+        name: 'customer_outgoing_webhook_dispatch',
+        recorder: scheduledJobs,
+        clock,
+        nextRunAt: nextRunAtAfterMs(OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS),
+      }),
   });
   // casemgmt-notifications-sla-sweep PR2 (Slice 13): advances due
   // `CaseSlaTracking` rows and sends SLA_DUE_SOON via the same
@@ -1118,8 +1221,19 @@ async function bootstrap(): Promise<void> {
     assigneeDirectory,
     unitOfWork: caseManagementUnitOfWork,
     clock,
+    outbox: outboxEvents,
+    generateOutboxEventId,
   });
-  const slaSweepScheduler = createSlaSweepScheduler({ sweepSlaTracking });
+  const recordedSweep = () =>
+    recordAround(() => sweepSlaTracking(), {
+      name: 'sla_sweep',
+      recorder: scheduledJobs,
+      clock,
+      nextRunAt: nextRunAtAfterMs(SLA_SWEEP_INTERVAL_MS),
+    });
+  const slaSweepScheduler = createSlaSweepScheduler({
+    sweepSlaTracking: recordedSweep,
+  });
   const enforcementHttpRouter = enforcementRouter({
     recordAnalystDecision: createRecordAnalystDecisionUseCase({
       cases,
@@ -1230,6 +1344,18 @@ async function bootstrap(): Promise<void> {
       auditRecorder: caseManagementAuditRecorder,
     }),
     getRoutingRule: createGetRoutingRuleUseCase({ routingRules: caseRoutingRules }),
+    updateRoutingRule: createUpdateRoutingRuleUseCase({
+      routingRules: caseRoutingRules,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+    }),
+    reorderRoutingRules: createReorderRoutingRulesUseCase({
+      routingRules: caseRoutingRules,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+    }),
     activateRoutingRule: createActivateRoutingRuleUseCase({
       routingRules: caseRoutingRules,
       auditRecorder: caseManagementAuditRecorder,
@@ -1303,7 +1429,6 @@ async function bootstrap(): Promise<void> {
   // one-line swap back to it. `OpenAmlAlert` owns the transactional
   // aml_alerts + case_timeline + outbox_events write (natural-key unique
   // index still backs RF-6 idempotency against races).
-  const amlAlerts = new MongoAmlAlertRepository(db);
   const amlAlertTimeline = new MongoAmlAlertTimelineRecorder(db);
   const screeningUnitOfWork = new ScreeningMongoUnitOfWork(client);
   const openAmlAlert = createOpenAmlAlertUseCase({
@@ -1317,7 +1442,6 @@ async function bootstrap(): Promise<void> {
     generateOutboxEventId,
   });
   const getAmlAlert = createGetAmlAlertUseCase({ amlAlertRepository: amlAlerts });
-  const listAmlAlerts = createListAmlAlertsUseCase({ amlAlertRepository: amlAlerts });
   const getAmlAlertTimeline = createGetAmlAlertTimelineUseCase({
     getAmlAlert,
     timelineRecorder: amlAlertTimeline,
@@ -1780,6 +1904,8 @@ async function bootstrap(): Promise<void> {
       sessionRepository: sessions,
       userRepositoryFactory,
       platformAdminAuth: PLATFORM_ADMIN_AUTH,
+      agentApiKeyRepository: agentApiKeys,
+      demoUserTrustedHeader: process.env.DEMO_TRUSTED_HEADER === 'true',
     }),
   );
 
@@ -1791,6 +1917,7 @@ async function bootstrap(): Promise<void> {
   const sarReports = new MongoSarReportRepository(db);
   const sarUnitOfWork = new SarMongoUnitOfWork(client);
   const sarAuditRecorder = createSarAuditRecorderAdapter(recordAuditLog);
+  const sarFilingProfiles = new MongoOrganizationSarFilingProfileRepository(db);
   const sarReportHttpRouter = sarReportRouter({
     createSarReportDraft: createCreateSarReportDraftUseCase({
       reports: sarReports,
@@ -1806,7 +1933,84 @@ async function bootstrap(): Promise<void> {
       unitOfWork: sarUnitOfWork,
       clock,
     }),
-    getSarReport: createGetSarReportUseCase({ reports: sarReports }),
+    // SAR-003: gathers and CHECKS; the router renders the XML.
+    generateSarReportXml: createGenerateSarReportXmlUseCase({
+      reports: sarReports,
+      profiles: sarFilingProfiles,
+      auditRecorder: sarAuditRecorder,
+      clock,
+    }),
+    // SAR-004: records the regulator's answer; it does not submit anything.
+    recordSarFilingStatus: createRecordSarFilingStatusUseCase({
+      reports: sarReports,
+      auditRecorder: sarAuditRecorder,
+      unitOfWork: sarUnitOfWork,
+      clock,
+    }),
+    getSarFilingProfile: createGetSarFilingProfileUseCase({ profiles: sarFilingProfiles }),
+    upsertSarFilingProfile: createUpsertSarFilingProfileUseCase({
+      profiles: sarFilingProfiles,
+      auditRecorder: sarAuditRecorder,
+      unitOfWork: sarUnitOfWork,
+      clock,
+      generateOrganizationSarFilingProfileId,
+    }),
+  });
+
+  // wallet-sanctions-rescreen wrap is hoisted here (not start()) so the
+  // admin force-run registry can share the same recordAround as the sleeper.
+  // Screening application layer must not import case-management; bridges live here.
+  const walletRescreenAuth = createAuthContext({
+    userId: 'system:wallet-rescreen',
+    organizationId: DEFAULT_ORGANIZATION_ID,
+    actorType: 'ORGANIZATION',
+  });
+  const walletWatermarkRepository = new MongoScreeningWatermarkRepository(db);
+  const walletSource = createFinturuWalletSource(finturuDirectory);
+  const walletCaseLinker = createWalletRescreenCaseLinker(cases);
+  const rescreenWalletSanctions = createRescreenWalletSanctionsUseCase({
+    clock,
+    watchlistRepository: watchlists,
+    watchlistEntryRepository: watchlistEntries,
+    watermarkRepository: walletWatermarkRepository,
+    walletSource,
+    openAmlAlert,
+    amlAlertRepository: amlAlerts,
+    unitOfWork: screeningUnitOfWork,
+    isOrganizationActive: async (id: string) => {
+      const org = await organizations.findById(createOrganizationId(id));
+      return org?.status === 'ACTIVE';
+    },
+    caseLinker: walletCaseLinker,
+    backfill: WALLET_RESCREEN_BACKFILL,
+  });
+  const recordedWalletRescreen = () =>
+    recordAround(() => rescreenWalletSanctions({ auth: walletRescreenAuth }), {
+      name: 'wallet_sanctions_rescreen',
+      recorder: scheduledJobs,
+      clock,
+      nextRunAt: (now) =>
+        fromDate(new Date(toDate(now).getTime() + msUntilNextMidnightBogota(toDate(now)))),
+    });
+  const walletRescreenScheduler = createWalletSanctionsRescreenScheduler({
+    runRescreen: recordedWalletRescreen,
+    clock,
+  });
+
+  const scheduledJobRunners: ScheduledJobRunnerRegistry = {
+    sla_sweep: recordedSweep,
+    outbox_publish: recordedPublishOutbox,
+    customer_outgoing_webhook_dispatch: customerOutgoingEventDispatcher.dispatchOnce,
+    directory_sync: recordedSyncFinturuDirectory,
+    wallet_sanctions_rescreen: recordedWalletRescreen,
+  };
+  const scheduledJobAdminHttpRouter = scheduledJobAdminRouter({
+    runScheduledJob: createRunScheduledJobUseCase({
+      catalog: scheduledJobs,
+      runners: scheduledJobRunners,
+      unitOfWork: caseManagementUnitOfWork,
+      auditRecorder: caseManagementAuditRecorder,
+    }),
   });
 
   const identityAccessRouter = Router();
@@ -1833,10 +2037,12 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(noteHttpRouter);
   identityAccessRouter.use(organizationFraudConfigHttpRouter);
   identityAccessRouter.use(webhookSubscriptionHttpRouter);
+  identityAccessRouter.use(webhookTestHttpRouter);
   identityAccessRouter.use(enforcementHttpRouter);
   identityAccessRouter.use(approvalRequestHttpRouter);
   identityAccessRouter.use(routingRuleHttpRouter);
   identityAccessRouter.use(dlqAdminHttpRouter);
+  identityAccessRouter.use(scheduledJobAdminHttpRouter);
   identityAccessRouter.use(riskScoresRouter);
   identityAccessRouter.use(riskScoreProcessRouter);
   identityAccessRouter.use(riskScoringRulesRouter);
@@ -1890,37 +2096,6 @@ async function bootstrap(): Promise<void> {
       : 'PLATFORM_ADMIN auth: disabled until identity-access-super-admin-auth ships a real admin login',
   );
 
-  // wallet-sanctions-rescreen PR4 (D4/D5/D8): composition bridges + scheduler.
-  // Screening application layer must not import case-management; bridges live here.
-  const walletRescreenAuth = createAuthContext({
-    userId: 'system:wallet-rescreen',
-    organizationId: DEFAULT_ORGANIZATION_ID,
-    actorType: 'ORGANIZATION',
-  });
-  const walletWatermarkRepository = new MongoScreeningWatermarkRepository(db);
-  const walletSource = createFinturuWalletSource(finturuDirectory);
-  const walletCaseLinker = createWalletRescreenCaseLinker(cases);
-  const rescreenWalletSanctions = createRescreenWalletSanctionsUseCase({
-    clock,
-    watchlistRepository: watchlists,
-    watchlistEntryRepository: watchlistEntries,
-    watermarkRepository: walletWatermarkRepository,
-    walletSource,
-    openAmlAlert,
-    amlAlertRepository: amlAlerts,
-    unitOfWork: screeningUnitOfWork,
-    isOrganizationActive: async (id: string) => {
-      const org = await organizations.findById(createOrganizationId(id));
-      return org?.status === 'ACTIVE';
-    },
-    caseLinker: walletCaseLinker,
-    backfill: WALLET_RESCREEN_BACKFILL,
-  });
-  const walletRescreenScheduler = createWalletSanctionsRescreenScheduler({
-    runRescreen: () => rescreenWalletSanctions({ auth: walletRescreenAuth }),
-    clock,
-  });
-
   customerOutgoingEventDispatcher.start(OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS);
   console.log(
     `Customer outgoing webhook dispatcher started (interval=${OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS}ms)`,
@@ -1942,9 +2117,15 @@ async function bootstrap(): Promise<void> {
   outboxPublishScheduler.start(OUTBOX_PUBLISH_INTERVAL_MS);
   console.log(`Outbox publish scheduler started (interval=${OUTBOX_PUBLISH_INTERVAL_MS}ms)`);
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`anti-fraud-department listening on port ${PORT}`);
   });
+  // Clients must wait at least 630s for a force-run of directory_sync:
+  // default FINTURU_SYNC_TIMEOUT_MS is 600_000 plus 30s slack so Node
+  // does not close the socket while the recorded runner is still walking.
+  const requestTimeout = Number(process.env.FINTURU_SYNC_TIMEOUT_MS ?? 600_000) + 30_000;
+  server.requestTimeout = requestTimeout;
+  server.headersTimeout = requestTimeout + 5_000;
 }
 
 /**

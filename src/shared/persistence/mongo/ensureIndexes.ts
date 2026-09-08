@@ -32,6 +32,10 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection('sessions').createIndex({ token_hash: 1 }, { unique: true, name: 'session_token_hash_unique' });
 
   await db
+    .collection('agent_api_keys')
+    .createIndex({ secret_hash: 1 }, { unique: true, name: 'agent_api_key_secret_hash_unique' });
+
+  await db
     .collection('sessions')
     .createIndex({ expira_en: 1, deleted_at: 1 }, { name: 'idx_expired_active' });
 
@@ -164,6 +168,11 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db
     .collection('case_routing_rules')
     .createIndex({ organization_id: 1, status: 1 }, { name: 'case_routing_rules_org_status_idx' });
+
+  await db.collection('case_routing_rules').createIndex(
+    { organization_id: 1, execution_order: 1, created_at: 1 },
+    { name: 'case_routing_rules_org_execution_created_idx' },
+  );
 
   await db
     .collection('analyst_decisions')
@@ -365,6 +374,13 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .collection('organization_screening_config')
     .createIndex({ organization_id: 1 }, { unique: true, name: 'org_screening_config_unique' });
 
+  // organization_sar_filing_profile (SAR-003): who the tenant IS when it
+  // files. One document per organization — a second one would mean two legal
+  // identities on the same regulatory filings.
+  await db
+    .collection('organization_sar_filing_profile')
+    .createIndex({ organization_id: 1 }, { unique: true, name: 'sar_filing_profile_unique' });
+
   // bulk_screening_jobs (Slice A, design D7, RNF-BS-1): org-scoped status
   // polling (GET /bulk-screening-jobs/:id) and org-scoped listing by creation
   // date. Both are compounded with organization_id first for tenant isolation.
@@ -410,4 +426,12 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db
     .collection('customer_webhook_subscriptions')
     .createIndex({ organization_id: 1, active: 1 }, { name: 'customer_webhook_subscriptions_org_active_idx' });
+
+  await db
+    .collection('scheduled_jobs')
+    .createIndex({ name: 1 }, { unique: true, name: 'scheduled_jobs_name_unique' });
+
+  await db
+    .collection('scheduled_jobs')
+    .createIndex({ next_run_at: 1, enabled: 1 }, { name: 'idx_next_run_at' });
 }

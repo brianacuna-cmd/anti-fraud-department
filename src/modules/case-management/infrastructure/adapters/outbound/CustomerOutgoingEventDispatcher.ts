@@ -19,6 +19,11 @@ export interface CustomerOutgoingEventDispatcherDeps {
   readonly sleeper?: Sleeper;
   readonly claimLimit?: number;
   readonly onError?: (error: unknown) => void;
+  /**
+   * Optional catalog/observability wrapper around one poll tick.
+   * `start()` and the returned `dispatchOnce` share the same wrapped tick.
+   */
+  readonly wrapTick?: (tick: () => Promise<DispatchOnceResult>) => Promise<DispatchOnceResult>;
 }
 
 export interface DispatchOnceResult {
@@ -120,12 +125,15 @@ export function createCustomerOutgoingEventDispatcher(deps: CustomerOutgoingEven
     return secret;
   }
 
+  const runTick = (): Promise<DispatchOnceResult> =>
+    deps.wrapTick ? deps.wrapTick(dispatchOnce) : dispatchOnce();
+
   function start(intervalMs: number): DispatcherHandle {
     let stopped = false;
     const run = async (): Promise<void> => {
       while (!stopped) {
         try {
-          await dispatchOnce();
+          await runTick();
         } catch (error) {
           onError(error);
         }
@@ -143,7 +151,7 @@ export function createCustomerOutgoingEventDispatcher(deps: CustomerOutgoingEven
     };
   }
 
-  return { dispatchOnce, start };
+  return { dispatchOnce: runTick, start };
 }
 
 async function readSecret(

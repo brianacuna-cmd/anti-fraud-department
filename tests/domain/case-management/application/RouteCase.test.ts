@@ -214,6 +214,50 @@ describe('createRouteCaseUseCase (T1 auto-routing)', () => {
     expect(engine.contexts).toHaveLength(1);
   });
 
+  it('evaluates ACTIVE rules in executionOrder so a later-created B wins after reorder ahead of A', async () => {
+    const earlier = fromDate(new Date('2026-01-01T00:00:00.000Z'));
+    const later = fromDate(new Date('2026-01-02T00:00:00.000Z'));
+    const ruleA = buildRule({
+      name: 'A',
+      now: earlier,
+      executionOrder: 1,
+      targetUserId: 'user-a',
+    });
+    const ruleB = buildRule({
+      name: 'B',
+      now: later,
+      executionOrder: 0,
+      targetUserId: 'user-b',
+    });
+    const engine = new ScriptedRoutingEngine([
+      { targetUserId: null, targetRoleId: null },
+      { targetUserId: null, targetRoleId: null },
+    ]);
+    const { routeCase } = buildUseCase(engine, [ruleA, ruleB]);
+
+    const result = await routeCase({ kase: buildCase(), ...ROUTE });
+
+    expect(result.assignedTo).toEqual({ type: 'USER', id: 'user-b' });
+    expect(engine.contexts).toHaveLength(1);
+  });
+
+  it('still prefers earlier created_at when executionOrder ties', async () => {
+    const earlier = fromDate(new Date('2026-01-01T00:00:00.000Z'));
+    const later = fromDate(new Date('2026-01-02T00:00:00.000Z'));
+    const ruleA = buildRule({ name: 'A', now: earlier, executionOrder: 0, targetUserId: 'user-a' });
+    const ruleB = buildRule({ name: 'B', now: later, executionOrder: 0, targetUserId: 'user-b' });
+    const engine = new ScriptedRoutingEngine([
+      { targetUserId: null, targetRoleId: null },
+      { targetUserId: null, targetRoleId: null },
+    ]);
+    const { routeCase } = buildUseCase(engine, [ruleB, ruleA]);
+
+    const result = await routeCase({ kase: buildCase(), ...ROUTE });
+
+    expect(result.assignedTo).toEqual({ type: 'USER', id: 'user-a' });
+    expect(engine.contexts).toHaveLength(1);
+  });
+
   it('records a REASSIGN_CASE audit row carrying the winning rule id, name and conditionsVersion', async () => {
     const engine = new ScriptedRoutingEngine([{ targetUserId: 'user-9', targetRoleId: null }]);
     const rule = buildRule({ name: 'high-risk-to-fraud-lead', conditionsVersion: 7 });
@@ -322,6 +366,33 @@ describe('createRouteCaseUseCase (T1 auto-routing)', () => {
     it('routes when a config exists but declares no autoRouting flag (absent != disabled)', async () => {
       const engine = new ScriptedRoutingEngine([{ targetUserId: 'user-9', targetRoleId: null }]);
       const { routeCase } = buildUseCase(engine, [buildRule()], buildFraudConfig({}));
+
+      const result = await routeCase({ kase: buildCase(), ...ROUTE });
+
+      expect(result.assignedTo).toEqual({ type: 'USER', id: 'user-9' });
+    });
+
+    it('routes when persisted featureFlags is null (legacy docs; missing != disabled)', async () => {
+      const seeded = buildFraudConfig({});
+      const legacy = OrganizationFraudConfig.rehydrate({
+        id: seeded.id,
+        organizationId: seeded.organizationId,
+        slaLowMinutes: seeded.slaLowMinutes,
+        slaMediumMinutes: seeded.slaMediumMinutes,
+        slaHighMinutes: seeded.slaHighMinutes,
+        slaCriticalMinutes: seeded.slaCriticalMinutes,
+        riskThresholdLow: seeded.riskThresholdLow,
+        riskThresholdMedium: seeded.riskThresholdMedium,
+        riskThresholdHigh: seeded.riskThresholdHigh,
+        riskThresholdCritical: seeded.riskThresholdCritical,
+        featureFlags: null as unknown as Record<string, boolean>,
+        outboundWebhookUrl: seeded.outboundWebhookUrl,
+        outboundWebhookSecret: seeded.outboundWebhookSecret,
+        createdAt: seeded.createdAt,
+        updatedAt: seeded.updatedAt,
+      });
+      const engine = new ScriptedRoutingEngine([{ targetUserId: 'user-9', targetRoleId: null }]);
+      const { routeCase } = buildUseCase(engine, [buildRule()], legacy);
 
       const result = await routeCase({ kase: buildCase(), ...ROUTE });
 

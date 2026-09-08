@@ -2,7 +2,8 @@ import type { AuthContext } from '../../../../shared/kernel/AuthContext.js';
 import { forbiddenCrossTenant } from '../../domain/errors/CaseManagementError.js';
 
 /**
- * Module-local PLATFORM_ADMIN guard for DLQ administration use cases (D1).
+ * Module-local PLATFORM_ADMIN guard for platform administration use cases
+ * (DLQ, scheduled-job force-run).
  *
  * A twin of `identity-access`'s `requirePlatformAdmin` — cross-module
  * `application` imports are rejected by eslint `boundaries/element-types`, so
@@ -15,6 +16,6 @@ import { forbiddenCrossTenant } from '../../domain/errors/CaseManagementError.js
  */
 export function requirePlatformAdmin(auth: AuthContext): void {
   if (auth.actorType !== 'PLATFORM_ADMIN') {
-    throw forbiddenCrossTenant('DLQ administration requires a platform administrator');
+    throw forbiddenCrossTenant('this operation requires a platform administrator');
   }
 }

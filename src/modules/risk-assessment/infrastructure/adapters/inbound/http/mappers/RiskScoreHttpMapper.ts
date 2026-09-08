@@ -9,6 +9,8 @@ export interface RiskScoreResponseDto {
   readonly ruleId: string;
   readonly name: string;
   readonly conditionsVersion: number;
+  /** Engine collect evidence passthrough — not validated as ScoringHit. */
+  readonly hits: readonly unknown[];
 }
 
 /** HTTP → domain. `rawPayload` may be present on the event; the use case strips it from engine context. */
@@ -26,5 +28,6 @@ export function toRiskScoreResponse(result: CalculateRiskScoreResult): RiskScore
     ruleId: result.ruleId,
     name: result.name,
     conditionsVersion: result.conditionsVersion,
+    hits: result.hits,
   };
 }

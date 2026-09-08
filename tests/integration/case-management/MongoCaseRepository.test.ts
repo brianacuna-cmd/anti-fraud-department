@@ -242,6 +242,22 @@ describe('MongoCaseRepository (integration, real replica-set Mongo)', () => {
     expect(page.items[0]?.id).toBe(oid('list-match'));
   });
 
+  it('list filters by customer_id equality when customerId is set', async () => {
+    await repository.save(buildCaseWithIdentifiers(oid('cust-a-case'), { customerId: 'cust-a' }));
+    await repository.save(buildCaseWithIdentifiers(oid('cust-b-case'), { customerId: 'cust-b' }));
+
+    const page = await repository.list({
+      organizationId: oid('org-1'),
+      customerId: 'cust-a',
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(page.total).toBe(1);
+    expect(page.items[0]?.id).toBe(oid('cust-a-case'));
+    expect(page.items[0]?.customerId).toBe('cust-a');
+  });
+
   describe('findByEntityIdentifiers (INV-013)', () => {
     it('devuelve los expedientes que comparten cualquiera de los identificadores', async () => {
       const withWallet = buildCaseWithIdentifiers(oid('case-w'), { bridgeWallet: '0xabc' });

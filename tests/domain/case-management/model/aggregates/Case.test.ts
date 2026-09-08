@@ -26,6 +26,7 @@ describe('Case.create', () => {
 
     expect(kase.status).toBe('OPEN');
     expect(kase.assignedTo).toBeNull();
+    expect(kase.agentBrief).toBeNull();
     expect(kase.dueDate).toBeNull();
     expect(kase.tags).toEqual([]);
     expect(kase.createdAt).toBe(NOW);
@@ -95,6 +96,18 @@ describe('Case.rehydrate', () => {
     expect(kase.assignedTo).toEqual({ type: 'USER', id: oid('user-1') });
     expect(kase.dueDate).toBe(LATER);
     expect(kase.idempotencyKey).toBe('idem-2');
+    expect(kase.agentBrief).toBeNull();
+  });
+});
+
+describe('Case#withAgentBrief', () => {
+  it('replaces the brief last-write-wins and leaves the original instance untouched', () => {
+    const kase = buildCase();
+    const briefed = kase.withAgentBrief('first look', LATER);
+    expect(briefed.agentBrief).toBe('first look');
+    expect(briefed.updatedAt).toBe(LATER);
+    expect(kase.agentBrief).toBeNull();
+    expect(briefed.withAgentBrief('replaced', LATER).agentBrief).toBe('replaced');
   });
 });
 
