@@ -17,6 +17,7 @@ import {
 } from './dto/routingRuleSchemas.js';
 import { toRoutingRuleResponse, toUpdateRoutingRuleFields } from './mappers/RoutingRuleHttpMapper.js';
 import type { createSimulateRoutingRuleUseCase } from '../../../../application/SimulateRoutingRule.js';
+import type { createDeleteRoutingRuleUseCase } from '../../../../application/DeleteRoutingRule.js';
 import { parseRequest } from './parseRequest.js';
 
 export interface RoutingRuleRouterDeps {
@@ -29,6 +30,7 @@ export interface RoutingRuleRouterDeps {
   readonly activateRoutingRule: ReturnType<typeof createActivateRoutingRuleUseCase>;
   readonly deactivateRoutingRule: ReturnType<typeof createDeactivateRoutingRuleUseCase>;
   readonly simulateRoutingRule: ReturnType<typeof createSimulateRoutingRuleUseCase>;
+  readonly deleteRoutingRule: ReturnType<typeof createDeleteRoutingRuleUseCase>;
 }
 
 /**
@@ -125,6 +127,13 @@ export function routingRuleRouter(deps: RoutingRuleRouterDeps): Router {
   router.post('/case-routing-rules/:id/deactivate', async (req, res) => {
     const auth = requireAuthContext(req);
     const rule = await deps.deactivateRoutingRule({ auth, ruleId: req.params.id! });
+    res.status(200).json(toRoutingRuleResponse(rule));
+  });
+
+  /* Soft delete: returns the rule, not 204 — the row still exists. */
+  router.delete('/case-routing-rules/:id', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const rule = await deps.deleteRoutingRule({ auth, ruleId: req.params.id! });
     res.status(200).json(toRoutingRuleResponse(rule));
   });
 

@@ -7,6 +7,8 @@ export type RiskAssessmentAuditAction =
   | 'SCORING_RULE_EVALUATION_FAILED'
   | 'CREATE_SCORING_RULE'
   | 'ACTIVATE_SCORING_RULE'
-  | 'SIMULATE_SCORING_RULE';
+  | 'SIMULATE_SCORING_RULE'
+  /** Soft delete: the rule leaves the list, the row stays for traceability. */
+  | 'DELETE_SCORING_RULE';
 
 export type RiskAssessmentAuditResource = 'rule';

@@ -30,20 +30,29 @@ export class MongoRiskScoringRuleRepository implements RiskScoringRuleRepository
     tx?: Transaction,
   ): Promise<readonly RiskScoringRule[]> {
     const documents = await this.collection
-      .find({ organization_id: new ObjectId(organizationId), status: 'ACTIVE' }, { session: toSession(tx) })
+      .find(
+        { organization_id: new ObjectId(organizationId), status: 'ACTIVE', deleted_at: null },
+        { session: toSession(tx) },
+      )
       .sort({ created_at: 1 })
       .toArray();
     return documents.map(toDomain);
   }
 
   async findById(id: RiskScoringRuleId, tx?: Transaction): Promise<RiskScoringRule | null> {
-    const document = await this.collection.findOne({ _id: new ObjectId(id) }, { session: toSession(tx) });
+    const document = await this.collection.findOne(
+      { _id: new ObjectId(id), deleted_at: null },
+      { session: toSession(tx) },
+    );
     return document ? toDomain(document) : null;
   }
 
   async listByOrganization(organizationId: string, tx?: Transaction): Promise<readonly RiskScoringRule[]> {
     const documents = await this.collection
-      .find({ organization_id: new ObjectId(organizationId) }, { session: toSession(tx) })
+      .find(
+        { organization_id: new ObjectId(organizationId), deleted_at: null },
+        { session: toSession(tx) },
+      )
       .sort({ created_at: 1 })
       .toArray();
     return documents.map(toDomain);

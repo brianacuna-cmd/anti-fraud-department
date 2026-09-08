@@ -19,6 +19,12 @@ export interface CaseRoutingRuleDocument {
   readonly target_user_id: string | null;
   readonly status: string;
   readonly execution_order?: number;
+  /**
+   * Optional because documents written before soft delete existed have no
+   * such key at all — the mapper's `?? null` is what makes those readable,
+   * and a required field here would make that fallback a lie.
+   */
+  readonly deleted_at?: Date | null;
   readonly created_at: Date;
   readonly updated_at: Date;
 }
