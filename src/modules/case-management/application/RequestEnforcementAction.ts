@@ -16,7 +16,7 @@ import { ApprovalRequest } from '../domain/model/aggregates/ApprovalRequest.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
 import { EnforcementAction } from '../domain/model/aggregates/EnforcementAction.js';
 import { createAnalystDecisionId } from '../domain/model/value-objects/AnalystDecisionId.js';
-import { createCaseId } from '../domain/model/value-objects/CaseId.js';
+import { createCaseId, type CaseId } from '../domain/model/value-objects/CaseId.js';
 import { createEnforcementActionType } from '../domain/model/value-objects/EnforcementActionType.js';
 import { assertAssigned } from '../domain/services/AssignmentGate.js';
 import { assertNotClosed } from '../domain/services/ClosedCaseGate.js';
@@ -189,7 +189,7 @@ async function openApproval(
   input: {
     enforcementAction: EnforcementAction;
     organizationId: string;
-    caseId: string;
+    caseId: CaseId;
     requesterId: string;
     now: ReturnType<Clock['now']>;
     tx: Parameters<NotificationSender['send']>[1];
@@ -214,6 +214,20 @@ async function openApproval(
     actionType: input.enforcementAction.actionType,
     tx: input.tx,
   });
+
+  // notification-read-state PR5 (R5/R6): exactly one ANALYST_NOTIFIED event
+  // per approval-triggering action, not one per approver.
+  const notifiedEvent = CaseTimelineEvent.create({
+    id: deps.generateTimelineEventId(),
+    caseId: input.caseId,
+    eventType: 'ANALYST_NOTIFIED',
+    previousValue: null,
+    newValue: 'APPROVAL_PENDING',
+    createdBy: input.requesterId,
+    createdAt: input.now,
+  });
+  await deps.timelineRecorder.record(notifiedEvent, input.tx);
+
   return approvalRequest;
 }
 

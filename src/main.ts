@@ -1261,10 +1261,12 @@ async function bootstrap(): Promise<void> {
     cases,
     notificationSender: caseManagementNotificationSender,
     assigneeDirectory,
+    timelineRecorder: caseTimelineRecorder,
     unitOfWork: caseManagementUnitOfWork,
     clock,
     outbox: outboxEvents,
     generateOutboxEventId,
+    generateTimelineEventId,
   });
   const recordedSweep = () =>
     recordAround(() => sweepSlaTracking(), {

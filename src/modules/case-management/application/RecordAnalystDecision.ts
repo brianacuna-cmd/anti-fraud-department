@@ -189,6 +189,22 @@ export function createRecordAnalystDecisionUseCase(deps: RecordAnalystDecisionDe
       });
       await deps.timelineRecorder.record(timelineEvent, tx);
 
+      // notification-read-state PR5 (R5/R6): exactly one ANALYST_NOTIFIED
+      // event per approval-triggering action (not one per approver), recorded
+      // AFTER DECISION_MADE so the decision is the first timeline entry.
+      if (approvalRequest !== null) {
+        const notifiedEvent = CaseTimelineEvent.create({
+          id: deps.generateTimelineEventId(),
+          caseId: existing.id,
+          eventType: 'ANALYST_NOTIFIED',
+          previousValue: null,
+          newValue: 'APPROVAL_PENDING',
+          createdBy: input.auth.userId,
+          createdAt: now,
+        });
+        await deps.timelineRecorder.record(notifiedEvent, tx);
+      }
+
       await deps.auditRecorder.record(
         {
           organizationId,

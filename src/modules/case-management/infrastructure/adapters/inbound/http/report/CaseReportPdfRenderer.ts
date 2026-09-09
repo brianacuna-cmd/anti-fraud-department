@@ -80,6 +80,7 @@ const LABELS: Readonly<Record<Translatable, string>> = {
   SNAPSHOT_REFRESHED: 'Datos del cliente actualizados',
   ENFORCEMENT_REQUESTED: 'Medida cautelar solicitada',
   AGENT_BRIEFING: 'Informe del agente',
+  ANALYST_NOTIFIED: 'Analista notificado',
   // Decision and closure
   FRAUD_CONFIRMED: 'Fraude confirmado',
   FALSE_POSITIVE: 'Falso positivo',

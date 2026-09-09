@@ -11,10 +11,12 @@ import { InMemoryCaseSlaTrackingRepository } from '../../../helpers/case-managem
 import { InMemoryCaseManagementNotificationSender } from '../../../helpers/case-management/InMemoryCaseManagementNotificationSender.js';
 import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
 import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
+import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
+import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import type { OutboxEvent } from '../../../../src/shared/outbox/OutboxEvent.js';
 import type { UnitOfWork } from '../../../../src/modules/case-management/domain/ports/UnitOfWork.js';
 
@@ -59,16 +61,19 @@ function sweepDeps(overrides: {
   assigneeDirectory?: InMemoryAssigneeDirectory;
   unitOfWork?: UnitOfWork;
   outbox: InMemoryOutboxEventRepository;
+  timelineRecorder?: InMemoryTimelineRecorder;
 }) {
   return {
     cases: overrides.cases,
     slaTracking: overrides.slaTracking,
     notificationSender: overrides.notificationSender,
     assigneeDirectory: overrides.assigneeDirectory ?? new InMemoryAssigneeDirectory(),
+    timelineRecorder: overrides.timelineRecorder ?? new InMemoryTimelineRecorder(),
     unitOfWork: overrides.unitOfWork ?? new PassthroughUnitOfWork(),
     clock: new FixedClock(NOW),
     outbox: overrides.outbox,
     generateOutboxEventId,
+    generateTimelineEventId,
   };
 }
 
@@ -78,10 +83,11 @@ function buildUseCase() {
   const notificationSender = new InMemoryCaseManagementNotificationSender();
   const assigneeDirectory = new InMemoryAssigneeDirectory();
   const outbox = new InMemoryOutboxEventRepository();
+  const timelineRecorder = new InMemoryTimelineRecorder();
   const sweepSlaTracking = createSweepSlaTrackingUseCase(
-    sweepDeps({ cases, slaTracking, notificationSender, assigneeDirectory, outbox }),
+    sweepDeps({ cases, slaTracking, notificationSender, assigneeDirectory, outbox, timelineRecorder }),
   );
-  return { sweepSlaTracking, cases, slaTracking, notificationSender, assigneeDirectory, outbox };
+  return { sweepSlaTracking, cases, slaTracking, notificationSender, assigneeDirectory, outbox, timelineRecorder };
 }
 
 function expectSlaHopOutbox(
@@ -199,6 +205,21 @@ describe('createSweepSlaTrackingUseCase', () => {
     });
     const row = await slaTracking.findByCaseId(createCaseId(oid('case-1')));
     expect(row?.hasNotified('WARNING')).toBe(true);
+  });
+
+  it('records one ANALYST_NOTIFIED timeline event with a null actor for the background sweep (PR5, R5/R6)', async () => {
+    const { sweepSlaTracking, cases, slaTracking, timelineRecorder } = buildUseCase();
+    const assignee = createAssignedTo('USER', oid('analyst-1'));
+    await cases.save(buildCase(oid('case-1'), assignee));
+    await slaTracking.save(buildTracking(oid('tracking-1'), oid('case-1'), PAST_DUE));
+
+    await sweepSlaTracking();
+
+    const notifiedEvents = timelineRecorder.all().filter((event) => event.eventType === 'ANALYST_NOTIFIED');
+    expect(notifiedEvents).toHaveLength(1);
+    expect(notifiedEvents[0]?.caseId).toBe(oid('case-1'));
+    expect(notifiedEvents[0]?.newValue).toBe('SLA_DUE_SOON');
+    expect(notifiedEvents[0]?.createdBy).toBeNull();
   });
 
   it('re-notifies when an already-notified WARNING row advances into BREACHED (PR1: per-status re-notify)', async () => {

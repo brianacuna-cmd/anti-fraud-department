@@ -187,6 +187,33 @@ describe('RequestEnforcementAction (ENF-001)', () => {
     expect(timelineRecorder.all().map((e) => e.eventType)).toContain('ENFORCEMENT_REQUESTED');
   });
 
+  it('records exactly one ANALYST_NOTIFIED timeline event per action, even when 2 approvers are notified (PR5, R5)', async () => {
+    const { cases, decisions, assigneeDirectory, notificationSender, timelineRecorder, requestEnforcement } =
+      setup();
+    await cases.save(buildCase());
+    await decisions.save(buildDecision());
+    assigneeDirectory.allowRoleRecipients(ORG_1, 'SUPERVISOR', [SUPERVISOR_ID, oid('supervisor-2')]);
+
+    await requestEnforcement({ auth: ANALYST, caseId: CASE_ID, ...VALID });
+
+    expect(notificationSender.all()).toHaveLength(2);
+    const notifiedEvents = timelineRecorder.all().filter((event) => event.eventType === 'ANALYST_NOTIFIED');
+    expect(notifiedEvents).toHaveLength(1);
+    expect(notifiedEvents[0]?.caseId).toBe(CASE_ID);
+    expect(notifiedEvents[0]?.newValue).toBe('APPROVAL_PENDING');
+    expect(notifiedEvents[0]?.createdBy).toBe(ANALYST_ID);
+  });
+
+  it('does not record ANALYST_NOTIFIED for REVIEW (no approval is opened)', async () => {
+    const { cases, decisions, timelineRecorder, requestEnforcement } = setup();
+    await cases.save(buildCase());
+    await decisions.save(buildDecision());
+
+    await requestEnforcement({ auth: ANALYST, caseId: CASE_ID, ...VALID, actionType: 'REVIEW' });
+
+    expect(timelineRecorder.all().filter((event) => event.eventType === 'ANALYST_NOTIFIED')).toHaveLength(0);
+  });
+
   it('audita la solicitud aparte del dictamen', async () => {
     const { cases, decisions, auditRecorder, requestEnforcement } = setup();
     await cases.save(buildCase());
