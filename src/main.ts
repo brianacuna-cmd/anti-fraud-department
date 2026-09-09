@@ -101,7 +101,10 @@ import type { WebSocket } from 'ws';
 import { MongoUnitOfWork as NotificationsMongoUnitOfWork } from './modules/notifications/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { createGetNotificationPreferencesUseCase } from './modules/notifications/application/GetNotificationPreferences.js';
 import { createSetNotificationPreferenceUseCase } from './modules/notifications/application/SetNotificationPreference.js';
+import { createListNotificationsUseCase } from './modules/notifications/application/ListNotifications.js';
+import { createMarkNotificationReadUseCase } from './modules/notifications/application/MarkNotificationRead.js';
 import { notificationPreferenceRouter } from './modules/notifications/infrastructure/adapters/inbound/http/notificationPreferenceRouter.js';
+import { notificationRouter } from './modules/notifications/infrastructure/adapters/inbound/http/notificationRouter.js';
 import { notificationsErrorStatus } from './modules/notifications/infrastructure/adapters/inbound/http/errorStatus.js';
 import { MongoCaseRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRepository.js';
 import { MongoTimelineRecorder } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoTimelineRecorder.js';
@@ -634,6 +637,11 @@ async function bootstrap(): Promise<void> {
   // twin of `caseManagementAuditRecorderAdapter`), so notifications commit
   // atomically with the triggering case-management transaction.
   const notifications = new MongoNotificationRepository(db);
+  // PR4: self-scoped inbox list + mark-read use cases (R3/R4). Both are
+  // read/single-document-write use cases — no `withTransaction` needed
+  // (design decision: MarkNotificationRead takes a simple `tx?` passthrough).
+  const listNotifications = createListNotificationsUseCase({ repository: notifications });
+  const markNotificationRead = createMarkNotificationReadUseCase({ repository: notifications, clock });
   const notificationEmailSender = createNotificationEmailSenderAdapter(
     emailSender,
     userRepositoryFactory,
@@ -2071,6 +2079,9 @@ async function bootstrap(): Promise<void> {
   // router — `notifications` routes are USER-tier self-service and rely on the
   // `authContextMiddleware` above to resolve the caller's AuthContext.
   identityAccessRouter.use(notificationPreferenceRouter({ getNotificationPreferences, setNotificationPreference }));
+  // notification-read-state PR4: mounted on the SAME authenticated `/api/v1`
+  // router — inbox routes are USER-tier self-service (R3/R4).
+  identityAccessRouter.use(notificationRouter({ listNotifications, markNotificationRead }));
   // case-management Slice 5 + T2: cases + organization fraud config mounted
   // on the SAME authenticated `/api/v1` router — rely on
   // `authContextMiddleware` above to resolve the caller's AuthContext.
