@@ -155,4 +155,20 @@ describe('WebSocketGateway', () => {
     expect(registry.socketsFor('org1', 'user3')).toEqual([]);
     expect(() => gateway.deliverTo('org1', 'user3', { hello: 'world' })).not.toThrow();
   });
+
+  it('close() closes every currently-connected socket (graceful shutdown)', async () => {
+    const authenticator = fakeAuthenticator({ 'token-d': { organizationId: 'org1', userId: 'user4' } });
+    registry = new ConnectionRegistry<WebSocket>();
+    gateway = new WebSocketGateway({ server, registry, authenticator });
+    gateway.attach();
+
+    const port = await listen(server);
+    const ws = connect(port, 'token-d');
+    sockets.push(ws);
+    await waitOpen(ws);
+
+    const closed = new Promise<void>((resolve) => ws.once('close', () => resolve()));
+    gateway.close();
+    await closed;
+  });
 });

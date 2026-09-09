@@ -79,6 +79,23 @@ services:
       retries: 12
       start_period: 20s
 
+  # Realtime WebSocket gateway fan-out (realtime-ws-gateway design §5):
+  # every app instance publishes/subscribes here so a notification pushed on
+  # one instance reaches a matching socket connected to another.
+  redis:
+    image: redis:7-alpine
+    container_name: anti-fraud-department-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   # Browser UI for the broker. Kafka itself has no HTTP interface on 9092 —
   # that port is the binary protocol used by producers/consumers.
   kafka-ui:
@@ -98,3 +115,5 @@ volumes:
     name: anti-fraud-department-mongo-data
   clamav_db:
     name: anti-fraud-department-clamav-db
+  redis_data:
+    name: anti-fraud-department-redis-data
