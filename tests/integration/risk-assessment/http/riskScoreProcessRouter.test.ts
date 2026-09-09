@@ -190,6 +190,8 @@ function buildApp(
     auditRecorder: caseAuditRecorder,
     routeCase,
     calculateSla,
+    assigneeDirectory: new InMemoryAssigneeDirectory(),
+    notificationSender: new InMemoryCaseManagementNotificationSender(),
   });
   const getOrganizationFraudConfig = createGetOrganizationFraudConfigUseCase({
     repository: fraudConfig,

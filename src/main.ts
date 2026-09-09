@@ -739,6 +739,8 @@ async function bootstrap(): Promise<void> {
     auditRecorder: caseManagementAuditRecorder,
     routeCase,
     calculateSla,
+    assigneeDirectory,
+    notificationSender: caseManagementNotificationSender,
     outbox: outboxEvents,
     generateOutboxEventId,
   });

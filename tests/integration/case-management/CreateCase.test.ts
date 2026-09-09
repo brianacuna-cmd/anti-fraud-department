@@ -19,7 +19,10 @@ import { MongoOrganizationFraudConfigRepository } from '../../../src/modules/cas
 import { MongoCaseSlaTrackingRepository } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseSlaTrackingRepository.js';
 import { ZenRoutingEngine } from '../../../src/modules/case-management/infrastructure/adapters/outbound/zen/ZenRoutingEngine.js';
 import { AllowAllAssigneeDirectory } from '../../helpers/case-management/AllowAllAssigneeDirectory.js';
+import { InMemoryAssigneeDirectory } from '../../helpers/case-management/InMemoryAssigneeDirectory.js';
+import { InMemoryCaseManagementNotificationSender } from '../../helpers/case-management/InMemoryCaseManagementNotificationSender.js';
 import type { AuditEvent, AuditRecorder } from '../../../src/modules/case-management/domain/ports/AuditRecorder.js';
+import type { NotificationSender } from '../../../src/modules/case-management/domain/ports/NotificationSender.js';
 import type { Transaction } from '../../../src/modules/case-management/domain/ports/UnitOfWork.js';
 import { SystemClock } from '../../../src/shared/time/SystemClock.js';
 import { createAuthContext } from '../../../src/shared/kernel/AuthContext.js';
@@ -30,6 +33,12 @@ import { generateOutboxEventId } from '../../../src/shared/outbox/OutboxEventId.
 import { MongoOutboxEventRepository } from '../../../src/shared/outbox/mongo/MongoOutboxEventRepository.js';
 import type { OutboxEvent } from '../../../src/shared/outbox/OutboxEvent.js';
 import type { OutboxEventRepository } from '../../../src/shared/outbox/OutboxEventRepository.js';
+import { createCaseManagementNotificationSenderAdapter } from '../../../src/composition/caseManagementNotificationSenderAdapter.js';
+import { createSendNotificationUseCase } from '../../../src/modules/notifications/application/SendNotification.js';
+import { MongoNotificationRepository } from '../../../src/modules/notifications/infrastructure/adapters/outbound/mongo/MongoNotificationRepository.js';
+import { MongoNotificationPreferenceRepository } from '../../../src/modules/notifications/infrastructure/adapters/outbound/mongo/MongoNotificationPreferenceRepository.js';
+import { createNotificationId } from '../../../src/modules/notifications/domain/model/value-objects/NotificationId.js';
+import type { NotificationDocument } from '../../../src/modules/notifications/infrastructure/adapters/outbound/mongo/documents/NotificationDocument.js';
 
 jest.setTimeout(120_000);
 
@@ -83,6 +92,7 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
     await db.collection('organization_fraud_config').deleteMany({});
     await db.collection('case_sla_tracking').deleteMany({});
     await db.collection('outbox_events').deleteMany({});
+    await db.collection('notifications').deleteMany({});
   });
 
   async function seedFraudConfig(overrides: Record<string, unknown> = {}): Promise<void> {
@@ -162,6 +172,10 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
   function buildUseCase(
     auditRecorder: AuditRecorder,
     outbox: OutboxEventRepository = new MongoOutboxEventRepository(db),
+    options: {
+      assigneeDirectory?: AllowAllAssigneeDirectory | InMemoryAssigneeDirectory;
+      notificationSender?: NotificationSender;
+    } = {},
   ) {
     const clock = new SystemClock();
     const fraudConfig = new MongoOrganizationFraudConfigRepository(db);
@@ -193,6 +207,8 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
       auditRecorder,
       routeCase,
       calculateSla,
+      assigneeDirectory: options.assigneeDirectory ?? new AllowAllAssigneeDirectory(),
+      notificationSender: options.notificationSender ?? new InMemoryCaseManagementNotificationSender(),
       outbox,
       generateOutboxEventId,
     });
@@ -472,6 +488,84 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
 
       expect(kase.assignedTo).toBeNull();
       expect(await db.collection('case_timeline').countDocuments({ event_type: 'ASSIGNED' })).toBe(0);
+    });
+  });
+
+  describe('CRITICAL_RISK notification (R4 transactionality)', () => {
+    const SUPERVISOR = oid('supervisor-1');
+
+    it('commits the case, CRITICAL_RISK notification row, and ANALYST_NOTIFIED event atomically on the happy path', async () => {
+      await seedFraudConfig();
+      const assigneeDirectory = new InMemoryAssigneeDirectory();
+      assigneeDirectory.allowRoleRecipients(oid('org-1'), 'SUPERVISOR', [SUPERVISOR]);
+      const notifications = new MongoNotificationRepository(db);
+      const preferences = new MongoNotificationPreferenceRepository(db);
+      const sendNotification = createSendNotificationUseCase({
+        notifications,
+        preferences,
+        clock: new SystemClock(),
+        generateNotificationId: () => createNotificationId(oid('notification-1')),
+      });
+      const notificationSender = createCaseManagementNotificationSenderAdapter(sendNotification);
+      const createCase = buildUseCase(realAuditRecorder(), undefined, { assigneeDirectory, notificationSender });
+
+      const kase = await createCase({
+        auth: ANALYST,
+        customerId: 'customer-1',
+        riskScore: 95,
+        priority: 'CRITICAL',
+      });
+
+      const notificationRows = await db.collection('notifications').find({}).toArray();
+      expect(notificationRows).toHaveLength(1);
+      expect(notificationRows[0]?.alert_type).toBe('CRITICAL_RISK');
+      expect(notificationRows[0]?.recipient_user_id.toString()).toBe(SUPERVISOR);
+
+      const timelineRows = await db
+        .collection('case_timeline')
+        .find({ case_id: new ObjectId(kase.id) })
+        .toArray();
+      expect(timelineRows.map((row) => row.event_type)).toEqual(['CASE_CREATED', 'ANALYST_NOTIFIED']);
+    });
+
+    it('rolls back the Case, timeline, and CRITICAL_RISK notification when the notification save fails mid-transaction', async () => {
+      await seedFraudConfig();
+      const assigneeDirectory = new InMemoryAssigneeDirectory();
+      assigneeDirectory.allowRoleRecipients(oid('org-1'), 'SUPERVISOR', [SUPERVISOR]);
+
+      // A pre-existing row occupying the id the fixed generator below re-mints,
+      // forcing a genuine Mongo E11000 duplicate-key failure inside the tx —
+      // mirrors ReassignCase.rollback.mongo.test.ts.
+      const collidingId = createNotificationId(oid('notification-collision'));
+      await db.collection<NotificationDocument>('notifications').insertOne({
+        _id: new ObjectId(collidingId),
+        organization_id: new ObjectId(oid('org-1')),
+        recipient_user_id: new ObjectId(SUPERVISOR),
+        alert_type: 'CRITICAL_RISK',
+        channel: 'EMAIL',
+        context: {},
+        created_at: new Date(),
+      });
+
+      const notifications = new MongoNotificationRepository(db);
+      const preferences = new MongoNotificationPreferenceRepository(db);
+      const sendNotification = createSendNotificationUseCase({
+        notifications,
+        preferences,
+        clock: new SystemClock(),
+        generateNotificationId: () => collidingId,
+      });
+      const notificationSender = createCaseManagementNotificationSenderAdapter(sendNotification);
+      const createCase = buildUseCase(realAuditRecorder(), undefined, { assigneeDirectory, notificationSender });
+
+      await expect(
+        createCase({ auth: ANALYST, customerId: 'customer-1', riskScore: 95, priority: 'CRITICAL' }),
+      ).rejects.toThrow();
+
+      expect(await db.collection('cases').countDocuments({})).toBe(0);
+      expect(await db.collection('case_timeline').countDocuments({ event_type: 'ANALYST_NOTIFIED' })).toBe(0);
+      // only the pre-seeded colliding row remains
+      expect(await db.collection('notifications').countDocuments({})).toBe(1);
     });
   });
 });

@@ -173,6 +173,8 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
       auditRecorder,
       routeCase,
       calculateSla,
+      assigneeDirectory: new InMemoryAssigneeDirectory(),
+      notificationSender: new InMemoryCaseManagementNotificationSender(),
     }),
     reassignCase: createReassignCaseUseCase({
       cases,
