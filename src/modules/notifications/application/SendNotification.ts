@@ -1,6 +1,7 @@
 import type { NotificationRepository } from '../domain/ports/NotificationRepository.js';
 import type { NotificationPreferenceRepository } from '../domain/ports/NotificationPreferenceRepository.js';
 import type { NotificationEmailSender } from '../domain/ports/NotificationEmailSender.js';
+import type { NotificationRealtimePusher } from '../domain/ports/NotificationRealtimePusher.js';
 import type { Transaction } from '../domain/ports/UnitOfWork.js';
 import type { Clock } from '../../../shared/time/Clock.js';
 import type { OrganizationId } from '../domain/model/value-objects/OrganizationId.js';
@@ -29,7 +30,21 @@ export interface SendNotificationDeps {
    */
   readonly emailSender?: NotificationEmailSender;
   readonly onEmailError?: (error: unknown) => void;
+  /**
+   * Optional realtime WS transport (realtime-ws-gateway design §2). When
+   * wired AND the alert type is in the v1 realtime scope
+   * (`REALTIME_ALERT_TYPES`), an enabled notification is ALSO pushed
+   * best-effort AFTER the in-app persist, independently of `emailSender`.
+   * A push failure is swallowed (reported via `onRealtimeError`) so it
+   * never rolls back the caller's transaction — the in-app row remains the
+   * source of truth.
+   */
+  readonly realtimePusher?: NotificationRealtimePusher;
+  readonly onRealtimeError?: (error: unknown) => void;
 }
+
+/** Alert types that trigger a realtime push in v1 (spec Requirement 3). */
+const REALTIME_ALERT_TYPES: ReadonlySet<AlertType> = new Set<AlertType>(['CASE_ASSIGNED', 'SLA_DUE_SOON', 'CRITICAL_RISK']);
 
 /**
  * Persists an in-app `Notification` row for a machine-to-machine trigger
@@ -79,6 +94,19 @@ export function createSendNotificationUseCase(deps: SendNotificationDeps) {
         });
       } catch (error) {
         deps.onEmailError?.(error);
+      }
+    }
+
+    if (deps.realtimePusher && REALTIME_ALERT_TYPES.has(input.alertType)) {
+      try {
+        await deps.realtimePusher.send({
+          organizationId: input.organizationId,
+          recipientUserId: input.recipientUserId,
+          alertType: input.alertType,
+          context: input.context,
+        });
+      } catch (error) {
+        deps.onRealtimeError?.(error);
       }
     }
   };
