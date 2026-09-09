@@ -121,10 +121,13 @@ describe('createReassignCaseUseCase (manual reassign)', () => {
     expect(cases.all()[0]?.assignedTo).toEqual({ type: 'USER', id: oid('analyst-2') });
 
     const events = timelineRecorder.all();
-    expect(events).toHaveLength(1);
-    expect(events[0]?.eventType).toBe('ASSIGNED');
-    expect(events[0]?.newValue).toBe(oid('analyst-2'));
-    expect(events[0]?.createdBy).toBe(oid('analyst-1'));
+    expect(events).toHaveLength(2);
+    const assignedEvent = events.find((event) => event.eventType === 'ASSIGNED');
+    expect(assignedEvent?.newValue).toBe(oid('analyst-2'));
+    expect(assignedEvent?.createdBy).toBe(oid('analyst-1'));
+    const notifiedEvent = events.find((event) => event.eventType === 'ANALYST_NOTIFIED');
+    expect(notifiedEvent?.newValue).toBe('CASE_ASSIGNED');
+    expect(notifiedEvent?.createdBy).toBe(oid('analyst-1'));
 
     const audits = auditRecorder.all();
     expect(audits).toHaveLength(1);
@@ -191,6 +194,29 @@ describe('createReassignCaseUseCase (manual reassign)', () => {
       [oid('analyst-2'), oid('analyst-3')].sort(),
     );
     expect(requests.every((request) => request.alertType === 'CASE_ASSIGNED')).toBe(true);
+  });
+
+  it('records exactly one ANALYST_NOTIFIED timeline event per action, even when 2 recipients are notified (PR5, R5)', async () => {
+    const target = createAssignedTo('ROLE', oid('role-1'));
+    const { reassignCase, notificationSender, assigneeDirectory, timelineRecorder } = buildUseCase(
+      buildCase(),
+      [target],
+    );
+    assigneeDirectory.allowRoleRecipients(ORG_1, oid('role-1'), [oid('analyst-2'), oid('analyst-3')]);
+
+    await reassignCase({
+      auth: ANALYST,
+      caseId: CASE_ID,
+      assignedToType: 'ROLE',
+      assignedToId: oid('role-1'),
+    });
+
+    expect(notificationSender.all()).toHaveLength(2);
+    const notifiedEvents = timelineRecorder.all().filter((event) => event.eventType === 'ANALYST_NOTIFIED');
+    expect(notifiedEvents).toHaveLength(1);
+    expect(notifiedEvents[0]?.caseId).toBe(CASE_ID);
+    expect(notifiedEvents[0]?.newValue).toBe('CASE_ASSIGNED');
+    expect(notifiedEvents[0]?.createdBy).toBe(oid('analyst-1'));
   });
 
   it('returns CASE_NOT_FOUND when the case is soft-deleted', async () => {
