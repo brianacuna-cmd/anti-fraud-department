@@ -192,6 +192,8 @@ function buildApp(actorPerRequest: () => AuthContext, engine: RiskScoringEngine,
       auditRecorder: caseAuditRecorder,
       routeCase,
       calculateSla,
+      assigneeDirectory: new InMemoryAssigneeDirectory(),
+      notificationSender: new InMemoryCaseManagementNotificationSender(),
     }),
     reassignCase: createReassignCaseUseCase({
       cases,

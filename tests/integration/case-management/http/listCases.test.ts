@@ -119,6 +119,8 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
       auditRecorder,
       routeCase,
       calculateSla,
+      assigneeDirectory: new InMemoryAssigneeDirectory(),
+      notificationSender: new InMemoryCaseManagementNotificationSender(),
     }),
     reassignCase: createReassignCaseUseCase({
       cases,

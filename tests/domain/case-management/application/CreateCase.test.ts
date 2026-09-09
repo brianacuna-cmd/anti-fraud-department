@@ -4,6 +4,8 @@ import { createCalculateSlaUseCase } from '../../../../src/modules/case-manageme
 import { createRouteCaseUseCase } from '../../../../src/modules/case-management/application/RouteCase.js';
 import type { RoutingEngine, RoutingEvaluation } from '../../../../src/modules/case-management/domain/ports/RoutingEngine.js';
 import { OrganizationFraudConfig } from '../../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
+import { CaseRoutingRule } from '../../../../src/modules/case-management/domain/model/aggregates/CaseRoutingRule.js';
+import { generateCaseRoutingRuleId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseRoutingRuleId.js';
 import { generateCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { generateCaseSlaTrackingId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
@@ -15,6 +17,8 @@ import { InMemoryCaseRoutingRuleRepository } from '../../../helpers/case-managem
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
 import { InMemoryCaseSlaTrackingRepository } from '../../../helpers/case-management/InMemoryCaseSlaTrackingRepository.js';
 import { AllowAllAssigneeDirectory } from '../../../helpers/case-management/AllowAllAssigneeDirectory.js';
+import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMemoryAssigneeDirectory.js';
+import { InMemoryCaseManagementNotificationSender } from '../../../helpers/case-management/InMemoryCaseManagementNotificationSender.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate, toDate } from '../../../../src/shared/time/Instant.js';
@@ -32,6 +36,26 @@ class NoMatchRoutingEngine implements RoutingEngine {
   async evaluate(): Promise<RoutingEvaluation> {
     return { targetUserId: null, targetRoleId: null };
   }
+}
+
+/** Always routes to a fixed target — used to force a resolved `assignedTo` before the CRITICAL_RISK check. */
+class FixedRoutingEngine implements RoutingEngine {
+  constructor(private readonly evaluation: RoutingEvaluation) {}
+  async evaluate(): Promise<RoutingEvaluation> {
+    return this.evaluation;
+  }
+}
+
+function buildActiveRule(): CaseRoutingRule {
+  return CaseRoutingRule.create({
+    id: generateCaseRoutingRuleId(),
+    organizationId: oid('org-1'),
+    name: 'rule',
+    conditions: {},
+    conditionsVersion: 1,
+    status: 'ACTIVE',
+    now: NOW,
+  });
 }
 
 function seedFraudConfig(
@@ -66,6 +90,9 @@ function buildCreateCase(options: {
   slaMinutes?: { low: number; medium: number; high: number; critical: number };
   outbox?: OutboxEventRepository;
   generateOutboxEventId?: () => OutboxEventId;
+  assigneeDirectory?: InMemoryAssigneeDirectory;
+  routingEngine?: RoutingEngine;
+  routingRule?: CaseRoutingRule;
 } = {}) {
   const cases = new InMemoryCaseRepository();
   const timelineRecorder = new InMemoryTimelineRecorder();
@@ -74,15 +101,20 @@ function buildCreateCase(options: {
   const fraudConfig = new InMemoryOrganizationFraudConfigRepository();
   const slaTracking = new InMemoryCaseSlaTrackingRepository();
   const clock = new FixedClock(NOW);
+  const assigneeDirectory = options.assigneeDirectory ?? new InMemoryAssigneeDirectory();
+  const notificationSender = new InMemoryCaseManagementNotificationSender();
 
   if (options.seedConfig !== false) {
     seedFraudConfig(fraudConfig, options.slaMinutes);
+  }
+  if (options.routingRule !== undefined) {
+    routingRules.add(options.routingRule);
   }
 
   const routeCase = createRouteCaseUseCase({
     cases,
     routingRules,
-    routingEngine: new NoMatchRoutingEngine(),
+    routingEngine: options.routingEngine ?? new NoMatchRoutingEngine(),
     timelineRecorder,
     auditRecorder,
     fraudConfig,
@@ -108,11 +140,13 @@ function buildCreateCase(options: {
     auditRecorder,
     routeCase,
     calculateSla,
+    assigneeDirectory,
+    notificationSender,
     outbox: options.outbox,
     generateOutboxEventId: options.generateOutboxEventId,
   });
 
-  return { createCase, cases, slaTracking, timelineRecorder, auditRecorder };
+  return { createCase, cases, slaTracking, timelineRecorder, auditRecorder, assigneeDirectory, notificationSender };
 }
 
 describe('createCreateCaseUseCase (T2 SLA after RouteCase)', () => {
@@ -291,6 +325,8 @@ describe('createCreateCaseUseCase idempotent short-circuit (D2/D3)', () => {
       auditRecorder,
       routeCase,
       calculateSla,
+      assigneeDirectory: new InMemoryAssigneeDirectory(),
+      notificationSender: new InMemoryCaseManagementNotificationSender(),
     });
 
     const orgOneAuth = ANALYST;
@@ -425,5 +461,126 @@ describe('createCreateCaseUseCase case.created outbox', () => {
       priority: 'LOW',
     });
     expect(onlyOutbox.all()).toHaveLength(0);
+  });
+});
+
+describe('createCreateCaseUseCase CRITICAL_RISK notification (R1-R6)', () => {
+  it('sends CRITICAL_RISK to a USER assignee and records exactly one ANALYST_NOTIFIED event', async () => {
+    const { createCase, timelineRecorder, notificationSender } = buildCreateCase({
+      routingRule: buildActiveRule(),
+      routingEngine: new FixedRoutingEngine({ targetUserId: oid('user-x'), targetRoleId: null }),
+    });
+
+    const kase = await createCase({ auth: ANALYST, customerId: 'customer-1', riskScore: 95, priority: 'CRITICAL' });
+
+    expect(kase.assignedTo).toEqual({ type: 'USER', id: oid('user-x') });
+    expect(notificationSender.all()).toEqual([
+      {
+        organizationId: oid('org-1'),
+        recipientUserId: oid('user-x'),
+        alertType: 'CRITICAL_RISK',
+        context: { caseId: kase.id, riskScore: kase.riskScore, priority: 'CRITICAL' },
+      },
+    ]);
+    expect(timelineRecorder.all().map((row) => row.eventType)).toEqual([
+      'CASE_CREATED',
+      'ASSIGNED',
+      'ANALYST_NOTIFIED',
+    ]);
+  });
+
+  it('fans out CRITICAL_RISK to SUPERVISOR recipients when the case is unassigned', async () => {
+    const assigneeDirectory = new InMemoryAssigneeDirectory();
+    assigneeDirectory.allowRoleRecipients(oid('org-1'), 'SUPERVISOR', [oid('sup-1'), oid('sup-2')]);
+    const { createCase, timelineRecorder, notificationSender } = buildCreateCase({ assigneeDirectory });
+
+    const kase = await createCase({ auth: ANALYST, customerId: 'customer-1', riskScore: 95, priority: 'CRITICAL' });
+
+    expect(kase.assignedTo).toBeNull();
+    expect(notificationSender.all().map((req) => req.recipientUserId).sort()).toEqual(
+      [oid('sup-1'), oid('sup-2')].sort(),
+    );
+    expect(notificationSender.all().every((req) => req.alertType === 'CRITICAL_RISK')).toBe(true);
+    expect(timelineRecorder.all().filter((row) => row.eventType === 'ANALYST_NOTIFIED')).toHaveLength(1);
+  });
+
+  it('fans out to SUPERVISOR recipients (not the raw role id) when auto-routed to a ROLE', async () => {
+    const assigneeDirectory = new InMemoryAssigneeDirectory();
+    assigneeDirectory.allowRoleRecipients(oid('org-1'), 'SUPERVISOR', [oid('sup-1')]);
+    const { createCase, notificationSender } = buildCreateCase({
+      assigneeDirectory,
+      routingRule: buildActiveRule(),
+      routingEngine: new FixedRoutingEngine({ targetUserId: null, targetRoleId: 'FRAUD_TEAM' }),
+    });
+
+    const kase = await createCase({ auth: ANALYST, customerId: 'customer-1', riskScore: 95, priority: 'CRITICAL' });
+
+    expect(kase.assignedTo).toEqual({ type: 'ROLE', id: 'FRAUD_TEAM' });
+    expect(notificationSender.all()).toEqual([
+      expect.objectContaining({ recipientUserId: oid('sup-1'), alertType: 'CRITICAL_RISK' }),
+    ]);
+  });
+
+  it('does not send CRITICAL_RISK or record ANALYST_NOTIFIED for non-CRITICAL priorities', async () => {
+    const { createCase, timelineRecorder, notificationSender } = buildCreateCase();
+
+    await createCase({ auth: ANALYST, customerId: 'customer-1', riskScore: 42, priority: 'HIGH' });
+
+    expect(notificationSender.all()).toHaveLength(0);
+    expect(timelineRecorder.all().map((row) => row.eventType)).toEqual(['CASE_CREATED']);
+  });
+
+  it('creates the case with no send and no ANALYST_NOTIFIED event when zero SUPERVISOR recipients resolve', async () => {
+    const { createCase, cases, timelineRecorder, notificationSender } = buildCreateCase();
+
+    const kase = await createCase({ auth: ANALYST, customerId: 'customer-1', riskScore: 95, priority: 'CRITICAL' });
+
+    expect(cases.all()).toHaveLength(1);
+    expect(kase.priority).toBe('CRITICAL');
+    expect(notificationSender.all()).toHaveLength(0);
+    expect(timelineRecorder.all().map((row) => row.eventType)).toEqual(['CASE_CREATED']);
+  });
+
+  it('dedupes duplicate SUPERVISOR recipients into a single send each', async () => {
+    const assigneeDirectory = new InMemoryAssigneeDirectory();
+    assigneeDirectory.allowRoleRecipients(oid('org-1'), 'SUPERVISOR', [oid('sup-1'), oid('sup-1'), oid('sup-2')]);
+    const { createCase, notificationSender } = buildCreateCase({ assigneeDirectory });
+
+    await createCase({ auth: ANALYST, customerId: 'customer-1', riskScore: 95, priority: 'CRITICAL' });
+
+    expect(notificationSender.all()).toHaveLength(2);
+  });
+
+  it('does not re-emit CRITICAL_RISK on a retried creation with the same idempotency key', async () => {
+    const { createCase, notificationSender, timelineRecorder } = buildCreateCase({
+      routingRule: buildActiveRule(),
+      routingEngine: new FixedRoutingEngine({ targetUserId: oid('user-x'), targetRoleId: null }),
+    });
+
+    const first = await createCase({
+      auth: ANALYST,
+      customerId: 'customer-1',
+      riskScore: 95,
+      priority: 'CRITICAL',
+      idempotencyKey: 'critical-retry',
+    });
+    expect(notificationSender.all()).toHaveLength(1);
+    const notifiedCountAfterFirst = timelineRecorder
+      .all()
+      .filter((row) => row.eventType === 'ANALYST_NOTIFIED').length;
+
+    const second = await createCase({
+      auth: ANALYST,
+      customerId: 'customer-1',
+      riskScore: 95,
+      priority: 'CRITICAL',
+      idempotencyKey: 'critical-retry',
+    });
+
+    expect(second.id).toBe(first.id);
+    expect(notificationSender.all()).toHaveLength(1);
+    expect(timelineRecorder.all().filter((row) => row.eventType === 'ANALYST_NOTIFIED')).toHaveLength(
+      notifiedCountAfterFirst,
+    );
   });
 });

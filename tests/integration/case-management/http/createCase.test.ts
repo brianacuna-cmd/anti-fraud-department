@@ -144,6 +144,8 @@ function buildApp(actorPerRequest: () => AuthContext, options: { seedFraudConfig
       auditRecorder,
       routeCase,
       calculateSla,
+      assigneeDirectory: new InMemoryAssigneeDirectory(),
+      notificationSender: new InMemoryCaseManagementNotificationSender(),
     }),
     reassignCase: createReassignCaseUseCase({
       cases,
