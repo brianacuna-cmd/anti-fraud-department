@@ -31,6 +31,13 @@ describe('Notification.create', () => {
     expect(notification.context).toEqual({ caseId: oid('case-1') });
     expect(notification.createdAt).toBe(NOW);
   });
+
+  it('defaults status to UNREAD and stamps updatedAt from now', () => {
+    const notification = Notification.create(baseInput());
+
+    expect(notification.status).toBe('UNREAD');
+    expect(notification.updatedAt).toBe(NOW);
+  });
 });
 
 describe('Notification.rehydrate', () => {
@@ -43,12 +50,41 @@ describe('Notification.rehydrate', () => {
       channel: 'EMAIL' as const,
       context: {},
       createdAt: NOW,
+      status: 'READ' as const,
+      updatedAt: NOW,
     };
 
     const notification = Notification.rehydrate(props);
 
     expect(notification.alertType).toBe('SLA_DUE_SOON');
     expect(notification.createdAt).toBe(NOW);
+    expect(notification.status).toBe('READ');
+    expect(notification.updatedAt).toBe(NOW);
+  });
+});
+
+describe('Notification.markRead', () => {
+  const LATER = fromDate(new Date('2026-01-02T00:00:00.000Z'));
+
+  it('transitions UNREAD to READ and returns a new instance with updated updatedAt', () => {
+    const notification = Notification.create(baseInput());
+
+    const marked = notification.markRead(LATER);
+
+    expect(marked).not.toBe(notification);
+    expect(marked.status).toBe('READ');
+    expect(marked.updatedAt).toBe(LATER);
+    expect(notification.status).toBe('UNREAD');
+    expect(notification.updatedAt).toBe(NOW);
+  });
+
+  it('is an idempotent no-op when already READ', () => {
+    const notification = Notification.create(baseInput()).markRead(LATER);
+
+    const markedAgain = notification.markRead(fromDate(new Date('2026-01-03T00:00:00.000Z')));
+
+    expect(markedAgain.status).toBe('READ');
+    expect(markedAgain.updatedAt).toBe(LATER);
   });
 });
 
@@ -70,6 +106,8 @@ describe('Notification immutability', () => {
       channel: 'EMAIL',
       context: { caseId: oid('case-1') },
       createdAt: NOW,
+      status: 'UNREAD',
+      updatedAt: NOW,
     });
   });
 });
