@@ -14,4 +14,13 @@ export interface NotificationDocument {
   readonly channel: string;
   readonly context: Record<string, unknown>;
   readonly created_at: Date;
+  /**
+   * Optional for tolerant reads of legacy rows written before this field
+   * existed (design D4) — `NotificationDocumentMapper.toDomain` defaults a
+   * missing value to `'UNREAD'`. Every row written from this point on always
+   * carries it.
+   */
+  readonly status?: string;
+  /** Same tolerant-read contract as `status` — missing defaults to `created_at`. */
+  readonly updated_at?: Date;
 }
