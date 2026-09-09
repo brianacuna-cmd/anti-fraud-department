@@ -4,6 +4,7 @@ import type { NotificationStatus } from '../model/value-objects/NotificationStat
 import type { OrganizationId } from '../model/value-objects/OrganizationId.js';
 import type { UserId } from '../model/value-objects/UserId.js';
 import type { Transaction } from './UnitOfWork.js';
+import type { Instant } from '../../../../shared/time/Instant.js';
 
 /** Optional filter/pagination for {@link NotificationRepository.findByRecipient}. */
 export interface FindByRecipientOptions {
@@ -41,4 +42,17 @@ export interface NotificationRepository {
 
   /** Persists the UNREAD → READ transition (R4). */
   markRead(notification: Notification, tx?: Transaction): Promise<void>;
+
+  /**
+   * Bulk UNREAD → READ transition, self-scoped to `(organizationId,
+   * recipientUserId)` (R6). Returns the count of rows actually flipped —
+   * already-READ rows, other recipients' rows, and other organizations'
+   * rows are left untouched.
+   */
+  markAllReadForRecipient(
+    organizationId: OrganizationId,
+    recipientUserId: UserId,
+    now: Instant,
+    tx?: Transaction,
+  ): Promise<number>;
 }

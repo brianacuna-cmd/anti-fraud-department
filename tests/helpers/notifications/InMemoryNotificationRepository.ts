@@ -7,6 +7,7 @@ import type {
   NotificationPage,
   NotificationRepository,
 } from '../../../src/modules/notifications/domain/ports/NotificationRepository.js';
+import type { Instant } from '../../../src/shared/time/Instant.js';
 
 /** In-memory `NotificationRepository` fake for application-layer unit tests. */
 export class InMemoryNotificationRepository implements NotificationRepository {
@@ -39,6 +40,17 @@ export class InMemoryNotificationRepository implements NotificationRepository {
     if (index >= 0) {
       this.rows[index] = notification;
     }
+  }
+
+  async markAllReadForRecipient(organizationId: OrganizationId, recipientUserId: UserId, now: Instant): Promise<number> {
+    let count = 0;
+    this.rows.forEach((row, index) => {
+      if (row.organizationId === organizationId && row.recipientUserId === recipientUserId && row.status === 'UNREAD') {
+        this.rows[index] = row.markRead(now);
+        count += 1;
+      }
+    });
+    return count;
   }
 
   all(): Notification[] {
