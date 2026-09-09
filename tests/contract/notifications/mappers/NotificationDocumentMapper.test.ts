@@ -30,6 +30,8 @@ describe('NotificationDocumentMapper round-trip', () => {
     expect(document.channel).toBe('EMAIL');
     expect(document.context).toEqual({ caseId: oid('case-1'), previousAssigneeId: null });
     expect(document.created_at).toEqual(toDate(NOW));
+    expect(document.status).toBe('UNREAD');
+    expect(document.updated_at).toEqual(toDate(NOW));
 
     const rehydrated = toDomain(document);
     expect(rehydrated.id).toBe(oid('notification-1'));
@@ -55,6 +57,27 @@ describe('NotificationDocumentMapper round-trip', () => {
     const domain = toDomain(document);
     expect(domain.alertType).toBe('SLA_DUE_SOON');
     expect(domain.context).toEqual({});
+    expect(domain.status).toBe('UNREAD');
+    expect(domain.updatedAt).toEqual(NOW);
+  });
+
+  it('reads a stored status/updated_at pair verbatim', () => {
+    const readAt = fromDate(new Date('2026-02-01T00:00:00.000Z'));
+    const document: NotificationDocument = {
+      _id: new ObjectId(oid('notification-4')),
+      organization_id: new ObjectId(oid('org-1')),
+      recipient_user_id: new ObjectId(oid('user-4')),
+      alert_type: 'CASE_ASSIGNED',
+      channel: 'EMAIL',
+      context: {},
+      created_at: toDate(NOW),
+      status: 'READ',
+      updated_at: toDate(readAt),
+    };
+
+    const domain = toDomain(document);
+    expect(domain.status).toBe('READ');
+    expect(domain.updatedAt).toEqual(readAt);
   });
 
   it('normalizes a legacy Spanish alert_type column to the English domain value', () => {

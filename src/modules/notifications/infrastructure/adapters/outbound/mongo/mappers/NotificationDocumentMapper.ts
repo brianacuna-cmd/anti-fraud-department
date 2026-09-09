@@ -6,9 +6,14 @@ import { createOrganizationId } from '../../../../../domain/model/value-objects/
 import { createUserId } from '../../../../../domain/model/value-objects/UserId.js';
 import { createAlertType } from '../../../../../domain/model/value-objects/AlertType.js';
 import { createNotificationChannel } from '../../../../../domain/model/value-objects/NotificationChannel.js';
+import { createNotificationStatus } from '../../../../../domain/model/value-objects/NotificationStatus.js';
 import type { NotificationDocument } from '../documents/NotificationDocument.js';
 
-/** snake_case (Mongo) -> camelCase (domain). */
+/**
+ * snake_case (Mongo) -> camelCase (domain). Tolerant read (design D4): a
+ * legacy row written before `status`/`updated_at` existed defaults to
+ * `UNREAD` and reuses `created_at` — no data migration is required.
+ */
 export function toDomain(document: NotificationDocument): Notification {
   return Notification.rehydrate({
     id: createNotificationId(document._id.toString()),
@@ -18,13 +23,8 @@ export function toDomain(document: NotificationDocument): Notification {
     channel: createNotificationChannel(document.channel),
     context: document.context,
     createdAt: fromDate(document.created_at),
-    // `NotificationDocument` does not persist `status`/`updated_at` yet
-    // (design D3/D4, persistence-only slice) — every currently stored row
-    // is effectively UNREAD with no separate update timestamp, so this
-    // defaults exactly like the eventual tolerant-read mapper will for
-    // legacy rows.
-    status: 'UNREAD',
-    updatedAt: fromDate(document.created_at),
+    status: createNotificationStatus(document.status ?? 'UNREAD'),
+    updatedAt: fromDate(document.updated_at ?? document.created_at),
   });
 }
 
@@ -38,5 +38,7 @@ export function toDocument(notification: Notification): NotificationDocument {
     channel: notification.channel,
     context: notification.context,
     created_at: toDate(notification.createdAt),
+    status: notification.status,
+    updated_at: toDate(notification.updatedAt),
   };
 }
