@@ -113,4 +113,17 @@ export class WebSocketGateway {
       }
     }
   }
+
+  /**
+   * Graceful shutdown (design §4 step 3): closes every currently-connected
+   * socket, then the underlying `WebSocketServer`. Does NOT close the
+   * shared `http.Server` — that remains the composition root's own
+   * responsibility.
+   */
+  close(): void {
+    for (const client of this.wss.clients) {
+      client.close();
+    }
+    this.wss.close();
+  }
 }
