@@ -210,6 +210,76 @@ describe('MongoNotificationRepository (integration, real replica-set Mongo)', ()
     });
   });
 
+  describe('markAllReadForRecipient (R6 bulk mark-all-read)', () => {
+    const orgId = createOrganizationId(oid('org-1'));
+    const userA = createUserId(oid('user-a'));
+    const userB = createUserId(oid('user-b'));
+
+    async function seed(recipient = userA, org = orgId, status: 'UNREAD' | 'READ' = 'UNREAD') {
+      const id = generateNotificationId();
+      let notification = Notification.create({
+        id,
+        organizationId: org,
+        recipientUserId: recipient,
+        alertType: 'CASE_ASSIGNED',
+        channel: 'EMAIL',
+        context: {},
+        now: NOW,
+      });
+      if (status === 'READ') {
+        notification = notification.markRead(NOW);
+      }
+      await repository.save(notification);
+      return notification;
+    }
+
+    it('flips only the matching UNREAD rows and returns modifiedCount, leaving updated_at on the pre-existing READ doc untouched', async () => {
+      await seed(userA, orgId, 'UNREAD');
+      await seed(userA, orgId, 'UNREAD');
+      await seed(userA, orgId, 'UNREAD');
+      const preRead = await seed(userA, orgId, 'READ');
+      await seed(userA, orgId, 'UNREAD');
+
+      const at = fromDate(new Date('2026-02-01T00:00:00.000Z'));
+      const count = await repository.markAllReadForRecipient(orgId, userA, at);
+
+      expect(count).toBe(4);
+      const page = await repository.findByRecipient(orgId, userA, { limit: 10, offset: 0 });
+      expect(page.items.every((n) => n.status === 'READ')).toBe(true);
+      const reloadedPreRead = await repository.findById(preRead.id);
+      expect(reloadedPreRead?.updatedAt).toEqual(preRead.updatedAt);
+    });
+
+    it('leaves another recipient in the same org untouched', async () => {
+      await seed(userA, orgId, 'UNREAD');
+      await seed(userB, orgId, 'UNREAD');
+
+      await repository.markAllReadForRecipient(orgId, userA, fromDate(new Date('2026-02-01T00:00:00.000Z')));
+
+      const otherPage = await repository.findByRecipient(orgId, userB, { limit: 10, offset: 0 });
+      expect(otherPage.items.every((n) => n.status === 'UNREAD')).toBe(true);
+    });
+
+    it('leaves the same recipientUserId under a different organization untouched', async () => {
+      const otherOrg = createOrganizationId(oid('org-2'));
+      await seed(userA, orgId, 'UNREAD');
+      await seed(userA, otherOrg, 'UNREAD');
+
+      await repository.markAllReadForRecipient(orgId, userA, fromDate(new Date('2026-02-01T00:00:00.000Z')));
+
+      const otherOrgPage = await repository.findByRecipient(otherOrg, userA, { limit: 10, offset: 0 });
+      expect(otherOrgPage.items.every((n) => n.status === 'UNREAD')).toBe(true);
+    });
+
+    it('returns 0 and modifies nothing when there are no UNREAD rows', async () => {
+      await seed(userA, orgId, 'READ');
+
+      const count = await repository.markAllReadForRecipient(orgId, userA, fromDate(new Date('2026-02-01T00:00:00.000Z')));
+
+      expect(count).toBe(0);
+    });
+  });
+
   it('ensureIndexes creates notification_recipient_status_created_idx without colliding with the existing index', async () => {
     const indexes = await db.collection('notifications').indexes();
     const names = indexes.map((i) => i.name);

@@ -9,7 +9,7 @@ import type {
   NotificationRepository,
 } from '../../../../domain/ports/NotificationRepository.js';
 import type { Transaction } from '../../../../domain/ports/UnitOfWork.js';
-import { toDate } from '../../../../../../shared/time/Instant.js';
+import { toDate, type Instant } from '../../../../../../shared/time/Instant.js';
 import type { NotificationDocument } from './documents/NotificationDocument.js';
 import { toDocument, toDomain } from './mappers/NotificationDocumentMapper.js';
 
@@ -68,5 +68,23 @@ export class MongoNotificationRepository implements NotificationRepository {
       { $set: { status: notification.status, updated_at: toDate(notification.updatedAt) } },
       { session: toSession(tx) },
     );
+  }
+
+  async markAllReadForRecipient(
+    organizationId: OrganizationId,
+    recipientUserId: UserId,
+    now: Instant,
+    tx?: Transaction,
+  ): Promise<number> {
+    const result = await this.collection.updateMany(
+      {
+        organization_id: new ObjectId(organizationId),
+        recipient_user_id: new ObjectId(recipientUserId),
+        status: 'UNREAD',
+      },
+      { $set: { status: 'READ', updated_at: toDate(now) } },
+      { session: toSession(tx) },
+    );
+    return result.modifiedCount;
   }
 }
