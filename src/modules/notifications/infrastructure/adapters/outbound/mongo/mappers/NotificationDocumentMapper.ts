@@ -18,6 +18,13 @@ export function toDomain(document: NotificationDocument): Notification {
     channel: createNotificationChannel(document.channel),
     context: document.context,
     createdAt: fromDate(document.created_at),
+    // `NotificationDocument` does not persist `status`/`updated_at` yet
+    // (design D3/D4, persistence-only slice) — every currently stored row
+    // is effectively UNREAD with no separate update timestamp, so this
+    // defaults exactly like the eventual tolerant-read mapper will for
+    // legacy rows.
+    status: 'UNREAD',
+    updatedAt: fromDate(document.created_at),
   });
 }
 
