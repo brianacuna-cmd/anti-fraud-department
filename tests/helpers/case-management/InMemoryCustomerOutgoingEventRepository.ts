@@ -69,4 +69,9 @@ export class InMemoryCustomerOutgoingEventRepository implements CustomerOutgoing
   all(): readonly CustomerOutgoingEvent[] {
     return [...this.byId.values()];
   }
+
+  clear(): void {
+    this.byId.clear();
+    this.claimedAtById.clear();
+  }
 }

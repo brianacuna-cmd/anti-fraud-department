@@ -1,5 +1,13 @@
 import { oid } from '../../../support/oid.js';
 import { createOpenAmlAlertUseCase, AML_ALERT_CREATED } from '../../../../src/modules/screening/application/OpenAmlAlert.js';
+import { createAmlAlertOpenedWebhookFanOut } from '../../../../src/composition/amlAlertOpenedWebhookFanOut.js';
+import { createEnqueueCustomerWebhookFanOut } from '../../../../src/modules/case-management/application/EnqueueCustomerWebhookFanOut.js';
+import { CustomerWebhookSubscription } from '../../../../src/modules/case-management/domain/model/aggregates/CustomerWebhookSubscription.js';
+import { generateCustomerWebhookSubscriptionId } from '../../../../src/modules/case-management/domain/model/value-objects/CustomerWebhookSubscriptionId.js';
+import { generateCustomerOutgoingEventId } from '../../../../src/modules/case-management/domain/model/value-objects/CustomerOutgoingEventId.js';
+import { InMemoryCustomerWebhookSubscriptionRepository } from '../../../helpers/case-management/InMemoryCustomerWebhookSubscriptionRepository.js';
+import { InMemoryCustomerOutgoingEventRepository } from '../../../helpers/case-management/InMemoryCustomerOutgoingEventRepository.js';
+import type { Transaction as ScreeningTransaction, UnitOfWork } from '../../../../src/modules/screening/domain/ports/UnitOfWork.js';
 import { generateAmlAlertId } from '../../../../src/modules/screening/domain/model/value-objects/AmlAlertId.js';
 import { createWatchlistEntryId } from '../../../../src/modules/screening/domain/model/value-objects/WatchlistEntryId.js';
 import { createWatchlistId } from '../../../../src/modules/screening/domain/model/value-objects/WatchlistId.js';
@@ -34,7 +42,7 @@ function buildMatch(overrides: { name?: string; riskLevel?: string | null; entry
   });
 }
 
-function buildUseCase() {
+function buildUseCase(onOpened?: Parameters<typeof createOpenAmlAlertUseCase>[0]['onOpened']) {
   const amlAlertRepository = new InMemoryAmlAlertRepository();
   const timelineRecorder = new InMemoryAmlAlertTimelineRecorder();
   const outbox = new InMemoryOutboxEventRepository();
@@ -47,6 +55,7 @@ function buildUseCase() {
     generateAmlAlertId,
     generateTimelineEventId: generateObjectIdHex,
     generateOutboxEventId,
+    onOpened,
   });
   return { openAmlAlert, amlAlertRepository, timelineRecorder, outbox };
 }
@@ -136,6 +145,118 @@ describe('createOpenAmlAlertUseCase', () => {
     expect(amlAlertRepository.all()).toHaveLength(1);
     expect(timelineRecorder.all()).toHaveLength(1);
     expect(outbox.all()).toHaveLength(1);
+  });
+
+  it('calls onOpened with the same tx after a successful insert', async () => {
+    const seenTx: unknown[] = [];
+    const onOpened = async (input: { alert: { id: unknown }; organizationId: string; tx: unknown }) => {
+      seenTx.push(input.tx);
+    };
+    const { openAmlAlert } = buildUseCase(onOpened);
+
+    const result = await openAmlAlert({
+      auth: AUTH,
+      customerId: oid('customer-1'),
+      match: buildMatch(),
+      confidence: createMatchScore(82),
+    });
+
+    expect(result.opened).toBe(true);
+    expect(seenTx).toHaveLength(1);
+    expect(seenTx[0]).toBeDefined();
+  });
+
+  it('skips onOpened on duplicate natural-key saves', async () => {
+    const onOpened = jest.fn(async () => undefined);
+    const { openAmlAlert } = buildUseCase(onOpened);
+    const input = {
+      auth: AUTH,
+      customerId: oid('customer-1'),
+      match: buildMatch(),
+      confidence: createMatchScore(82),
+    };
+
+    await openAmlAlert(input);
+    await openAmlAlert(input);
+
+    expect(onOpened).toHaveBeenCalledTimes(1);
+  });
+
+  it('propagates onOpened failures so the screening transaction can roll back', async () => {
+    const onOpened = jest.fn(async () => {
+      throw new Error('fan-out failed');
+    });
+    const { openAmlAlert } = buildUseCase(onOpened);
+
+    await expect(
+      openAmlAlert({
+        auth: AUTH,
+        customerId: oid('customer-1'),
+        match: buildMatch(),
+        confidence: createMatchScore(82),
+      }),
+    ).rejects.toThrow('fan-out failed');
+  });
+
+  it('rolls back the customer_outgoing_events row when onOpened throws in the same tx', async () => {
+    const subscriptions = new InMemoryCustomerWebhookSubscriptionRepository();
+    const outgoingEvents = new InMemoryCustomerOutgoingEventRepository();
+    await subscriptions.create(
+      CustomerWebhookSubscription.create({
+        id: generateCustomerWebhookSubscriptionId(),
+        organizationId: oid('org-1'),
+        url: 'https://hooks.example/aml',
+        eventTypes: ['aml.alert_generated'],
+        now: NOW,
+      }),
+    );
+    const enqueue = createEnqueueCustomerWebhookFanOut({
+      subscriptions,
+      outgoingEvents,
+      generateCustomerOutgoingEventId,
+    });
+    const onOpened = createAmlAlertOpenedWebhookFanOut(enqueue, new FixedClock(NOW));
+    const amlAlertRepository = new InMemoryAmlAlertRepository();
+    const timelineRecorder = new InMemoryAmlAlertTimelineRecorder();
+    const outbox = new InMemoryOutboxEventRepository();
+    const unitOfWork: UnitOfWork = {
+      async withTransaction<T>(work: (tx: ScreeningTransaction) => Promise<T>): Promise<T> {
+        try {
+          return await work({} as ScreeningTransaction);
+        } catch (error) {
+          amlAlertRepository.clear();
+          outgoingEvents.clear();
+          throw error;
+        }
+      },
+    };
+    const throwingOnOpened: NonNullable<Parameters<typeof createOpenAmlAlertUseCase>[0]['onOpened']> =
+      async (input) => {
+        await onOpened(input);
+        throw new Error('fan-out failed after enqueue');
+      };
+    const openAmlAlert = createOpenAmlAlertUseCase({
+      amlAlertRepository,
+      timelineRecorder,
+      outbox,
+      unitOfWork,
+      clock: new FixedClock(NOW),
+      generateAmlAlertId,
+      generateTimelineEventId: generateObjectIdHex,
+      generateOutboxEventId,
+      onOpened: throwingOnOpened,
+    });
+
+    await expect(
+      openAmlAlert({
+        auth: AUTH,
+        customerId: oid('customer-1'),
+        match: buildMatch(),
+        confidence: createMatchScore(82),
+      }),
+    ).rejects.toThrow('fan-out failed after enqueue');
+    expect(outgoingEvents.all()).toHaveLength(0);
+    expect(amlAlertRepository.all()).toHaveLength(0);
   });
 
   it('uses per-call thresholds so an org with a lower cutoff still opens', async () => {

@@ -73,4 +73,8 @@ export class InMemoryAmlAlertRepository implements AmlAlertRepository {
   all(): AmlAlert[] {
     return [...this.byId.values()];
   }
+
+  clear(): void {
+    this.byId.clear();
+  }
 }
