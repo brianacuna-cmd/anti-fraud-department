@@ -101,6 +101,7 @@ import type { WebSocket } from 'ws';
 import { MongoUnitOfWork as NotificationsMongoUnitOfWork } from './modules/notifications/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { createGetNotificationPreferencesUseCase } from './modules/notifications/application/GetNotificationPreferences.js';
 import { createSetNotificationPreferenceUseCase } from './modules/notifications/application/SetNotificationPreference.js';
+import { createSetNotificationPreferencesUseCase } from './modules/notifications/application/SetNotificationPreferences.js';
 import { createListNotificationsUseCase } from './modules/notifications/application/ListNotifications.js';
 import { createMarkNotificationReadUseCase } from './modules/notifications/application/MarkNotificationRead.js';
 import { createMarkAllNotificationsReadUseCase } from './modules/notifications/application/MarkAllNotificationsRead.js';
@@ -634,6 +635,15 @@ async function bootstrap(): Promise<void> {
     repository: notificationPreferences,
   });
   const setNotificationPreference = createSetNotificationPreferenceUseCase({
+    repository: notificationPreferences,
+    unitOfWork: notificationsUnitOfWork,
+    clock,
+    auditRecorder: notificationsAuditRecorder,
+  });
+  // notification-preferences-channels PR2b: bulk sibling of
+  // `setNotificationPreference`, shares the same repository/unitOfWork/audit
+  // wiring so both single PUT and bulk PATCH commit atomically.
+  const setNotificationPreferences = createSetNotificationPreferencesUseCase({
     repository: notificationPreferences,
     unitOfWork: notificationsUnitOfWork,
     clock,
@@ -2107,7 +2117,9 @@ async function bootstrap(): Promise<void> {
   // notification-preferences PR3: mounted on the SAME authenticated `/api/v1`
   // router — `notifications` routes are USER-tier self-service and rely on the
   // `authContextMiddleware` above to resolve the caller's AuthContext.
-  identityAccessRouter.use(notificationPreferenceRouter({ getNotificationPreferences, setNotificationPreference }));
+  identityAccessRouter.use(
+    notificationPreferenceRouter({ getNotificationPreferences, setNotificationPreference, setNotificationPreferences }),
+  );
   // notification-read-state PR4: mounted on the SAME authenticated `/api/v1`
   // router — inbox routes are USER-tier self-service (R3/R4).
   identityAccessRouter.use(notificationRouter({ listNotifications, markNotificationRead, markAllNotificationsRead }));

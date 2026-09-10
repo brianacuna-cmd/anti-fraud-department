@@ -196,4 +196,31 @@ describe('createSetNotificationPreferenceUseCase', () => {
     expect(upsertSpy).not.toHaveBeenCalled();
     expect(auditRecorder.all()).toHaveLength(0);
   });
+
+  it.each(['SLACK', 'WEBHOOK'])('accepts %s as a configurable channel, upserting and auditing once', async (channel) => {
+    const repository = new InMemoryNotificationPreferenceRepository();
+    const { setPreference, auditRecorder } = buildUseCase(repository);
+
+    const result = await setPreference({
+      auth: ORG_1_USER,
+      alertType: 'CRITICAL_RISK',
+      channel,
+      enabled: false,
+    });
+
+    expect(result.enabled).toBe(false);
+    expect(auditRecorder.all()).toHaveLength(1);
+  });
+
+  it('rejects IN_APP with NOTIFICATION_CHANNEL_NOT_CONFIGURABLE before any repository/audit call', async () => {
+    const repository = new InMemoryNotificationPreferenceRepository();
+    const upsertSpy = jest.spyOn(repository, 'upsert');
+    const { setPreference, auditRecorder } = buildUseCase(repository);
+
+    await expect(
+      setPreference({ auth: ORG_1_USER, alertType: 'CRITICAL_RISK', channel: 'IN_APP', enabled: false }),
+    ).rejects.toMatchObject({ code: 'NOTIFICATION_CHANNEL_NOT_CONFIGURABLE' });
+    expect(upsertSpy).not.toHaveBeenCalled();
+    expect(auditRecorder.all()).toHaveLength(0);
+  });
 });

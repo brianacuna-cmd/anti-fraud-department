@@ -5,7 +5,7 @@ import {
 } from '../../../../../src/modules/notifications/domain/model/value-objects/NotificationChannel.js';
 
 describe('createNotificationChannel', () => {
-  it.each(['EMAIL', 'IN_APP'])('accepts %s', (channel) => {
+  it.each(['EMAIL', 'IN_APP', 'SLACK', 'WEBHOOK'])('accepts %s', (channel) => {
     expect(createNotificationChannel(channel)).toBe(channel);
   });
 
@@ -21,13 +21,13 @@ describe('createNotificationChannel', () => {
 
 describe('CHANNELS catalog', () => {
   it('contains every deliverable channel', () => {
-    expect(CHANNELS).toEqual(['EMAIL', 'IN_APP']);
+    expect(CHANNELS).toEqual(['EMAIL', 'IN_APP', 'SLACK', 'WEBHOOK']);
   });
 
-  it('exposes only EMAIL as configurable, so the in-app inbox cannot be silenced', () => {
+  it('exposes EMAIL/SLACK/WEBHOOK as configurable, so the in-app inbox cannot be silenced', () => {
     // Being able to mute the inbox would mean an analyst is assigned a
     // case with no record that they were notified.
-    expect(CONFIGURABLE_CHANNELS).toEqual(['EMAIL']);
+    expect(CONFIGURABLE_CHANNELS).toEqual(['EMAIL', 'SLACK', 'WEBHOOK']);
     expect(CONFIGURABLE_CHANNELS).not.toContain('IN_APP');
   });
 });

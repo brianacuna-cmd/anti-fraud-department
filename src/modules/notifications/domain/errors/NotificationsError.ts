@@ -37,6 +37,15 @@ export function unknownChannel(value: string): NotificationsError {
   return new NotificationsError('UNKNOWN_CHANNEL', `unknown notification channel "${value}"`, { value });
 }
 
+/** R2/D2: the channel is valid (in CHANNELS) but not configurable by the user (e.g. IN_APP). */
+export function channelNotConfigurable(value: string): NotificationsError {
+  return new NotificationsError(
+    'NOTIFICATION_CHANNEL_NOT_CONFIGURABLE',
+    `notification channel "${value}" is not configurable`,
+    { value },
+  );
+}
+
 export function unknownNotificationStatus(value: string): NotificationsError {
   return new NotificationsError('UNKNOWN_NOTIFICATION_STATUS', `unknown notification status "${value}"`, { value });
 }
