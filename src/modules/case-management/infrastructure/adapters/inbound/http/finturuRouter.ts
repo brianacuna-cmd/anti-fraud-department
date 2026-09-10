@@ -2,7 +2,6 @@ import { Router, type Request } from 'express';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
 import type { createSyncFinturuDataUseCase } from '../../../../application/SyncFinturuData.js';
 import type { createGetFinturuDirectoryUseCase } from '../../../../application/GetFinturuDirectory.js';
-import type { DirectorySyncScheduler } from '../../../../application/DirectorySyncScheduler.js';
 import type { createOpenFraudCaseUseCase } from '../../../../application/OpenFraudCaseFromCustomer.js';
 import type { FinturuApiClient } from '../../outbound/finturu/FinturuApiClient.js';
 import { toCaseResponse } from './mappers/CaseHttpMapper.js';
@@ -10,7 +9,6 @@ import { toCaseResponse } from './mappers/CaseHttpMapper.js';
 export interface FinturuRouterDeps {
   readonly syncFinturuData?: ReturnType<typeof createSyncFinturuDataUseCase>;
   readonly getFinturuDirectory?: ReturnType<typeof createGetFinturuDirectoryUseCase>;
-  readonly directorySyncScheduler?: DirectorySyncScheduler;
   readonly openFraudCase?: ReturnType<typeof createOpenFraudCaseUseCase>;
   readonly finturuClient?: FinturuApiClient;
 }
@@ -211,33 +209,28 @@ export function finturuRouter(deps: FinturuRouterDeps): Router {
     const search = typeof req.query.search === 'string' ? req.query.search : undefined;
 
     const view = await deps.getFinturuDirectory({ auth, limit, offset, search });
-    const sync = deps.directorySyncScheduler?.status;
 
     res.status(200).json({
       customers: view.customers,
       total: view.total,
       syncedAt: view.syncedAt,
-      // The screen needs to tell "there is still no data" from "it is still
-      // being fetched" so it does not show an emptiness that looks like an
-      // error.
-      syncing: sync?.running ?? false,
-      syncError: sync?.lastError ?? null,
+      // The directory is composed fresh on every read now (no more
+      // materialized Mongo copy to fall behind), so there is no "still
+      // syncing" state to report — always false/null.
+      syncing: false,
+      syncError: null,
     });
   });
 
   /**
-   * Forces a refresh. The directory already maintains itself; this exists for
-   * operations and tests, not as part of the normal flow. It answers as soon
-   * as it starts because the walk takes minutes.
+   * The directory used to be a materialized copy that could fall behind and
+   * need a forced refresh; it is composed fresh on every read now, so there
+   * is nothing to trigger. Kept as a 410 rather than removed outright so an
+   * old client/bookmark gets a clear answer instead of a generic 404.
    */
   router.post('/cases/directory/finturu/sync', async (req, res) => {
     requireAuthContext(req);
-    if (!deps.directorySyncScheduler) {
-      res.status(501).json({ message: 'Directory sync is not enabled' });
-      return;
-    }
-    void deps.directorySyncScheduler.run();
-    res.status(202).json({ started: true });
+    res.status(410).json({ message: 'Directory sync no longer exists: the directory is always live now.' });
   });
 
   router.post('/cases/open-from-customer', async (req, res) => {
