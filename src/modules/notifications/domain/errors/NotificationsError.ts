@@ -62,3 +62,28 @@ export function forbiddenNotRecipient(id: string): NotificationsError {
     { id },
   );
 }
+
+/** PR1 (notification-webhook-delivery): caller's role is not in the allowed set. */
+export function forbiddenRole(roleId: string | null, allowed: readonly string[]): NotificationsError {
+  return new NotificationsError(
+    'FORBIDDEN_ROLE',
+    `role "${roleId ?? 'null'}" is not authorized for this operation`,
+    { roleId, allowed: [...allowed] },
+  );
+}
+
+/**
+ * PR1: mirrors `case-management`'s `forbiddenReadOnly` — a governance-plane
+ * actor (ADMIN/AUDITOR/ORGANIZATION) has read-only access to notifications.
+ */
+export function forbiddenReadOnly(
+  auth: { readonly actorType: string; readonly roleId: string | null },
+  allowed: readonly string[],
+): NotificationsError {
+  const actor = auth.actorType === 'USER' ? (auth.roleId ?? 'null') : auth.actorType;
+  return new NotificationsError(
+    'FORBIDDEN_ROLE',
+    `"${actor}" has read-only access to notifications; this operation requires one of: ${allowed.join(', ')}`,
+    { actor, allowed: [...allowed], readOnly: true },
+  );
+}

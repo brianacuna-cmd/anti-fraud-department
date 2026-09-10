@@ -2,6 +2,7 @@ import type { StatusByCode } from '../../../../../../shared/http/errorHandler.js
 
 /** Code -> HTTP status for every closed `NotificationsErrorCode` (design D8a). */
 export const notificationsErrorStatus: StatusByCode = {
+  UNAUTHENTICATED: 401,
   INVARIANT_VIOLATION: 400,
   FORBIDDEN_CROSS_TENANT: 403,
   UNKNOWN_ALERT_TYPE: 422,
@@ -9,4 +10,5 @@ export const notificationsErrorStatus: StatusByCode = {
   NOTIFICATION_CHANNEL_NOT_CONFIGURABLE: 422,
   NOTIFICATION_NOT_FOUND: 404,
   NOTIFICATION_FORBIDDEN_NOT_RECIPIENT: 403,
+  FORBIDDEN_ROLE: 403,
 };

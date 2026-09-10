@@ -241,7 +241,7 @@ describe('notificationPreferenceRouter', () => {
 
     const response = await request(app).get('/api/v1/notifications/preferences');
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(401);
   });
 
   it('GET /users/me/notification-preferences returns 200 with the caller matrix, scoped by AuthContext.userId', async () => {
@@ -339,6 +339,6 @@ describe('notificationPreferenceRouter', () => {
 
     const response = await request(app).get('/api/v1/users/me/notification-preferences');
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(401);
   });
 });
