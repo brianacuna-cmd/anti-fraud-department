@@ -1,5 +1,6 @@
 import {
   setPreferenceBodySchema,
+  bulkSetPreferencesBodySchema,
   WIRE_TO_ALERT_TYPE,
   ALERT_TYPE_TO_WIRE,
 } from '../../../../src/modules/notifications/infrastructure/adapters/inbound/http/dto/notificationPreferenceSchemas.js';
@@ -17,6 +18,44 @@ describe('setPreferenceBodySchema', () => {
 
   it('rejects extra keys (.strict())', () => {
     expect(setPreferenceBodySchema.safeParse({ enabled: true, extra: 1 }).success).toBe(false);
+  });
+});
+
+describe('bulkSetPreferencesBodySchema', () => {
+  it('accepts { entries: [{alertType, channel, enabled}] }', () => {
+    const result = bulkSetPreferencesBodySchema.safeParse({
+      entries: [{ alertType: 'case_assigned', channel: 'SLACK', enabled: true }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an empty entries array', () => {
+    expect(bulkSetPreferencesBodySchema.safeParse({ entries: [] }).success).toBe(false);
+  });
+
+  it('rejects an unknown extra key at the top level (.strict())', () => {
+    expect(
+      bulkSetPreferencesBodySchema.safeParse({
+        entries: [{ alertType: 'case_assigned', channel: 'SLACK', enabled: true }],
+        extra: 1,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an unknown extra key on an entry (.strict())', () => {
+    expect(
+      bulkSetPreferencesBodySchema.safeParse({
+        entries: [{ alertType: 'case_assigned', channel: 'SLACK', enabled: true, extra: 1 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a malformed entry (missing enabled)', () => {
+    expect(
+      bulkSetPreferencesBodySchema.safeParse({
+        entries: [{ alertType: 'case_assigned', channel: 'SLACK' }],
+      }).success,
+    ).toBe(false);
   });
 });
 

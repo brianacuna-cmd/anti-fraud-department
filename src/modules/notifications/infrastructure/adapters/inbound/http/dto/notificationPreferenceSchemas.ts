@@ -31,3 +31,22 @@ export const ALERT_TYPE_TO_WIRE: Record<AlertType, 'case_assigned' | 'sla_due_so
 export const setPreferenceBodySchema = z.object({ enabled: z.boolean() }).strict();
 
 export type SetPreferenceBody = z.infer<typeof setPreferenceBodySchema>;
+
+/** PATCH /users/me/notification-preferences body (bulk, design R5). */
+export const bulkSetPreferencesBodySchema = z
+  .object({
+    entries: z
+      .array(
+        z
+          .object({
+            alertType: z.string(),
+            channel: z.string(),
+            enabled: z.boolean(),
+          })
+          .strict(),
+      )
+      .min(1),
+  })
+  .strict();
+
+export type BulkSetPreferencesBody = z.infer<typeof bulkSetPreferencesBodySchema>;
