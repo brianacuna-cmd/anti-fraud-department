@@ -310,6 +310,20 @@ import { MongoOrganizationSarFilingProfileRepository } from './modules/sar/infra
 import { generateOrganizationSarFilingProfileId } from './modules/sar/domain/model/value-objects/OrganizationSarFilingProfileId.js';
 import { sarErrorStatus } from './modules/sar/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createSarSourceVerifier } from './composition/sarSourceVerifier.js';
+import { regulatoryReportRouter } from './modules/regulatory/infrastructure/adapters/inbound/http/regulatoryReportRouter.js';
+import { regulatoryErrorStatus } from './modules/regulatory/infrastructure/adapters/inbound/http/errorStatus.js';
+import { MongoRegulatoryReportRepository } from './modules/regulatory/infrastructure/adapters/outbound/mongo/MongoRegulatoryReportRepository.js';
+import { MongoUnitOfWork as RegulatoryMongoUnitOfWork } from './modules/regulatory/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
+import { PdfRegulatoryReportRenderer } from './modules/regulatory/infrastructure/adapters/outbound/render/PdfRegulatoryReportRenderer.js';
+import { XlsxRegulatoryReportRenderer } from './modules/regulatory/infrastructure/adapters/outbound/render/XlsxRegulatoryReportRenderer.js';
+import { createCompileRegulatoryReportUseCase } from './modules/regulatory/application/CompileRegulatoryReport.js';
+import { createIssueRegulatoryReportUseCase } from './modules/regulatory/application/IssueRegulatoryReport.js';
+import { createExportRegulatoryReportUseCase } from './modules/regulatory/application/ExportRegulatoryReport.js';
+import { createGetRegulatoryReportUseCase } from './modules/regulatory/application/GetRegulatoryReport.js';
+import { createListRegulatoryReportsUseCase } from './modules/regulatory/application/ListRegulatoryReports.js';
+import { generateRegulatoryReportId } from './modules/regulatory/domain/model/value-objects/RegulatoryReportId.js';
+import { createRegulatoryFigureSource } from './composition/regulatoryFigureSource.js';
+import { createRegulatoryAuditRecorderAdapter } from './composition/regulatoryAuditRecorderAdapter.js';
 import { privacyRequestRouter } from './modules/privacy/infrastructure/adapters/inbound/http/privacyRequestRouter.js';
 import { privacyErrorStatus } from './modules/privacy/infrastructure/adapters/inbound/http/errorStatus.js';
 import { MongoPrivacyDataRequestRepository } from './modules/privacy/infrastructure/adapters/outbound/mongo/MongoPrivacyDataRequestRepository.js';
@@ -2055,6 +2069,38 @@ async function bootstrap(): Promise<void> {
     clock,
   });
 
+  // REG-001/REG-002: reportes periodicos para entes de control.
+  // `regulatoryFigureSource` es la costura cross-module: cuenta EVENTOS
+  // fechados (audit_logs, analyst_decisions, resolutions) y no estados
+  // actuales — ver el fichero para por que.
+  const regulatoryReports = new MongoRegulatoryReportRepository(db);
+  const regulatoryUnitOfWork = new RegulatoryMongoUnitOfWork(client);
+  const regulatoryAuditRecorder = createRegulatoryAuditRecorderAdapter(recordAuditLog);
+  const regulatoryFigureSource = createRegulatoryFigureSource(db);
+  const regulatoryReportHttpRouter = regulatoryReportRouter({
+    compileRegulatoryReport: createCompileRegulatoryReportUseCase({
+      reports: regulatoryReports,
+      figures: regulatoryFigureSource,
+      auditRecorder: regulatoryAuditRecorder,
+      unitOfWork: regulatoryUnitOfWork,
+      clock,
+      generateRegulatoryReportId,
+    }),
+    issueRegulatoryReport: createIssueRegulatoryReportUseCase({
+      reports: regulatoryReports,
+      auditRecorder: regulatoryAuditRecorder,
+      unitOfWork: regulatoryUnitOfWork,
+      clock,
+    }),
+    exportRegulatoryReport: createExportRegulatoryReportUseCase({
+      reports: regulatoryReports,
+      renderers: [new PdfRegulatoryReportRenderer(), new XlsxRegulatoryReportRenderer()],
+      auditRecorder: regulatoryAuditRecorder,
+    }),
+    getRegulatoryReport: createGetRegulatoryReportUseCase({ reports: regulatoryReports }),
+    listRegulatoryReports: createListRegulatoryReportsUseCase({ reports: regulatoryReports }),
+  });
+
   const sarSourceVerifier = createSarSourceVerifier(cases, analystDecisions, amlAlerts);
   const sarReports = new MongoSarReportRepository(db);
   const sarUnitOfWork = new SarMongoUnitOfWork(client);
@@ -2202,6 +2248,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(bulkScreeningHttpRouter);
   identityAccessRouter.use(inboundWebhookSecretHttpRouter);
   identityAccessRouter.use(sarReportHttpRouter);
+  identityAccessRouter.use(regulatoryReportHttpRouter);
   identityAccessRouter.use(privacyRequestHttpRouter);
 
   const app = createApp({
@@ -2224,6 +2271,7 @@ async function bootstrap(): Promise<void> {
       ...riskAssessmentErrorStatus,
       ...screeningErrorStatus,
       ...sarErrorStatus,
+      ...regulatoryErrorStatus,
       ...privacyErrorStatus,
       ...ingestErrorStatus,
     }),
