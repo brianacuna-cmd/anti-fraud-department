@@ -189,8 +189,6 @@ import { createIngestFinturuCaseUseCase } from './modules/case-management/applic
 import { createInitializeCaseSlaService } from './modules/case-management/application/InitializeCaseSla.js';
 import { createSyncFinturuDataUseCase } from './modules/case-management/application/SyncFinturuData.js';
 import { createGetFinturuDirectoryUseCase } from './modules/case-management/application/GetFinturuDirectory.js';
-import { createSyncFinturuDirectoryUseCase } from './modules/case-management/application/SyncFinturuDirectory.js';
-import { DirectorySyncScheduler } from './modules/case-management/application/DirectorySyncScheduler.js';
 import { createOpenFraudCaseUseCase } from './modules/case-management/application/OpenFraudCaseFromCustomer.js';
 import {
   createLogOutboxPublisher,
@@ -201,7 +199,7 @@ import { createKafkaOutboxPublisher } from './modules/case-management/infrastruc
 import { createOutboxRetryPolicy } from './shared/outbox/OutboxRetryPolicy.js';
 import { MongoOutboxDlqRepository } from './shared/outbox/mongo/MongoOutboxDlqRepository.js';
 import { FinturuApiClient } from './modules/case-management/infrastructure/adapters/outbound/finturu/FinturuApiClient.js';
-import { MongoFinturuDirectoryRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoFinturuDirectoryRepository.js';
+import { LiveFinturuDirectoryRepository } from './modules/case-management/infrastructure/adapters/outbound/finturu/LiveFinturuDirectoryRepository.js';
 import { createOutboxPublishScheduler } from './modules/case-management/infrastructure/scheduler/OutboxPublishScheduler.js';
 import { finturuRouter } from './modules/case-management/infrastructure/adapters/inbound/http/finturuRouter.js';
 import { finturuWebhookRouter } from './modules/case-management/infrastructure/adapters/inbound/http/finturuWebhookRouter.js';
@@ -477,7 +475,6 @@ const OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS = Number(
  */
 const SLA_SWEEP_INTERVAL_MS = Number(process.env.SLA_SWEEP_INTERVAL_MS ?? 60_000);
 const OUTBOX_PUBLISH_INTERVAL_MS = Number(process.env.OUTBOX_PUBLISH_INTERVAL_MS ?? 60_000);
-const FINTURU_DIRECTORY_SYNC_MINUTES = Number(process.env.FINTURU_DIRECTORY_SYNC_MINUTES ?? 360);
 
 function nextRunAtAfterMs(intervalMs: number): (now: Instant) => Instant {
   return (now) => fromDate(new Date(toDate(now).getTime() + intervalMs));
@@ -539,7 +536,6 @@ async function bootstrap(): Promise<void> {
     slaSweepIntervalMs: SLA_SWEEP_INTERVAL_MS,
     outboxPublishIntervalMs: OUTBOX_PUBLISH_INTERVAL_MS,
     outgoingWebhookDispatchIntervalMs: OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS,
-    directorySyncIntervalMinutes: FINTURU_DIRECTORY_SYNC_MINUTES,
     walletRescreenEnabled: WALLET_RESCREEN_ENABLED,
   });
   await backfillRoutingRuleExecutionOrder(db);
@@ -745,43 +741,17 @@ async function bootstrap(): Promise<void> {
     defaultOrganizationId: process.env.DEFAULT_ORGANIZATION_ID ?? '019d7e58aed0777318d11d4d',
   });
 
-  // The directory is served from a local copy: walking Bridge live takes
-  // minutes. `syncFinturuDirectory` refreshes it, `getFinturuDirectory`
-  // only reads.
-  const finturuDirectory = new MongoFinturuDirectoryRepository(db);
+  // The directory used to be a local Mongo copy refreshed on a schedule
+  // (walking Bridge live took ~3 min for the full register). `customers`/
+  // `transfers`/`wallets` are DB-backed on the `api-business` side now, so
+  // composing it fresh on every read is fast enough — see
+  // `LiveFinturuDirectoryRepository`. Nothing left to schedule or store.
+  const finturuDirectory = new LiveFinturuDirectoryRepository(finturuApiClient);
 
   const getFinturuDirectory = createGetFinturuDirectoryUseCase({
     directory: finturuDirectory,
     cases,
     defaultOrganizationId: process.env.DEFAULT_ORGANIZATION_ID ?? '019d7e58aed0777318d11d4d',
-  });
-
-  // Separate client for the sync. `finturuApiClient` cuts at 10 s because
-  // it serves interactive requests, where failing fast is correct; the
-  // full listings the sync walks take minutes and need patience, not
-  // retries.
-  const finturuSyncClient = new FinturuApiClient({
-    baseUrl: process.env.FINTURU_API_URL ?? 'http://localhost:3001',
-    encryptionKey: process.env.FRAUD_DEPARTMENT_KEY,
-    timeoutMs: Number(process.env.FINTURU_SYNC_TIMEOUT_MS ?? 600_000),
-  });
-
-  const syncFinturuDirectory = createSyncFinturuDirectoryUseCase({
-    finturuClient: finturuSyncClient,
-    directory: finturuDirectory,
-    clock,
-  });
-  const recordedSyncFinturuDirectory = () =>
-    recordAround(() => syncFinturuDirectory(), {
-      name: 'directory_sync',
-      recorder: scheduledJobs,
-      clock,
-      nextRunAt: nextRunAtAfterMs(FINTURU_DIRECTORY_SYNC_MINUTES * 60_000),
-    });
-
-  const directorySyncScheduler = new DirectorySyncScheduler({
-    syncDirectory: recordedSyncFinturuDirectory,
-    intervalMinutes: FINTURU_DIRECTORY_SYNC_MINUTES,
   });
 
   const openFraudCase = createOpenFraudCaseUseCase({
@@ -832,7 +802,6 @@ async function bootstrap(): Promise<void> {
   const caseManagementFinturuRouter = finturuRouter({
     syncFinturuData,
     getFinturuDirectory,
-    directorySyncScheduler,
     openFraudCase,
     finturuClient: finturuApiClient,
   });
@@ -1984,7 +1953,7 @@ async function bootstrap(): Promise<void> {
     actorType: 'ORGANIZATION',
   });
   const walletWatermarkRepository = new MongoScreeningWatermarkRepository(db);
-  const walletSource = createFinturuWalletSource(finturuDirectory);
+  const walletSource = createFinturuWalletSource(finturuApiClient);
   const walletCaseLinker = createWalletRescreenCaseLinker(cases);
   const rescreenWalletSanctions = createRescreenWalletSanctionsUseCase({
     clock,
@@ -2019,7 +1988,6 @@ async function bootstrap(): Promise<void> {
     sla_sweep: recordedSweep,
     outbox_publish: recordedPublishOutbox,
     customer_outgoing_webhook_dispatch: customerOutgoingEventDispatcher.dispatchOnce,
-    directory_sync: recordedSyncFinturuDirectory,
     wallet_sanctions_rescreen: recordedWalletRescreen,
   };
   const scheduledJobAdminHttpRouter = scheduledJobAdminRouter({
@@ -2122,9 +2090,6 @@ async function bootstrap(): Promise<void> {
   slaSweepScheduler.start(SLA_SWEEP_INTERVAL_MS);
   console.log(`SLA sweep scheduler started (interval=${SLA_SWEEP_INTERVAL_MS}ms)`);
 
-  directorySyncScheduler.start();
-  console.log('Finturu directory sync scheduler started');
-
   if (WALLET_RESCREEN_ENABLED) {
     walletRescreenScheduler.start();
     console.log('Wallet sanctions rescreen scheduler started (daily 00:00 America/Bogota)');
@@ -2138,9 +2103,10 @@ async function bootstrap(): Promise<void> {
   const server = app.listen(PORT, () => {
     console.log(`anti-fraud-department listening on port ${PORT}`);
   });
-  // Clients must wait at least 630s for a force-run of directory_sync:
-  // default FINTURU_SYNC_TIMEOUT_MS is 600_000 plus 30s slack so Node
-  // does not close the socket while the recorded runner is still walking.
+  // `syncFinturuData` (POST /cases/sync/finturu) still walks the full
+  // customer list synchronously and can take a while; default
+  // FINTURU_SYNC_TIMEOUT_MS is 600_000 plus 30s slack so Node does not close
+  // the socket while it is still working.
   const requestTimeout = Number(process.env.FINTURU_SYNC_TIMEOUT_MS ?? 600_000) + 30_000;
   server.requestTimeout = requestTimeout;
   server.headersTimeout = requestTimeout + 5_000;

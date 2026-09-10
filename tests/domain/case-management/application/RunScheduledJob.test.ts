@@ -22,11 +22,10 @@ const NOW = fromDate(new Date('2026-08-31T12:00:00.000Z'));
 const LAST_RUN = fromDate(new Date('2026-08-31T11:00:00.000Z'));
 const NEXT_RUN = fromDate(new Date('2026-08-31T13:00:00.000Z'));
 
-const FIVE_NAMES: readonly ScheduledJobName[] = [
+const FOUR_NAMES: readonly ScheduledJobName[] = [
   'sla_sweep',
   'outbox_publish',
   'customer_outgoing_webhook_dispatch',
-  'directory_sync',
   'wallet_sanctions_rescreen',
 ];
 
@@ -122,7 +121,6 @@ function resolvingRunners(order: string[], overrides: Partial<ScheduledJobRunner
     sla_sweep: make('sla_sweep'),
     outbox_publish: make('outbox_publish'),
     customer_outgoing_webhook_dispatch: make('customer_outgoing_webhook_dispatch'),
-    directory_sync: make('directory_sync'),
     wallet_sanctions_rescreen: make('wallet_sanctions_rescreen'),
     ...overrides,
   };
@@ -142,7 +140,7 @@ function build(overrides: BuildDeps = {}) {
   };
 
   if (!overrides.catalog) {
-    for (const name of FIVE_NAMES) {
+    for (const name of FOUR_NAMES) {
       catalog.jobs.set(name, catalogJob(name));
     }
   }
@@ -226,16 +224,15 @@ describe('createRunScheduledJobUseCase', () => {
 
   it('invokes the runner when enabled is false', async () => {
     const catalog = new FakeCatalog();
-    catalog.jobs.set('directory_sync', catalogJob('directory_sync', { enabled: false }));
     catalog.jobs.set('wallet_sanctions_rescreen', catalogJob('wallet_sanctions_rescreen', { enabled: false }));
     const order: string[] = [];
     const { runScheduledJob } = build({ catalog, order });
 
     await expect(
-      runScheduledJob({ auth: PLATFORM_ADMIN, jobName: 'directory_sync' }),
-    ).resolves.toEqual({ jobName: 'directory_sync', lastResult: 'SUCCESS' });
+      runScheduledJob({ auth: PLATFORM_ADMIN, jobName: 'wallet_sanctions_rescreen' }),
+    ).resolves.toEqual({ jobName: 'wallet_sanctions_rescreen', lastResult: 'SUCCESS' });
 
-    expect(order.filter((step) => step.startsWith('job:'))).toEqual(['job:directory_sync']);
+    expect(order.filter((step) => step.startsWith('job:'))).toEqual(['job:wallet_sanctions_rescreen']);
   });
 
   it('returns FAILED without rethrowing when the injected runner throws', async () => {
@@ -299,7 +296,7 @@ describe('createRunScheduledJobUseCase', () => {
     });
   });
 
-  it.each(FIVE_NAMES)('invokes the recorded runner for %s', async (jobName) => {
+  it.each(FOUR_NAMES)('invokes the recorded runner for %s', async (jobName) => {
     const order: string[] = [];
     const { runScheduledJob } = build({ order });
 
