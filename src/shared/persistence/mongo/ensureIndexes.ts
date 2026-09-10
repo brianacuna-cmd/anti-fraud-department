@@ -150,6 +150,14 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .collection('notification_org_config')
     .createIndex({ organization_id: 1 }, { unique: true, name: 'notification_org_config_unique' });
 
+  // Nightly fraud metrics aggregator (MET-003): one row per (organization,
+  // Bogota day) — the repository's upsert idempotency AND this index both
+  // enforce the natural key, uniqueness never re-checked in application code.
+  await db.collection('fraud_department_metrics').createIndex(
+    { organization_id: 1, fecha: 1 },
+    { unique: true, name: 'fraud_department_metrics_org_fecha_unique' },
+  );
+
   await db
     .collection('case_timeline')
     .createIndex({ case_id: 1, created_at: -1 }, { name: 'case_timeline_case_created_idx' });
