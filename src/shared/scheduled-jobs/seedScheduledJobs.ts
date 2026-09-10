@@ -16,7 +16,7 @@ function everySecondsLabel(intervalMs: number): string {
 }
 
 /**
- * Upserts the four platform-wide catalog rows (`organization_id: null`).
+ * Upserts the platform-wide catalog rows (`organization_id: null`).
  * A disabled wallet loop is still seeded; `enabled` is a label, not a gate.
  *
  * `directory_sync` used to be seeded here too. The directory it refreshed
@@ -55,6 +55,13 @@ export async function seedScheduledJobs(
     description: 'Rescreen wallet addresses against sanctions lists',
     cronExpression: WALLET_CADENCE,
     enabled: config.walletRescreenEnabled,
+    ...platform,
+  });
+  await repository.seed({
+    name: 'daily_fraud_metrics',
+    description: 'Aggregate nightly per-organization fraud department metrics',
+    cronExpression: WALLET_CADENCE,
+    enabled: true,
     ...platform,
   });
 }

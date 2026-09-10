@@ -27,6 +27,7 @@ const FOUR_NAMES: readonly ScheduledJobName[] = [
   'outbox_publish',
   'customer_outgoing_webhook_dispatch',
   'wallet_sanctions_rescreen',
+  'daily_fraud_metrics',
 ];
 
 const PLATFORM_ADMIN = createAuthContext({
@@ -122,6 +123,7 @@ function resolvingRunners(order: string[], overrides: Partial<ScheduledJobRunner
     outbox_publish: make('outbox_publish'),
     customer_outgoing_webhook_dispatch: make('customer_outgoing_webhook_dispatch'),
     wallet_sanctions_rescreen: make('wallet_sanctions_rescreen'),
+    daily_fraud_metrics: make('daily_fraud_metrics'),
     ...overrides,
   };
 }
