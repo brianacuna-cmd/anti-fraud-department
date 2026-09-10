@@ -6,7 +6,7 @@ import type { ScreeningMatch } from '../domain/model/entities/ScreeningMatch.js'
 import { AmlAlert } from '../domain/model/aggregates/AmlAlert.js';
 import type { AmlAlertRepository } from '../domain/ports/AmlAlertRepository.js';
 import type { AmlAlertTimelineRecorder } from '../domain/ports/AmlAlertTimelineRecorder.js';
-import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
+import type { UnitOfWork, Transaction } from '../domain/ports/UnitOfWork.js';
 import type { OutboxEventRepository } from '../../../shared/outbox/OutboxEventRepository.js';
 import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
 import type { ConfidenceThresholds } from '../domain/services/ConfidenceTiering.js';
@@ -45,6 +45,11 @@ export interface OpenAmlAlertDeps {
   readonly generateTimelineEventId: () => string;
   readonly generateOutboxEventId: () => OutboxEventId;
   readonly thresholds?: ConfidenceThresholds;
+  readonly onOpened?: (input: {
+    readonly alert: AmlAlert;
+    readonly organizationId: string;
+    readonly tx: Transaction;
+  }) => Promise<void>;
 }
 
 /**
@@ -125,6 +130,10 @@ export function createOpenAmlAlertUseCase(deps: OpenAmlAlertDeps) {
         }),
         tx,
       );
+
+      if (deps.onOpened !== undefined) {
+        await deps.onOpened({ alert, organizationId, tx });
+      }
 
       return { opened: true, duplicate: false, alert };
     });

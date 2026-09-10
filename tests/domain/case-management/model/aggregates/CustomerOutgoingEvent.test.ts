@@ -70,6 +70,55 @@ describe('CustomerOutgoingEvent.create', () => {
     expect(event.enforcementActionId).toBe(createEnforcementActionId(oid('action-1')));
     expect(event.latencyMs).toBeNull();
   });
+
+  it('accepts a ticket payload with null enforcementActionId and Kafka facts', () => {
+    const ticketPayload = {
+      event_type: 'case.created' as const,
+      organization_id: oid('org-1'),
+      caseId: oid('case-1'),
+      customerId: oid('customer-1'),
+      riskScore: 42,
+    };
+    const event = CustomerOutgoingEvent.create({
+      id: createCustomerOutgoingEventId(oid('outbox-ticket-1')),
+      organizationId: oid('org-1'),
+      customerId: oid('customer-1'),
+      enforcementActionId: null,
+      webhookUrl: 'https://hooks.example/tickets',
+      eventType: 'case.created',
+      payload: ticketPayload,
+      now: NOW,
+    });
+
+    expect(event.status).toBe('PENDING');
+    expect(event.enforcementActionId).toBeNull();
+    expect(event.eventType).toBe('case.created');
+    expect(event.payload).toEqual(ticketPayload);
+    expect(event.payload).not.toHaveProperty('enforcement_action_id');
+  });
+
+  it('accepts case.resolved ticket facts with null enforcementActionId', () => {
+    const ticketPayload = {
+      event_type: 'case.resolved' as const,
+      organization_id: oid('org-1'),
+      case_id: oid('case-1'),
+      closure_type: 'RESOLVED',
+    };
+    const event = CustomerOutgoingEvent.create({
+      id: createCustomerOutgoingEventId(oid('outbox-ticket-2')),
+      organizationId: oid('org-1'),
+      customerId: oid('customer-1'),
+      enforcementActionId: null,
+      webhookUrl: 'https://hooks.example/tickets',
+      eventType: 'case.resolved',
+      payload: ticketPayload,
+      now: NOW,
+    });
+
+    expect(event.enforcementActionId).toBeNull();
+    expect(event.payload).toEqual(ticketPayload);
+    expect(event.eventType).toBe('case.resolved');
+  });
 });
 
 describe('CustomerOutgoingEvent.createRecordedDelivery', () => {

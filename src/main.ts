@@ -138,6 +138,7 @@ import { MongoUnitOfWork as CaseManagementMongoUnitOfWork } from './modules/case
 import { generateCaseId } from './modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from './modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { createCreateCaseUseCase } from './modules/case-management/application/CreateCase.js';
+import { createEnqueueCustomerWebhookFanOut } from './modules/case-management/application/EnqueueCustomerWebhookFanOut.js';
 import { createCalculateSlaUseCase } from './modules/case-management/application/CalculateSla.js';
 import { createRouteCaseUseCase } from './modules/case-management/application/RouteCase.js';
 import { createSimulateRoutingRuleUseCase } from './modules/case-management/application/SimulateRoutingRule.js';
@@ -226,6 +227,7 @@ import { createIdentityAssigneeDirectory } from './composition/identityAssigneeD
 import { generateCaseSlaTrackingId } from './modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
 import { createGetOrganizationFraudConfigUseCase } from './modules/case-management/application/GetOrganizationFraudConfig.js';
 import { createUpsertOrganizationFraudConfigUseCase } from './modules/case-management/application/UpsertOrganizationFraudConfig.js';
+import { createRotateOutboundWebhookSecretUseCase } from './modules/case-management/application/RotateOutboundWebhookSecret.js';
 import { createRecordAnalystDecisionUseCase } from './modules/case-management/application/RecordAnalystDecision.js';
 import { createRequestEnforcementActionUseCase } from './modules/case-management/application/RequestEnforcementAction.js';
 import { createListCaseDecisionsUseCase } from './modules/case-management/application/ListCaseDecisions.js';
@@ -333,6 +335,7 @@ import type { CanonicalRiskEvent } from './modules/risk-assessment/domain/model/
 import { createScreenSubjectAgainstWatchlistUseCase } from './modules/screening/application/ScreenSubjectAgainstWatchlist.js';
 import type { ScreenSubjectAgainstWatchlistInput } from './modules/screening/application/ScreenSubjectAgainstWatchlist.js';
 import { createOpenAmlAlertUseCase } from './modules/screening/application/OpenAmlAlert.js';
+import { createAmlAlertOpenedWebhookFanOut } from './composition/amlAlertOpenedWebhookFanOut.js';
 import { createListAmlAlertsUseCase } from './modules/screening/application/ListAmlAlerts.js';
 import { createGetAmlAlertUseCase } from './modules/screening/application/GetAmlAlert.js';
 import { createGetAmlAlertTimelineUseCase } from './modules/screening/application/GetAmlAlertTimeline.js';
@@ -747,6 +750,12 @@ async function bootstrap(): Promise<void> {
   // `featureFlags.autoRouting` opt-out.
   const caseRoutingRules = new MongoCaseRoutingRuleRepository(db);
   const customerWebhookSubscriptions = new MongoCustomerWebhookSubscriptionRepository(db);
+  const customerOutgoingEvents = new MongoCustomerOutgoingEventRepository(db);
+  const enqueueCustomerWebhookFanOut = createEnqueueCustomerWebhookFanOut({
+    subscriptions: customerWebhookSubscriptions,
+    outgoingEvents: customerOutgoingEvents,
+    generateCustomerOutgoingEventId,
+  });
   const caseRoutingEngine = new ZenRoutingEngine();
   const organizationFraudConfig = new MongoOrganizationFraudConfigRepository(db);
   const caseSlaTracking = new MongoCaseSlaTrackingRepository(db);
@@ -791,6 +800,7 @@ async function bootstrap(): Promise<void> {
     notificationSender: caseManagementNotificationSender,
     outbox: outboxEvents,
     generateOutboxEventId,
+    enqueueCustomerWebhookFanOut,
   });
   // ---------------------------------------------------------------------
   // Finturu integration (this fork's own).
@@ -819,6 +829,7 @@ async function bootstrap(): Promise<void> {
     auditRecorder: caseManagementAuditRecorder,
     initializeCaseSla,
     routeCase,
+    enqueueCustomerWebhookFanOut,
   });
 
   const finturuApiClient = new FinturuApiClient({
@@ -861,6 +872,7 @@ async function bootstrap(): Promise<void> {
     assigneeDirectory,
     routingRules: caseRoutingRules,
     routeCase,
+    enqueueCustomerWebhookFanOut,
   });
 
   // Hoisted so both PublishOutboxEvents (DLQ insert) and the three DLQ admin
@@ -1052,6 +1064,7 @@ async function bootstrap(): Promise<void> {
         generateOutboxEventId,
         decisions: analystDecisions,
         enforcementActions,
+        enqueueCustomerWebhookFanOut,
       }),
       generateCaseReport,
     }),
@@ -1125,6 +1138,12 @@ async function bootstrap(): Promise<void> {
   const organizationFraudConfigHttpRouter = organizationFraudConfigRouter({
     getOrganizationFraudConfig,
     upsertOrganizationFraudConfig: createUpsertOrganizationFraudConfigUseCase({
+      repository: organizationFraudConfig,
+      clock,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+    }),
+    rotateOutboundWebhookSecret: createRotateOutboundWebhookSecretUseCase({
       repository: organizationFraudConfig,
       clock,
       auditRecorder: caseManagementAuditRecorder,
@@ -1250,11 +1269,11 @@ async function bootstrap(): Promise<void> {
       generateTimelineEventId,
     }),
   });
-  const customerOutgoingEvents = new MongoCustomerOutgoingEventRepository(db);
   const outgoingWebhookClient = new HttpOutgoingWebhookClient();
   const webhookTestHttpRouter = webhookTestRouter({
     testOutgoingWebhook: createTestOutgoingWebhookUseCase({
       fraudConfig: organizationFraudConfig,
+      subscriptions: customerWebhookSubscriptions,
       webhookClient: outgoingWebhookClient,
       outgoingEvents: customerOutgoingEvents,
       auditRecorder: caseManagementAuditRecorder,
@@ -1268,6 +1287,8 @@ async function bootstrap(): Promise<void> {
     webhookClient: outgoingWebhookClient,
     fraudConfig: organizationFraudConfig,
     clock,
+    unitOfWork: caseManagementUnitOfWork,
+    dlq: dlqEvents,
     wrapTick: (tick) =>
       recordAround(tick, {
         name: 'customer_outgoing_webhook_dispatch',
@@ -1519,6 +1540,7 @@ async function bootstrap(): Promise<void> {
     generateAmlAlertId,
     generateTimelineEventId: generateObjectIdHex,
     generateOutboxEventId,
+    onOpened: createAmlAlertOpenedWebhookFanOut(enqueueCustomerWebhookFanOut, clock),
   });
   const getAmlAlert = createGetAmlAlertUseCase({ amlAlertRepository: amlAlerts });
   const getAmlAlertTimeline = createGetAmlAlertTimelineUseCase({

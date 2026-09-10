@@ -21,6 +21,8 @@ export interface OrganizationFraudConfigDocument {
   readonly outbound_webhook_url?: string | null;
   /** HMAC secret shared with the tenant. Never leaves the API. */
   readonly outbound_webhook_secret?: string | null;
+  readonly outbound_webhook_previous_secret?: string | null;
+  readonly outbound_webhook_secret_grace_expires_at?: Date | null;
   readonly created_at: Date;
   readonly updated_at: Date;
 }

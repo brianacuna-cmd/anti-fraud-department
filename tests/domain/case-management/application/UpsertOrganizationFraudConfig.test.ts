@@ -224,6 +224,49 @@ describe('createUpsertOrganizationFraudConfigUseCase', () => {
     expect(JSON.stringify(event.detail)).not.toContain(WEBHOOK_URL);
   });
 
+  it('PUT that changes the secret copies old current to previous and starts 24h grace', async () => {
+    const repository = new InMemoryOrganizationFraudConfigRepository();
+    repository.seed(
+      OrganizationFraudConfig.create({
+        id: createOrganizationFraudConfigId(oid('config-1')),
+        organizationId: oid('org-1'),
+        ...VALID_INPUT,
+        outboundWebhookSecret: SECRET,
+        now: CREATED_AT,
+      }),
+    );
+    const { upsertConfig } = buildUseCase({ repository });
+
+    const updated = await upsertConfig({
+      auth: ORG_1_USER,
+      ...VALID_INPUT,
+      outboundWebhookSecret: 'next-secret-value-32-characters-min!!',
+    });
+
+    expect(updated.outboundWebhookPreviousSecret).toBe(SECRET);
+    expect(updated.outboundWebhookSecret).toBe('next-secret-value-32-characters-min!!');
+    expect(updated.outboundWebhookSecretGraceExpiresAt).toBe(fromDate(new Date('2026-01-03T00:00:00.000Z')));
+  });
+
+  it('PUT that omits the secret leaves previous and grace unchanged', async () => {
+    const repository = new InMemoryOrganizationFraudConfigRepository();
+    const rotated = OrganizationFraudConfig.create({
+      id: createOrganizationFraudConfigId(oid('config-1')),
+      organizationId: oid('org-1'),
+      ...VALID_INPUT,
+      outboundWebhookSecret: SECRET,
+      now: CREATED_AT,
+    }).rotateOutboundWebhookSecret('rotated-secret-value-32-characters-min!!', 24, CREATED_AT);
+    repository.seed(rotated);
+    const { upsertConfig } = buildUseCase({ repository });
+
+    const updated = await upsertConfig({ auth: ORG_1_USER, ...VALID_INPUT });
+
+    expect(updated.outboundWebhookSecret).toBe(rotated.outboundWebhookSecret);
+    expect(updated.outboundWebhookPreviousSecret).toBe(rotated.outboundWebhookPreviousSecret);
+    expect(updated.outboundWebhookSecretGraceExpiresAt).toBe(rotated.outboundWebhookSecretGraceExpiresAt);
+  });
+
   it('threads the same transaction handle into find, upsert, and record', async () => {
     const repository = new InMemoryOrganizationFraudConfigRepository();
     const seenTx: Array<Transaction | undefined> = [];

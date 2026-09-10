@@ -1,4 +1,5 @@
 import type { Instant } from '../../../../../shared/time/Instant.js';
+import { fromDate, toDate } from '../../../../../shared/time/Instant.js';
 import type { OrganizationFraudConfigId } from '../value-objects/OrganizationFraudConfigId.js';
 import type { CasePriority } from '../value-objects/CasePriority.js';
 import { invariantViolation } from '../../errors/CaseManagementError.js';
@@ -30,6 +31,8 @@ export interface OrganizationFraudConfigProps {
    * anyone else's who knows their URL.
    */
   readonly outboundWebhookSecret: string | null;
+  readonly outboundWebhookPreviousSecret: string | null;
+  readonly outboundWebhookSecretGraceExpiresAt: Instant | null;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
 }
@@ -48,6 +51,8 @@ export interface CreateOrganizationFraudConfigInput {
   readonly featureFlags?: Readonly<Record<string, boolean>>;
   readonly outboundWebhookUrl?: string | null;
   readonly outboundWebhookSecret?: string | null;
+  readonly outboundWebhookPreviousSecret?: string | null;
+  readonly outboundWebhookSecretGraceExpiresAt?: Instant | null;
   readonly now: Instant;
 }
 
@@ -63,6 +68,20 @@ export interface UpdateOrganizationFraudConfigInput {
   readonly featureFlags?: Readonly<Record<string, boolean>>;
   readonly outboundWebhookUrl?: string | null;
   readonly outboundWebhookSecret?: string | null;
+}
+
+const DEFAULT_WEBHOOK_SECRET_GRACE_HOURS = 24;
+const MIN_WEBHOOK_SECRET_GRACE_HOURS = 1;
+const MAX_WEBHOOK_SECRET_GRACE_HOURS = 168;
+
+export const WEBHOOK_SECRET_GRACE_HOURS = {
+  default: DEFAULT_WEBHOOK_SECRET_GRACE_HOURS,
+  min: MIN_WEBHOOK_SECRET_GRACE_HOURS,
+  max: MAX_WEBHOOK_SECRET_GRACE_HOURS,
+} as const;
+
+function addHours(now: Instant, hours: number): Instant {
+  return fromDate(new Date(toDate(now).getTime() + hours * 3_600_000));
 }
 
 const SLA_FIELDS = [
@@ -110,6 +129,8 @@ export class OrganizationFraudConfig {
       featureFlags: input.featureFlags ?? {},
       outboundWebhookUrl: input.outboundWebhookUrl ?? null,
       outboundWebhookSecret: input.outboundWebhookSecret ?? null,
+      outboundWebhookPreviousSecret: input.outboundWebhookPreviousSecret ?? null,
+      outboundWebhookSecretGraceExpiresAt: input.outboundWebhookSecretGraceExpiresAt ?? null,
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -172,6 +193,14 @@ export class OrganizationFraudConfig {
     return this.props.outboundWebhookSecret;
   }
 
+  get outboundWebhookPreviousSecret(): string | null {
+    return this.props.outboundWebhookPreviousSecret;
+  }
+
+  get outboundWebhookSecretGraceExpiresAt(): Instant | null {
+    return this.props.outboundWebhookSecretGraceExpiresAt;
+  }
+
   get createdAt(): Instant {
     return this.props.createdAt;
   }
@@ -223,6 +252,9 @@ export class OrganizationFraudConfig {
     for (const field of [...SLA_FIELDS, ...RISK_THRESHOLD_FIELDS]) {
       assertPatchFieldNonNegative(patch, field);
     }
+    const secretChanged =
+      patch.outboundWebhookSecret !== undefined &&
+      patch.outboundWebhookSecret !== this.props.outboundWebhookSecret;
     return new OrganizationFraudConfig({
       ...this.props,
       ...patch,
@@ -234,6 +266,39 @@ export class OrganizationFraudConfig {
         patch.outboundWebhookSecret === undefined
           ? this.props.outboundWebhookSecret
           : patch.outboundWebhookSecret,
+      outboundWebhookPreviousSecret: secretChanged
+        ? this.props.outboundWebhookSecret
+        : this.props.outboundWebhookPreviousSecret,
+      outboundWebhookSecretGraceExpiresAt: secretChanged
+        ? addHours(now, DEFAULT_WEBHOOK_SECRET_GRACE_HOURS)
+        : this.props.outboundWebhookSecretGraceExpiresAt,
+      updatedAt: now,
+    });
+  }
+
+  rotateOutboundWebhookSecret(
+    newSecret: string,
+    gracePeriodHours: number,
+    now: Instant,
+  ): OrganizationFraudConfig {
+    if (
+      gracePeriodHours < MIN_WEBHOOK_SECRET_GRACE_HOURS ||
+      gracePeriodHours > MAX_WEBHOOK_SECRET_GRACE_HOURS
+    ) {
+      throw invariantViolation('gracePeriodHours must be between 1 and 168', {
+        gracePeriodHours,
+      });
+    }
+    if (newSecret.trim().length === 0) {
+      throw invariantViolation('OrganizationFraudConfig outboundWebhookSecret must be a non-empty string', {
+        field: 'outboundWebhookSecret',
+      });
+    }
+    return new OrganizationFraudConfig({
+      ...this.props,
+      outboundWebhookPreviousSecret: this.props.outboundWebhookSecret,
+      outboundWebhookSecret: newSecret,
+      outboundWebhookSecretGraceExpiresAt: addHours(now, gracePeriodHours),
       updatedAt: now,
     });
   }

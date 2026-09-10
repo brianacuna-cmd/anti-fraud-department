@@ -50,6 +50,7 @@ export const caseManagementErrorStatus: StatusByCode = {
   ASSIGNEE_CANNOT_WORK_CASES: 422,
   // 422 not 400/404: empty body is valid; missing URL is a config gap.
   OUTBOUND_WEBHOOK_URL_NOT_SET: 422,
+  CUSTOMER_OUTGOING_DLQ_REQUEUE_FORBIDDEN: 422,
   // 409 same family: the rule is valid, deleting it right now is not.
   ROUTING_RULE_ACTIVE: 409,
 };

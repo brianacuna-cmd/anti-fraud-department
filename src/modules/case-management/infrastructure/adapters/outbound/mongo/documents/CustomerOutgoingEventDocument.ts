@@ -16,8 +16,14 @@ export interface WebhookTestPayloadDocument {
   readonly requested_at: string;
 }
 
+export type TicketWebhookPayloadDocument = {
+  readonly event_type: 'case.created' | 'case.resolved' | 'aml.alert_generated';
+  readonly organization_id: string;
+} & Record<string, unknown>;
+
 export type CustomerOutgoingEventStoredPayloadDocument =
   | CustomerOutgoingEventPayloadDocument
+  | TicketWebhookPayloadDocument
   | WebhookTestPayloadDocument;
 
 export interface CustomerOutgoingEventDocument {

@@ -27,4 +27,10 @@ export const upsertOrganizationFraudConfigSchema = z
   })
   .strict();
 
+export const rotateOutboundWebhookSecretSchema = z
+  .object({
+    gracePeriodHours: z.number().int().min(1).max(168).optional(),
+  })
+  .strict();
+
 export type UpsertOrganizationFraudConfigBody = z.infer<typeof upsertOrganizationFraudConfigSchema>;

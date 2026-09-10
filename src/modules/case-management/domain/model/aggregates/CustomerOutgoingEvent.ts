@@ -2,6 +2,7 @@ import type { Instant } from '../../../../../shared/time/Instant.js';
 import type { CustomerOutgoingEventId } from '../value-objects/CustomerOutgoingEventId.js';
 import type { CustomerOutgoingEventStatus } from '../value-objects/CustomerOutgoingEventStatus.js';
 import type { EnforcementActionId } from '../value-objects/EnforcementActionId.js';
+import type { WebhookTicketEventType } from '../value-objects/WebhookTicketEventType.js';
 import { customerOutgoingEventStatusTransitions } from '../../services/transitions.js';
 import { assertTransitionAllowed } from '../../services/StatusTransitionPolicy.js';
 import { invariantViolation } from '../../errors/CaseManagementError.js';
@@ -16,6 +17,12 @@ export interface CustomerOutgoingEventPayload {
   readonly organization_id: string;
 }
 
+/** Catalog ticket payload: catalog name plus producer Kafka facts. */
+export type TicketWebhookPayload = {
+  readonly event_type: WebhookTicketEventType;
+  readonly organization_id: string;
+} & Readonly<Record<string, unknown>>;
+
 /** One-shot SUPERVISOR probe payload — not the enforcement six-field shape. */
 export interface WebhookTestPayload {
   readonly event_type: 'WEBHOOK_TEST';
@@ -24,7 +31,10 @@ export interface WebhookTestPayload {
   readonly requested_at: string;
 }
 
-export type CustomerOutgoingEventStoredPayload = CustomerOutgoingEventPayload | WebhookTestPayload;
+export type CustomerOutgoingEventStoredPayload =
+  | CustomerOutgoingEventPayload
+  | TicketWebhookPayload
+  | WebhookTestPayload;
 
 export interface CustomerOutgoingEventProps {
   readonly id: CustomerOutgoingEventId;
@@ -46,10 +56,10 @@ export interface CreateCustomerOutgoingEventInput {
   readonly id: CustomerOutgoingEventId;
   readonly organizationId: string;
   readonly customerId: string;
-  readonly enforcementActionId: EnforcementActionId;
+  readonly enforcementActionId: EnforcementActionId | null;
   readonly webhookUrl: string;
   readonly eventType: string;
-  readonly payload: CustomerOutgoingEventPayload;
+  readonly payload: CustomerOutgoingEventPayload | TicketWebhookPayload;
   readonly now: Instant;
 }
 

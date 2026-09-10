@@ -304,6 +304,14 @@ export function scheduledJobNotFound(jobName: string): CaseManagementError {
  * SUPERVISOR probe cannot POST: the tenant has no outbound webhook URL
  * (missing fraud-config is treated the same as an unset URL).
  */
+export function customerOutgoingDlqRequeueForbidden(): CaseManagementError {
+  return new CaseManagementError(
+    'CUSTOMER_OUTGOING_DLQ_REQUEUE_FORBIDDEN',
+    'dead-letter events with aggregateType customer_outgoing_events cannot be requeued onto Kafka outbox',
+    { aggregateType: 'customer_outgoing_events' },
+  );
+}
+
 export function outboundWebhookUrlNotSet(organizationId: string): CaseManagementError {
   return new CaseManagementError(
     'OUTBOUND_WEBHOOK_URL_NOT_SET',

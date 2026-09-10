@@ -19,6 +19,7 @@ export interface OrganizationFraudConfigResponseDto {
    * from ours.
    */
   readonly outboundWebhookSecretSet: boolean;
+  readonly outboundWebhookSecretGraceExpiresAt: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -40,6 +41,7 @@ export function toOrganizationFraudConfigResponse(
     featureFlags: config.featureFlags,
     outboundWebhookUrl: config.outboundWebhookUrl,
     outboundWebhookSecretSet: config.outboundWebhookSecret !== null,
+    outboundWebhookSecretGraceExpiresAt: config.outboundWebhookSecretGraceExpiresAt,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
   };

@@ -6,7 +6,7 @@ import type { UnitOfWork } from '../domain/ports/UnitOfWork.js';
 import { createOutboxEventId, generateOutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
 import { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
 import { requirePlatformAdmin } from './authorization/requirePlatformAdmin.js';
-import { dlqEventNotFound } from '../domain/errors/CaseManagementError.js';
+import { dlqEventNotFound, customerOutgoingDlqRequeueForbidden } from '../domain/errors/CaseManagementError.js';
 
 export interface RequeueDlqEventInput {
   readonly auth: AuthContext;
@@ -47,6 +47,9 @@ export function createRequeueDlqEventUseCase(deps: RequeueDlqEventDeps) {
     const dlqRow = await deps.dlq.findById(originalId);
     if (dlqRow === null) {
       throw dlqEventNotFound(input.dlqEventId);
+    }
+    if (dlqRow.aggregateType === 'customer_outgoing_events') {
+      throw customerOutgoingDlqRequeueForbidden();
     }
 
     const newId = generateOutboxEventId();

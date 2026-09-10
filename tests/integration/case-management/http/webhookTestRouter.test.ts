@@ -14,6 +14,7 @@ import { createOrganizationFraudConfigId } from '../../../../src/modules/case-ma
 import { generateCustomerOutgoingEventId } from '../../../../src/modules/case-management/domain/model/value-objects/CustomerOutgoingEventId.js';
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
 import { InMemoryCustomerOutgoingEventRepository } from '../../../helpers/case-management/InMemoryCustomerOutgoingEventRepository.js';
+import { InMemoryCustomerWebhookSubscriptionRepository } from '../../../helpers/case-management/InMemoryCustomerWebhookSubscriptionRepository.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
 import { InMemoryUnitOfWork } from '../../../helpers/case-management/InMemoryUnitOfWork.js';
 import { FakeOutgoingWebhookClient } from '../../../helpers/case-management/FakeOutgoingWebhookClient.js';
@@ -70,6 +71,7 @@ function buildApp(actorPerRequest: () => AuthContext, options: { readonly seedUr
     webhookTestRouter({
       testOutgoingWebhook: createTestOutgoingWebhookUseCase({
         fraudConfig: fraudConfigs,
+        subscriptions: new InMemoryCustomerWebhookSubscriptionRepository(),
         webhookClient,
         outgoingEvents,
         auditRecorder,
@@ -100,6 +102,7 @@ function buildUnauthenticatedApp() {
     webhookTestRouter({
       testOutgoingWebhook: createTestOutgoingWebhookUseCase({
         fraudConfig: new InMemoryOrganizationFraudConfigRepository(),
+        subscriptions: new InMemoryCustomerWebhookSubscriptionRepository(),
         webhookClient: new FakeOutgoingWebhookClient(),
         outgoingEvents: new InMemoryCustomerOutgoingEventRepository(),
         auditRecorder: new InMemoryCaseManagementAuditRecorder(),
@@ -125,16 +128,21 @@ describe('webhookTestRouter (HTTP)', () => {
     const response = await request(app).post('/api/v1/webhooks/test').send({}).expect(200);
 
     expect(response.body).toEqual({
-      statusCode: 200,
-      latencyMs: expect.any(Number),
-      ok: true,
-      eventId: response.body.eventId,
+      deliveries: [
+        {
+          url: URL_A,
+          statusCode: 200,
+          latencyMs: expect.any(Number),
+          ok: true,
+          eventId: response.body.deliveries[0].eventId,
+        },
+      ],
     });
     expect(outgoingEvents.all()[0]!.status).toBe('SENT');
     expect(auditRecorder.all()[0]).toMatchObject({
       action: 'WEBHOOK_TEST',
       resource: 'outgoing_webhook',
-      resourceId: response.body.eventId,
+      resourceId: response.body.deliveries[0].eventId,
     });
     expect(webhookClient.posts[0]!.url).toBe(URL_A);
   });

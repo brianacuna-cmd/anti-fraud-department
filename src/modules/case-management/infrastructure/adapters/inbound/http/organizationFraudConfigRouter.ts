@@ -2,13 +2,18 @@ import { Router } from 'express';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
 import type { createGetOrganizationFraudConfigUseCase } from '../../../../application/GetOrganizationFraudConfig.js';
 import type { createUpsertOrganizationFraudConfigUseCase } from '../../../../application/UpsertOrganizationFraudConfig.js';
-import { upsertOrganizationFraudConfigSchema } from './dto/organizationFraudConfigSchemas.js';
+import type { createRotateOutboundWebhookSecretUseCase } from '../../../../application/RotateOutboundWebhookSecret.js';
+import {
+  upsertOrganizationFraudConfigSchema,
+  rotateOutboundWebhookSecretSchema,
+} from './dto/organizationFraudConfigSchemas.js';
 import { toOrganizationFraudConfigResponse } from './mappers/OrganizationFraudConfigHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
 
 export interface OrganizationFraudConfigRouterDeps {
   readonly getOrganizationFraudConfig: ReturnType<typeof createGetOrganizationFraudConfigUseCase>;
   readonly upsertOrganizationFraudConfig: ReturnType<typeof createUpsertOrganizationFraudConfigUseCase>;
+  readonly rotateOutboundWebhookSecret: ReturnType<typeof createRotateOutboundWebhookSecretUseCase>;
 }
 
 /**
@@ -29,6 +34,13 @@ export function organizationFraudConfigRouter(deps: OrganizationFraudConfigRoute
     const auth = requireAuthContext(req);
     const body = parseRequest(upsertOrganizationFraudConfigSchema, req.body);
     const config = await deps.upsertOrganizationFraudConfig({ auth, ...body });
+    res.status(200).json(toOrganizationFraudConfigResponse(config));
+  });
+
+  router.post('/organization-fraud-config/webhook-secret/rotate', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(rotateOutboundWebhookSecretSchema, req.body ?? {});
+    const config = await deps.rotateOutboundWebhookSecret({ auth, ...body });
     res.status(200).json(toOrganizationFraudConfigResponse(config));
   });
 

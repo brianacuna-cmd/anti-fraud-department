@@ -111,6 +111,30 @@ describe('OrganizationFraudConfig#update', () => {
     expect(withUrl.outboundWebhookUrl).toBe('https://hooks.example/fraud');
     expect(cleared.outboundWebhookUrl).toBeNull();
   });
+
+  it('copy current to previous and restarts 24h grace when the secret changes', () => {
+    const updated = buildConfig({ outboundWebhookSecret: 's0-secret-value-at-least-32-chars!!' }).update(
+      { outboundWebhookSecret: 's1-secret-value-at-least-32-chars!!' },
+      LATER,
+    );
+
+    expect(updated.outboundWebhookPreviousSecret).toBe('s0-secret-value-at-least-32-chars!!');
+    expect(updated.outboundWebhookSecret).toBe('s1-secret-value-at-least-32-chars!!');
+    expect(updated.outboundWebhookSecretGraceExpiresAt).toBe(fromDate(new Date('2026-01-03T00:00:00.000Z')));
+  });
+
+  it('keeps previous secret and grace when the secret is omitted', () => {
+    const rotated = buildConfig({ outboundWebhookSecret: 's0-secret-value-at-least-32-chars!!' }).rotateOutboundWebhookSecret(
+      's1-secret-value-at-least-32-chars!!',
+      24,
+      NOW,
+    );
+    const updated = rotated.update({ slaLowMinutes: 300 }, LATER);
+
+    expect(updated.outboundWebhookPreviousSecret).toBe(rotated.outboundWebhookPreviousSecret);
+    expect(updated.outboundWebhookSecret).toBe(rotated.outboundWebhookSecret);
+    expect(updated.outboundWebhookSecretGraceExpiresAt).toBe(rotated.outboundWebhookSecretGraceExpiresAt);
+  });
 });
 
 describe('OrganizationFraudConfig#priorityForRiskScore', () => {
