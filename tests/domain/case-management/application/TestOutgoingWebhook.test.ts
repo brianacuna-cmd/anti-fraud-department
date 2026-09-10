@@ -8,6 +8,9 @@ import { createOrganizationFraudConfigId } from '../../../../src/modules/case-ma
 import { generateCustomerOutgoingEventId } from '../../../../src/modules/case-management/domain/model/value-objects/CustomerOutgoingEventId.js';
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
 import { InMemoryCustomerOutgoingEventRepository } from '../../../helpers/case-management/InMemoryCustomerOutgoingEventRepository.js';
+import { InMemoryCustomerWebhookSubscriptionRepository } from '../../../helpers/case-management/InMemoryCustomerWebhookSubscriptionRepository.js';
+import { CustomerWebhookSubscription } from '../../../../src/modules/case-management/domain/model/aggregates/CustomerWebhookSubscription.js';
+import { generateCustomerWebhookSubscriptionId } from '../../../../src/modules/case-management/domain/model/value-objects/CustomerWebhookSubscriptionId.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
 import { InMemoryUnitOfWork } from '../../../helpers/case-management/InMemoryUnitOfWork.js';
 import { FakeOutgoingWebhookClient } from '../../../helpers/case-management/FakeOutgoingWebhookClient.js';
@@ -55,6 +58,7 @@ function buildUseCase(
 ) {
   const fraudConfigs = new InMemoryOrganizationFraudConfigRepository();
   const outgoingEvents = new InMemoryCustomerOutgoingEventRepository();
+  const subscriptions = new InMemoryCustomerWebhookSubscriptionRepository();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
   const unitOfWork = new InMemoryUnitOfWork();
   const webhookClient = new FakeOutgoingWebhookClient();
@@ -68,6 +72,7 @@ function buildUseCase(
   }
   const execute = createTestOutgoingWebhookUseCase({
     fraudConfig: fraudConfigs,
+    subscriptions,
     webhookClient,
     outgoingEvents,
     auditRecorder,
@@ -75,7 +80,7 @@ function buildUseCase(
     clock: new FixedClock(NOW),
     generateCustomerOutgoingEventId,
   });
-  return { execute, fraudConfigs, outgoingEvents, auditRecorder, unitOfWork, webhookClient };
+  return { execute, fraudConfigs, outgoingEvents, auditRecorder, unitOfWork, webhookClient, subscriptions };
 }
 
 describe('createTestOutgoingWebhookUseCase', () => {
@@ -105,15 +110,16 @@ describe('createTestOutgoingWebhookUseCase', () => {
 
     const result = await execute({ auth: supervisor() });
 
-    expect(result.ok).toBe(true);
-    expect(result.statusCode).toBe(200);
+    expect(result.deliveries).toHaveLength(1);
+    expect(result.deliveries[0]!.ok).toBe(true);
+    expect(result.deliveries[0]!.statusCode).toBe(200);
     expect(webhookClient.posts).toHaveLength(1);
     expect(webhookClient.posts[0]!.url).toBe(URL_A);
     expect(webhookClient.posts[0]!.secret).toBe(SECRET_A);
     expect(webhookClient.posts[0]!.payload).toEqual({
       event_type: 'WEBHOOK_TEST',
       organization_id: ORG_A,
-      event_id: result.eventId,
+      event_id: result.deliveries[0]!.eventId,
       requested_at: NOW,
     });
     expect(webhookClient.posts[0]!.payload).not.toHaveProperty('enforcement_action_id');
@@ -129,13 +135,18 @@ describe('createTestOutgoingWebhookUseCase', () => {
     const result = await execute({ auth: supervisor() });
 
     expect(result).toEqual({
-      statusCode: 502,
-      latencyMs: expect.any(Number),
-      ok: false,
-      eventId: result.eventId,
+      deliveries: [
+        {
+          url: URL_A,
+          statusCode: 502,
+          latencyMs: expect.any(Number),
+          ok: false,
+          eventId: result.deliveries[0]!.eventId,
+        },
+      ],
     });
-    expect(Number.isInteger(result.latencyMs)).toBe(true);
-    expect(result.latencyMs).toBeGreaterThanOrEqual(0);
+    expect(Number.isInteger(result.deliveries[0]!.latencyMs)).toBe(true);
+    expect(result.deliveries[0]!.latencyMs).toBeGreaterThanOrEqual(0);
     const row = outgoingEvents.all()[0]!;
     expect(outgoingEvents.all()).toHaveLength(1);
     expect(row.status).toBe('FAILED');
@@ -147,8 +158,8 @@ describe('createTestOutgoingWebhookUseCase', () => {
     expect(auditRecorder.all()[0]).toMatchObject({
       action: 'WEBHOOK_TEST',
       resource: 'outgoing_webhook',
-      resourceId: result.eventId,
-      detail: { statusCode: 502, latencyMs: result.latencyMs, ok: false },
+      resourceId: result.deliveries[0]!.eventId,
+      detail: { statusCode: 502, latencyMs: result.deliveries[0]!.latencyMs, ok: false },
     });
     expect(JSON.stringify(auditRecorder.all()[0]!.detail)).not.toContain(SECRET_A);
     expect(JSON.stringify(auditRecorder.all()[0]!.detail)).not.toContain(URL_A);
@@ -160,8 +171,8 @@ describe('createTestOutgoingWebhookUseCase', () => {
 
     const result = await execute({ auth: supervisor() });
 
-    expect(result.statusCode).toBe(0);
-    expect(result.ok).toBe(false);
+    expect(result.deliveries[0]!.statusCode).toBe(0);
+    expect(result.deliveries[0]!.ok).toBe(false);
     expect(outgoingEvents.all()[0]!.status).toBe('FAILED');
     expect(outgoingEvents.all()[0]!.responseStatus).toBe(0);
     expect(outgoingEvents.all()[0]!.status).not.toBe('PENDING');
@@ -202,5 +213,51 @@ describe('createTestOutgoingWebhookUseCase', () => {
     }
     expect(webhookClient.posts).toHaveLength(0);
     expect(outgoingEvents.all()).toHaveLength(0);
+  });
+
+  it('POSTs unique ACTIVE subscription URLs and returns deliveries, not the org URL alone', async () => {
+    const { execute, subscriptions, webhookClient, outgoingEvents } = buildUseCase();
+    await subscriptions.create(
+      CustomerWebhookSubscription.create({
+        id: generateCustomerWebhookSubscriptionId(),
+        organizationId: ORG_A,
+        url: 'https://hooks.example.com/sub-a',
+        eventTypes: ['case.created'],
+        now: NOW,
+      }),
+    );
+    await subscriptions.create(
+      CustomerWebhookSubscription.create({
+        id: generateCustomerWebhookSubscriptionId(),
+        organizationId: ORG_A,
+        url: 'https://hooks.example.com/sub-b',
+        eventTypes: ['case.resolved'],
+        now: NOW,
+      }),
+    );
+
+    const result = await execute({ auth: supervisor() });
+
+    expect(result.deliveries).toHaveLength(2);
+    expect(result.deliveries.map((delivery) => delivery.url).sort()).toEqual([
+      'https://hooks.example.com/sub-a',
+      'https://hooks.example.com/sub-b',
+    ]);
+    expect(webhookClient.posts.map((post) => post.url).sort()).toEqual([
+      'https://hooks.example.com/sub-a',
+      'https://hooks.example.com/sub-b',
+    ]);
+    expect(outgoingEvents.all()).toHaveLength(2);
+    expect(result.deliveries.every((delivery) => typeof delivery.latencyMs === 'number')).toBe(true);
+  });
+
+  it('falls back to the org URL when there are no ACTIVE subscriptions', async () => {
+    const { execute, webhookClient } = buildUseCase();
+
+    const result = await execute({ auth: supervisor() });
+
+    expect(result.deliveries).toHaveLength(1);
+    expect(result.deliveries[0]!.url).toBe(URL_A);
+    expect(webhookClient.posts[0]!.url).toBe(URL_A);
   });
 });
