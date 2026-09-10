@@ -13,6 +13,7 @@ const FOUR_NAMES = [
   'outbox_publish',
   'customer_outgoing_webhook_dispatch',
   'wallet_sanctions_rescreen',
+  'daily_fraud_metrics',
 ] as const;
 
 class FakeCatalog implements ScheduledJobRepository {
@@ -52,7 +53,7 @@ describe('seedScheduledJobs', () => {
     });
 
     expect(catalog.seeds.map((seed) => seed.name)).toEqual([...FOUR_NAMES]);
-    expect(catalog.seeds).toHaveLength(4);
+    expect(catalog.seeds).toHaveLength(5);
     for (const seed of catalog.seeds) {
       expect(seed.organizationId).toBeNull();
       expect(seed.now).toBe(NOW);
@@ -85,6 +86,11 @@ describe('seedScheduledJobs', () => {
     expect(byName(catalog, 'wallet_sanctions_rescreen')).toMatchObject({
       enabled: true,
       cronExpression: 'daily 00:00 America/Bogota',
+    });
+    expect(byName(catalog, 'daily_fraud_metrics')).toMatchObject({
+      enabled: true,
+      cronExpression: 'daily 00:00 America/Bogota',
+      organizationId: null,
     });
   });
 

@@ -10,7 +10,8 @@ export type ScheduledJobName =
   | 'sla_sweep'
   | 'outbox_publish'
   | 'customer_outgoing_webhook_dispatch'
-  | 'wallet_sanctions_rescreen';
+  | 'wallet_sanctions_rescreen'
+  | 'daily_fraud_metrics';
 
 export type ScheduledJobRunnerRegistry = Record<ScheduledJobName, () => Promise<unknown>>;
 

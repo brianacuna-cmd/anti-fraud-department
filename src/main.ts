@@ -411,6 +411,10 @@ import {
 } from './modules/screening/application/WalletSanctionsRescreenScheduler.js';
 import { createFinturuWalletSource } from './composition/finturuWalletSource.js';
 import { createWalletRescreenCaseLinker } from './composition/walletRescreenCaseLinker.js';
+import { createAggregateDailyFraudMetricsUseCase } from './modules/case-management/application/AggregateDailyFraudMetrics.js';
+import { MongoFraudDepartmentDailyTalliesReader } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoFraudDepartmentDailyTalliesReader.js';
+import { MongoFraudDepartmentMetricsRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoFraudDepartmentMetricsRepository.js';
+import { createDailyMetricsAggregatorScheduler } from './modules/case-management/infrastructure/scheduler/DailyMetricsAggregatorScheduler.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const MONGO_URI = process.env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/?replicaSet=rs0';
@@ -2187,11 +2191,37 @@ async function bootstrap(): Promise<void> {
     clock,
   });
 
+  // daily-fraud-metrics-aggregator PR4 (design #645, MET-003): nightly
+  // per-organization fraud department metrics, same recordAround/registry
+  // shape as wallet-sanctions-rescreen above.
+  const fraudDepartmentDailyTalliesReader = new MongoFraudDepartmentDailyTalliesReader(db);
+  const fraudDepartmentMetricsRepository = new MongoFraudDepartmentMetricsRepository(db);
+  const aggregateDailyFraudMetrics = createAggregateDailyFraudMetricsUseCase({
+    organizations,
+    fraudConfig: organizationFraudConfig,
+    talliesReader: fraudDepartmentDailyTalliesReader,
+    metrics: fraudDepartmentMetricsRepository,
+    clock,
+  });
+  const recordedAggregateDailyFraudMetrics = () =>
+    recordAround(() => aggregateDailyFraudMetrics(), {
+      name: 'daily_fraud_metrics',
+      recorder: scheduledJobs,
+      clock,
+      nextRunAt: (now) =>
+        fromDate(new Date(toDate(now).getTime() + msUntilNextMidnightBogota(toDate(now)))),
+    });
+  const dailyMetricsAggregatorScheduler = createDailyMetricsAggregatorScheduler({
+    runAggregate: recordedAggregateDailyFraudMetrics,
+    clock,
+  });
+
   const scheduledJobRunners: ScheduledJobRunnerRegistry = {
     sla_sweep: recordedSweep,
     outbox_publish: recordedPublishOutbox,
     customer_outgoing_webhook_dispatch: customerOutgoingEventDispatcher.dispatchOnce,
     wallet_sanctions_rescreen: recordedWalletRescreen,
+    daily_fraud_metrics: recordedAggregateDailyFraudMetrics,
   };
   const scheduledJobAdminHttpRouter = scheduledJobAdminRouter({
     runScheduledJob: createRunScheduledJobUseCase({
@@ -2311,6 +2341,9 @@ async function bootstrap(): Promise<void> {
   } else {
     console.log('Wallet sanctions rescreen scheduler disabled (WALLET_RESCREEN_ENABLED not set)');
   }
+
+  dailyMetricsAggregatorScheduler.start();
+  console.log('Daily fraud metrics aggregator scheduler started (daily 00:00 America/Bogota)');
 
   outboxPublishScheduler.start(OUTBOX_PUBLISH_INTERVAL_MS);
   console.log(`Outbox publish scheduler started (interval=${OUTBOX_PUBLISH_INTERVAL_MS}ms)`);
