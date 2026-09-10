@@ -88,6 +88,7 @@ import { createAuditRecorderAdapter } from './composition/auditRecorderAdapter.j
 import { createNotificationsAuditRecorderAdapter } from './composition/notificationsAuditRecorderAdapter.js';
 import { createCaseManagementNotificationSenderAdapter } from './composition/caseManagementNotificationSenderAdapter.js';
 import { createNotificationEmailSenderAdapter } from './composition/notificationEmailSenderAdapter.js';
+import { createNotificationWebhookSenderAdapter } from './composition/notificationWebhookSenderAdapter.js';
 import { MongoNotificationPreferenceRepository } from './modules/notifications/infrastructure/adapters/outbound/mongo/MongoNotificationPreferenceRepository.js';
 import { MongoNotificationRepository } from './modules/notifications/infrastructure/adapters/outbound/mongo/MongoNotificationRepository.js';
 import { createSendNotificationUseCase } from './modules/notifications/application/SendNotification.js';
@@ -689,6 +690,7 @@ async function bootstrap(): Promise<void> {
     },
   });
   const realtimePusher = new RedisNotificationRealtimePusher(realtimeChannel);
+  const notificationWebhookSender = createNotificationWebhookSenderAdapter(notificationOrgConfigRepository);
   const sendNotification = createSendNotificationUseCase({
     notifications,
     preferences: notificationPreferences,
@@ -701,6 +703,10 @@ async function bootstrap(): Promise<void> {
     emailSender: notificationEmailSender,
     onEmailError: (error) => {
       console.error('Notification email delivery failed:', error);
+    },
+    webhookSender: notificationWebhookSender,
+    onWebhookError: (error) => {
+      console.error('Notification webhook delivery failed:', error);
     },
   });
   const caseManagementNotificationSender = createCaseManagementNotificationSenderAdapter(sendNotification);
