@@ -36,11 +36,10 @@ import { oid } from '../../../support/oid.js';
 const NOW = fromDate(new Date('2026-08-31T12:00:00.000Z'));
 const RUN_PATH = (jobName: string) => `/api/v1/admin/jobs/${jobName}/run`;
 
-const FIVE_NAMES: readonly ScheduledJobName[] = [
+const FOUR_NAMES: readonly ScheduledJobName[] = [
   'sla_sweep',
   'outbox_publish',
   'customer_outgoing_webhook_dispatch',
-  'directory_sync',
   'wallet_sanctions_rescreen',
 ];
 
@@ -103,7 +102,6 @@ function resolvingRunners(
     sla_sweep: make('sla_sweep'),
     outbox_publish: make('outbox_publish'),
     customer_outgoing_webhook_dispatch: make('customer_outgoing_webhook_dispatch'),
-    directory_sync: make('directory_sync'),
     wallet_sanctions_rescreen: make('wallet_sanctions_rescreen'),
     ...overrides,
   };
@@ -117,7 +115,7 @@ interface BuildOpts {
 
 function buildApp(opts: BuildOpts) {
   const catalog = new FakeCatalog();
-  for (const name of FIVE_NAMES) {
+  for (const name of FOUR_NAMES) {
     catalog.jobs.set(name, catalogJob(name));
   }
   const invocations = opts.invocations ?? [];
@@ -244,14 +242,14 @@ describe('POST /api/v1/admin/jobs/:jobName/run', () => {
     expect(invocations).toEqual(['sla_sweep']);
   });
 
-  it('returns 200 for each of the five closed-set names', async () => {
+  it('returns 200 for each of the four closed-set names', async () => {
     const invocations: string[] = [];
     const { app } = buildApp({ actor: PLATFORM_ADMIN, invocations });
-    for (const jobName of FIVE_NAMES) {
+    for (const jobName of FOUR_NAMES) {
       const res = await request(app).post(RUN_PATH(jobName));
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ jobName, lastResult: 'SUCCESS' });
     }
-    expect(invocations).toEqual([...FIVE_NAMES]);
+    expect(invocations).toEqual([...FOUR_NAMES]);
   });
 });

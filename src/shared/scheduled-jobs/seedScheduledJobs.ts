@@ -6,7 +6,6 @@ export interface SeedScheduledJobsConfig {
   readonly slaSweepIntervalMs: number;
   readonly outboxPublishIntervalMs: number;
   readonly outgoingWebhookDispatchIntervalMs: number;
-  readonly directorySyncIntervalMinutes: number;
   readonly walletRescreenEnabled: boolean;
 }
 
@@ -16,13 +15,13 @@ function everySecondsLabel(intervalMs: number): string {
   return `every ${intervalMs / 1000}s`;
 }
 
-function everyMinutesLabel(intervalMinutes: number): string {
-  return `every ${intervalMinutes}m`;
-}
-
 /**
- * Upserts the five platform-wide catalog rows (`organization_id: null`).
- * Disabled directory/wallet loops are still seeded; `enabled` is a label, not a gate.
+ * Upserts the four platform-wide catalog rows (`organization_id: null`).
+ * A disabled wallet loop is still seeded; `enabled` is a label, not a gate.
+ *
+ * `directory_sync` used to be seeded here too. The directory it refreshed
+ * is now composed on demand (`LiveFinturuDirectoryRepository`) instead of
+ * materialized into Mongo, so there is nothing left to schedule.
  */
 export async function seedScheduledJobs(
   repository: ScheduledJobRepository,
@@ -49,13 +48,6 @@ export async function seedScheduledJobs(
     description: 'Dispatch customer outgoing webhook events',
     cronExpression: everySecondsLabel(config.outgoingWebhookDispatchIntervalMs),
     enabled: true,
-    ...platform,
-  });
-  await repository.seed({
-    name: 'directory_sync',
-    description: 'Sync Finturu customer directory',
-    cronExpression: everyMinutesLabel(config.directorySyncIntervalMinutes),
-    enabled: config.directorySyncIntervalMinutes > 0,
     ...platform,
   });
   await repository.seed({
