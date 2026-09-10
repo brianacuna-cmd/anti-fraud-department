@@ -8,6 +8,6 @@
  * union to `string` happens implicitly at the `AuditRecorder` -> composition
  * bridge (design D12).
  */
-export type NotificationsAuditAction = 'NOTIFICATION_PREFERENCE_UPDATED';
+export type NotificationsAuditAction = 'NOTIFICATION_PREFERENCE_UPDATED' | 'NOTIFICATION_ORG_CONFIG_UPDATED';
 
-export type NotificationsAuditResource = 'notificationPreferences';
+export type NotificationsAuditResource = 'notificationPreferences' | 'notificationOrgConfig';

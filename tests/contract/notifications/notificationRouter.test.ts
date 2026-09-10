@@ -95,7 +95,7 @@ describe('notificationRouter', () => {
 
     const response = await request(app).get('/api/v1/notifications');
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(401);
   });
 
   it('PATCH /:id/read returns 200 on success', async () => {
@@ -151,7 +151,7 @@ describe('notificationRouter', () => {
 
     const response = await request(app).patch(`/api/v1/notifications/${oid('n1')}/read`);
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(401);
   });
 
   it('POST /:id/read (old verb) no longer exists as a mark-read action', async () => {
@@ -183,7 +183,7 @@ describe('notificationRouter', () => {
 
     const response = await request(app).patch('/api/v1/notifications/read-all');
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(401);
   });
 
   it('PATCH /notifications/read-all is idempotent — a second call with zero unread returns { updatedCount: 0 }', async () => {

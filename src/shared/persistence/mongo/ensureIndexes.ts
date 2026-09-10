@@ -147,6 +147,10 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .createIndex({ organization_id: 1 }, { unique: true, name: 'org_fraud_config_unique' });
 
   await db
+    .collection('notification_org_config')
+    .createIndex({ organization_id: 1 }, { unique: true, name: 'notification_org_config_unique' });
+
+  await db
     .collection('case_timeline')
     .createIndex({ case_id: 1, created_at: -1 }, { name: 'case_timeline_case_created_idx' });
 

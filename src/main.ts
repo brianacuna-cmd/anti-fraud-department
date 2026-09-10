@@ -108,6 +108,10 @@ import { createMarkAllNotificationsReadUseCase } from './modules/notifications/a
 import { notificationPreferenceRouter } from './modules/notifications/infrastructure/adapters/inbound/http/notificationPreferenceRouter.js';
 import { notificationRouter } from './modules/notifications/infrastructure/adapters/inbound/http/notificationRouter.js';
 import { notificationsErrorStatus } from './modules/notifications/infrastructure/adapters/inbound/http/errorStatus.js';
+import { MongoNotificationOrgConfigRepository } from './modules/notifications/infrastructure/adapters/outbound/mongo/MongoNotificationOrgConfigRepository.js';
+import { createGetNotificationOrgConfigUseCase } from './modules/notifications/application/GetNotificationOrgConfig.js';
+import { createUpsertNotificationOrgConfigUseCase } from './modules/notifications/application/UpsertNotificationOrgConfig.js';
+import { notificationOrgConfigRouter } from './modules/notifications/infrastructure/adapters/inbound/http/notificationOrgConfigRouter.js';
 import { MongoCaseRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRepository.js';
 import { MongoTimelineRecorder } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoTimelineRecorder.js';
 import { MongoTimelineReader } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoTimelineReader.js';
@@ -645,6 +649,22 @@ async function bootstrap(): Promise<void> {
   // wiring so both single PUT and bulk PATCH commit atomically.
   const setNotificationPreferences = createSetNotificationPreferencesUseCase({
     repository: notificationPreferences,
+    unitOfWork: notificationsUnitOfWork,
+    clock,
+    auditRecorder: notificationsAuditRecorder,
+  });
+
+  // notification-webhook-delivery PR1 (config plane): per-tenant webhook
+  // destination singleton. Shares the SAME `notificationsUnitOfWork`/
+  // `notificationsAuditRecorder` instances as the preference use cases above
+  // so its upsert + audit row commit atomically.
+  const notificationOrgConfigRepository = new MongoNotificationOrgConfigRepository(db);
+  const getNotificationOrgConfig = createGetNotificationOrgConfigUseCase({
+    repository: notificationOrgConfigRepository,
+    clock,
+  });
+  const upsertNotificationOrgConfig = createUpsertNotificationOrgConfigUseCase({
+    repository: notificationOrgConfigRepository,
     unitOfWork: notificationsUnitOfWork,
     clock,
     auditRecorder: notificationsAuditRecorder,
@@ -2123,6 +2143,9 @@ async function bootstrap(): Promise<void> {
   // notification-read-state PR4: mounted on the SAME authenticated `/api/v1`
   // router — inbox routes are USER-tier self-service (R3/R4).
   identityAccessRouter.use(notificationRouter({ listNotifications, markNotificationRead, markAllNotificationsRead }));
+  // notification-webhook-delivery PR1: config-plane routes, gated by
+  // SUPERVISION_ROLES inside the use case (not USER-tier self-service).
+  identityAccessRouter.use(notificationOrgConfigRouter({ getNotificationOrgConfig, upsertNotificationOrgConfig }));
   // case-management Slice 5 + T2: cases + organization fraud config mounted
   // on the SAME authenticated `/api/v1` router — rely on
   // `authContextMiddleware` above to resolve the caller's AuthContext.
