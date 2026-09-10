@@ -29,6 +29,29 @@ function waitOpen(ws: WebSocket): Promise<void> {
   });
 }
 
+/**
+ * Waits until `condition` holds, polling on the macrotask queue.
+ *
+ * The client's `close` event does NOT mean the server has finished tearing
+ * the connection down: they are two different sockets, and the server-side
+ * `close` — the one that runs the gateway's deregistration — is emitted on a
+ * later turn of the event loop. Awaiting a fixed number of ticks encodes a
+ * guess about how many turns that takes, and the guess is machine- and
+ * version-dependent: one `setImmediate` was exactly one turn short here, so
+ * the assertion ran while the socket was still registered.
+ *
+ * Polling states what the test actually means — "the gateway deregisters it",
+ * not "it is deregistered within one tick" — and fails with a real message
+ * instead of a timeout when the behaviour is genuinely broken.
+ */
+async function waitFor(condition: () => boolean, label: string, timeoutMs = 2_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for: ${label}`);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 function waitCloseOrUnexpectedResponse(ws: WebSocket): Promise<void> {
   return new Promise((resolve) => {
     ws.once('close', () => resolve());
@@ -150,7 +173,10 @@ describe('WebSocketGateway', () => {
     const closed = new Promise<void>((resolve) => ws.once('close', () => resolve()));
     ws.close();
     await closed;
-    await new Promise((resolve) => setImmediate(resolve));
+    await waitFor(
+      () => registry.socketsFor('org1', 'user3').length === 0,
+      'the gateway to deregister the closed socket',
+    );
 
     expect(registry.socketsFor('org1', 'user3')).toEqual([]);
     expect(() => gateway.deliverTo('org1', 'user3', { hello: 'world' })).not.toThrow();

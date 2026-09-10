@@ -8,11 +8,10 @@ import { fromDate } from '../../../../src/shared/time/Instant.js';
 
 const NOW = fromDate(new Date('2026-08-28T15:00:00.000Z'));
 
-const FIVE_NAMES = [
+const FOUR_NAMES = [
   'sla_sweep',
   'outbox_publish',
   'customer_outgoing_webhook_dispatch',
-  'directory_sync',
   'wallet_sanctions_rescreen',
 ] as const;
 
@@ -49,12 +48,11 @@ describe('seedScheduledJobs', () => {
       slaSweepIntervalMs: 60_000,
       outboxPublishIntervalMs: 60_000,
       outgoingWebhookDispatchIntervalMs: 5_000,
-      directorySyncIntervalMinutes: 360,
       walletRescreenEnabled: true,
     });
 
-    expect(catalog.seeds.map((seed) => seed.name)).toEqual([...FIVE_NAMES]);
-    expect(catalog.seeds).toHaveLength(5);
+    expect(catalog.seeds.map((seed) => seed.name)).toEqual([...FOUR_NAMES]);
+    expect(catalog.seeds).toHaveLength(4);
     for (const seed of catalog.seeds) {
       expect(seed.organizationId).toBeNull();
       expect(seed.now).toBe(NOW);
@@ -69,7 +67,6 @@ describe('seedScheduledJobs', () => {
       slaSweepIntervalMs: 60_000,
       outboxPublishIntervalMs: 90_000,
       outgoingWebhookDispatchIntervalMs: 5_000,
-      directorySyncIntervalMinutes: 15,
       walletRescreenEnabled: true,
     });
 
@@ -85,17 +82,13 @@ describe('seedScheduledJobs', () => {
       enabled: true,
       cronExpression: 'every 5s',
     });
-    expect(byName(catalog, 'directory_sync')).toMatchObject({
-      enabled: true,
-      cronExpression: 'every 15m',
-    });
     expect(byName(catalog, 'wallet_sanctions_rescreen')).toMatchObject({
       enabled: true,
       cronExpression: 'daily 00:00 America/Bogota',
     });
   });
 
-  it('still seeds directory_sync and wallet_sanctions_rescreen when those loops are disabled', async () => {
+  it('still seeds wallet_sanctions_rescreen when that loop is disabled', async () => {
     const catalog = new FakeCatalog();
 
     await seedScheduledJobs(catalog, {
@@ -103,15 +96,10 @@ describe('seedScheduledJobs', () => {
       slaSweepIntervalMs: 60_000,
       outboxPublishIntervalMs: 60_000,
       outgoingWebhookDispatchIntervalMs: 5_000,
-      directorySyncIntervalMinutes: 0,
       walletRescreenEnabled: false,
     });
 
-    expect(catalog.seeds.map((seed) => seed.name)).toEqual([...FIVE_NAMES]);
-    expect(byName(catalog, 'directory_sync')).toMatchObject({
-      enabled: false,
-      organizationId: null,
-    });
+    expect(catalog.seeds.map((seed) => seed.name)).toEqual([...FOUR_NAMES]);
     expect(byName(catalog, 'wallet_sanctions_rescreen')).toMatchObject({
       enabled: false,
       cronExpression: 'daily 00:00 America/Bogota',
@@ -120,21 +108,5 @@ describe('seedScheduledJobs', () => {
     expect(byName(catalog, 'sla_sweep').enabled).toBe(true);
     expect(byName(catalog, 'outbox_publish').enabled).toBe(true);
     expect(byName(catalog, 'customer_outgoing_webhook_dispatch').enabled).toBe(true);
-  });
-
-  it('treats a negative directory interval as disabled and still seeds the row', async () => {
-    const catalog = new FakeCatalog();
-
-    await seedScheduledJobs(catalog, {
-      now: NOW,
-      slaSweepIntervalMs: 60_000,
-      outboxPublishIntervalMs: 60_000,
-      outgoingWebhookDispatchIntervalMs: 5_000,
-      directorySyncIntervalMinutes: -1,
-      walletRescreenEnabled: false,
-    });
-
-    expect(byName(catalog, 'directory_sync').enabled).toBe(false);
-    expect(byName(catalog, 'directory_sync').name).toBe('directory_sync');
   });
 });
