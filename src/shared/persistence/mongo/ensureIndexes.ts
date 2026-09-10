@@ -392,6 +392,31 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .collection('organization_sar_filing_profile')
     .createIndex({ organization_id: 1 }, { unique: true, name: 'sar_filing_profile_unique' });
 
+  // privacy_data_requests (PRIV-001..004): the compliance officer's queue.
+  //
+  // Sorted by DEADLINE and not by arrival, so the compound index leads with
+  // organization_id and ends on due_at: the whole point of the queue is to
+  // stop a request going overdue, which means the one closest to breaching
+  // has to be the cheapest to find.
+  await db
+    .collection('privacy_data_requests')
+    .createIndex({ organization_id: 1, due_at: 1 }, { name: 'privacy_request_org_due_idx' });
+  await db
+    .collection('privacy_data_requests')
+    .createIndex(
+      { organization_id: 1, status: 1, due_at: 1 },
+      { name: 'privacy_request_org_status_due_idx' },
+    );
+  // Looking up every request from one subject: what an auditor asks for, and
+  // what the operator needs before answering a second request from the same
+  // person.
+  await db
+    .collection('privacy_data_requests')
+    .createIndex(
+      { organization_id: 1, subject_email: 1 },
+      { name: 'privacy_request_org_subject_idx' },
+    );
+
   // bulk_screening_jobs (Slice A, design D7, RNF-BS-1): org-scoped status
   // polling (GET /bulk-screening-jobs/:id) and org-scoped listing by creation
   // date. Both are compounded with organization_id first for tenant isolation.
