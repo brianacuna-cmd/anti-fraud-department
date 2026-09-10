@@ -21,6 +21,7 @@ import { caseNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagem
 import { assertAssigned } from '../domain/services/AssignmentGate.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
+import type { EnqueueCustomerWebhookFanOutInput } from './EnqueueCustomerWebhookFanOut.js';
 
 export interface CloseCaseInput {
   readonly auth: AuthContext;
@@ -40,6 +41,7 @@ export interface CloseCaseDeps {
   /** Required only when `config.outboxEventType` is set (resolve path). */
   readonly outbox?: OutboxEventRepository;
   readonly generateOutboxEventId?: () => OutboxEventId;
+  readonly enqueueCustomerWebhookFanOut?: (input: EnqueueCustomerWebhookFanOutInput) => Promise<void>;
 }
 
 export interface CloseCaseConfig {
@@ -143,6 +145,25 @@ export function closeCase(deps: CloseCaseDeps, config: CloseCaseConfig) {
           resolvedBy: input.auth.userId,
           now,
         });
+        if (
+          config.outboxEventType === 'CASE_RESOLVED' &&
+          deps.enqueueCustomerWebhookFanOut !== undefined
+        ) {
+          await deps.enqueueCustomerWebhookFanOut({
+            organizationId,
+            customerId: closed.customerId,
+            eventType: 'case.resolved',
+            kafkaFacts: {
+              case_id: String(caseId),
+              organization_id: organizationId,
+              closure_type: closureType,
+              resolution_id: resolution.id,
+              resolved_by: input.auth.userId,
+            },
+            now,
+            tx,
+          });
+        }
       }
 
       return closed;

@@ -28,6 +28,13 @@ import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEvent
 import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
 import type { OutboxEventRepository } from '../../../../src/shared/outbox/OutboxEventRepository.js';
 import type { OutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
+import { createEnqueueCustomerWebhookFanOut } from '../../../../src/modules/case-management/application/EnqueueCustomerWebhookFanOut.js';
+import { CustomerWebhookSubscription } from '../../../../src/modules/case-management/domain/model/aggregates/CustomerWebhookSubscription.js';
+import { generateCustomerWebhookSubscriptionId } from '../../../../src/modules/case-management/domain/model/value-objects/CustomerWebhookSubscriptionId.js';
+import { generateCustomerOutgoingEventId } from '../../../../src/modules/case-management/domain/model/value-objects/CustomerOutgoingEventId.js';
+import { InMemoryCustomerWebhookSubscriptionRepository } from '../../../helpers/case-management/InMemoryCustomerWebhookSubscriptionRepository.js';
+import { InMemoryCustomerOutgoingEventRepository } from '../../../helpers/case-management/InMemoryCustomerOutgoingEventRepository.js';
+import type { WebhookTicketEventType } from '../../../../src/modules/case-management/domain/model/value-objects/WebhookTicketEventType.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ANALYST = createAuthContext({ userId: oid('analyst-1'), organizationId: oid('org-1'), actorType: 'USER' });
@@ -85,6 +92,24 @@ function seedFraudConfig(
   );
 }
 
+async function seedTicketSubscription(
+  subscriptions: InMemoryCustomerWebhookSubscriptionRepository,
+  url: string,
+  eventTypes: readonly WebhookTicketEventType[],
+  active = true,
+): Promise<void> {
+  await subscriptions.create(
+    CustomerWebhookSubscription.create({
+      id: generateCustomerWebhookSubscriptionId(),
+      organizationId: oid('org-1'),
+      url,
+      eventTypes,
+      active,
+      now: NOW,
+    }),
+  );
+}
+
 function buildCreateCase(options: {
   seedConfig?: boolean;
   slaMinutes?: { low: number; medium: number; high: number; critical: number };
@@ -93,6 +118,7 @@ function buildCreateCase(options: {
   assigneeDirectory?: InMemoryAssigneeDirectory;
   routingEngine?: RoutingEngine;
   routingRule?: CaseRoutingRule;
+  wireFanOut?: boolean;
 } = {}) {
   const cases = new InMemoryCaseRepository();
   const timelineRecorder = new InMemoryTimelineRecorder();
@@ -130,6 +156,14 @@ function buildCreateCase(options: {
     generateCaseSlaTrackingId,
   });
 
+  const subscriptions = new InMemoryCustomerWebhookSubscriptionRepository();
+  const outgoingEvents = new InMemoryCustomerOutgoingEventRepository();
+  const enqueueCustomerWebhookFanOut = createEnqueueCustomerWebhookFanOut({
+    subscriptions,
+    outgoingEvents,
+    generateCustomerOutgoingEventId,
+  });
+
   const createCase = createCreateCaseUseCase({
     cases,
     timelineRecorder,
@@ -144,9 +178,20 @@ function buildCreateCase(options: {
     notificationSender,
     outbox: options.outbox,
     generateOutboxEventId: options.generateOutboxEventId,
+    ...(options.wireFanOut === true ? { enqueueCustomerWebhookFanOut } : {}),
   });
 
-  return { createCase, cases, slaTracking, timelineRecorder, auditRecorder, assigneeDirectory, notificationSender };
+  return {
+    createCase,
+    cases,
+    slaTracking,
+    timelineRecorder,
+    auditRecorder,
+    assigneeDirectory,
+    notificationSender,
+    subscriptions,
+    outgoingEvents,
+  };
 }
 
 describe('createCreateCaseUseCase (T2 SLA after RouteCase)', () => {
@@ -461,6 +506,60 @@ describe('createCreateCaseUseCase case.created outbox', () => {
       priority: 'LOW',
     });
     expect(onlyOutbox.all()).toHaveLength(0);
+  });
+});
+
+describe('createCreateCaseUseCase ticket webhook fan-out', () => {
+  it('writes two PENDING ticket rows for ACTIVE case.created subscriptions and none for inactive', async () => {
+    const outbox = new InMemoryOutboxEventRepository();
+    const { createCase, subscriptions, outgoingEvents } = buildCreateCase({
+      outbox,
+      generateOutboxEventId,
+      wireFanOut: true,
+    });
+    await seedTicketSubscription(subscriptions, 'https://hooks.example/a', ['case.created']);
+    await seedTicketSubscription(subscriptions, 'https://hooks.example/b', ['case.created']);
+    await seedTicketSubscription(subscriptions, 'https://hooks.example/off', ['case.created'], false);
+
+    const kase = await createCase({
+      auth: ANALYST,
+      customerId: oid('customer-1'),
+      riskScore: 42,
+      priority: 'HIGH',
+    });
+
+    expect(outbox.all()).toHaveLength(1);
+    expect(outbox.all()[0]!.eventType).toBe('case.created');
+    expect(outgoingEvents.all()).toHaveLength(2);
+    expect(outgoingEvents.all().every((row) => row.status === 'PENDING')).toBe(true);
+    expect(outgoingEvents.all().every((row) => row.eventType === 'case.created')).toBe(true);
+    expect(outgoingEvents.all().every((row) => row.enforcementActionId === null)).toBe(true);
+    expect(outgoingEvents.all().map((row) => row.webhookUrl).sort()).toEqual([
+      'https://hooks.example/a',
+      'https://hooks.example/b',
+    ]);
+    expect(outgoingEvents.all()[0]!.payload).toMatchObject({
+      event_type: 'case.created',
+      organization_id: kase.organizationId,
+      caseId: kase.id,
+      customerId: oid('customer-1'),
+    });
+    expect(outgoingEvents.all().some((row) => row.eventType === 'ENFORCEMENT_EXECUTED')).toBe(false);
+  });
+
+  it('writes no ticket rows when no ACTIVE subscription lists case.created', async () => {
+    const outbox = new InMemoryOutboxEventRepository();
+    const { createCase, subscriptions, outgoingEvents } = buildCreateCase({
+      outbox,
+      generateOutboxEventId,
+      wireFanOut: true,
+    });
+    await seedTicketSubscription(subscriptions, 'https://hooks.example/resolved', ['case.resolved']);
+
+    await createCase({ auth: ANALYST, customerId: oid('customer-1'), riskScore: 10, priority: 'LOW' });
+
+    expect(outbox.all()).toHaveLength(1);
+    expect(outgoingEvents.all()).toHaveLength(0);
   });
 });
 

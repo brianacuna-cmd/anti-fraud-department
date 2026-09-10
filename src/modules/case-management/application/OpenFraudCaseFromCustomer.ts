@@ -11,6 +11,7 @@ import type { InitializeCaseSlaService } from './InitializeCaseSla.js';
 import type { RouteCaseInput } from './RouteCase.js';
 import type { OutboxEventRepository } from '../../../shared/outbox/OutboxEventRepository.js';
 import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
+import type { EnqueueCustomerWebhookFanOutInput } from './EnqueueCustomerWebhookFanOut.js';
 import type { CaseId } from '../domain/model/value-objects/CaseId.js';
 import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
 import { Case } from '../domain/model/aggregates/Case.js';
@@ -71,6 +72,7 @@ export interface OpenFraudCaseDeps {
    * (rules repo, ZEN engine).
    */
   readonly routeCase: (input: RouteCaseInput) => Promise<Case>;
+  readonly enqueueCustomerWebhookFanOut?: (input: EnqueueCustomerWebhookFanOutInput) => Promise<void>;
 }
 
 export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
@@ -339,6 +341,16 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
         now,
       });
       await deps.outbox.save(outboxEvent, tx);
+      if (deps.enqueueCustomerWebhookFanOut !== undefined) {
+        await deps.enqueueCustomerWebhookFanOut({
+          organizationId: kase.organizationId,
+          customerId: kase.customerId,
+          eventType: 'case.created',
+          kafkaFacts: outboxEvent.payload,
+          now,
+          tx,
+        });
+      }
 
       return kase;
     });

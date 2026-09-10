@@ -7,6 +7,7 @@ import type { ApproveEnforcementActionResult } from '../../../../../application/
 import type { RejectEnforcementActionResult } from '../../../../../application/RejectEnforcementAction.js';
 import type { ExecuteEnforcementActionResult } from '../../../../../application/ExecuteEnforcementAction.js';
 import type { PendingApproval } from '../../../../../application/ListApprovalRequests.js';
+import type { CustomerOutgoingEventStoredPayload } from '../../../../../domain/model/aggregates/CustomerOutgoingEvent.js';
 
 export interface AnalystDecisionResponseDto {
   readonly id: string;
@@ -64,19 +65,7 @@ export interface CustomerOutgoingEventResponseDto {
   readonly enforcementActionId: string | null;
   readonly webhookUrl: string;
   readonly eventType: string;
-  readonly payload: {
-    readonly enforcement_action_id: string;
-    readonly case_id: string;
-    readonly action_type: string;
-    readonly target_type: string;
-    readonly target_id: string;
-    readonly organization_id: string;
-  } | {
-    readonly event_type: 'WEBHOOK_TEST';
-    readonly organization_id: string;
-    readonly event_id: string;
-    readonly requested_at: string;
-  };
+  readonly payload: CustomerOutgoingEventStoredPayload;
   readonly status: string;
   readonly responseStatus: number | null;
   readonly attempts: number;

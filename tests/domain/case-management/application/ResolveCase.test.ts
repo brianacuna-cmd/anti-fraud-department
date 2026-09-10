@@ -11,6 +11,12 @@ import { generateAnalystDecisionId } from '../../../../src/modules/case-manageme
 import { generateResolutionId } from '../../../../src/modules/case-management/domain/model/value-objects/ResolutionId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
+import { createEnqueueCustomerWebhookFanOut } from '../../../../src/modules/case-management/application/EnqueueCustomerWebhookFanOut.js';
+import { CustomerWebhookSubscription } from '../../../../src/modules/case-management/domain/model/aggregates/CustomerWebhookSubscription.js';
+import { generateCustomerWebhookSubscriptionId } from '../../../../src/modules/case-management/domain/model/value-objects/CustomerWebhookSubscriptionId.js';
+import { generateCustomerOutgoingEventId } from '../../../../src/modules/case-management/domain/model/value-objects/CustomerOutgoingEventId.js';
+import { InMemoryCustomerWebhookSubscriptionRepository } from '../../../helpers/case-management/InMemoryCustomerWebhookSubscriptionRepository.js';
+import { InMemoryCustomerOutgoingEventRepository } from '../../../helpers/case-management/InMemoryCustomerOutgoingEventRepository.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
 import { InMemoryResolutionRepository } from '../../../helpers/case-management/InMemoryResolutionRepository.js';
@@ -52,6 +58,8 @@ function build() {
   const timelineRecorder = new InMemoryTimelineRecorder();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
   const outbox = new InMemoryOutboxEventRepository();
+  const subscriptions = new InMemoryCustomerWebhookSubscriptionRepository();
+  const outgoingEvents = new InMemoryCustomerOutgoingEventRepository();
   const deps = {
     cases,
     resolutions,
@@ -65,6 +73,11 @@ function build() {
     generateTimelineEventId,
     outbox,
     generateOutboxEventId,
+    enqueueCustomerWebhookFanOut: createEnqueueCustomerWebhookFanOut({
+      subscriptions,
+      outgoingEvents,
+      generateCustomerOutgoingEventId,
+    }),
   };
   return {
     cases,
@@ -74,6 +87,8 @@ function build() {
     timelineRecorder,
     auditRecorder,
     outbox,
+    outgoingEvents,
+    subscriptions,
     resolveCase: createResolveCaseUseCase(deps),
     archiveCase: createArchiveCaseUseCase(deps),
   };
@@ -239,6 +254,33 @@ describe('createArchiveCaseUseCase', () => {
     // exactly one — from resolve, not archive
     expect(outbox.all()).toHaveLength(1);
     expect(outbox.all()[0]?.eventType).toBe('CASE_RESOLVED');
+  });
+
+  it('enqueues PENDING case.resolved on resolve and none on archive', async () => {
+    const { cases, decisions, resolveCase, archiveCase, subscriptions, outgoingEvents } = build();
+    await subscriptions.create(
+      CustomerWebhookSubscription.create({
+        id: generateCustomerWebhookSubscriptionId(),
+        organizationId: ORG_1,
+        url: 'https://hooks.example/resolved',
+        eventTypes: ['case.resolved'],
+        now: NOW,
+      }),
+    );
+    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
+    await seedDecision(decisions);
+    await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legit' });
+
+    expect(outgoingEvents.all()).toHaveLength(1);
+    expect(outgoingEvents.all()[0]!.eventType).toBe('case.resolved');
+    expect(outgoingEvents.all()[0]!.payload).toMatchObject({
+      event_type: 'case.resolved',
+      case_id: oid('case-1'),
+      closure_type: 'RESOLVED',
+    });
+
+    await archiveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'filed' });
+    expect(outgoingEvents.all()).toHaveLength(1);
   });
 
   it('rejects archiving an OPEN case with INVALID_TRANSITION', async () => {

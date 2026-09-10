@@ -8,6 +8,7 @@ import type { InitializeCaseSlaService } from './InitializeCaseSla.js';
 import type { RouteCaseInput } from './RouteCase.js';
 import type { OutboxEventRepository } from '../../../shared/outbox/OutboxEventRepository.js';
 import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
+import type { EnqueueCustomerWebhookFanOutInput } from './EnqueueCustomerWebhookFanOut.js';
 import type { CaseId } from '../domain/model/value-objects/CaseId.js';
 import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
 import { invariantViolation } from '../domain/errors/CaseManagementError.js';
@@ -36,6 +37,7 @@ export interface IngestFinturuCaseDeps {
   readonly auditRecorder: AuditRecorder;
   readonly generateOutboxEventId: () => OutboxEventId;
   readonly initializeCaseSla: InitializeCaseSlaService;
+  readonly enqueueCustomerWebhookFanOut?: (input: EnqueueCustomerWebhookFanOutInput) => Promise<void>;
   /**
    * CASE-002. This is the composed `RouteCase` use case (the same one
    * `CreateCase` receives), so the assignment, its `ASSIGNED` milestone, and
@@ -391,6 +393,16 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
         now,
       });
       await deps.outbox.save(outboxEvent, tx);
+      if (deps.enqueueCustomerWebhookFanOut !== undefined) {
+        await deps.enqueueCustomerWebhookFanOut({
+          organizationId: routedCase.organizationId,
+          customerId: routedCase.customerId,
+          eventType: 'case.created',
+          kafkaFacts: outboxEvent.payload,
+          now,
+          tx,
+        });
+      }
 
       return {
         case: routedCase,

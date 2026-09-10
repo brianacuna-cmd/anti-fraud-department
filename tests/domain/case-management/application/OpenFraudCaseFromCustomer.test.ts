@@ -10,6 +10,12 @@ import { generateCaseId } from '../../../../src/modules/case-management/domain/m
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { generateCaseSlaTrackingId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
 import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
+import { createEnqueueCustomerWebhookFanOut } from '../../../../src/modules/case-management/application/EnqueueCustomerWebhookFanOut.js';
+import { CustomerWebhookSubscription } from '../../../../src/modules/case-management/domain/model/aggregates/CustomerWebhookSubscription.js';
+import { generateCustomerWebhookSubscriptionId } from '../../../../src/modules/case-management/domain/model/value-objects/CustomerWebhookSubscriptionId.js';
+import { generateCustomerOutgoingEventId } from '../../../../src/modules/case-management/domain/model/value-objects/CustomerOutgoingEventId.js';
+import { InMemoryCustomerWebhookSubscriptionRepository } from '../../../helpers/case-management/InMemoryCustomerWebhookSubscriptionRepository.js';
+import { InMemoryCustomerOutgoingEventRepository } from '../../../helpers/case-management/InMemoryCustomerOutgoingEventRepository.js';
 import { createAssignedTo } from '../../../../src/modules/case-management/domain/model/value-objects/AssignedTo.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryTimelineRecorder } from '../../../helpers/case-management/InMemoryTimelineRecorder.js';
@@ -75,7 +81,7 @@ const ANALYST = createAuthContext({
  * false` to test that guard, or a `routingEngine` to test an actual match.
  */
 function build(
-  options: { seedActiveRule?: boolean; seedFraudConfig?: boolean; routingEngine?: RoutingEngine } = {},
+  options: { seedActiveRule?: boolean; seedFraudConfig?: boolean; routingEngine?: RoutingEngine; wireFanOut?: boolean } = {},
 ) {
   const cases = new InMemoryCaseRepository();
   const outbox = new InMemoryOutboxEventRepository();
@@ -134,6 +140,9 @@ function build(
     generateTimelineEventId,
   });
 
+  const subscriptions = new InMemoryCustomerWebhookSubscriptionRepository();
+  const outgoingEvents = new InMemoryCustomerOutgoingEventRepository();
+
   const openFraudCase = createOpenFraudCaseUseCase({
     cases,
     timelineRecorder,
@@ -153,9 +162,18 @@ function build(
     assigneeDirectory,
     routingRules,
     routeCase,
+    ...(options.wireFanOut === true
+      ? {
+          enqueueCustomerWebhookFanOut: createEnqueueCustomerWebhookFanOut({
+            subscriptions,
+            outgoingEvents,
+            generateCustomerOutgoingEventId,
+          }),
+        }
+      : {}),
   });
 
-  return { openFraudCase, cases, assigneeDirectory, routingRules, fraudConfig };
+  return { openFraudCase, cases, assigneeDirectory, routingRules, fraudConfig, subscriptions, outgoingEvents };
 }
 
 describe('createOpenFraudCaseUseCase — asignación manual al crear', () => {
@@ -397,5 +415,49 @@ describe('createOpenFraudCaseUseCase — requisitos de apertura del fork', () =>
     await expect(
       openFraudCase({ auth: ADMIN, customerId: 'customer-1', autoAssignToMe: true, rawSnapshot: {} }),
     ).rejects.toMatchObject({ code: 'ASSIGNEE_CANNOT_WORK_CASES' });
+  });
+});
+
+describe('createOpenFraudCaseUseCase ticket webhook fan-out', () => {
+  it('enqueues PENDING case.created for ACTIVE subscriptions on first open', async () => {
+    const { openFraudCase, subscriptions, outgoingEvents } = build({ wireFanOut: true });
+    await subscriptions.create(
+      CustomerWebhookSubscription.create({
+        id: generateCustomerWebhookSubscriptionId(),
+        organizationId: ORG,
+        url: 'https://hooks.example/open',
+        eventTypes: ['case.created'],
+        now: NOW,
+      }),
+    );
+
+    await openFraudCase({
+      auth: ANALYST,
+      customerId: 'customer-1',
+      autoAssignToMe: true,
+      rawSnapshot: {},
+    });
+
+    expect(outgoingEvents.all()).toHaveLength(1);
+    expect(outgoingEvents.all()[0]!.eventType).toBe('case.created');
+    expect(outgoingEvents.all()[0]!.enforcementActionId).toBeNull();
+  });
+
+  it('does not enqueue case.created again when reopening the same customer', async () => {
+    const { openFraudCase, subscriptions, outgoingEvents } = build({ wireFanOut: true });
+    await subscriptions.create(
+      CustomerWebhookSubscription.create({
+        id: generateCustomerWebhookSubscriptionId(),
+        organizationId: ORG,
+        url: 'https://hooks.example/open',
+        eventTypes: ['case.created'],
+        now: NOW,
+      }),
+    );
+    await openFraudCase({ auth: ANALYST, customerId: 'customer-1', autoAssignToMe: true, rawSnapshot: {} });
+    expect(outgoingEvents.all()).toHaveLength(1);
+
+    await openFraudCase({ auth: ANALYST, customerId: 'customer-1', autoAssignToMe: true, rawSnapshot: {} });
+    expect(outgoingEvents.all()).toHaveLength(1);
   });
 });

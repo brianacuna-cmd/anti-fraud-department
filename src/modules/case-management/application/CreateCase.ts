@@ -18,6 +18,7 @@ import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { isDuplicateKeyError } from '../../../shared/persistence/mongo/duplicateKey.js';
 import type { OutboxEventRepository } from '../../../shared/outbox/OutboxEventRepository.js';
 import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
+import type { EnqueueCustomerWebhookFanOutInput } from './EnqueueCustomerWebhookFanOut.js';
 import { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
 import { ROLE_SUPERVISOR } from '../../../shared/kernel/AccessTier.js';
 
@@ -77,6 +78,7 @@ export interface CreateCaseDeps {
   readonly notificationSender: NotificationSender;
   readonly outbox?: OutboxEventRepository;
   readonly generateOutboxEventId?: () => OutboxEventId;
+  readonly enqueueCustomerWebhookFanOut?: (input: EnqueueCustomerWebhookFanOutInput) => Promise<void>;
 }
 
 /**
@@ -226,6 +228,16 @@ async function createAndRoute(
       now,
     });
     await deps.outbox.save(outboxEvent, tx);
+    if (deps.enqueueCustomerWebhookFanOut !== undefined) {
+      await deps.enqueueCustomerWebhookFanOut({
+        organizationId: routedCase.organizationId,
+        customerId: routedCase.customerId,
+        eventType: 'case.created',
+        kafkaFacts: outboxEvent.payload,
+        now,
+        tx,
+      });
+    }
   }
 
   return routedCase;
