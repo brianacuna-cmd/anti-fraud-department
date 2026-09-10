@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { HttpOutgoingWebhookClient, SIGNATURE_HEADER } from '../../../../src/modules/case-management/infrastructure/adapters/outbound/http/HttpOutgoingWebhookClient.js';
+import { HttpOutgoingWebhookClient, SIGNATURE_HEADER, PREVIOUS_SIGNATURE_HEADER } from '../../../../src/modules/case-management/infrastructure/adapters/outbound/http/HttpOutgoingWebhookClient.js';
 
 function hmacHex(secret: string, body: string): string {
   return createHmac('sha256', secret).update(body, 'utf8').digest('hex');
@@ -176,5 +176,51 @@ describe('HttpOutgoingWebhookClient — outbound signature', () => {
     expect(firstBody).toBe(secondBody);
     expect(firstHeader).toBe(hmacHex(SECRET, firstBody));
     expect(firstHeader).toBe(secondHeader);
+  });
+});
+
+describe('HttpOutgoingWebhookClient — dual HMAC during grace', () => {
+  const CURRENT = 'c'.repeat(48);
+  const PREVIOUS = 'p'.repeat(48);
+
+  function capture() {
+    const calls: Array<{ init?: RequestInit }> = [];
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      calls.push({ init });
+      return new Response(null, { status: 200 });
+    };
+    return { calls, fetchImpl };
+  }
+
+  it('sends both HMAC headers when previousSecret is provided', async () => {
+    const { calls, fetchImpl } = capture();
+    const client = new HttpOutgoingWebhookClient({ fetchImpl });
+
+    await client.post({
+      url: 'https://hooks.example/x',
+      payload: { event_type: 'case.created' },
+      secret: CURRENT,
+      previousSecret: PREVIOUS,
+    });
+
+    const headers = calls[0]?.init?.headers as Record<string, string>;
+    const body = calls[0]?.init?.body as string;
+    expect(headers[SIGNATURE_HEADER]).toBe(hmacHex(CURRENT, body));
+    expect(headers[PREVIOUS_SIGNATURE_HEADER]).toBe(hmacHex(PREVIOUS, body));
+  });
+
+  it('omits the previous header when previousSecret is absent', async () => {
+    const { calls, fetchImpl } = capture();
+    const client = new HttpOutgoingWebhookClient({ fetchImpl });
+
+    await client.post({
+      url: 'https://hooks.example/x',
+      payload: { event_type: 'case.created' },
+      secret: CURRENT,
+    });
+
+    const headers = calls[0]?.init?.headers as Record<string, string>;
+    expect(headers[PREVIOUS_SIGNATURE_HEADER]).toBeUndefined();
+    expect(headers[SIGNATURE_HEADER]).toBe(hmacHex(CURRENT, calls[0]?.init?.body as string));
   });
 });

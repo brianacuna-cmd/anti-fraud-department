@@ -18,6 +18,8 @@ export interface UpsertFields {
     readonly feature_flags: Readonly<Record<string, boolean>>;
     readonly outbound_webhook_url: string | null;
     readonly outbound_webhook_secret: string | null;
+    readonly outbound_webhook_previous_secret: string | null;
+    readonly outbound_webhook_secret_grace_expires_at: Date | null;
     readonly updated_at: Date;
   };
   readonly setOnInsert: { readonly _id: ObjectId; readonly created_at: Date };
@@ -42,6 +44,11 @@ export function toUpsertFields(config: OrganizationFraudConfig): UpsertFields {
       feature_flags: config.featureFlags,
       outbound_webhook_url: config.outboundWebhookUrl,
       outbound_webhook_secret: config.outboundWebhookSecret,
+      outbound_webhook_previous_secret: config.outboundWebhookPreviousSecret,
+      outbound_webhook_secret_grace_expires_at:
+        config.outboundWebhookSecretGraceExpiresAt === null
+          ? null
+          : toDate(config.outboundWebhookSecretGraceExpiresAt),
       updated_at: toDate(config.updatedAt),
     },
     setOnInsert: { _id: new ObjectId(config.id), created_at: toDate(config.createdAt) },
@@ -64,6 +71,12 @@ export function toDomain(document: OrganizationFraudConfigDocument): Organizatio
     featureFlags: document.feature_flags ?? {},
     outboundWebhookUrl: document.outbound_webhook_url ?? null,
     outboundWebhookSecret: document.outbound_webhook_secret ?? null,
+    outboundWebhookPreviousSecret: document.outbound_webhook_previous_secret ?? null,
+    outboundWebhookSecretGraceExpiresAt:
+      document.outbound_webhook_secret_grace_expires_at === undefined ||
+      document.outbound_webhook_secret_grace_expires_at === null
+        ? null
+        : fromDate(document.outbound_webhook_secret_grace_expires_at),
     createdAt: fromDate(document.created_at),
     updatedAt: fromDate(document.updated_at),
   });

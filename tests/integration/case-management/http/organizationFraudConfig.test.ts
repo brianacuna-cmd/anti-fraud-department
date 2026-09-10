@@ -11,6 +11,7 @@ import { caseManagementErrorStatus } from '../../../../src/modules/case-manageme
 import { organizationFraudConfigRouter } from '../../../../src/modules/case-management/infrastructure/adapters/inbound/http/organizationFraudConfigRouter.js';
 import { createGetOrganizationFraudConfigUseCase } from '../../../../src/modules/case-management/application/GetOrganizationFraudConfig.js';
 import { createUpsertOrganizationFraudConfigUseCase } from '../../../../src/modules/case-management/application/UpsertOrganizationFraudConfig.js';
+import { createRotateOutboundWebhookSecretUseCase } from '../../../../src/modules/case-management/application/RotateOutboundWebhookSecret.js';
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
 import { InMemoryUnitOfWork } from '../../../helpers/case-management/InMemoryUnitOfWork.js';
@@ -62,6 +63,13 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_USER) {
       clock,
       auditRecorder,
       unitOfWork,
+    }),
+    rotateOutboundWebhookSecret: createRotateOutboundWebhookSecretUseCase({
+      repository,
+      clock,
+      auditRecorder,
+      unitOfWork,
+      generateSecret: () => 'rotated-secret-value-32chars-min!!!!',
     }),
   });
 
@@ -337,5 +345,62 @@ describe('organizationFraudConfigRouter', () => {
     expect(get.body.outboundWebhookUrl).toBe(WEBHOOK_URL);
     expect(get.body.outboundWebhookSecretSet).toBe(true);
     expect(get.body).not.toHaveProperty('outboundWebhookSecret');
+  });
+});
+
+describe('organizationFraudConfigRouter rotate', () => {
+  const ROTATE_PATH = '/api/v1/organization-fraud-config/webhook-secret/rotate';
+
+  it('POST rotate copies S0 to previous, starts ~24h grace, and omits secrets', async () => {
+    const { app, repository } = buildApp();
+    await request(app)
+      .put(CANONICAL_PATH)
+      .send({ ...FULL_BODY, outboundWebhookSecret: SECRET })
+      .expect(200);
+
+    const rotate = await request(app).post(ROTATE_PATH).send({}).expect(200);
+    expect(rotate.body.outboundWebhookSecretSet).toBe(true);
+    expect(rotate.body.outboundWebhookSecretGraceExpiresAt).toBe('2026-01-02T00:00:00.000Z');
+    expect(rotate.body).not.toHaveProperty('outboundWebhookSecret');
+    expect(rotate.body).not.toHaveProperty('outboundWebhookPreviousSecret');
+    expect(JSON.stringify(rotate.body)).not.toContain(SECRET);
+    expect((await repository.findByOrganization(oid('org-1')))?.outboundWebhookPreviousSecret).toBe(SECRET);
+  });
+
+  it('rejects gracePeriodHours 0 and 169', async () => {
+    const { app } = buildApp();
+    await request(app).put(CANONICAL_PATH).send(FULL_BODY).expect(200);
+    await request(app).post(ROTATE_PATH).send({ gracePeriodHours: 0 }).expect(400);
+    await request(app).post(ROTATE_PATH).send({ gracePeriodHours: 169 }).expect(400);
+  });
+
+  it('PUT secret change restarts grace; PUT omit secret keeps rotate state', async () => {
+    const { app, repository } = buildApp();
+    await request(app)
+      .put(CANONICAL_PATH)
+      .send({ ...FULL_BODY, outboundWebhookSecret: SECRET })
+      .expect(200);
+    await request(app).post(ROTATE_PATH).send({}).expect(200);
+    const afterRotate = await repository.findByOrganization(oid('org-1'));
+    const previousAfterRotate = afterRotate?.outboundWebhookPreviousSecret;
+    const graceAfterRotate = afterRotate?.outboundWebhookSecretGraceExpiresAt;
+
+    await request(app)
+      .put(CANONICAL_PATH)
+      .send({ ...FULL_BODY, slaLowMinutes: 10 })
+      .expect(200);
+    const omitted = await repository.findByOrganization(oid('org-1'));
+    expect(omitted?.outboundWebhookPreviousSecret).toBe(previousAfterRotate);
+    expect(omitted?.outboundWebhookSecretGraceExpiresAt).toBe(graceAfterRotate);
+
+    const nextSecret = 'put-changed-secret-value-32chars-min!!';
+    await request(app)
+      .put(CANONICAL_PATH)
+      .send({ ...FULL_BODY, outboundWebhookSecret: nextSecret })
+      .expect(200);
+    const changed = await repository.findByOrganization(oid('org-1'));
+    expect(changed?.outboundWebhookPreviousSecret).toBe(afterRotate?.outboundWebhookSecret);
+    expect(changed?.outboundWebhookSecret).toBe(nextSecret);
+    expect(changed?.outboundWebhookSecretGraceExpiresAt).toBe('2026-01-02T00:00:00.000Z');
   });
 });

@@ -8,6 +8,11 @@ export interface OutgoingWebhookPostInput {
    * `enforcement_action_id`.
    */
   readonly secret?: string | null;
+  /**
+   * Previous tenant secret. When present and non-empty, the client also
+   * sends `x-signature-sha256-previous`. The caller decides whether grace is live.
+   */
+  readonly previousSecret?: string | null;
 }
 
 export interface OutgoingWebhookPostResult {

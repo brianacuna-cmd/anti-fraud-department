@@ -106,7 +106,8 @@ export type CaseManagementAuditAction =
    * the POST with `resourceId` = event id; detail is `{ statusCode, latencyMs, ok }`
    * (no secret, no URL).
    */
-  | 'WEBHOOK_TEST';
+  | 'WEBHOOK_TEST'
+  | 'ROTATE_WEBHOOK_SECRET';
 
 export type CaseManagementAuditResource =
   | 'case'

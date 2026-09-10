@@ -15,6 +15,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 
 /** Ticket name `X-Signature-SHA256`; Node/Express see lowercase. */
 export const SIGNATURE_HEADER = 'x-signature-sha256';
+export const PREVIOUS_SIGNATURE_HEADER = 'x-signature-sha256-previous';
 
 /**
  * Production `OutgoingWebhookClient` — POSTs JSON payload to the tenant webhook URL.
@@ -53,6 +54,7 @@ export class HttpOutgoingWebhookClient implements OutgoingWebhookClient {
         headers: {
           'content-type': 'application/json',
           ...this.signatureHeader(body, input.secret ?? null),
+          ...this.signatureHeader(body, input.previousSecret ?? null, PREVIOUS_SIGNATURE_HEADER),
         },
         body,
         signal: controller.signal,
@@ -68,11 +70,15 @@ export class HttpOutgoingWebhookClient implements OutgoingWebhookClient {
     }
   }
 
-  private signatureHeader(body: string, secret: string | null): Record<string, string> {
+  private signatureHeader(
+    body: string,
+    secret: string | null,
+    headerName: string = SIGNATURE_HEADER,
+  ): Record<string, string> {
     if (secret === null || secret.length === 0) {
       return {};
     }
     const signature = createHmac('sha256', secret).update(body, 'utf8').digest('hex');
-    return { [SIGNATURE_HEADER]: signature };
+    return { [headerName]: signature };
   }
 }
