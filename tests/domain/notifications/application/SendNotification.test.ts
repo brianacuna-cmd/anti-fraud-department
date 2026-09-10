@@ -17,6 +17,11 @@ import type {
   NotificationRealtimeInput,
   NotificationRealtimePusher,
 } from '../../../../src/modules/notifications/domain/ports/NotificationRealtimePusher.js';
+import type {
+  NotificationWebhookInput,
+  NotificationWebhookSender,
+} from '../../../../src/modules/notifications/domain/ports/NotificationWebhookSender.js';
+import type { NotificationChannel } from '../../../../src/modules/notifications/domain/model/value-objects/NotificationChannel.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ORG_1 = createOrganizationId(oid('org-1'));
@@ -49,10 +54,10 @@ describe('createSendNotificationUseCase', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.alertType).toBe('CASE_ASSIGNED');
     expect(rows[0]?.recipientUserId).toBe(USER_1);
-    expect(rows[0]?.channel).toBe('EMAIL');
+    expect(rows[0]?.channel).toBe('IN_APP');
   });
 
-  it('suppresses the write for an opted-out recipient without throwing', async () => {
+  it('persists an IN_APP row for an EMAIL-opted-out recipient without throwing', async () => {
     const { sendNotification, notifications, preferences } = buildUseCase();
     preferences.seed(
       NotificationPreference.create({
@@ -72,7 +77,8 @@ describe('createSendNotificationUseCase', () => {
       context: {},
     });
 
-    expect(notifications.all()).toHaveLength(0);
+    expect(notifications.all()).toHaveLength(1);
+    expect(notifications.all()[0]?.channel).toBe('IN_APP');
   });
 
   it('persists when an explicit opted-in preference row exists', async () => {
@@ -99,7 +105,6 @@ describe('createSendNotificationUseCase', () => {
   });
 
   it('threads tx to both the preference lookup and the save', async () => {
-    const notifications = new InMemoryNotificationRepository();
     const seenTx: (Transaction | undefined)[] = [];
     const preferences = {
       findOne: async (..._args: unknown[]) => {
@@ -120,6 +125,7 @@ describe('createSendNotificationUseCase', () => {
       preferences: preferences as never,
       clock: new FixedClock(NOW),
       generateNotificationId,
+      emailSender: { send: async () => undefined },
     });
     const tx = {} as Transaction;
 
@@ -211,7 +217,8 @@ describe('createSendNotificationUseCase — email delivery (optional emailSender
       context: {},
     });
 
-    expect(notifications.all()).toHaveLength(0);
+    expect(notifications.all()).toHaveLength(1);
+    expect(notifications.all()[0]?.channel).toBe('IN_APP');
     expect(sent).toHaveLength(0);
   });
 
@@ -314,7 +321,7 @@ describe('createSendNotificationUseCase — realtime push (optional realtimePush
     expect(sent).toHaveLength(0);
   });
 
-  it('does not push when the recipient has opted out', async () => {
+  it('still pushes when EMAIL is opted out (realtime is independent of EMAIL/SLACK/WEBHOOK prefs)', async () => {
     const sent: NotificationRealtimeInput[] = [];
     const { sendNotification, notifications, preferences } = buildWithRealtime({
       send: async (input) => {
@@ -339,8 +346,9 @@ describe('createSendNotificationUseCase — realtime push (optional realtimePush
       context: {},
     });
 
-    expect(notifications.all()).toHaveLength(0);
-    expect(sent).toHaveLength(0);
+    expect(notifications.all()).toHaveLength(1);
+    expect(notifications.all()[0]?.channel).toBe('IN_APP');
+    expect(sent).toHaveLength(1);
   });
 
   it('persists successfully when realtimePusher is undefined (feature not wired)', async () => {
@@ -380,5 +388,255 @@ describe('createSendNotificationUseCase — realtime push (optional realtimePush
 
     expect(notifications.all()).toHaveLength(1);
     expect(errors).toHaveLength(1);
+  });
+});
+
+function seedPref(
+  preferences: InMemoryNotificationPreferenceRepository,
+  channel: NotificationChannel,
+  enabled: boolean,
+): void {
+  preferences.seed(
+    NotificationPreference.create({
+      organizationId: ORG_1,
+      userId: USER_1,
+      alertType: 'CASE_ASSIGNED',
+      channel,
+      enabled,
+      now: NOW,
+    }),
+  );
+}
+
+describe('createSendNotificationUseCase — webhook fan-out (optional webhookSender)', () => {
+  function buildWithWebhook(
+    webhookSender?: NotificationWebhookSender,
+    extras?: {
+      emailSender?: NotificationEmailSender;
+      onEmailError?: (error: unknown) => void;
+      onWebhookError?: (error: unknown) => void;
+    },
+  ) {
+    const notifications = new InMemoryNotificationRepository();
+    const preferences = new InMemoryNotificationPreferenceRepository();
+    const sendNotification = createSendNotificationUseCase({
+      notifications,
+      preferences,
+      clock: new FixedClock(NOW),
+      generateNotificationId,
+      webhookSender,
+      onWebhookError: extras?.onWebhookError,
+      emailSender: extras?.emailSender,
+      onEmailError: extras?.onEmailError,
+    });
+    return { sendNotification, notifications, preferences };
+  }
+
+  it('fires the webhook once when only SLACK is enabled', async () => {
+    const sent: NotificationWebhookInput[] = [];
+    const { sendNotification, notifications, preferences } = buildWithWebhook({
+      send: async (input) => {
+        sent.push(input);
+      },
+    });
+    seedPref(preferences, 'EMAIL', false);
+    seedPref(preferences, 'SLACK', true);
+    seedPref(preferences, 'WEBHOOK', false);
+
+    await sendNotification({
+      organizationId: ORG_1,
+      recipientUserId: USER_1,
+      alertType: 'CASE_ASSIGNED',
+      context: { caseId: oid('case-1') },
+    });
+
+    expect(notifications.all()).toHaveLength(1);
+    expect(notifications.all()[0]?.channel).toBe('IN_APP');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({
+      organizationId: ORG_1,
+      recipientUserId: USER_1,
+      alertType: 'CASE_ASSIGNED',
+    });
+  });
+
+  it('fires the webhook once when only WEBHOOK is enabled', async () => {
+    const sent: NotificationWebhookInput[] = [];
+    const { sendNotification, notifications, preferences } = buildWithWebhook({
+      send: async (input) => {
+        sent.push(input);
+      },
+    });
+    seedPref(preferences, 'EMAIL', false);
+    seedPref(preferences, 'SLACK', false);
+    seedPref(preferences, 'WEBHOOK', true);
+
+    await sendNotification({
+      organizationId: ORG_1,
+      recipientUserId: USER_1,
+      alertType: 'CASE_ASSIGNED',
+      context: {},
+    });
+
+    expect(notifications.all()).toHaveLength(1);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('fires the webhook exactly once when both SLACK and WEBHOOK are enabled', async () => {
+    const sent: NotificationWebhookInput[] = [];
+    const { sendNotification, notifications, preferences } = buildWithWebhook({
+      send: async (input) => {
+        sent.push(input);
+      },
+    });
+    seedPref(preferences, 'SLACK', true);
+    seedPref(preferences, 'WEBHOOK', true);
+
+    await sendNotification({
+      organizationId: ORG_1,
+      recipientUserId: USER_1,
+      alertType: 'CASE_ASSIGNED',
+      context: {},
+    });
+
+    expect(notifications.all()).toHaveLength(1);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('does not fire the webhook when EMAIL, SLACK, and WEBHOOK are all disabled', async () => {
+    const sent: NotificationWebhookInput[] = [];
+    const { sendNotification, notifications, preferences } = buildWithWebhook({
+      send: async (input) => {
+        sent.push(input);
+      },
+    });
+    seedPref(preferences, 'EMAIL', false);
+    seedPref(preferences, 'SLACK', false);
+    seedPref(preferences, 'WEBHOOK', false);
+
+    await sendNotification({
+      organizationId: ORG_1,
+      recipientUserId: USER_1,
+      alertType: 'CASE_ASSIGNED',
+      context: {},
+    });
+
+    expect(notifications.all()).toHaveLength(1);
+    expect(notifications.all()[0]?.channel).toBe('IN_APP');
+    expect(sent).toHaveLength(0);
+  });
+
+  it('still fires the webhook when the email sender throws', async () => {
+    const sent: NotificationWebhookInput[] = [];
+    const { sendNotification, notifications, preferences } = buildWithWebhook(
+      {
+        send: async (input) => {
+          sent.push(input);
+        },
+      },
+      {
+        emailSender: {
+          send: async () => {
+            throw new Error('resend down');
+          },
+        },
+      },
+    );
+    seedPref(preferences, 'EMAIL', true);
+    seedPref(preferences, 'SLACK', true);
+    seedPref(preferences, 'WEBHOOK', false);
+
+    await expect(
+      sendNotification({
+        organizationId: ORG_1,
+        recipientUserId: USER_1,
+        alertType: 'CASE_ASSIGNED',
+        context: {},
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(notifications.all()).toHaveLength(1);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('swallows a webhook sender failure via onWebhookError without rolling back the in-app row', async () => {
+    const errors: unknown[] = [];
+    const { sendNotification, notifications, preferences } = buildWithWebhook(
+      {
+        send: async () => {
+          throw new Error('webhook destination down');
+        },
+      },
+      { onWebhookError: (error) => errors.push(error) },
+    );
+    seedPref(preferences, 'SLACK', true);
+    seedPref(preferences, 'WEBHOOK', false);
+
+    await sendNotification({
+      organizationId: ORG_1,
+      recipientUserId: USER_1,
+      alertType: 'CASE_ASSIGNED',
+      context: {},
+    });
+
+    expect(notifications.all()).toHaveLength(1);
+    expect(errors).toHaveLength(1);
+  });
+
+  it('persists successfully when webhookSender is undefined (feature not wired)', async () => {
+    const { sendNotification, notifications, preferences } = buildWithWebhook(undefined);
+    seedPref(preferences, 'SLACK', true);
+
+    await expect(
+      sendNotification({
+        organizationId: ORG_1,
+        recipientUserId: USER_1,
+        alertType: 'CASE_ASSIGNED',
+        context: {},
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(notifications.all()).toHaveLength(1);
+  });
+
+  it('still calls webhookSender when SLACK is enabled even if the adapter would no-op on a missing webhookUrl', async () => {
+    const sent: NotificationWebhookInput[] = [];
+    const { sendNotification, preferences } = buildWithWebhook({
+      send: async (input) => {
+        sent.push(input);
+      },
+    });
+    seedPref(preferences, 'EMAIL', false);
+    seedPref(preferences, 'SLACK', true);
+    seedPref(preferences, 'WEBHOOK', false);
+
+    await sendNotification({
+      organizationId: ORG_1,
+      recipientUserId: USER_1,
+      alertType: 'CASE_ASSIGNED',
+      context: {},
+    });
+
+    expect(sent).toHaveLength(1);
+  });
+
+  it('fires the webhook when SLACK is disabled but WEBHOOK has no row (default-ON)', async () => {
+    const sent: NotificationWebhookInput[] = [];
+    const { sendNotification, preferences } = buildWithWebhook({
+      send: async (input) => {
+        sent.push(input);
+      },
+    });
+    seedPref(preferences, 'EMAIL', false);
+    seedPref(preferences, 'SLACK', false);
+
+    await sendNotification({
+      organizationId: ORG_1,
+      recipientUserId: USER_1,
+      alertType: 'CASE_ASSIGNED',
+      context: {},
+    });
+
+    expect(sent).toHaveLength(1);
   });
 });
