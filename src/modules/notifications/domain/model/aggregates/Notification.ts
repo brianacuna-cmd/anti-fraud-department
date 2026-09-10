@@ -4,6 +4,7 @@ import type { OrganizationId } from '../value-objects/OrganizationId.js';
 import type { UserId } from '../value-objects/UserId.js';
 import type { AlertType } from '../value-objects/AlertType.js';
 import type { NotificationChannel } from '../value-objects/NotificationChannel.js';
+import type { NotificationStatus } from '../value-objects/NotificationStatus.js';
 
 export interface NotificationProps {
   readonly id: NotificationId;
@@ -13,6 +14,8 @@ export interface NotificationProps {
   readonly channel: NotificationChannel;
   readonly context: Record<string, unknown>;
   readonly createdAt: Instant;
+  readonly status: NotificationStatus;
+  readonly updatedAt: Instant;
 }
 
 export interface CreateNotificationInput {
@@ -26,11 +29,12 @@ export interface CreateNotificationInput {
 }
 
 /**
- * Append-only in-app notification row (design D2/D-notifications-delivery).
- * `alertType` reuses the closed `AlertType` catalog verbatim — no new type
- * VO. No mutators, no read/unread status (A2 — out of scope): a write-once
- * record, mirroring `NotificationPreference`'s private-ctor + static
- * create/rehydrate + immutable-props shape.
+ * In-app notification row (design D1/D2, revised — no longer write-once, see
+ * design D3). `alertType` reuses the closed `AlertType` catalog verbatim —
+ * no new type VO. `status` reuses the closed `NotificationStatus` catalog.
+ * Mirrors `NotificationPreference`'s private-ctor + static create/rehydrate
+ * + immutable-props shape; `markRead` is the sole state transition and
+ * always returns a NEW instance (no in-place mutation).
  */
 export class Notification {
   private constructor(private readonly props: NotificationProps) {}
@@ -44,12 +48,25 @@ export class Notification {
       channel: input.channel,
       context: input.context,
       createdAt: input.now,
+      status: 'UNREAD',
+      updatedAt: input.now,
     });
   }
 
   /** Reconstructs from persisted props — no business-rule validation. */
   static rehydrate(props: NotificationProps): Notification {
     return new Notification(props);
+  }
+
+  /**
+   * UNREAD → READ transition. READ → READ is an idempotent no-op that
+   * returns an equivalent instance without bumping `updatedAt` again.
+   */
+  markRead(now: Instant): Notification {
+    if (this.props.status === 'READ') {
+      return this;
+    }
+    return new Notification({ ...this.props, status: 'READ', updatedAt: now });
   }
 
   get id(): NotificationId {
@@ -78,6 +95,14 @@ export class Notification {
 
   get createdAt(): Instant {
     return this.props.createdAt;
+  }
+
+  get status(): NotificationStatus {
+    return this.props.status;
+  }
+
+  get updatedAt(): Instant {
+    return this.props.updatedAt;
   }
 
   toProps(): NotificationProps {

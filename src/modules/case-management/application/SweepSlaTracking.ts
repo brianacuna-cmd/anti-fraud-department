@@ -8,9 +8,12 @@ import type { CaseRepository } from '../domain/ports/CaseRepository.js';
 import type { CaseSlaTrackingRepository } from '../domain/ports/CaseSlaTrackingRepository.js';
 import type { NotificationSender } from '../domain/ports/NotificationSender.js';
 import type { AssigneeDirectory } from '../domain/ports/AssigneeDirectory.js';
+import type { TimelineRecorder } from '../domain/ports/TimelineRecorder.js';
 import type { UnitOfWork, Transaction } from '../domain/ports/UnitOfWork.js';
 import type { CaseSlaTracking } from '../domain/model/aggregates/CaseSlaTracking.js';
 import type { SlaStatus } from '../domain/model/value-objects/SlaStatus.js';
+import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
+import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
 import { slaStatusTransitions } from '../domain/services/transitions.js';
 
 export interface SweepSlaTrackingDeps {
@@ -18,10 +21,12 @@ export interface SweepSlaTrackingDeps {
   readonly cases: CaseRepository;
   readonly notificationSender: NotificationSender;
   readonly assigneeDirectory: AssigneeDirectory;
+  readonly timelineRecorder: TimelineRecorder;
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
   readonly outbox: OutboxEventRepository;
   readonly generateOutboxEventId: () => OutboxEventId;
+  readonly generateTimelineEventId: () => TimelineEventId;
 }
 
 export interface SweepSlaTrackingResult {
@@ -148,6 +153,22 @@ export function createSweepSlaTrackingUseCase(deps: SweepSlaTrackingDeps) {
             }
           }
           advanced = advanced.markNotified(advanced.status, now);
+
+          // notification-read-state PR5 (R5/R6): exactly one ANALYST_NOTIFIED
+          // event per due row per sweep hop; background job, no AuthContext,
+          // so createdBy is null.
+          if (kase !== null) {
+            const notifiedEvent = CaseTimelineEvent.create({
+              id: deps.generateTimelineEventId(),
+              caseId: advanced.caseId,
+              eventType: 'ANALYST_NOTIFIED',
+              previousValue: null,
+              newValue: 'SLA_DUE_SOON',
+              createdBy: null,
+              createdAt: now,
+            });
+            await deps.timelineRecorder.record(notifiedEvent, tx);
+          }
         }
 
         if (target !== null && kase !== null) {

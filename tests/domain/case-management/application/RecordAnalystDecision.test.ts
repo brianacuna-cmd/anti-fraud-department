@@ -165,6 +165,7 @@ function buildUseCase(seed?: Case, options: { instructed?: boolean } = {}) {
     timelineRecorder,
     auditRecorder,
     notificationSender,
+    assigneeDirectory,
   };
 }
 
@@ -202,10 +203,13 @@ describe('createRecordAnalystDecisionUseCase', () => {
     expect(enforcementActions.all()).toHaveLength(1);
 
     const events = timelineRecorder.all();
-    expect(events).toHaveLength(1);
-    expect(events[0]?.eventType).toBe('DECISION_MADE');
-    expect(events[0]?.newValue).toBe('FRAUD_CONFIRMED');
-    expect(events[0]?.createdBy).toBe(oid('analyst-1'));
+    expect(events).toHaveLength(2);
+    const decisionEvent = events.find((event) => event.eventType === 'DECISION_MADE');
+    expect(decisionEvent?.newValue).toBe('FRAUD_CONFIRMED');
+    expect(decisionEvent?.createdBy).toBe(oid('analyst-1'));
+    const notifiedEvent = events.find((event) => event.eventType === 'ANALYST_NOTIFIED');
+    expect(notifiedEvent?.newValue).toBe('APPROVAL_PENDING');
+    expect(notifiedEvent?.createdBy).toBe(oid('analyst-1'));
 
     const audits = auditRecorder.all();
     expect(audits).toHaveLength(1);
@@ -354,6 +358,31 @@ describe('createRecordAnalystDecisionUseCase', () => {
       requesterId: ANALYST_ID,
       actionType: 'SUSPEND',
     });
+  });
+
+  it('records exactly one ANALYST_NOTIFIED timeline event per action, even when 2 approvers are notified (PR5, R5)', async () => {
+    const { recordAnalystDecision, notificationSender, timelineRecorder, assigneeDirectory } = buildUseCase(
+      buildCase({ status: 'IN_REVIEW' }),
+    );
+    assigneeDirectory.allowRoleRecipients(ORG_1, 'SUPERVISOR', [SUPERVISOR_ID, ANALYST_ID, oid('sup-2')]);
+
+    await recordAnalystDecision({
+      auth: ANALYST,
+      caseId: CASE_ID,
+      decision: 'FRAUD_CONFIRMED',
+      confidence: 90,
+      comment: 'patrón confirmado',
+      actionType: 'SUSPEND',
+      targetType: 'CUSTOMER',
+      targetId: '1887',
+    });
+
+    expect(notificationSender.all()).toHaveLength(2);
+    const notifiedEvents = timelineRecorder.all().filter((event) => event.eventType === 'ANALYST_NOTIFIED');
+    expect(notifiedEvents).toHaveLength(1);
+    expect(notifiedEvents[0]?.caseId).toBe(CASE_ID);
+    expect(notifiedEvents[0]?.newValue).toBe('APPROVAL_PENDING');
+    expect(notifiedEvents[0]?.createdBy).toBe(ANALYST_ID);
   });
 
   /**

@@ -8,6 +8,8 @@ import type { CaseId } from '../domain/model/value-objects/CaseId.js';
 import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
 import type { RouteCaseInput } from './RouteCase.js';
 import type { CalculateSlaInput } from './CalculateSla.js';
+import type { AssigneeDirectory } from '../domain/ports/AssigneeDirectory.js';
+import type { NotificationSender } from '../domain/ports/NotificationSender.js';
 import { Case } from '../domain/model/aggregates/Case.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
 import { createRiskScore } from '../domain/model/value-objects/RiskScore.js';
@@ -17,6 +19,7 @@ import { isDuplicateKeyError } from '../../../shared/persistence/mongo/duplicate
 import type { OutboxEventRepository } from '../../../shared/outbox/OutboxEventRepository.js';
 import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
 import { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
+import { ROLE_SUPERVISOR } from '../../../shared/kernel/AccessTier.js';
 
 export interface CreateCaseInput {
   readonly auth: AuthContext;
@@ -62,6 +65,16 @@ export interface CreateCaseDeps {
    * Fail-closed when OrganizationFraudConfig is missing.
    */
   readonly calculateSla: (input: CalculateSlaInput) => Promise<Case>;
+  /**
+   * Recipient resolution for the CRITICAL_RISK notification (R2): resolves
+   * SUPERVISOR fan-out recipients when the routed case has no USER assignee.
+   */
+  readonly assigneeDirectory: AssigneeDirectory;
+  /**
+   * Emits a CRITICAL_RISK notification (in-tx) when the routed case's
+   * priority resolves to CRITICAL — mirrors ReassignCase's own fan-out.
+   */
+  readonly notificationSender: NotificationSender;
   readonly outbox?: OutboxEventRepository;
   readonly generateOutboxEventId?: () => OutboxEventId;
 }
@@ -184,6 +197,10 @@ async function createAndRoute(
 
   const routedCase = await deps.calculateSla({ kase: routed, tx });
 
+  if (routedCase.priority === 'CRITICAL') {
+    await notifyCriticalRisk(deps, input, organizationId, routedCase, now, tx);
+  }
+
   if (deps.outbox !== undefined && deps.generateOutboxEventId !== undefined) {
     const outboxEventId = deps.generateOutboxEventId();
     const outboxEvent = OutboxEvent.create({
@@ -212,4 +229,51 @@ async function createAndRoute(
   }
 
   return routedCase;
+}
+
+/**
+ * R1/R2/R3: emits CRITICAL_RISK to the resolved recipients and records
+ * exactly one ANALYST_NOTIFIED timeline event (skipped when there are zero
+ * recipients — D6), all inside the caller's transaction. Mirrors
+ * ReassignCase.ts:131-158.
+ */
+async function notifyCriticalRisk(
+  deps: CreateCaseDeps,
+  input: CreateCaseInput,
+  organizationId: string,
+  routedCase: Case,
+  now: ReturnType<Clock['now']>,
+  tx: Transaction,
+): Promise<void> {
+  const assignedTo = routedCase.assignedTo;
+  const recipientUserIds =
+    assignedTo !== null && assignedTo.type === 'USER'
+      ? [assignedTo.id]
+      : await deps.assigneeDirectory.listRoleRecipients(organizationId, ROLE_SUPERVISOR);
+  const uniqueRecipients = [...new Set(recipientUserIds)];
+
+  for (const recipientUserId of uniqueRecipients) {
+    await deps.notificationSender.send(
+      {
+        organizationId,
+        recipientUserId,
+        alertType: 'CRITICAL_RISK',
+        context: { caseId: routedCase.id, riskScore: routedCase.riskScore, priority: routedCase.priority },
+      },
+      tx,
+    );
+  }
+
+  if (uniqueRecipients.length > 0) {
+    const notifiedEvent = CaseTimelineEvent.create({
+      id: deps.generateTimelineEventId(),
+      caseId: routedCase.id,
+      eventType: 'ANALYST_NOTIFIED',
+      previousValue: null,
+      newValue: 'CRITICAL_RISK',
+      createdBy: input.auth.userId,
+      createdAt: now,
+    });
+    await deps.timelineRecorder.record(notifiedEvent, tx);
+  }
 }

@@ -13,6 +13,10 @@ import type {
   NotificationEmailInput,
   NotificationEmailSender,
 } from '../../../../src/modules/notifications/domain/ports/NotificationEmailSender.js';
+import type {
+  NotificationRealtimeInput,
+  NotificationRealtimePusher,
+} from '../../../../src/modules/notifications/domain/ports/NotificationRealtimePusher.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ORG_1 = createOrganizationId(oid('org-1'));
@@ -217,6 +221,149 @@ describe('createSendNotificationUseCase — email delivery (optional emailSender
       {
         send: async () => {
           throw new Error('resend down');
+        },
+      },
+      (error) => errors.push(error),
+    );
+
+    await expect(
+      sendNotification({
+        organizationId: ORG_1,
+        recipientUserId: USER_1,
+        alertType: 'CASE_ASSIGNED',
+        context: {},
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(notifications.all()).toHaveLength(1);
+    expect(errors).toHaveLength(1);
+  });
+});
+
+describe('createSendNotificationUseCase — realtime push (optional realtimePusher)', () => {
+  function buildWithRealtime(realtimePusher?: NotificationRealtimePusher, onRealtimeError?: (error: unknown) => void) {
+    const notifications = new InMemoryNotificationRepository();
+    const preferences = new InMemoryNotificationPreferenceRepository();
+    const sendNotification = createSendNotificationUseCase({
+      notifications,
+      preferences,
+      clock: new FixedClock(NOW),
+      generateNotificationId,
+      realtimePusher,
+      onRealtimeError,
+    });
+    return { sendNotification, notifications, preferences };
+  }
+
+  it('pushes to the realtime pusher after the in-app persist for an in-scope alert type', async () => {
+    const calls: string[] = [];
+    const sent: NotificationRealtimeInput[] = [];
+    const notifications = new InMemoryNotificationRepository();
+    const originalSave = notifications.save.bind(notifications);
+    notifications.save = async (...args) => {
+      calls.push('save');
+      return originalSave(...args);
+    };
+    const preferences = new InMemoryNotificationPreferenceRepository();
+    const sendNotification = createSendNotificationUseCase({
+      notifications,
+      preferences,
+      clock: new FixedClock(NOW),
+      generateNotificationId,
+      realtimePusher: {
+        send: async (input) => {
+          calls.push('push');
+          sent.push(input);
+        },
+      },
+    });
+
+    await sendNotification({
+      organizationId: ORG_1,
+      recipientUserId: USER_1,
+      alertType: 'CASE_ASSIGNED',
+      context: { caseId: oid('case-1') },
+    });
+
+    expect(notifications.all()).toHaveLength(1);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({
+      organizationId: ORG_1,
+      recipientUserId: USER_1,
+      alertType: 'CASE_ASSIGNED',
+    });
+    expect(calls).toEqual(['save', 'push']);
+  });
+
+  it('does not push for an out-of-scope alert type (APPROVAL_PENDING)', async () => {
+    const sent: NotificationRealtimeInput[] = [];
+    const { sendNotification, notifications } = buildWithRealtime({
+      send: async (input) => {
+        sent.push(input);
+      },
+    });
+
+    await sendNotification({
+      organizationId: ORG_1,
+      recipientUserId: USER_1,
+      alertType: 'APPROVAL_PENDING',
+      context: {},
+    });
+
+    expect(notifications.all()).toHaveLength(1);
+    expect(sent).toHaveLength(0);
+  });
+
+  it('does not push when the recipient has opted out', async () => {
+    const sent: NotificationRealtimeInput[] = [];
+    const { sendNotification, notifications, preferences } = buildWithRealtime({
+      send: async (input) => {
+        sent.push(input);
+      },
+    });
+    preferences.seed(
+      NotificationPreference.create({
+        organizationId: ORG_1,
+        userId: USER_1,
+        alertType: 'CASE_ASSIGNED',
+        channel: 'EMAIL',
+        enabled: false,
+        now: NOW,
+      }),
+    );
+
+    await sendNotification({
+      organizationId: ORG_1,
+      recipientUserId: USER_1,
+      alertType: 'CASE_ASSIGNED',
+      context: {},
+    });
+
+    expect(notifications.all()).toHaveLength(0);
+    expect(sent).toHaveLength(0);
+  });
+
+  it('persists successfully when realtimePusher is undefined (feature not wired)', async () => {
+    const { sendNotification, notifications } = buildWithRealtime(undefined);
+
+    await expect(
+      sendNotification({
+        organizationId: ORG_1,
+        recipientUserId: USER_1,
+        alertType: 'CASE_ASSIGNED',
+        context: {},
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(notifications.all()).toHaveLength(1);
+  });
+
+  it('swallows a realtimePusher failure via onRealtimeError without rolling back the in-app row', async () => {
+    const errors: unknown[] = [];
+    const { sendNotification, notifications } = buildWithRealtime(
+      {
+        send: async () => {
+          throw new Error('ws gateway down');
         },
       },
       (error) => errors.push(error),

@@ -144,6 +144,19 @@ export function createReassignCaseUseCase(deps: ReassignCaseDeps) {
         );
       }
 
+      // notification-read-state PR5 (R5/R6): exactly one ANALYST_NOTIFIED
+      // event per reassignment action, not one per notified recipient.
+      const notifiedEvent = CaseTimelineEvent.create({
+        id: deps.generateTimelineEventId(),
+        caseId: updated.id,
+        eventType: 'ANALYST_NOTIFIED',
+        previousValue: null,
+        newValue: 'CASE_ASSIGNED',
+        createdBy: input.auth.userId,
+        createdAt: now,
+      });
+      await deps.timelineRecorder.record(notifiedEvent, tx);
+
       return updated;
     });
   };

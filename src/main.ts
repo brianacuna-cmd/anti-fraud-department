@@ -92,10 +92,20 @@ import { MongoNotificationPreferenceRepository } from './modules/notifications/i
 import { MongoNotificationRepository } from './modules/notifications/infrastructure/adapters/outbound/mongo/MongoNotificationRepository.js';
 import { createSendNotificationUseCase } from './modules/notifications/application/SendNotification.js';
 import { generateNotificationId } from './modules/notifications/domain/model/value-objects/NotificationId.js';
+import { ConnectionRegistry } from './modules/notifications/infrastructure/adapters/inbound/realtime/ConnectionRegistry.js';
+import { WebSocketGateway } from './modules/notifications/infrastructure/adapters/inbound/realtime/WebSocketGateway.js';
+import { RedisRealtimeChannel } from './modules/notifications/infrastructure/adapters/outbound/realtime/RedisRealtimeChannel.js';
+import { RedisNotificationRealtimePusher } from './modules/notifications/infrastructure/adapters/outbound/realtime/RedisNotificationRealtimePusher.js';
+import { createRealtimeSessionAuthenticatorAdapter } from './composition/realtimeSessionAuthenticatorAdapter.js';
+import type { WebSocket } from 'ws';
 import { MongoUnitOfWork as NotificationsMongoUnitOfWork } from './modules/notifications/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { createGetNotificationPreferencesUseCase } from './modules/notifications/application/GetNotificationPreferences.js';
 import { createSetNotificationPreferenceUseCase } from './modules/notifications/application/SetNotificationPreference.js';
+import { createListNotificationsUseCase } from './modules/notifications/application/ListNotifications.js';
+import { createMarkNotificationReadUseCase } from './modules/notifications/application/MarkNotificationRead.js';
+import { createMarkAllNotificationsReadUseCase } from './modules/notifications/application/MarkAllNotificationsRead.js';
 import { notificationPreferenceRouter } from './modules/notifications/infrastructure/adapters/inbound/http/notificationPreferenceRouter.js';
+import { notificationRouter } from './modules/notifications/infrastructure/adapters/inbound/http/notificationRouter.js';
 import { notificationsErrorStatus } from './modules/notifications/infrastructure/adapters/inbound/http/errorStatus.js';
 import { MongoCaseRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseRepository.js';
 import { MongoTimelineRecorder } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoTimelineRecorder.js';
@@ -421,6 +431,12 @@ const AUTH_ADMIN_CHALLENGE_TTL_SECONDS = Number(process.env.AUTH_ADMIN_CHALLENGE
 // unset (local/dev/CI default) -> `LogEmailSender` (spec "Adapter fallback
 // with no API key").
 const AUTH_PASSWORD_RESET_TTL_SECONDS = Number(process.env.AUTH_PASSWORD_RESET_TTL_SECONDS ?? 900);
+// realtime-ws-gateway PR3 (design §6): Redis backs the WS gateway's
+// multi-instance pub/sub fan-out. Connections are `lazyConnect` with a
+// capped retry policy (see `RedisRealtimeChannel`'s default client
+// factory) — an unreachable Redis degrades to local-only delivery instead
+// of crashing bootstrap (spec Scenario 5.3).
+const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 const PASSWORD_RESET_EMAIL_FROM = process.env.PASSWORD_RESET_EMAIL_FROM ?? 'fraud@backendstudio.tech';
 const NOTIFICATION_EMAIL_FROM = process.env.NOTIFICATION_EMAIL_FROM ?? PASSWORD_RESET_EMAIL_FROM;
 const EVIDENCE_STORAGE_DIR = process.env.EVIDENCE_STORAGE_DIR ?? './.evidence';
@@ -618,14 +634,38 @@ async function bootstrap(): Promise<void> {
   // twin of `caseManagementAuditRecorderAdapter`), so notifications commit
   // atomically with the triggering case-management transaction.
   const notifications = new MongoNotificationRepository(db);
+  // PR4: self-scoped inbox list + mark-read use cases (R3/R4). Both are
+  // read/single-document-write use cases — no `withTransaction` needed
+  // (design decision: MarkNotificationRead takes a simple `tx?` passthrough).
+  const listNotifications = createListNotificationsUseCase({ repository: notifications });
+  const markNotificationRead = createMarkNotificationReadUseCase({ repository: notifications, clock });
+  const markAllNotificationsRead = createMarkAllNotificationsReadUseCase({ repository: notifications, clock });
   const notificationEmailSender = createNotificationEmailSenderAdapter(
     emailSender,
     userRepositoryFactory,
     NOTIFICATION_EMAIL_FROM,
   );
+  // realtime-ws-gateway PR3 (design §4): the registry/gateway/channel are
+  // constructed here so the pusher can be wired into `sendNotification`'s
+  // deps; `wsGateway.attach()` + `realtimeChannel.start()` happen below,
+  // once `server` exists (a WS upgrade handler needs the listening
+  // `http.Server`).
+  const realtimeRegistry = new ConnectionRegistry<WebSocket>();
+  const realtimeChannel = new RedisRealtimeChannel({
+    redisUrl: REDIS_URL,
+    deliverer: { deliverTo: (organizationId, userId, payload) => wsGateway.deliverTo(organizationId, userId, payload) },
+    onError: (error) => {
+      console.error('Realtime channel error:', error);
+    },
+  });
+  const realtimePusher = new RedisNotificationRealtimePusher(realtimeChannel);
   const sendNotification = createSendNotificationUseCase({
     notifications,
     preferences: notificationPreferences,
+    realtimePusher,
+    onRealtimeError: (error) => {
+      console.error('Notification realtime push failed:', error);
+    },
     clock,
     generateNotificationId,
     emailSender: notificationEmailSender,
@@ -697,6 +737,8 @@ async function bootstrap(): Promise<void> {
     auditRecorder: caseManagementAuditRecorder,
     routeCase,
     calculateSla,
+    assigneeDirectory,
+    notificationSender: caseManagementNotificationSender,
     outbox: outboxEvents,
     generateOutboxEventId,
   });
@@ -1192,10 +1234,12 @@ async function bootstrap(): Promise<void> {
     cases,
     notificationSender: caseManagementNotificationSender,
     assigneeDirectory,
+    timelineRecorder: caseTimelineRecorder,
     unitOfWork: caseManagementUnitOfWork,
     clock,
     outbox: outboxEvents,
     generateOutboxEventId,
+    generateTimelineEventId,
   });
   const recordedSweep = () =>
     recordAround(() => sweepSlaTracking(), {
@@ -2009,6 +2053,9 @@ async function bootstrap(): Promise<void> {
   // router — `notifications` routes are USER-tier self-service and rely on the
   // `authContextMiddleware` above to resolve the caller's AuthContext.
   identityAccessRouter.use(notificationPreferenceRouter({ getNotificationPreferences, setNotificationPreference }));
+  // notification-read-state PR4: mounted on the SAME authenticated `/api/v1`
+  // router — inbox routes are USER-tier self-service (R3/R4).
+  identityAccessRouter.use(notificationRouter({ listNotifications, markNotificationRead, markAllNotificationsRead }));
   // case-management Slice 5 + T2: cases + organization fraud config mounted
   // on the SAME authenticated `/api/v1` router — rely on
   // `authContextMiddleware` above to resolve the caller's AuthContext.
@@ -2110,6 +2157,36 @@ async function bootstrap(): Promise<void> {
   const requestTimeout = Number(process.env.FINTURU_SYNC_TIMEOUT_MS ?? 600_000) + 30_000;
   server.requestTimeout = requestTimeout;
   server.headersTimeout = requestTimeout + 5_000;
+
+  // realtime-ws-gateway PR3 (design §4 step 2): attach the WS gateway to
+  // the now-listening `server`, bridging its local `SessionAuthenticator`
+  // port to identity-access's real session services (composition root —
+  // unconstrained by eslint-plugin-boundaries, decision #538). Starting
+  // the Redis subscriber is best-effort (`RedisRealtimeChannel.start`
+  // never throws) so an unreachable Redis never blocks bootstrap.
+  const wsGateway = new WebSocketGateway({
+    server,
+    registry: realtimeRegistry,
+    authenticator: createRealtimeSessionAuthenticatorAdapter(sessionTokenService, sessions),
+  });
+  wsGateway.attach();
+  await realtimeChannel.start();
+
+  const shutdown = async (signal: string): Promise<void> => {
+    console.log(`Received ${signal}, shutting down gracefully...`);
+    wsGateway.close();
+    await realtimeChannel.quit();
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => {
+    void shutdown('SIGTERM');
+  });
+  process.on('SIGINT', () => {
+    void shutdown('SIGINT');
+  });
 }
 
 /**

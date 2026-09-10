@@ -29,7 +29,11 @@ export type TimelineEventType =
   // case told an incomplete story: the sanction appeared without a record of
   // who requested it or when.
   | 'ENFORCEMENT_REQUESTED'
-  | 'AGENT_BRIEFING';
+  | 'AGENT_BRIEFING'
+  // notification-read-state PR5 (R5/R6, design D6): one event per
+  // case-triggered notification action (ReassignCase, the approval path,
+  // SweepSlaTracking) — not one per notified recipient.
+  | 'ANALYST_NOTIFIED';
 
 const VALID_EVENT_TYPES: ReadonlySet<string> = new Set<TimelineEventType>([
   'STATE_CHANGED',
@@ -47,12 +51,13 @@ const VALID_EVENT_TYPES: ReadonlySet<string> = new Set<TimelineEventType>([
   'SNAPSHOT_REFRESHED',
   'ENFORCEMENT_REQUESTED',
   'AGENT_BRIEFING',
+  'ANALYST_NOTIFIED',
 ]);
 
 export function createTimelineEventType(value: string): TimelineEventType {
   if (!VALID_EVENT_TYPES.has(value)) {
     throw invariantViolation(
-      'TimelineEventType must be one of STATE_CHANGED, ASSIGNED, NOTE_ADDED, DECISION_MADE, CASE_CREATED, CASE_REOPENED, EVIDENCE_ADDED, PRIORITY_CHANGED, TAGS_UPDATED, EVIDENCE_DELETED, NOTE_DELETED, CASE_LINKED_TO_INVESTIGATION, SNAPSHOT_REFRESHED, ENFORCEMENT_REQUESTED, AGENT_BRIEFING',
+      'TimelineEventType must be one of STATE_CHANGED, ASSIGNED, NOTE_ADDED, DECISION_MADE, CASE_CREATED, CASE_REOPENED, EVIDENCE_ADDED, PRIORITY_CHANGED, TAGS_UPDATED, EVIDENCE_DELETED, NOTE_DELETED, CASE_LINKED_TO_INVESTIGATION, SNAPSHOT_REFRESHED, ENFORCEMENT_REQUESTED, AGENT_BRIEFING, ANALYST_NOTIFIED',
       { value },
     );
   }
