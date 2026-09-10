@@ -8,7 +8,8 @@ import { NotificationPreference as NotificationPreferenceAggregate } from '../do
 import { createOrganizationId } from '../domain/model/value-objects/OrganizationId.js';
 import { createUserId } from '../domain/model/value-objects/UserId.js';
 import { createAlertType } from '../domain/model/value-objects/AlertType.js';
-import { createNotificationChannel } from '../domain/model/value-objects/NotificationChannel.js';
+import { createNotificationChannel, CONFIGURABLE_CHANNELS } from '../domain/model/value-objects/NotificationChannel.js';
+import { channelNotConfigurable } from '../domain/errors/NotificationsError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 
 export interface SetNotificationPreferenceInput {
@@ -42,6 +43,9 @@ export function createSetNotificationPreferenceUseCase(deps: SetNotificationPref
     const userId = createUserId(input.auth.userId);
     const alertType = createAlertType(input.alertType);
     const channel = createNotificationChannel(input.channel);
+    if (!CONFIGURABLE_CHANNELS.includes(channel as (typeof CONFIGURABLE_CHANNELS)[number])) {
+      throw channelNotConfigurable(channel);
+    }
 
     return deps.unitOfWork.withTransaction(async (tx) => {
       const desired = NotificationPreferenceAggregate.create({

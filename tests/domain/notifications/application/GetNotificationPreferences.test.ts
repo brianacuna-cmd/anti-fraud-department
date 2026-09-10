@@ -18,17 +18,28 @@ function buildUseCase(repository: InMemoryNotificationPreferenceRepository) {
 }
 
 describe('createGetNotificationPreferencesUseCase', () => {
-  it('returns all 4 alert types enabled:true (default-ON) when no rows exist', async () => {
+  it('returns all 4 alert types x 3 configurable channels enabled:true (default-ON) when no rows exist', async () => {
     const repository = new InMemoryNotificationPreferenceRepository();
     const getPreferences = buildUseCase(repository);
 
     const matrix = await getPreferences({ auth: ORG_1_USER });
 
+    expect(matrix).toHaveLength(12);
+    expect(matrix.every((entry) => entry.enabled === true)).toBe(true);
+    expect(matrix.some((entry) => entry.channel === 'IN_APP')).toBe(false);
     expect(matrix).toEqual([
       { alertType: 'CASE_ASSIGNED', channel: 'EMAIL', enabled: true },
+      { alertType: 'CASE_ASSIGNED', channel: 'SLACK', enabled: true },
+      { alertType: 'CASE_ASSIGNED', channel: 'WEBHOOK', enabled: true },
       { alertType: 'SLA_DUE_SOON', channel: 'EMAIL', enabled: true },
+      { alertType: 'SLA_DUE_SOON', channel: 'SLACK', enabled: true },
+      { alertType: 'SLA_DUE_SOON', channel: 'WEBHOOK', enabled: true },
       { alertType: 'APPROVAL_PENDING', channel: 'EMAIL', enabled: true },
+      { alertType: 'APPROVAL_PENDING', channel: 'SLACK', enabled: true },
+      { alertType: 'APPROVAL_PENDING', channel: 'WEBHOOK', enabled: true },
       { alertType: 'CRITICAL_RISK', channel: 'EMAIL', enabled: true },
+      { alertType: 'CRITICAL_RISK', channel: 'SLACK', enabled: true },
+      { alertType: 'CRITICAL_RISK', channel: 'WEBHOOK', enabled: true },
     ]);
   });
 

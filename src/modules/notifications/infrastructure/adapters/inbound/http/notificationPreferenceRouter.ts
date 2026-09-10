@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { requireAuthContext } from '../../../../../../shared/http/requestAuthContext.js';
 import type { createGetNotificationPreferencesUseCase } from '../../../../application/GetNotificationPreferences.js';
 import type { createSetNotificationPreferenceUseCase } from '../../../../application/SetNotificationPreference.js';
-import { unknownAlertType, unknownChannel } from '../../../../domain/errors/NotificationsError.js';
+import { unknownAlertType } from '../../../../domain/errors/NotificationsError.js';
 import { WIRE_TO_ALERT_TYPE, setPreferenceBodySchema, type WireAlertType } from './dto/notificationPreferenceSchemas.js';
 import { toPreferenceResponse, toPreferenceMatrixResponse } from './mappers/NotificationPreferenceHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
@@ -36,9 +36,6 @@ export function notificationPreferenceRouter(deps: NotificationPreferenceRouterD
     }
 
     const channel = req.params.channel!;
-    if (channel !== 'EMAIL') {
-      throw unknownChannel(channel);
-    }
 
     const { enabled } = parseRequest(setPreferenceBodySchema, req.body);
     const pref = await deps.setNotificationPreference({ auth, alertType, channel, enabled });
