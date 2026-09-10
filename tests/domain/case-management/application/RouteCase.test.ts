@@ -375,21 +375,8 @@ describe('createRouteCaseUseCase (T1 auto-routing)', () => {
     it('routes when persisted featureFlags is null (legacy docs; missing != disabled)', async () => {
       const seeded = buildFraudConfig({});
       const legacy = OrganizationFraudConfig.rehydrate({
-        id: seeded.id,
-        organizationId: seeded.organizationId,
-        slaLowMinutes: seeded.slaLowMinutes,
-        slaMediumMinutes: seeded.slaMediumMinutes,
-        slaHighMinutes: seeded.slaHighMinutes,
-        slaCriticalMinutes: seeded.slaCriticalMinutes,
-        riskThresholdLow: seeded.riskThresholdLow,
-        riskThresholdMedium: seeded.riskThresholdMedium,
-        riskThresholdHigh: seeded.riskThresholdHigh,
-        riskThresholdCritical: seeded.riskThresholdCritical,
+        ...seeded.toProps(),
         featureFlags: null as unknown as Record<string, boolean>,
-        outboundWebhookUrl: seeded.outboundWebhookUrl,
-        outboundWebhookSecret: seeded.outboundWebhookSecret,
-        createdAt: seeded.createdAt,
-        updatedAt: seeded.updatedAt,
       });
       const engine = new ScriptedRoutingEngine([{ targetUserId: 'user-9', targetRoleId: null }]);
       const { routeCase } = buildUseCase(engine, [buildRule()], legacy);
