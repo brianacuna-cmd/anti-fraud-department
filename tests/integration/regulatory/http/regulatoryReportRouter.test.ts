@@ -13,7 +13,12 @@ import { createIssueRegulatoryReportUseCase } from '../../../../src/modules/regu
 import { createExportRegulatoryReportUseCase } from '../../../../src/modules/regulatory/application/ExportRegulatoryReport.js';
 import { createGetRegulatoryReportUseCase } from '../../../../src/modules/regulatory/application/GetRegulatoryReport.js';
 import { createListRegulatoryReportsUseCase } from '../../../../src/modules/regulatory/application/ListRegulatoryReports.js';
-import { generateRegulatoryReportId } from '../../../../src/modules/regulatory/domain/model/value-objects/RegulatoryReportId.js';
+import {
+  createRegulatoryReportId,
+  generateRegulatoryReportId,
+} from '../../../../src/modules/regulatory/domain/model/value-objects/RegulatoryReportId.js';
+import { RegulatoryReport } from '../../../../src/modules/regulatory/domain/model/aggregates/RegulatoryReport.js';
+import { EMPTY_FIGURES } from '../../../../src/modules/regulatory/domain/model/value-objects/RegulatoryFigures.js';
 import { PdfRegulatoryReportRenderer } from '../../../../src/modules/regulatory/infrastructure/adapters/outbound/render/PdfRegulatoryReportRenderer.js';
 import { XlsxRegulatoryReportRenderer } from '../../../../src/modules/regulatory/infrastructure/adapters/outbound/render/XlsxRegulatoryReportRenderer.js';
 import { PassthroughUnitOfWork } from '../../../../src/modules/regulatory/infrastructure/PassthroughUnitOfWork.js';
@@ -137,5 +142,23 @@ describe('regulatoryReportRouter', () => {
         periodEnd: '2026-09-30T23:59:59.000Z',
       })
       .expect(403);
+  });
+
+  it('GET export of another tenant report is 404', async () => {
+    const { app, reports } = buildApp(supervisor);
+    const foreignId = createRegulatoryReportId(oid('rep-foreign'));
+    reports.seed(
+      RegulatoryReport.create({
+        id: foreignId,
+        organizationId: oid('org-2'),
+        periodStart: fromDate(new Date('2026-09-01T00:00:00.000Z')),
+        periodEnd: fromDate(new Date('2026-09-30T23:59:59.000Z')),
+        figures: EMPTY_FIGURES,
+        generatedBy: oid('sup-9'),
+        now: NOW,
+      }),
+    );
+
+    await request(app).get(`/api/v1/regulatory-reports/${foreignId}/export?format=pdf`).expect(404);
   });
 });

@@ -125,6 +125,20 @@ describe('createExportRegulatoryReportUseCase', () => {
     expect(event!.detail.bytes).toBe(file.body.byteLength);
   });
 
+  it('a report from another tenant is not found', async () => {
+    const { exportRegulatoryReport } = build(draft());
+    const otherOrg = createAuthContext({
+      userId: oid('sup-2'),
+      organizationId: oid('org-2'),
+      actorType: 'USER',
+      roleId: 'SUPERVISOR',
+    });
+
+    await expect(
+      exportRegulatoryReport({ auth: otherOrg, reportId: ID, format: 'pdf' }),
+    ).rejects.toMatchObject({ code: 'REGULATORY_REPORT_NOT_FOUND' });
+  });
+
   it('un formato que no existe se rechaza nombrando los que sí', async () => {
     const { exportRegulatoryReport } = build(draft());
 
