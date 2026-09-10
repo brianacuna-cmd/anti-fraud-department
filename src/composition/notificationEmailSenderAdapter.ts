@@ -30,7 +30,7 @@ export function createNotificationEmailSenderAdapter(
       await emailSender.send({
         to: recipient.email as string,
         from: fromAddress,
-        subject: `Alerta de fraude: ${input.alertType}`,
+        subject: `Fraud alert: ${input.alertType}`,
         text: buildText(input),
       });
     },
@@ -41,6 +41,6 @@ function buildText(input: NotificationEmailInput): string {
   const details = Object.entries(input.context)
     .map(([key, value]) => `${key}: ${String(value)}`)
     .join('\n');
-  const body = `Tenés una nueva alerta de tipo ${input.alertType}.`;
+  const body = `You have a new ${input.alertType} alert.`;
   return details.length > 0 ? `${body}\n\n${details}` : body;
 }
