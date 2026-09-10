@@ -9,6 +9,7 @@ import { notificationsErrorStatus } from '../../../src/modules/notifications/inf
 import { notificationPreferenceRouter } from '../../../src/modules/notifications/infrastructure/adapters/inbound/http/notificationPreferenceRouter.js';
 import type { createGetNotificationPreferencesUseCase } from '../../../src/modules/notifications/application/GetNotificationPreferences.js';
 import type { createSetNotificationPreferenceUseCase } from '../../../src/modules/notifications/application/SetNotificationPreference.js';
+import type { createSetNotificationPreferencesUseCase } from '../../../src/modules/notifications/application/SetNotificationPreferences.js';
 import { NotificationPreference } from '../../../src/modules/notifications/domain/model/aggregates/NotificationPreference.js';
 import { createOrganizationId } from '../../../src/modules/notifications/domain/model/value-objects/OrganizationId.js';
 import { createUserId } from '../../../src/modules/notifications/domain/model/value-objects/UserId.js';
@@ -19,6 +20,7 @@ const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 function buildApp(overrides: {
   getNotificationPreferences?: ReturnType<typeof createGetNotificationPreferencesUseCase>;
   setNotificationPreference?: ReturnType<typeof createSetNotificationPreferenceUseCase>;
+  setNotificationPreferences?: ReturnType<typeof createSetNotificationPreferencesUseCase>;
 }) {
   const getNotificationPreferences =
     overrides.getNotificationPreferences ??
@@ -34,8 +36,15 @@ function buildApp(overrides: {
         enabled: true,
         now: NOW,
       })) as unknown as ReturnType<typeof createSetNotificationPreferenceUseCase>);
+  const setNotificationPreferences =
+    overrides.setNotificationPreferences ??
+    ((async () => []) as unknown as ReturnType<typeof createSetNotificationPreferencesUseCase>);
 
-  const router = notificationPreferenceRouter({ getNotificationPreferences, setNotificationPreference });
+  const router = notificationPreferenceRouter({
+    getNotificationPreferences,
+    setNotificationPreference,
+    setNotificationPreferences,
+  });
 
   function testAuthMiddleware(req: Request, _res: Response, next: NextFunction): void {
     attachAuthContext(req, createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1') }));
@@ -221,6 +230,9 @@ describe('notificationPreferenceRouter', () => {
           enabled: true,
           now: NOW,
         })) as unknown as ReturnType<typeof createSetNotificationPreferenceUseCase>,
+      setNotificationPreferences: (async () => []) as unknown as ReturnType<
+        typeof createSetNotificationPreferencesUseCase
+      >,
     });
     const app = createApp({
       routers: [{ path: '/api/v1', router }],
@@ -228,6 +240,104 @@ describe('notificationPreferenceRouter', () => {
     });
 
     const response = await request(app).get('/api/v1/notifications/preferences');
+
+    expect(response.status).toBe(500);
+  });
+
+  it('GET /users/me/notification-preferences returns 200 with the caller matrix, scoped by AuthContext.userId', async () => {
+    const calls: unknown[] = [];
+    const matrix = Array.from({ length: 12 }, (_unused, i) => ({
+      alertType: 'CASE_ASSIGNED',
+      channel: i % 3 === 0 ? 'EMAIL' : i % 3 === 1 ? 'SLACK' : 'WEBHOOK',
+      enabled: true,
+    }));
+    const app = buildApp({
+      getNotificationPreferences: (async (input: unknown) => {
+        calls.push(input);
+        return matrix;
+      }) as unknown as ReturnType<typeof createGetNotificationPreferencesUseCase>,
+    });
+
+    const response = await request(app).get('/api/v1/users/me/notification-preferences');
+
+    expect(response.status).toBe(200);
+    expect(response.body.items).toHaveLength(12);
+    expect(calls).toEqual([
+      expect.objectContaining({ auth: expect.objectContaining({ userId: oid('user-1') }) }),
+    ]);
+  });
+
+  it('PATCH /users/me/notification-preferences applies a bulk update and returns 200 with the matrix', async () => {
+    const calls: unknown[] = [];
+    const app = buildApp({
+      setNotificationPreferences: (async (input: unknown) => {
+        calls.push(input);
+        return [];
+      }) as unknown as ReturnType<typeof createSetNotificationPreferencesUseCase>,
+      getNotificationPreferences: (async () => [
+        { alertType: 'CASE_ASSIGNED', channel: 'SLACK', enabled: false },
+      ]) as unknown as ReturnType<typeof createGetNotificationPreferencesUseCase>,
+    });
+
+    const response = await request(app)
+      .patch('/api/v1/users/me/notification-preferences')
+      .send({ entries: [{ alertType: 'case_assigned', channel: 'SLACK', enabled: false }] });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: [{ alertType: 'case_assigned', channel: 'SLACK', enabled: false }] });
+    expect(calls).toEqual([
+      expect.objectContaining({
+        auth: expect.objectContaining({ userId: oid('user-1') }),
+        entries: [{ alertType: 'CASE_ASSIGNED', channel: 'SLACK', enabled: false }],
+      }),
+    ]);
+  });
+
+  it('PATCH /users/me/notification-preferences rejects an empty entries array with 400', async () => {
+    const app = buildApp({});
+
+    const response = await request(app).patch('/api/v1/users/me/notification-preferences').send({ entries: [] });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
+  });
+
+  it('PATCH /users/me/notification-preferences rejects an entry with channel IN_APP with 422', async () => {
+    const app = buildApp({
+      setNotificationPreferences: (async () => {
+        const { channelNotConfigurable } = await import(
+          '../../../src/modules/notifications/domain/errors/NotificationsError.js'
+        );
+        throw channelNotConfigurable('IN_APP');
+      }) as unknown as ReturnType<typeof createSetNotificationPreferencesUseCase>,
+    });
+
+    const response = await request(app)
+      .patch('/api/v1/users/me/notification-preferences')
+      .send({ entries: [{ alertType: 'case_assigned', channel: 'IN_APP', enabled: true }] });
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe('NOTIFICATION_CHANNEL_NOT_CONFIGURABLE');
+  });
+
+  it('requires auth for GET /users/me/notification-preferences', async () => {
+    const router = notificationPreferenceRouter({
+      getNotificationPreferences: (async () => []) as unknown as ReturnType<
+        typeof createGetNotificationPreferencesUseCase
+      >,
+      setNotificationPreference: (async () => {
+        throw new Error('unused');
+      }) as unknown as ReturnType<typeof createSetNotificationPreferenceUseCase>,
+      setNotificationPreferences: (async () => []) as unknown as ReturnType<
+        typeof createSetNotificationPreferencesUseCase
+      >,
+    });
+    const app = createApp({
+      routers: [{ path: '/api/v1', router }],
+      errorHandler: createErrorHandler(notificationsErrorStatus),
+    });
+
+    const response = await request(app).get('/api/v1/users/me/notification-preferences');
 
     expect(response.status).toBe(500);
   });
