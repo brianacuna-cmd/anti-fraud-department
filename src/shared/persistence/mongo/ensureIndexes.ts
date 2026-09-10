@@ -421,6 +421,19 @@ export async function ensureIndexes(db: Db): Promise<void> {
       { name: 'privacy_request_org_subject_idx' },
     );
 
+  // regulatory_reports (REG-001/REG-002): se listan por PERIODO, no por fecha
+  // de creacion — quien busca "el reporte de septiembre" piensa en el mes que
+  // cubre, no en cuando se compilo.
+  await db
+    .collection('regulatory_reports')
+    .createIndex({ organization_id: 1, period_end: -1 }, { name: 'regulatory_report_org_period_idx' });
+  await db
+    .collection('regulatory_reports')
+    .createIndex(
+      { organization_id: 1, status: 1, period_end: -1 },
+      { name: 'regulatory_report_org_status_period_idx' },
+    );
+
   // bulk_screening_jobs (Slice A, design D7, RNF-BS-1): org-scoped status
   // polling (GET /bulk-screening-jobs/:id) and org-scoped listing by creation
   // date. Both are compounded with organization_id first for tenant isolation.
