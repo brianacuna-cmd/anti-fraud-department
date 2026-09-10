@@ -307,6 +307,20 @@ import { MongoOrganizationSarFilingProfileRepository } from './modules/sar/infra
 import { generateOrganizationSarFilingProfileId } from './modules/sar/domain/model/value-objects/OrganizationSarFilingProfileId.js';
 import { sarErrorStatus } from './modules/sar/infrastructure/adapters/inbound/http/errorStatus.js';
 import { createSarSourceVerifier } from './composition/sarSourceVerifier.js';
+import { privacyRequestRouter } from './modules/privacy/infrastructure/adapters/inbound/http/privacyRequestRouter.js';
+import { privacyErrorStatus } from './modules/privacy/infrastructure/adapters/inbound/http/errorStatus.js';
+import { MongoPrivacyDataRequestRepository } from './modules/privacy/infrastructure/adapters/outbound/mongo/MongoPrivacyDataRequestRepository.js';
+import { MongoUnitOfWork as PrivacyMongoUnitOfWork } from './modules/privacy/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
+import { Sha256CertificateIssuer } from './modules/privacy/infrastructure/adapters/outbound/crypto/Sha256CertificateIssuer.js';
+import { createIngestPrivacyRequestUseCase } from './modules/privacy/application/IngestPrivacyRequest.js';
+import { createExportSubjectDataUseCase } from './modules/privacy/application/ExportSubjectData.js';
+import { createAnonymizeSubjectDataUseCase } from './modules/privacy/application/AnonymizeSubjectData.js';
+import { createResolvePrivacyRequestUseCase } from './modules/privacy/application/ResolvePrivacyRequest.js';
+import { createListPrivacyRequestsUseCase } from './modules/privacy/application/ListPrivacyRequests.js';
+import { createGetPrivacyRequestUseCase } from './modules/privacy/application/GetPrivacyRequest.js';
+import { generatePrivacyDataRequestId } from './modules/privacy/domain/model/value-objects/PrivacyDataRequestId.js';
+import { createSubjectDataSource } from './composition/subjectDataSource.js';
+import { createPrivacyAuditRecorderAdapter } from './composition/privacyAuditRecorderAdapter.js';
 import { createSarAuditRecorderAdapter } from './composition/sarAuditRecorderAdapter.js';
 import { createGetCaseAnalysisPack } from './composition/getCaseAnalysisPack.js';
 import { createScoreToCaseOrchestrator } from './composition/scoreToCaseOrchestrator.js';
@@ -1972,6 +1986,47 @@ async function bootstrap(): Promise<void> {
   // AML alert. `sarSourceVerifier` is the one legal cross-module seam
   // (composition root) wrapping the ALREADY-CONSTRUCTED `cases`,
   // `analystDecisions`, and `amlAlerts` repositories from above.
+  // PRIV-001..004: derechos del titular. `subjectDataSource` es la costura
+  // legal cross-module (composition root) que lee y enmascara `cases` sin
+  // exponer un `maskIdentity()` en el agregado de case-management.
+  const privacyRequests = new MongoPrivacyDataRequestRepository(db);
+  const privacyUnitOfWork = new PrivacyMongoUnitOfWork(client);
+  const privacyAuditRecorder = createPrivacyAuditRecorderAdapter(recordAuditLog);
+  const subjectDataSource = createSubjectDataSource(db);
+  const privacyRequestHttpRouter = privacyRequestRouter({
+    ingestPrivacyRequest: createIngestPrivacyRequestUseCase({
+      requests: privacyRequests,
+      auditRecorder: privacyAuditRecorder,
+      unitOfWork: privacyUnitOfWork,
+      clock,
+      generatePrivacyDataRequestId,
+    }),
+    exportSubjectData: createExportSubjectDataUseCase({
+      requests: privacyRequests,
+      subjectData: subjectDataSource,
+      auditRecorder: privacyAuditRecorder,
+      unitOfWork: privacyUnitOfWork,
+      clock,
+    }),
+    anonymizeSubjectData: createAnonymizeSubjectDataUseCase({
+      requests: privacyRequests,
+      subjectData: subjectDataSource,
+      auditRecorder: privacyAuditRecorder,
+      unitOfWork: privacyUnitOfWork,
+      clock,
+    }),
+    resolvePrivacyRequest: createResolvePrivacyRequestUseCase({
+      requests: privacyRequests,
+      certificates: new Sha256CertificateIssuer(),
+      auditRecorder: privacyAuditRecorder,
+      unitOfWork: privacyUnitOfWork,
+      clock,
+    }),
+    listPrivacyRequests: createListPrivacyRequestsUseCase({ requests: privacyRequests }),
+    getPrivacyRequest: createGetPrivacyRequestUseCase({ requests: privacyRequests }),
+    clock,
+  });
+
   const sarSourceVerifier = createSarSourceVerifier(cases, analystDecisions, amlAlerts);
   const sarReports = new MongoSarReportRepository(db);
   const sarUnitOfWork = new SarMongoUnitOfWork(client);
@@ -2119,6 +2174,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(bulkScreeningHttpRouter);
   identityAccessRouter.use(inboundWebhookSecretHttpRouter);
   identityAccessRouter.use(sarReportHttpRouter);
+  identityAccessRouter.use(privacyRequestHttpRouter);
 
   const app = createApp({
     routers: [
@@ -2140,6 +2196,7 @@ async function bootstrap(): Promise<void> {
       ...riskAssessmentErrorStatus,
       ...screeningErrorStatus,
       ...sarErrorStatus,
+      ...privacyErrorStatus,
       ...ingestErrorStatus,
     }),
     trustProxy: TRUST_PROXY,
