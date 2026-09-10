@@ -104,9 +104,5 @@ export type CaseManagementErrorCode =
    * ORGANIZATION_FRAUD_CONFIG_NOT_FOUND (404).
    */
   | 'OUTBOUND_WEBHOOK_URL_NOT_SET'
-  /**
-   * A routing rule cannot be deleted while ACTIVE: it is still what T1
-   * auto-routing evaluates. Deactivate it first, so the change of "who gets
-   * the next case" is on record as such and not as a disappearance.
-   */
+  | 'CUSTOMER_OUTGOING_DLQ_REQUEUE_FORBIDDEN'
   | 'ROUTING_RULE_ACTIVE';

@@ -1,5 +1,6 @@
 import type { Instant } from '../time/Instant.js';
 import type { OutboxEventId } from './OutboxEventId.js';
+import { createOutboxEventId } from './OutboxEventId.js';
 import type { OutboxEvent } from './OutboxEvent.js';
 
 export interface DeadLetterEventProps {
@@ -45,6 +46,36 @@ export class DeadLetterEvent {
       publishAttempts: exhausted.publishAttempts,
       reason: exhausted.lastError ?? '',
       createdAt: exhausted.createdAt,
+      exhaustedAt,
+    });
+  }
+
+  /**
+   * Snapshot of an exhausted customer webhook delivery. `_id` equals the
+   * customer event id; `aggregateType` is `customer_outgoing_events`.
+   */
+  static fromCustomerOutgoingEvent(
+    event: {
+      readonly id: string;
+      readonly organizationId: string;
+      readonly eventType: string;
+      readonly payload: Readonly<Record<string, unknown>>;
+      readonly attempts: number;
+      readonly createdAt: Instant;
+      readonly responseStatus: number | null;
+    },
+    exhaustedAt: Instant,
+  ): DeadLetterEvent {
+    return new DeadLetterEvent({
+      id: createOutboxEventId(String(event.id)),
+      organizationId: event.organizationId,
+      eventType: event.eventType,
+      aggregateType: 'customer_outgoing_events',
+      aggregateId: String(event.id),
+      payload: { ...event.payload },
+      publishAttempts: event.attempts,
+      reason: `HTTP ${event.responseStatus ?? 0}`,
+      createdAt: event.createdAt,
       exhaustedAt,
     });
   }

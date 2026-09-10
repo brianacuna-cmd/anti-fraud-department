@@ -169,4 +169,28 @@ describe('createRequeueDlqEventUseCase', () => {
       requeuDlqEvent({ auth: ADMIN, dlqEventId: oid('e1') }),
     ).rejects.toMatchObject({ code: 'DLQ_EVENT_NOT_FOUND' });
   });
+
+  it('rejects customer_outgoing_events DLQ rows before delete and does not create Kafka outbox', async () => {
+    const dlq = new InMemoryOutboxDlqRepository();
+    const webhookDlq = DeadLetterEvent.rehydrate({
+      id: createOutboxEventId(oid('e-wh')),
+      organizationId: oid('org-1'),
+      eventType: 'case.created',
+      aggregateType: 'customer_outgoing_events',
+      aggregateId: oid('e-wh'),
+      payload: { event_type: 'case.created' },
+      publishAttempts: 5,
+      reason: 'HTTP 500',
+      createdAt: fromDate(new Date('2026-01-01T00:00:00.000Z')),
+      exhaustedAt: fromDate(new Date('2026-06-01T12:00:00.000Z')),
+    });
+    await dlq.save(webhookDlq);
+    const { requeuDlqEvent, outbox } = build({ dlq });
+
+    await expect(
+      requeuDlqEvent({ auth: ADMIN, dlqEventId: oid('e-wh') }),
+    ).rejects.toMatchObject({ code: 'CUSTOMER_OUTGOING_DLQ_REQUEUE_FORBIDDEN' });
+    expect(dlq.all()).toHaveLength(1);
+    expect(outbox.all()).toHaveLength(0);
+  });
 });

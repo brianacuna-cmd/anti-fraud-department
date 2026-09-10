@@ -1,7 +1,11 @@
 import type { Clock } from '../../../../../shared/time/Clock.js';
+import type { Instant } from '../../../../../shared/time/Instant.js';
 import type { CustomerOutgoingEventRepository } from '../../../domain/ports/CustomerOutgoingEventRepository.js';
 import type { OutgoingWebhookClient } from '../../../domain/ports/OutgoingWebhookClient.js';
 import type { OrganizationFraudConfigRepository } from '../../../domain/ports/OrganizationFraudConfigRepository.js';
+import type { UnitOfWork } from '../../../domain/ports/UnitOfWork.js';
+import type { OutboxDlqRepository } from '../../../../../shared/outbox/OutboxDlqRepository.js';
+import { DeadLetterEvent } from '../../../../../shared/outbox/DeadLetterEvent.js';
 
 export type Sleeper = (ms: number) => Promise<void>;
 
@@ -24,6 +28,8 @@ export interface CustomerOutgoingEventDispatcherDeps {
    * `start()` and the returned `dispatchOnce` share the same wrapped tick.
    */
   readonly wrapTick?: (tick: () => Promise<DispatchOnceResult>) => Promise<DispatchOnceResult>;
+  readonly unitOfWork?: UnitOfWork;
+  readonly dlq?: OutboxDlqRepository;
 }
 
 export interface DispatchOnceResult {
@@ -62,16 +68,20 @@ export function createCustomerOutgoingEventDispatcher(deps: CustomerOutgoingEven
     let failed = 0;
     // A batch touches few tenants and many events: without a cache this would
     // be a config lookup per delivered event.
-    const secrets = new Map<string, string | null>();
+    const secrets = new Map<string, SigningMaterial>();
 
     for (const event of claimed) {
       let responseStatus = 0;
       let ok = false;
       try {
+        const signing = await resolveSigning(secrets, event.organizationId);
+        const nowForHeaders = deps.clock.now();
+        const previousSecret = previousSecretIfInGrace(signing, nowForHeaders);
         const result = await deps.webhookClient.post({
           url: event.webhookUrl,
           payload: { ...event.payload },
-          secret: await resolveSecret(secrets, event.organizationId),
+          secret: signing.current,
+          ...(previousSecret === null ? {} : { previousSecret }),
         });
         responseStatus = result.statusCode;
         ok = result.ok;
@@ -86,9 +96,31 @@ export function createCustomerOutgoingEventDispatcher(deps: CustomerOutgoingEven
         sent += 1;
       } else {
         const updated = event.recordFailure({ responseStatus, now: deps.clock.now() });
-        await deps.outgoingEvents.save(updated);
-        if (updated.status === 'FAILED') {
+        if (updated.status === 'FAILED' && deps.unitOfWork !== undefined && deps.dlq !== undefined) {
+          await deps.unitOfWork.withTransaction(async (tx) => {
+            await deps.outgoingEvents.save(updated, tx);
+            await deps.dlq!.save(
+              DeadLetterEvent.fromCustomerOutgoingEvent(
+                {
+                  id: String(updated.id),
+                  organizationId: updated.organizationId,
+                  eventType: updated.eventType,
+                  payload: { ...updated.payload },
+                  attempts: updated.attempts,
+                  createdAt: updated.createdAt,
+                  responseStatus: updated.responseStatus,
+                },
+                deps.clock.now(),
+              ),
+              tx,
+            );
+          });
           failed += 1;
+        } else {
+          await deps.outgoingEvents.save(updated);
+          if (updated.status === 'FAILED') {
+            failed += 1;
+          }
         }
       }
     }
@@ -106,23 +138,23 @@ export function createCustomerOutgoingEventDispatcher(deps: CustomerOutgoingEven
    * they should be. A receiver that requires a signature will reject the
    * send and it will be retried with the normal backoff.
    */
-  async function resolveSecret(
-    cache: Map<string, string | null>,
+  async function resolveSigning(
+    cache: Map<string, SigningMaterial>,
     organizationId: string,
-  ): Promise<string | null> {
+  ): Promise<SigningMaterial> {
     if (deps.fraudConfig === undefined) {
-      return null;
+      return { current: null, previous: null, graceExpiresAt: null };
     }
     const cached = cache.get(organizationId);
     if (cached !== undefined) {
       return cached;
     }
-    const secret = await readSecret(deps.fraudConfig, organizationId).catch((error: unknown) => {
+    const material = await readSigning(deps.fraudConfig, organizationId).catch((error: unknown) => {
       onError(error);
-      return null;
+      return { current: null, previous: null, graceExpiresAt: null };
     });
-    cache.set(organizationId, secret);
-    return secret;
+    cache.set(organizationId, material);
+    return material;
   }
 
   const runTick = (): Promise<DispatchOnceResult> =>
@@ -154,10 +186,30 @@ export function createCustomerOutgoingEventDispatcher(deps: CustomerOutgoingEven
   return { dispatchOnce: runTick, start };
 }
 
-async function readSecret(
+interface SigningMaterial {
+  readonly current: string | null;
+  readonly previous: string | null;
+  readonly graceExpiresAt: Instant | null;
+}
+
+function previousSecretIfInGrace(material: SigningMaterial, now: Instant): string | null {
+  if (material.previous === null || material.previous.length === 0) {
+    return null;
+  }
+  if (material.graceExpiresAt === null || now >= material.graceExpiresAt) {
+    return null;
+  }
+  return material.previous;
+}
+
+async function readSigning(
   fraudConfig: OrganizationFraudConfigRepository,
   organizationId: string,
-): Promise<string | null> {
+): Promise<SigningMaterial> {
   const config = await fraudConfig.findByOrganization(organizationId);
-  return config?.outboundWebhookSecret ?? null;
+  return {
+    current: config?.outboundWebhookSecret ?? null,
+    previous: config?.outboundWebhookPreviousSecret ?? null,
+    graceExpiresAt: config?.outboundWebhookSecretGraceExpiresAt ?? null,
+  };
 }

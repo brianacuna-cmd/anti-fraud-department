@@ -8,6 +8,8 @@ import { FakeOutgoingWebhookClient } from '../../../helpers/case-management/Fake
 import { ControllableClock } from '../../../helpers/ControllableClock.js';
 import { FakeSleeper } from '../../../helpers/FakeSleeper.js';
 import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
+import { InMemoryOutboxDlqRepository } from '../../../helpers/case-management/InMemoryOutboxDlqRepository.js';
+import { InMemoryUnitOfWork } from '../../../helpers/case-management/InMemoryUnitOfWork.js';
 import { OrganizationFraudConfig } from '../../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
 import { createOrganizationFraudConfigId } from '../../../../src/modules/case-management/domain/model/value-objects/OrganizationFraudConfigId.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
@@ -47,6 +49,8 @@ function buildDispatcher(opts?: {
   sleeper?: FakeSleeper;
   claimLimit?: number;
   fraudConfig?: InMemoryOrganizationFraudConfigRepository;
+  unitOfWork?: InMemoryUnitOfWork;
+  dlq?: InMemoryOutboxDlqRepository;
   wrapTick?: (
     tick: () => Promise<{ processed: number; sent: number; failed: number }>,
   ) => Promise<{ processed: number; sent: number; failed: number }>;
@@ -63,6 +67,8 @@ function buildDispatcher(opts?: {
     claimLimit: opts?.claimLimit,
     ...(opts?.fraudConfig === undefined ? {} : { fraudConfig: opts.fraudConfig }),
     ...(opts?.wrapTick === undefined ? {} : { wrapTick: opts.wrapTick }),
+    ...(opts?.unitOfWork === undefined ? {} : { unitOfWork: opts.unitOfWork }),
+    ...(opts?.dlq === undefined ? {} : { dlq: opts.dlq }),
   });
   return { dispatcher, clock, client, events, sleeper };
 }
@@ -413,5 +419,89 @@ describe('CustomerOutgoingEventDispatcher — secreto de firma por inquilino (EV
 
     expect(result.sent).toBe(1);
     expect(client.posts[0]?.secret).toBeNull();
+  });
+});
+
+describe('CustomerOutgoingEventDispatcher — dual HMAC grace cache', () => {
+  const CURRENT = 'k'.repeat(48);
+  const PREVIOUS = 'p'.repeat(48);
+
+  function configWithGrace(graceExpiresAt: string | null) {
+    const base = OrganizationFraudConfig.create({
+      id: createOrganizationFraudConfigId(oid('cfg-org-1')),
+      organizationId: oid('org-1'),
+      slaLowMinutes: 60,
+      slaMediumMinutes: 60,
+      slaHighMinutes: 60,
+      slaCriticalMinutes: 60,
+      riskThresholdLow: 10,
+      riskThresholdMedium: 40,
+      riskThresholdHigh: 70,
+      riskThresholdCritical: 90,
+      outboundWebhookUrl: WEBHOOK_URL,
+      outboundWebhookSecret: CURRENT,
+      now: T0,
+    });
+    return OrganizationFraudConfig.rehydrate({
+      ...base.toProps(),
+      outboundWebhookPreviousSecret: PREVIOUS,
+      outboundWebhookSecretGraceExpiresAt: graceExpiresAt === null ? null : fromDate(new Date(graceExpiresAt)),
+    });
+  }
+
+  it('passes previousSecret while grace is in the future', async () => {
+    const fraudConfig = new InMemoryOrganizationFraudConfigRepository();
+    await fraudConfig.upsert(configWithGrace('2026-01-02T00:00:00.000Z'));
+    const events = new InMemoryCustomerOutgoingEventRepository();
+    await events.save(buildPending());
+    const { dispatcher, client } = buildDispatcher({ events, fraudConfig });
+
+    await dispatcher.dispatchOnce();
+
+    expect(client.posts[0]?.secret).toBe(CURRENT);
+    expect(client.posts[0]?.previousSecret).toBe(PREVIOUS);
+  });
+
+  it('omits previousSecret after grace expires', async () => {
+    const fraudConfig = new InMemoryOrganizationFraudConfigRepository();
+    await fraudConfig.upsert(configWithGrace('2025-12-31T00:00:00.000Z'));
+    const events = new InMemoryCustomerOutgoingEventRepository();
+    await events.save(buildPending());
+    const { dispatcher, client } = buildDispatcher({ events, fraudConfig });
+
+    await dispatcher.dispatchOnce();
+
+    expect(client.posts[0]?.secret).toBe(CURRENT);
+    expect(client.posts[0]?.previousSecret).toBeUndefined();
+  });
+});
+
+describe('CustomerOutgoingEventDispatcher — attempt-5 FAILED plus DLQ', () => {
+  it('keeps FAILED customer row and inserts DLQ with the same id in one transaction', async () => {
+    const clock = new ControllableClock(T0);
+    const client = new FakeOutgoingWebhookClient();
+    client.nextResult = { statusCode: 500, ok: false };
+    const events = new InMemoryCustomerOutgoingEventRepository();
+    const dlq = new InMemoryOutboxDlqRepository();
+    const unitOfWork = new InMemoryUnitOfWork();
+    const pending = buildPending();
+    await events.save(pending);
+    const { dispatcher } = buildDispatcher({ clock, client, events, unitOfWork, dlq });
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await dispatcher.dispatchOnce();
+      if (attempt < 4) {
+        clock.advanceBySeconds(BACKOFF_AFTER_ATTEMPTS[attempt]!);
+      }
+    }
+
+    const failed = await events.findById(pending.id);
+    expect(failed?.status).toBe('FAILED');
+    expect(failed?.attempts).toBe(5);
+    expect(dlq.all()).toHaveLength(1);
+    expect(dlq.all()[0]!.id).toBe(String(pending.id));
+    expect(dlq.all()[0]!.aggregateType).toBe('customer_outgoing_events');
+    expect(dlq.all()[0]!.publishAttempts).toBe(5);
+    expect(unitOfWork.transactionCount).toBe(1);
   });
 });
