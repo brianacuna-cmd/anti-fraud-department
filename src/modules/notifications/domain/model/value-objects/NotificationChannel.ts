@@ -9,10 +9,10 @@ import { unknownChannel } from '../../errors/NotificationsError.js';
  * because the user decides separately: wanting to see an alert when
  * opening the panel does not imply wanting an email for each one.
  */
-export type NotificationChannel = 'EMAIL' | 'IN_APP';
+export type NotificationChannel = 'EMAIL' | 'IN_APP' | 'SLACK' | 'WEBHOOK';
 
 /** Full catalog, used for validation. */
-export const CHANNELS = ['EMAIL', 'IN_APP'] as const;
+export const CHANNELS = ['EMAIL', 'IN_APP', 'SLACK', 'WEBHOOK'] as const;
 
 /**
  * Channels the user can turn off.
@@ -20,11 +20,11 @@ export const CHANNELS = ['EMAIL', 'IN_APP'] as const;
  * `IN_APP` is deliberately LEFT OUT: the dashboard inbox always delivers.
  * Being able to mute it would mean an analyst is assigned a case with no
  * record that they were notified — an accountability hole in an antifraud
- * department, where "I didn't hear about it" has to be verifiable. Email
- * is configurable, because it is the intrusive channel and the one people
- * want to bound.
+ * department, where "I didn't hear about it" has to be verifiable. Email,
+ * Slack, and Webhook are configurable, because they are the intrusive/
+ * external channels and the ones people want to bound.
  */
-export const CONFIGURABLE_CHANNELS = ['EMAIL'] as const;
+export const CONFIGURABLE_CHANNELS = ['EMAIL', 'SLACK', 'WEBHOOK'] as const;
 
 const VALID_CHANNELS: ReadonlySet<string> = new Set<NotificationChannel>(CHANNELS);
 

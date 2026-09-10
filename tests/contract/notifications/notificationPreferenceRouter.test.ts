@@ -134,8 +134,15 @@ describe('notificationPreferenceRouter', () => {
     expect(response.body.error.code).toBe('UNKNOWN_ALERT_TYPE');
   });
 
-  it('rejects an unknown channel with 422', async () => {
-    const app = buildApp({});
+  it('rejects an unknown channel with 422, sourced from the use case, not a router hardcode', async () => {
+    const app = buildApp({
+      setNotificationPreference: (async () => {
+        const { unknownChannel } = await import(
+          '../../../src/modules/notifications/domain/errors/NotificationsError.js'
+        );
+        throw unknownChannel('SMS');
+      }) as unknown as ReturnType<typeof createSetNotificationPreferenceUseCase>,
+    });
 
     const response = await request(app)
       .put('/api/v1/notifications/preferences/case_assigned/SMS')
@@ -143,6 +150,50 @@ describe('notificationPreferenceRouter', () => {
 
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe('UNKNOWN_CHANNEL');
+  });
+
+  it('PUT accepts SLACK, previously rejected by the old EMAIL-only hardcode', async () => {
+    const calls: unknown[] = [];
+    const app = buildApp({
+      setNotificationPreference: (async (input: unknown) => {
+        calls.push(input);
+        return NotificationPreference.create({
+          organizationId: createOrganizationId(oid('org-1')),
+          userId: createUserId(oid('user-1')),
+          alertType: 'CASE_ASSIGNED',
+          channel: 'SLACK',
+          enabled: true,
+          now: NOW,
+        });
+      }) as unknown as ReturnType<typeof createSetNotificationPreferenceUseCase>,
+    });
+
+    const response = await request(app)
+      .put('/api/v1/notifications/preferences/case_assigned/SLACK')
+      .send({ enabled: true });
+
+    expect(response.status).toBe(200);
+    expect(calls).toEqual([
+      expect.objectContaining({ alertType: 'CASE_ASSIGNED', channel: 'SLACK', enabled: true }),
+    ]);
+  });
+
+  it('rejects IN_APP via the centralized invariant with 422, not the old router hardcode', async () => {
+    const app = buildApp({
+      setNotificationPreference: (async () => {
+        const { channelNotConfigurable } = await import(
+          '../../../src/modules/notifications/domain/errors/NotificationsError.js'
+        );
+        throw channelNotConfigurable('IN_APP');
+      }) as unknown as ReturnType<typeof createSetNotificationPreferenceUseCase>,
+    });
+
+    const response = await request(app)
+      .put('/api/v1/notifications/preferences/case_assigned/IN_APP')
+      .send({ enabled: true });
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe('NOTIFICATION_CHANNEL_NOT_CONFIGURABLE');
   });
 
   it('rejects a malformed body with 400', async () => {
