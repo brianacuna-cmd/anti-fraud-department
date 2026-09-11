@@ -105,6 +105,8 @@ function resolvingRunners(
     wallet_sanctions_rescreen: make('wallet_sanctions_rescreen'),
     daily_fraud_metrics: make('daily_fraud_metrics'),
     audit_trail_archive: make('audit_trail_archive'),
+    sanction_list_sync: make('sanction_list_sync'),
+    customer_sanctions_rescreen: make('customer_sanctions_rescreen'),
     ...overrides,
   };
 }

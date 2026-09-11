@@ -24,4 +24,13 @@ export interface WatchlistEntryDocument {
   /** Additive (Slice B, RNF-5): absent on pre-B documents; write-path always sets them. */
   readonly created_at?: Date;
   readonly updated_at?: Date;
+  /**
+   * AML-001: present only on entries written by the sanctions sync — the
+   * party's reference in the official list, stable across downloads. Absent
+   * on hand-made entries, which is how the sync tells its own entries apart
+   * and never touches a tenant's manual ones.
+   */
+  readonly external_ref?: string;
+  /** AML-001: fingerprint of the synced fields; unchanged means the sync skips the write. */
+  readonly sync_fingerprint?: string;
 }

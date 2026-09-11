@@ -12,7 +12,9 @@ export type ScreeningAuditAction =
   | 'DELETE_WATCHLIST_ENTRY'
   | 'SUBMIT_BULK_SCREENING_JOB'
   | 'COMPLETE_BULK_SCREENING_JOB'
-  | 'FAIL_BULK_SCREENING_JOB';
+  | 'FAIL_BULK_SCREENING_JOB'
+  /** AML-001: one row per organization and official list, every nightly run. */
+  | 'SYNC_SANCTION_WATCHLIST';
 
 export type ScreeningAuditResource =
   | 'aml_alert'

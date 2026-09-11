@@ -320,6 +320,19 @@ export async function ensureIndexes(db: Db): Promise<void> {
     .collection('watchlist_entries')
     .createIndex({ wallet_address: 1 }, { name: 'watchlist_entries_wallet_address_idx' });
 
+  // watchlist_entries (AML-001 sanctions sync): one entry per list reference
+  // within a watchlist. Backs the per-watchlist snapshot read, and makes a
+  // second sync racing the first fail loudly on insert instead of writing
+  // every sanctioned party twice. Partial: hand-made entries have no ref.
+  await db.collection('watchlist_entries').createIndex(
+    { watchlist_id: 1, external_ref: 1 },
+    {
+      unique: true,
+      name: 'watchlist_entries_watchlist_external_ref_unique',
+      partialFilterExpression: { external_ref: { $exists: true } },
+    },
+  );
+
   // aml_alerts (screening): lookups by organization/status/created_at,
   // organization/severity, organization/matched watchlist, and
   // organization/customer, plus the natural-key idempotency unique index

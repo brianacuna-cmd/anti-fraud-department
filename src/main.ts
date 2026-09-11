@@ -423,6 +423,20 @@ import {
 } from './modules/screening/application/WalletSanctionsRescreenScheduler.js';
 import { createFinturuWalletSource } from './composition/finturuWalletSource.js';
 import { createWalletRescreenCaseLinker } from './composition/walletRescreenCaseLinker.js';
+import { createSyncSanctionWatchlistsUseCase } from './modules/screening/application/SyncSanctionWatchlists.js';
+import { createRescreenCustomerSanctionsUseCase } from './modules/screening/application/RescreenCustomerSanctions.js';
+import { createCaseLinkingOpenAmlAlert } from './modules/screening/application/CaseLinkingOpenAmlAlert.js';
+import { createDailyBogotaScheduler, msUntilNextBogotaTime } from './modules/screening/application/DailyBogotaScheduler.js';
+import { HttpSanctionListFeed } from './modules/screening/infrastructure/adapters/outbound/sanctions/HttpSanctionListFeed.js';
+import type { SanctionListParser } from './modules/screening/infrastructure/adapters/outbound/sanctions/HttpSanctionListFeed.js';
+import { parseOfacSdn } from './modules/screening/infrastructure/adapters/outbound/sanctions/ofacSdnParser.js';
+import { parseEuFsf } from './modules/screening/infrastructure/adapters/outbound/sanctions/euFsfParser.js';
+import { parseUkFcdo } from './modules/screening/infrastructure/adapters/outbound/sanctions/ukFcdoParser.js';
+import { MongoSyncedWatchlistEntryStore } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoSyncedWatchlistEntryStore.js';
+import { isSanctionSource, SANCTION_SOURCES } from './modules/screening/domain/model/value-objects/SanctionSource.js';
+import type { SanctionSource } from './modules/screening/domain/model/value-objects/SanctionSource.js';
+import { createActiveOrganizationSource } from './composition/activeOrganizationSource.js';
+import { createFinturuScreeningCustomerSource } from './composition/finturuScreeningCustomerSource.js';
 import { createAggregateDailyFraudMetricsUseCase } from './modules/case-management/application/AggregateDailyFraudMetrics.js';
 import { MongoFraudDepartmentDailyTalliesReader } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoFraudDepartmentDailyTalliesReader.js';
 import { MongoFraudDepartmentMetricsRepository } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoFraudDepartmentMetricsRepository.js';
@@ -597,6 +611,65 @@ const SCREENING_MATCH_BACKEND = process.env.SCREENING_MATCH_BACKEND ?? 'index';
 const WALLET_RESCREEN_ENABLED = process.env.WALLET_RESCREEN_ENABLED === 'true';
 /** When true the first run scans all history; default false seeds watermark to now. */
 const WALLET_RESCREEN_BACKFILL = process.env.WALLET_RESCREEN_BACKFILL === 'true';
+
+/**
+ * AML-001. Fails at startup on an unknown name: a typo here would otherwise
+ * drop a list from the sync without anyone noticing.
+ */
+function parseSanctionSources(raw: string | undefined): readonly SanctionSource[] {
+  if (raw === undefined || raw.trim().length === 0) return SANCTION_SOURCES;
+  const requested = raw.split(',').map((value) => value.trim()).filter((value) => value.length > 0);
+  const unknown = requested.filter((value) => !isSanctionSource(value));
+  if (unknown.length > 0) {
+    throw new Error(
+      `SANCTION_LIST_SOURCES: unknown ${unknown.join(', ')}; expected a subset of ${SANCTION_SOURCES.join(', ')}`,
+    );
+  }
+  return requested.filter(isSanctionSource);
+}
+/** AML-001 kill-switch: the nightly sanctions list sync only runs when explicitly 'true' (default off). */
+const SANCTION_LIST_SYNC_ENABLED = process.env.SANCTION_LIST_SYNC_ENABLED === 'true';
+/** Comma-separated subset of OFAC_SDN,EU_FSF,UK_FCDO; unset = all three. */
+const SANCTION_LIST_SOURCES = parseSanctionSources(process.env.SANCTION_LIST_SOURCES);
+/** Official publication URLs; overridable for a mirror or a test double. */
+const SANCTION_LIST_URLS: Readonly<Record<SanctionSource, string>> = {
+  OFAC_SDN:
+    process.env.OFAC_SDN_URL ?? 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.XML',
+  // The token is the publisher's own public one, printed on the EU download page.
+  EU_FSF:
+    process.env.EU_FSF_URL ??
+    'https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content?token=dG9rZW4tMjAxNw',
+  UK_FCDO: process.env.UK_SANCTIONS_URL ?? 'https://sanctionslist.fcdo.gov.uk/docs/UK-Sanctions-List.xml',
+};
+const SANCTION_LIST_PARSERS: Readonly<Record<SanctionSource, SanctionListParser>> = {
+  OFAC_SDN: parseOfacSdn,
+  EU_FSF: parseEuFsf,
+  UK_FCDO: parseUkFcdo,
+};
+/** 23:00 so the wallet (00:00) and customer (01:00) rescreens use lists refreshed that same night. */
+const SANCTION_LIST_SYNC_HOUR = 23;
+/** AML-009 kill-switch for the nightly customer name rescreen (default off, like the wallet one). */
+const CUSTOMER_RESCREEN_ENABLED = process.env.CUSTOMER_RESCREEN_ENABLED === 'true';
+const CUSTOMER_RESCREEN_HOUR = 1;
+
+/**
+ * Starts an opt-in daily scheduler, or says why it did not start.
+ *
+ * Kept out of `bootstrap` on purpose: each inline if/else there adds to a
+ * function already at sonarjs's cognitive-complexity limit.
+ */
+function startIfEnabled(
+  enabled: boolean,
+  scheduler: { start(): void },
+  messages: { readonly started: string; readonly disabled: string },
+): void {
+  if (!enabled) {
+    console.log(messages.disabled);
+    return;
+  }
+  scheduler.start();
+  console.log(messages.started);
+}
 const DEFAULT_ORGANIZATION_ID = process.env.DEFAULT_ORGANIZATION_ID ?? '019d7e58aed0777318d11d4d';
 
 async function bootstrap(): Promise<void> {
@@ -621,6 +694,8 @@ async function bootstrap(): Promise<void> {
     outgoingWebhookDispatchIntervalMs: OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS,
     walletRescreenEnabled: WALLET_RESCREEN_ENABLED,
     auditArchiveEnabled: AUDIT_ARCHIVE_BUCKET !== undefined,
+    sanctionListSyncEnabled: SANCTION_LIST_SYNC_ENABLED,
+    customerRescreenEnabled: CUSTOMER_RESCREEN_ENABLED,
   });
   await backfillRoutingRuleExecutionOrder(db);
   // user-roles PR-1a: idempotent fixed role-catalog seed (ADMIN/SUPERVISOR/
@@ -2277,6 +2352,87 @@ async function bootstrap(): Promise<void> {
     runRescreen: recordedWalletRescreen,
     clock,
   });
+  const nextBogotaRunAt = (hour: number) => (now: Instant) =>
+    fromDate(new Date(toDate(now).getTime() + msUntilNextBogotaTime(toDate(now), hour)));
+
+  // AML-001: the official sanctions lists, synced into every active
+  // organization as BLACKLIST watchlists. New or changed wallet entries get
+  // a fresh `updated_at`, which is exactly what the wallet rescreen's delta
+  // scan looks for — so the two jobs chain without knowing about each other.
+  const syncSanctionWatchlists = createSyncSanctionWatchlistsUseCase({
+    feeds: SANCTION_LIST_SOURCES.map(
+      (source) =>
+        new HttpSanctionListFeed({ source, url: SANCTION_LIST_URLS[source], parse: SANCTION_LIST_PARSERS[source] }),
+    ),
+    organizations: createActiveOrganizationSource(organizations),
+    watchlistRepository: watchlists,
+    store: new MongoSyncedWatchlistEntryStore(db),
+    nameNormalizer: referenceNameNormalizer,
+    phoneticEncoder: new TalismanPhoneticEncoder(),
+    auditRecorder: screeningAuditRecorder,
+    clock,
+    generateWatchlistId,
+    generateWatchlistEntryId,
+  });
+  const recordedSanctionListSync = () =>
+    recordAround(() => syncSanctionWatchlists(), {
+      name: 'sanction_list_sync',
+      recorder: scheduledJobs,
+      clock,
+      nextRunAt: nextBogotaRunAt(SANCTION_LIST_SYNC_HOUR),
+    });
+  const sanctionListSyncScheduler = createDailyBogotaScheduler({
+    run: recordedSanctionListSync,
+    hour: SANCTION_LIST_SYNC_HOUR,
+    label: 'sanction-list-sync',
+    clock,
+  });
+
+  // AML-009, customer half: nightly NAME rescreen of every Finturu customer.
+  // A screenSubject instance of its own, whose openAmlAlert links each new
+  // alert to the customer's open case, as the wallet rescreen already does.
+  const customerRescreenAuth = createAuthContext({
+    userId: 'system:customer-rescreen',
+    organizationId: DEFAULT_ORGANIZATION_ID,
+    actorType: 'ORGANIZATION',
+  });
+  const rescreenCustomerSanctions = createRescreenCustomerSanctionsUseCase({
+    customerSource: createFinturuScreeningCustomerSource(finturuApiClient),
+    screenSubject: createScreenSubjectAgainstWatchlistUseCase({
+      watchlistCandidateRepository: watchlistCandidates,
+      openAmlAlert: createCaseLinkingOpenAmlAlert({
+        openAmlAlert,
+        caseLinker: walletCaseLinker,
+        amlAlertRepository: amlAlerts,
+        unitOfWork: screeningUnitOfWork,
+        clock,
+      }),
+      phoneticEncoder: new TalismanPhoneticEncoder(),
+      similarityCalculator: new TalismanSimilarityCalculator(),
+    }),
+    isOrganizationActive: async (id: string) => {
+      const org = await organizations.findById(createOrganizationId(id));
+      return org?.status === 'ACTIVE';
+    },
+    resolveThresholds: (organizationId: string) =>
+      getOrganizationScreeningConfig({
+        auth: createAuthContext({ userId: 'system:customer-rescreen', organizationId, actorType: 'ORGANIZATION' }),
+      }),
+    onCustomerError: (customerId, error) => console.error(`[customer-rescreen] customer ${customerId}:`, error),
+  });
+  const recordedCustomerRescreen = () =>
+    recordAround(() => rescreenCustomerSanctions({ auth: customerRescreenAuth }), {
+      name: 'customer_sanctions_rescreen',
+      recorder: scheduledJobs,
+      clock,
+      nextRunAt: nextBogotaRunAt(CUSTOMER_RESCREEN_HOUR),
+    });
+  const customerRescreenScheduler = createDailyBogotaScheduler({
+    run: recordedCustomerRescreen,
+    hour: CUSTOMER_RESCREEN_HOUR,
+    label: 'customer-rescreen',
+    clock,
+  });
 
   // daily-fraud-metrics-aggregator PR4 (design #645, MET-003): nightly
   // per-organization fraud department metrics, same recordAround/registry
@@ -2308,6 +2464,8 @@ async function bootstrap(): Promise<void> {
     outbox_publish: recordedPublishOutbox,
     customer_outgoing_webhook_dispatch: customerOutgoingEventDispatcher.dispatchOnce,
     wallet_sanctions_rescreen: recordedWalletRescreen,
+    sanction_list_sync: recordedSanctionListSync,
+    customer_sanctions_rescreen: recordedCustomerRescreen,
     daily_fraud_metrics: recordedAggregateDailyFraudMetrics,
     /*
      * Sin bucket configurado el runner existe pero se niega a correr.
@@ -2447,6 +2605,14 @@ async function bootstrap(): Promise<void> {
   } else {
     console.log('Wallet sanctions rescreen scheduler disabled (WALLET_RESCREEN_ENABLED not set)');
   }
+  startIfEnabled(SANCTION_LIST_SYNC_ENABLED, sanctionListSyncScheduler, {
+    started: `Sanctions list sync scheduler started (daily 23:00 America/Bogota; sources=${SANCTION_LIST_SOURCES.join(',')})`,
+    disabled: 'Sanctions list sync scheduler disabled (SANCTION_LIST_SYNC_ENABLED not set)',
+  });
+  startIfEnabled(CUSTOMER_RESCREEN_ENABLED, customerRescreenScheduler, {
+    started: 'Customer sanctions rescreen scheduler started (daily 01:00 America/Bogota)',
+    disabled: 'Customer sanctions rescreen scheduler disabled (CUSTOMER_RESCREEN_ENABLED not set)',
+  });
 
   dailyMetricsAggregatorScheduler.start();
   console.log('Daily fraud metrics aggregator scheduler started (daily 00:00 America/Bogota)');
