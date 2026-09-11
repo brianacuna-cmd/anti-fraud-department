@@ -9,6 +9,8 @@ export type RiskAssessmentAuditAction =
   | 'ACTIVATE_SCORING_RULE'
   | 'SIMULATE_SCORING_RULE'
   /** Soft delete: the rule leaves the list, the row stays for traceability. */
-  | 'DELETE_SCORING_RULE';
+  | 'DELETE_SCORING_RULE'
+  /** In-place patch of name and/or JDM conditions; status is not patchable. */
+  | 'UPDATE_SCORING_RULE';
 
 export type RiskAssessmentAuditResource = 'rule';
