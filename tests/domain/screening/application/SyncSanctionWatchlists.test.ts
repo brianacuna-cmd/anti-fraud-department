@@ -72,6 +72,12 @@ class FakeStore implements SyncedWatchlistEntryStore {
     }
   }
 
+  readonly syncedAt = new Map<string, string>();
+
+  async recordSync(watchlistId: string, now: string): Promise<void> {
+    this.syncedAt.set(watchlistId, now);
+  }
+
   active(): StoredEntry[] {
     return [...this.entries.values()].filter((entry) => entry.active);
   }
@@ -235,5 +241,29 @@ describe('SyncSanctionWatchlists (AML-001)', () => {
 
     await expect(sync()).rejects.toThrow(/NAME_TAKEN/);
     expect(store.active()).toHaveLength(0);
+  });
+
+  it('stamps the list as synced when a run is applied, even one with no changes', async () => {
+    const { sync, store, watchlists } = build([new FakeFeed('OFAC_SDN', parties(3))]);
+    await sync();
+    const id = String(watchlists.all()[0]!.id);
+    store.syncedAt.clear();
+
+    await sync();
+
+    expect(store.syncedAt.get(id)).toBe(NOW);
+  });
+
+  it('keeps the previous date when a run is refused, so a stale list looks stale', async () => {
+    const feed = new FakeFeed('OFAC_SDN', parties(10));
+    const { sync, store, watchlists } = build([feed]);
+    await sync();
+    const id = String(watchlists.all()[0]!.id);
+    store.syncedAt.clear();
+
+    feed.parties = parties(7);
+    await expect(sync()).rejects.toThrow(/TOO_MANY_REMOVALS/);
+
+    expect(store.syncedAt.has(id)).toBe(false);
   });
 });

@@ -15,6 +15,13 @@ export interface WatchlistProps {
   readonly deletedAt: Instant | null;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
+  /**
+   * AML-001: when the official list was last applied to this watchlist.
+   * `null` for hand-made lists and for an official one not synced yet.
+   * Optional so every existing construction site keeps compiling; read it
+   * through `toProps().lastSyncedAt ?? null`.
+   */
+  readonly lastSyncedAt?: Instant | null;
 }
 
 export interface CreateWatchlistInput {

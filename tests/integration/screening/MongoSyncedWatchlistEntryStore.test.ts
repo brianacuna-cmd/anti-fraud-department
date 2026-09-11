@@ -172,4 +172,16 @@ describe('MongoSyncedWatchlistEntryStore (integration, real Mongo)', () => {
 
     expect(await store.listSnapshots(WATCHLIST)).toHaveLength(2500);
   });
+
+  it('stamps the last sync on the watchlist without touching its edit date', async () => {
+    const _id = new ObjectId(WATCHLIST);
+    await db.collection('watchlists').insertOne({ _id, name: 'OFAC SDN (official feed)', updated_at: new Date(T1) });
+
+    await store.recordSync(WATCHLIST, T2);
+
+    expect(await db.collection('watchlists').findOne({ _id })).toEqual(
+      expect.objectContaining({ last_synced_at: new Date(T2), updated_at: new Date(T1) }),
+    );
+    await db.collection('watchlists').deleteMany({});
+  });
 });

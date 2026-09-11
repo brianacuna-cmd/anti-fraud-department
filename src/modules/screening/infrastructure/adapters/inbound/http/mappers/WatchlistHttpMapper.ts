@@ -13,6 +13,8 @@ export interface WatchlistResponseDto {
   readonly deletedAt: Instant | null;
   readonly createdAt: Instant;
   readonly updatedAt: Instant;
+  /** AML-001: last applied sync of an official list; `null` for hand-made lists. */
+  readonly lastSyncedAt: Instant | null;
 }
 
 export function toWatchlistResponse(watchlist: Watchlist): WatchlistResponseDto {
@@ -27,6 +29,7 @@ export function toWatchlistResponse(watchlist: Watchlist): WatchlistResponseDto 
     deletedAt: watchlist.deletedAt,
     createdAt: watchlist.createdAt,
     updatedAt: watchlist.updatedAt,
+    lastSyncedAt: watchlist.toProps().lastSyncedAt ?? null,
   };
 }
 

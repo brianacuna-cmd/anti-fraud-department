@@ -19,11 +19,20 @@ export function toDomain(document: WatchlistDocument): Watchlist {
     deletedAt: document.deleted_at ? fromDate(document.deleted_at) : null,
     createdAt: fromDate(document.created_at),
     updatedAt: fromDate(document.updated_at),
+    lastSyncedAt: document.last_synced_at ? fromDate(document.last_synced_at) : null,
   });
 }
 
-/** camelCase (domain) -> snake_case (Mongo). */
+/**
+ * camelCase (domain) -> snake_case (Mongo).
+ *
+ * `last_synced_at` is written back too. `MongoWatchlistRepository.save` is a
+ * `replaceOne`, so a field left out here would be erased by any edit to the
+ * watchlist, and the portal would report a list synced last night as never
+ * synced.
+ */
 export function toDocument(watchlist: Watchlist): WatchlistDocument {
+  const lastSyncedAt = watchlist.toProps().lastSyncedAt ?? null;
   return {
     _id: new ObjectId(watchlist.id),
     organization_id: new ObjectId(watchlist.organizationId),
@@ -35,5 +44,6 @@ export function toDocument(watchlist: Watchlist): WatchlistDocument {
     deleted_at: watchlist.deletedAt ? toDate(watchlist.deletedAt) : null,
     created_at: toDate(watchlist.createdAt),
     updated_at: toDate(watchlist.updatedAt),
+    last_synced_at: lastSyncedAt ? toDate(lastSyncedAt) : null,
   };
 }

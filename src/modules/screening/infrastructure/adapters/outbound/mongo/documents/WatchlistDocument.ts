@@ -17,4 +17,6 @@ export interface WatchlistDocument {
   readonly deleted_at: Date | null;
   readonly created_at: Date;
   readonly updated_at: Date;
+  /** AML-001: last applied sync of an official list; absent on every other watchlist. */
+  readonly last_synced_at?: Date | null;
 }
