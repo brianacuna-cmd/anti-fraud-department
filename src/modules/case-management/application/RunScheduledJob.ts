@@ -11,7 +11,9 @@ export type ScheduledJobName =
   | 'outbox_publish'
   | 'customer_outgoing_webhook_dispatch'
   | 'wallet_sanctions_rescreen'
-  | 'daily_fraud_metrics';
+  | 'daily_fraud_metrics'
+  /** AUD-004: copia mensual de la bitacora antigua a almacenamiento inmutable. */
+  | 'audit_trail_archive';
 
 export type ScheduledJobRunnerRegistry = Record<ScheduledJobName, () => Promise<unknown>>;
 

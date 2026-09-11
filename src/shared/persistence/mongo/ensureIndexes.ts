@@ -429,6 +429,25 @@ export async function ensureIndexes(db: Db): Promise<void> {
       { name: 'privacy_request_org_subject_idx' },
     );
 
+  // entity_change_log (AUD-001): "que valor tenia este campo el martes".
+  //
+  // El indice lidera por ENTIDAD y no por organizacion: la consulta real es
+  // siempre sobre un expediente concreto —quien discute una cifra, discute la
+  // de un caso— y el inquilino ya queda acotado por el id.
+  await db
+    .collection('entity_change_log')
+    .createIndex(
+      { entity_type: 1, entity_id: 1, created_at: -1 },
+      { name: 'entity_change_entity_created_idx' },
+    );
+  // Y por campo, para responder "cuando cambio la prioridad" sin recorrerlo todo.
+  await db
+    .collection('entity_change_log')
+    .createIndex(
+      { organization_id: 1, 'mutations.field': 1, created_at: -1 },
+      { name: 'entity_change_org_field_created_idx' },
+    );
+
   // regulatory_reports (REG-001/REG-002): se listan por PERIODO, no por fecha
   // de creacion — quien busca "el reporte de septiembre" piensa en el mes que
   // cubre, no en cuando se compilo.

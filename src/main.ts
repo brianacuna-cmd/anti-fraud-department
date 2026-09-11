@@ -83,6 +83,18 @@ import { createPasswordCredential } from './modules/identity-access/domain/model
 import { MongoAuditLogRepository } from './modules/audit/infrastructure/adapters/outbound/mongo/MongoAuditLogRepository.js';
 import { createRecordAuditLogUseCase } from './modules/audit/application/RecordAuditLog.js';
 import { generateAuditLogId } from './modules/audit/domain/model/value-objects/AuditLogId.js';
+import { authContextStoreMiddleware, currentAuthContext } from './shared/http/authContextStore.js';
+import { createAuditedCaseRepository } from './composition/auditedCaseRepository.js';
+import { auditLogRouter } from './modules/audit/infrastructure/adapters/inbound/http/auditLogRouter.js';
+import { auditErrorStatus } from './modules/audit/infrastructure/adapters/inbound/http/errorStatus.js';
+import { MongoAuditLogReader } from './modules/audit/infrastructure/adapters/outbound/mongo/MongoAuditLogReader.js';
+import { MongoEntityChangeRepository } from './modules/audit/infrastructure/adapters/outbound/mongo/MongoEntityChangeRepository.js';
+import { Ed25519TrailSigner } from './modules/audit/infrastructure/adapters/outbound/crypto/Ed25519TrailSigner.js';
+import { S3ColdStorage } from './modules/audit/infrastructure/adapters/outbound/storage/S3ColdStorage.js';
+import { createQueryAuditLogsUseCase } from './modules/audit/application/QueryAuditLogs.js';
+import { createExportAuditTrailUseCase } from './modules/audit/application/ExportAuditTrail.js';
+import { createRecordEntityChangeUseCase } from './modules/audit/application/RecordEntityChange.js';
+import { createArchiveAuditTrailUseCase } from './modules/audit/application/ArchiveAuditTrail.js';
 import { createAuthContext } from './shared/kernel/AuthContext.js';
 import { createAuditRecorderAdapter } from './composition/auditRecorderAdapter.js';
 import { createNotificationsAuditRecorderAdapter } from './composition/notificationsAuditRecorderAdapter.js';
@@ -440,6 +452,20 @@ const PLATFORM_ADMIN_AUTH = process.env.PLATFORM_ADMIN_AUTH ?? 'disabled';
 // if it is still set with NODE_ENV=production, so it cannot reach a real
 // deployment.
 const TOKEN_SECRET = process.env.TOKEN_SECRET ?? DEV_TOKEN_SECRET; // NOSONAR
+
+/*
+ * AUD-003: clave Ed25519 con la que se firma el volcado de auditoria, en PEM.
+ *
+ * Sin ella el export FALLA en vez de entregar un fichero sin firmar: un
+ * volcado de auditoria sin firma es indistinguible de uno firmado hasta que
+ * alguien intenta verificarlo, normalmente delante del auditor.
+ */
+const AUDIT_SIGNING_PRIVATE_KEY = process.env.AUDIT_SIGNING_PRIVATE_KEY;
+
+/** AUD-004: bucket con S3 Object Lock. Sin el, no se monta el archivado. */
+const AUDIT_ARCHIVE_BUCKET = process.env.AUDIT_ARCHIVE_BUCKET;
+const AUDIT_ARCHIVE_REGION = process.env.AUDIT_ARCHIVE_REGION ?? 'us-east-1';
+const AUDIT_ARCHIVE_RETENTION_YEARS = Number(process.env.AUDIT_ARCHIVE_RETENTION_YEARS ?? 7);
 const TOKEN_KEY_VERSION = Number(process.env.TOKEN_KEY_VERSION ?? 1);
 // Fail-safe default `false` (design D-A7/§4a): a production deployment
 // behind a real reverse proxy MUST set TRUST_PROXY explicitly, or `req.ip`
@@ -594,6 +620,7 @@ async function bootstrap(): Promise<void> {
     outboxPublishIntervalMs: OUTBOX_PUBLISH_INTERVAL_MS,
     outgoingWebhookDispatchIntervalMs: OUTGOING_WEBHOOK_DISPATCHER_INTERVAL_MS,
     walletRescreenEnabled: WALLET_RESCREEN_ENABLED,
+    auditArchiveEnabled: AUDIT_ARCHIVE_BUCKET !== undefined,
   });
   await backfillRoutingRuleExecutionOrder(db);
   // user-roles PR-1a: idempotent fixed role-catalog seed (ADMIN/SUPERVISOR/
@@ -647,6 +674,53 @@ async function bootstrap(): Promise<void> {
 
   const auditLogs = new MongoAuditLogRepository(db);
   const recordAuditLog = createRecordAuditLogUseCase({ auditLogs, clock, generateAuditLogId });
+
+  /*
+   * AUD-001..004. El lector va aparte del repositorio a proposito: aquel se
+   * declaro append-only —solo `save`— y esa firma es lo que hace creible la
+   * bitacora.
+   */
+  const auditLogReader = new MongoAuditLogReader(db);
+  const entityChanges = new MongoEntityChangeRepository(db);
+  const auditTrailSigner = new Ed25519TrailSigner(AUDIT_SIGNING_PRIVATE_KEY);
+  const recordEntityChange = createRecordEntityChangeUseCase({
+    changes: entityChanges,
+    clock,
+    generateAuditLogId,
+  });
+  const auditLogHttpRouter = auditLogRouter({
+    queryAuditLogs: createQueryAuditLogsUseCase({ reader: auditLogReader }),
+    exportAuditTrail: createExportAuditTrailUseCase({
+      reader: auditLogReader,
+      repository: auditLogs,
+      signer: auditTrailSigner,
+      clock,
+      generateAuditLogId,
+    }),
+  });
+
+  /*
+   * AUD-004: el archivado en frio solo se monta si hay bucket configurado.
+   *
+   * Sin bucket no hay job, en vez de un job que falla cada mes: una tarea
+   * programada que siempre revienta acaba silenciada, y con ella se pierde la
+   * senal el dia que el fallo es real.
+   */
+  const archiveAuditTrail =
+    AUDIT_ARCHIVE_BUCKET === undefined
+      ? null
+      : createArchiveAuditTrailUseCase({
+          reader: auditLogReader,
+          repository: auditLogs,
+          coldStorage: new S3ColdStorage({
+            bucket: AUDIT_ARCHIVE_BUCKET,
+            region: AUDIT_ARCHIVE_REGION,
+            retentionYears: AUDIT_ARCHIVE_RETENTION_YEARS,
+          }),
+          clock,
+          generateAuditLogId,
+        });
+
   const auditRecorder = createAuditRecorderAdapter(recordAuditLog);
 
   // notification-preferences PR3: the `notifications` module wires against the
@@ -753,7 +827,20 @@ async function bootstrap(): Promise<void> {
   // instance via its OWN composition-root adapter (nominally distinct port,
   // exact twin of `auditRecorderAdapter.ts`/`notificationsAuditRecorderAdapter.ts`).
   const caseManagementUnitOfWork = new CaseManagementMongoUnitOfWork(client);
-  const cases = new MongoCaseRepository(db);
+  /*
+   * AUD-001: el repositorio de casos va envuelto, no llamado a mano.
+   *
+   * Es la unica puerta por la que un expediente llega a Mongo, asi que
+   * envolverla garantiza que no hay escritura sin registrar. Un helper que
+   * hubiera que invocar en cada caso de uso se olvidaria en alguno, y el
+   * olvido no falla: simplemente deja de auditar.
+   */
+  const cases = createAuditedCaseRepository(
+    new MongoCaseRepository(db),
+    db,
+    recordEntityChange,
+    currentAuthContext,
+  );
   const caseTimelineRecorder = new MongoTimelineRecorder(db);
   const caseTimelineReader = new MongoTimelineReader(db);
   const caseNotes = new MongoCaseNoteRepository(db);
@@ -2222,6 +2309,20 @@ async function bootstrap(): Promise<void> {
     customer_outgoing_webhook_dispatch: customerOutgoingEventDispatcher.dispatchOnce,
     wallet_sanctions_rescreen: recordedWalletRescreen,
     daily_fraud_metrics: recordedAggregateDailyFraudMetrics,
+    /*
+     * Sin bucket configurado el runner existe pero se niega a correr.
+     *
+     * La alternativa —no registrarlo— haria que `POST /admin/jobs/.../run`
+     * respondiera "no existe ese job", que es enganoso: el job existe, lo que
+     * falta es configuracion. Decirlo asi manda a quien lo dispara al sitio
+     * correcto.
+     */
+    audit_trail_archive: async () => {
+      if (archiveAuditTrail === null) {
+        throw new Error('audit archive is not configured: set AUDIT_ARCHIVE_BUCKET');
+      }
+      return archiveAuditTrail();
+    },
   };
   const scheduledJobAdminHttpRouter = scheduledJobAdminRouter({
     runScheduledJob: createRunScheduledJobUseCase({
@@ -2234,6 +2335,9 @@ async function bootstrap(): Promise<void> {
 
   const identityAccessRouter = Router();
   identityAccessRouter.use(authContextMiddleware);
+  // Publica el actor ya resuelto para las capas que no reciben la peticion
+  // (el registro de cambios campo a campo, AUD-001).
+  identityAccessRouter.use(authContextStoreMiddleware);
   identityAccessRouter.use(identityAccessAuthRouter);
   identityAccessRouter.use(identityAccessOrganizationsRouter);
   identityAccessRouter.use(identityAccessUsersRouter);
@@ -2278,6 +2382,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(bulkScreeningHttpRouter);
   identityAccessRouter.use(inboundWebhookSecretHttpRouter);
   identityAccessRouter.use(sarReportHttpRouter);
+  identityAccessRouter.use(auditLogHttpRouter);
   identityAccessRouter.use(regulatoryReportHttpRouter);
   identityAccessRouter.use(privacyRequestHttpRouter);
 
@@ -2301,6 +2406,7 @@ async function bootstrap(): Promise<void> {
       ...riskAssessmentErrorStatus,
       ...screeningErrorStatus,
       ...sarErrorStatus,
+      ...auditErrorStatus,
       ...regulatoryErrorStatus,
       ...privacyErrorStatus,
       ...ingestErrorStatus,

@@ -104,6 +104,7 @@ function resolvingRunners(
     customer_outgoing_webhook_dispatch: make('customer_outgoing_webhook_dispatch'),
     wallet_sanctions_rescreen: make('wallet_sanctions_rescreen'),
     daily_fraud_metrics: make('daily_fraud_metrics'),
+    audit_trail_archive: make('audit_trail_archive'),
     ...overrides,
   };
 }
