@@ -21,6 +21,20 @@ export const createScoringRuleSchema = z
 export type CreateScoringRuleBody = z.infer<typeof createScoringRuleSchema>;
 
 /**
+ * PATCH /risk-scoring-rules/:id body. Status and conditionsVersion are not
+ * patchable — `.strict()` rejects them. Empty object is valid (silent
+ * no-op at the use case).
+ */
+export const updateScoringRuleSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    conditions: jdmGraphSchema.optional(),
+  })
+  .strict();
+
+export type UpdateScoringRuleBody = z.infer<typeof updateScoringRuleSchema>;
+
+/**
  * POST /risk-scoring-rules/simulate body — the decision editor's dry run.
  *
  * Reuses `calculateRiskScoreSchema` for the event instead of declaring a
