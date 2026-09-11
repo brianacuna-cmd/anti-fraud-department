@@ -22,12 +22,13 @@ const NOW = fromDate(new Date('2026-08-31T12:00:00.000Z'));
 const LAST_RUN = fromDate(new Date('2026-08-31T11:00:00.000Z'));
 const NEXT_RUN = fromDate(new Date('2026-08-31T13:00:00.000Z'));
 
-const FOUR_NAMES: readonly ScheduledJobName[] = [
+const PLATFORM_JOB_NAMES: readonly ScheduledJobName[] = [
   'sla_sweep',
   'outbox_publish',
   'customer_outgoing_webhook_dispatch',
   'wallet_sanctions_rescreen',
   'daily_fraud_metrics',
+  'audit_trail_archive',
 ];
 
 const PLATFORM_ADMIN = createAuthContext({
@@ -124,6 +125,7 @@ function resolvingRunners(order: string[], overrides: Partial<ScheduledJobRunner
     customer_outgoing_webhook_dispatch: make('customer_outgoing_webhook_dispatch'),
     wallet_sanctions_rescreen: make('wallet_sanctions_rescreen'),
     daily_fraud_metrics: make('daily_fraud_metrics'),
+    audit_trail_archive: make('audit_trail_archive'),
     ...overrides,
   };
 }
@@ -142,7 +144,7 @@ function build(overrides: BuildDeps = {}) {
   };
 
   if (!overrides.catalog) {
-    for (const name of FOUR_NAMES) {
+    for (const name of PLATFORM_JOB_NAMES) {
       catalog.jobs.set(name, catalogJob(name));
     }
   }
@@ -298,7 +300,7 @@ describe('createRunScheduledJobUseCase', () => {
     });
   });
 
-  it.each(FOUR_NAMES)('invokes the recorded runner for %s', async (jobName) => {
+  it.each(PLATFORM_JOB_NAMES)('invokes the recorded runner for %s', async (jobName) => {
     const order: string[] = [];
     const { runScheduledJob } = build({ order });
 

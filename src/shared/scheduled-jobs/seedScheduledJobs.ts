@@ -7,6 +7,8 @@ export interface SeedScheduledJobsConfig {
   readonly outboxPublishIntervalMs: number;
   readonly outgoingWebhookDispatchIntervalMs: number;
   readonly walletRescreenEnabled: boolean;
+  /** AUD-004: falso cuando no hay bucket configurado; el job se siembra desactivado. */
+  readonly auditArchiveEnabled: boolean;
 }
 
 const WALLET_CADENCE = 'daily 00:00 America/Bogota';
@@ -62,6 +64,21 @@ export async function seedScheduledJobs(
     description: 'Aggregate nightly per-organization fraud department metrics',
     cronExpression: WALLET_CADENCE,
     enabled: true,
+    ...platform,
+  });
+  /*
+   * AUD-004. Se siembra SIEMPRE, aunque no haya bucket, pero desactivado.
+   *
+   * Asi la fila existe en el catalogo y un administrador ve que el archivado
+   * esta previsto y apagado, en vez de no ver nada y concluir que la funcion
+   * no existe. Un hueco silencioso en una lista de tareas programadas es lo
+   * que hace que nadie repare en que la auditoria no se esta archivando.
+   */
+  await repository.seed({
+    name: 'audit_trail_archive',
+    description: 'Copy audit logs older than the hot window to immutable cold storage',
+    cronExpression: 'monthly 02:00 America/Bogota',
+    enabled: config.auditArchiveEnabled,
     ...platform,
   });
 }
