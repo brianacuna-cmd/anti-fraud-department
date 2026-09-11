@@ -9,6 +9,10 @@ export interface SeedScheduledJobsConfig {
   readonly walletRescreenEnabled: boolean;
   /** AUD-004: falso cuando no hay bucket configurado; el job se siembra desactivado. */
   readonly auditArchiveEnabled: boolean;
+  /** AML-001: false while SANCTION_LIST_SYNC_ENABLED is unset; seeded disabled, like the wallet loop. */
+  readonly sanctionListSyncEnabled: boolean;
+  /** AML-009: false while CUSTOMER_RESCREEN_ENABLED is unset. */
+  readonly customerRescreenEnabled: boolean;
 }
 
 const WALLET_CADENCE = 'daily 00:00 America/Bogota';
@@ -79,6 +83,20 @@ export async function seedScheduledJobs(
     description: 'Copy audit logs older than the hot window to immutable cold storage',
     cronExpression: 'monthly 02:00 America/Bogota',
     enabled: config.auditArchiveEnabled,
+    ...platform,
+  });
+  await repository.seed({
+    name: 'sanction_list_sync',
+    description: 'Sync the official sanctions lists (OFAC SDN, EU, UK) into every active organization',
+    cronExpression: 'daily 23:00 America/Bogota',
+    enabled: config.sanctionListSyncEnabled,
+    ...platform,
+  });
+  await repository.seed({
+    name: 'customer_sanctions_rescreen',
+    description: 'Rescreen customer names against sanctions and internal watchlists',
+    cronExpression: 'daily 01:00 America/Bogota',
+    enabled: config.customerRescreenEnabled,
     ...platform,
   });
 }

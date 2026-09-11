@@ -16,6 +16,8 @@ const PLATFORM_JOB_NAMES = [
   'wallet_sanctions_rescreen',
   'daily_fraud_metrics',
   'audit_trail_archive',
+  'sanction_list_sync',
+  'customer_sanctions_rescreen',
 ] as const;
 
 class FakeCatalog implements ScheduledJobRepository {
@@ -53,6 +55,8 @@ describe('seedScheduledJobs', () => {
       outgoingWebhookDispatchIntervalMs: 5_000,
       walletRescreenEnabled: true,
       auditArchiveEnabled: true,
+      sanctionListSyncEnabled: true,
+      customerRescreenEnabled: true,
     });
 
     expect(catalog.seeds.map((seed) => seed.name)).toEqual([...PLATFORM_JOB_NAMES]);
@@ -73,6 +77,8 @@ describe('seedScheduledJobs', () => {
       outgoingWebhookDispatchIntervalMs: 5_000,
       walletRescreenEnabled: true,
       auditArchiveEnabled: true,
+      sanctionListSyncEnabled: true,
+      customerRescreenEnabled: true,
     });
 
     expect(byName(catalog, 'sla_sweep')).toMatchObject({
@@ -108,6 +114,8 @@ describe('seedScheduledJobs', () => {
       outgoingWebhookDispatchIntervalMs: 5_000,
       walletRescreenEnabled: false,
       auditArchiveEnabled: false,
+      sanctionListSyncEnabled: false,
+      customerRescreenEnabled: false,
     });
 
     expect(catalog.seeds.map((seed) => seed.name)).toEqual([...PLATFORM_JOB_NAMES]);
@@ -133,6 +141,8 @@ describe('seedScheduledJobs · archivado de auditoría (AUD-004)', () => {
       outgoingWebhookDispatchIntervalMs: 5_000,
       walletRescreenEnabled: true,
       auditArchiveEnabled: false,
+      sanctionListSyncEnabled: false,
+      customerRescreenEnabled: false,
     });
 
     /*
@@ -155,6 +165,8 @@ describe('seedScheduledJobs · archivado de auditoría (AUD-004)', () => {
       outgoingWebhookDispatchIntervalMs: 5_000,
       walletRescreenEnabled: true,
       auditArchiveEnabled: true,
+      sanctionListSyncEnabled: true,
+      customerRescreenEnabled: true,
     });
 
     expect(byName(catalog, 'audit_trail_archive')).toMatchObject({

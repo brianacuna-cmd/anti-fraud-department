@@ -3,6 +3,7 @@ import type { NameNormalizer } from '../domain/ports/NameNormalizer.js';
 import type { PhoneticEncoder } from '../domain/ports/PhoneticEncoder.js';
 import type { WatchlistEntryRepository } from '../domain/ports/WatchlistEntryRepository.js';
 import type { Transaction } from '../domain/ports/UnitOfWork.js';
+import { computeIndexedNameFields } from '../domain/services/IndexedNameFields.js';
 
 export interface IndexWatchlistEntryDeps {
   readonly watchlistEntryRepository: WatchlistEntryRepository;
@@ -41,10 +42,7 @@ export function createIndexWatchlistEntryUseCase(deps: IndexWatchlistEntryDeps) 
       return;
     }
 
-    const normalizedName = nameNormalizer.normalize(entry.name);
-    const tokens = normalizedName.length > 0 ? normalizedName.split(' ') : [];
-    const phoneticKeys = Array.from(new Set(tokens.flatMap((token) => phoneticEncoder.encode(token))));
-
-    await watchlistEntryRepository.updateIndexedFields(entry.id, { normalizedName, phoneticKeys }, input.tx);
+    const fields = computeIndexedNameFields(entry.name, nameNormalizer, phoneticEncoder);
+    await watchlistEntryRepository.updateIndexedFields(entry.id, fields, input.tx);
   };
 }

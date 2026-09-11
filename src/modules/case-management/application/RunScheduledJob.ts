@@ -13,7 +13,11 @@ export type ScheduledJobName =
   | 'wallet_sanctions_rescreen'
   | 'daily_fraud_metrics'
   /** AUD-004: copia mensual de la bitacora antigua a almacenamiento inmutable. */
-  | 'audit_trail_archive';
+  | 'audit_trail_archive'
+  /** AML-001: nightly sync of the official sanctions lists. */
+  | 'sanction_list_sync'
+  /** AML-009: nightly name rescreen of every customer. */
+  | 'customer_sanctions_rescreen';
 
 export type ScheduledJobRunnerRegistry = Record<ScheduledJobName, () => Promise<unknown>>;
 

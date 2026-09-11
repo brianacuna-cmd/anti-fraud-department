@@ -29,6 +29,8 @@ const PLATFORM_JOB_NAMES: readonly ScheduledJobName[] = [
   'wallet_sanctions_rescreen',
   'daily_fraud_metrics',
   'audit_trail_archive',
+  'sanction_list_sync',
+  'customer_sanctions_rescreen',
 ];
 
 const PLATFORM_ADMIN = createAuthContext({
@@ -126,6 +128,8 @@ function resolvingRunners(order: string[], overrides: Partial<ScheduledJobRunner
     wallet_sanctions_rescreen: make('wallet_sanctions_rescreen'),
     daily_fraud_metrics: make('daily_fraud_metrics'),
     audit_trail_archive: make('audit_trail_archive'),
+    sanction_list_sync: make('sanction_list_sync'),
+    customer_sanctions_rescreen: make('customer_sanctions_rescreen'),
     ...overrides,
   };
 }
