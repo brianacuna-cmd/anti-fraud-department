@@ -4,16 +4,18 @@ import type { createCreateScoringRuleUseCase } from '../../../../application/Cre
 import type { createActivateScoringRuleUseCase } from '../../../../application/ActivateScoringRule.js';
 import type { createListScoringRulesUseCase } from '../../../../application/ListScoringRules.js';
 import type { createGetScoringRuleUseCase } from '../../../../application/GetScoringRule.js';
+import type { createUpdateScoringRuleUseCase } from '../../../../application/UpdateScoringRule.js';
 import {
   createFactorScoringRuleSchema,
   createScoringRuleSchema,
   simulateScoringRuleSchema,
+  updateScoringRuleSchema,
 } from './dto/scoringRuleSchemas.js';
 import { buildFactorScoringJdm } from '../../../../domain/services/factorScoringJdm.js';
 import type { createDeleteScoringRuleUseCase } from '../../../../application/DeleteScoringRule.js';
 import { toCanonicalRiskEvent } from './mappers/RiskScoreHttpMapper.js';
 import type { createSimulateScoringRuleUseCase } from '../../../../application/SimulateScoringRule.js';
-import { toScoringRuleResponse } from './mappers/ScoringRuleHttpMapper.js';
+import { toScoringRuleResponse, toUpdateScoringRuleFields } from './mappers/ScoringRuleHttpMapper.js';
 import { parseRequest } from './parseRequest.js';
 
 export interface ScoringRuleRouterDeps {
@@ -21,13 +23,15 @@ export interface ScoringRuleRouterDeps {
   readonly activateScoringRule: ReturnType<typeof createActivateScoringRuleUseCase>;
   readonly listScoringRules: ReturnType<typeof createListScoringRulesUseCase>;
   readonly getScoringRule: ReturnType<typeof createGetScoringRuleUseCase>;
+  readonly updateScoringRule: ReturnType<typeof createUpdateScoringRuleUseCase>;
   readonly deleteScoringRule: ReturnType<typeof createDeleteScoringRuleUseCase>;
   readonly simulateScoringRule: ReturnType<typeof createSimulateScoringRuleUseCase>;
 }
 
 /**
- * `/risk-scoring-rules` routes — draft create, activate, list, get.
- * Express 5 forwards rejected handler promises to `errorHandler`.
+ * `/risk-scoring-rules` routes — draft create, activate, list, get, patch.
+ * Express 5 forwards rejected handler promises to `errorHandler`. Status
+ * changes only via activate, never PATCH.
  */
 export function scoringRuleRouter(deps: ScoringRuleRouterDeps): Router {
   const router = Router();
@@ -92,6 +96,17 @@ export function scoringRuleRouter(deps: ScoringRuleRouterDeps): Router {
   router.get('/risk-scoring-rules/:id', async (req, res) => {
     const auth = requireAuthContext(req);
     const rule = await deps.getScoringRule({ auth, ruleId: req.params.id! });
+    res.status(200).json(toScoringRuleResponse(rule));
+  });
+
+  router.patch('/risk-scoring-rules/:id', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(updateScoringRuleSchema, req.body);
+    const rule = await deps.updateScoringRule({
+      auth,
+      ruleId: req.params.id!,
+      ...toUpdateScoringRuleFields(body),
+    });
     res.status(200).json(toScoringRuleResponse(rule));
   });
 
