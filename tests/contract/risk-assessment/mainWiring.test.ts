@@ -17,10 +17,16 @@ describe('src/main.ts risk-assessment wiring', () => {
     expect(MAIN).toContain('RiskAssessmentMongoUnitOfWork');
     expect(MAIN).toContain('createCreateScoringRuleUseCase');
     expect(MAIN).toContain('createActivateScoringRuleUseCase');
+    expect(MAIN).toContain('createUpdateScoringRuleUseCase');
     expect(MAIN).toContain('createListScoringRulesUseCase');
     expect(MAIN).toContain('createGetScoringRuleUseCase');
     expect(MAIN).toContain('scoringRuleRouter');
     expect(MAIN).toContain('generateRiskScoringRuleId');
+
+    const routerStart = MAIN.indexOf('scoringRuleRouter({');
+    const routerBlock = MAIN.slice(routerStart, MAIN.indexOf('\n  });', routerStart) + 6);
+    expect(routerBlock).toContain('createUpdateScoringRuleUseCase');
+    expect(routerBlock).toContain('updateScoringRule');
   });
 
   it('deriveScreeningInput reads identity from event.subjectIdentity, not riskSignals', () => {

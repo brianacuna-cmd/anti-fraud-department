@@ -1,7 +1,9 @@
 import {
   jdmGraphSchema,
   createScoringRuleSchema,
+  updateScoringRuleSchema,
 } from '../../../src/modules/risk-assessment/infrastructure/adapters/inbound/http/dto/scoringRuleSchemas.js';
+import { toUpdateScoringRuleFields } from '../../../src/modules/risk-assessment/infrastructure/adapters/inbound/http/mappers/ScoringRuleHttpMapper.js';
 
 const VALID_JDM = {
   contentType: 'application/vnd.gorules.decision',
@@ -80,5 +82,113 @@ describe('scoringRuleSchemas JDM structural validation', () => {
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe('updateScoringRuleSchema', () => {
+  it('accepts optional name and conditions together', () => {
+    const result = updateScoringRuleSchema.safeParse({
+      name: 'renamed',
+      conditions: VALID_JDM,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.name).toBe('renamed');
+      expect(result.data.conditions).toEqual(VALID_JDM);
+    }
+  });
+
+  it('accepts a name-only body', () => {
+    const result = updateScoringRuleSchema.safeParse({ name: 'renamed' });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.name).toBe('renamed');
+      expect(result.data.conditions).toBeUndefined();
+    }
+  });
+
+  it('accepts a conditions-only body', () => {
+    const result = updateScoringRuleSchema.safeParse({ conditions: VALID_JDM });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.name).toBeUndefined();
+      expect(result.data.conditions).toEqual(VALID_JDM);
+    }
+  });
+
+  it('accepts an empty object for a later silent no-op', () => {
+    const result = updateScoringRuleSchema.safeParse({});
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toEqual({});
+    }
+  });
+
+  it('rejects empty name', () => {
+    const result = updateScoringRuleSchema.safeParse({ name: '' });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects invalid JDM when conditions are present', () => {
+    const result = updateScoringRuleSchema.safeParse({
+      conditions: { contentType: 'application/vnd.gorules.decision', nodes: [], edges: [] },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects status via strict()', () => {
+    const result = updateScoringRuleSchema.safeParse({ name: 'renamed', status: 'INACTIVE' });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects conditionsVersion via strict()', () => {
+    const result = updateScoringRuleSchema.safeParse({ name: 'renamed', conditionsVersion: 4 });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects unknown keys via strict()', () => {
+    const result = updateScoringRuleSchema.safeParse({ name: 'renamed', extra: true });
+
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('toUpdateScoringRuleFields', () => {
+  it('maps name and conditions from a parsed PATCH body', () => {
+    const parsed = updateScoringRuleSchema.parse({
+      name: 'renamed',
+      conditions: VALID_JDM,
+    });
+
+    expect(toUpdateScoringRuleFields(parsed)).toEqual({
+      name: 'renamed',
+      conditions: VALID_JDM,
+    });
+  });
+
+  it('maps a name-only body without inventing conditions', () => {
+    const parsed = updateScoringRuleSchema.parse({ name: 'renamed' });
+
+    expect(toUpdateScoringRuleFields(parsed)).toEqual({
+      name: 'renamed',
+      conditions: undefined,
+    });
+  });
+
+  it('maps an empty body to undefined patch fields', () => {
+    const parsed = updateScoringRuleSchema.parse({});
+
+    expect(toUpdateScoringRuleFields(parsed)).toEqual({
+      name: undefined,
+      conditions: undefined,
+    });
   });
 });

@@ -1,5 +1,6 @@
 import { toDate } from '../../../../../../../shared/time/Instant.js';
 import type { RiskScoringRule } from '../../../../../domain/model/aggregates/RiskScoringRule.js';
+import type { UpdateScoringRuleBody } from '../dto/scoringRuleSchemas.js';
 
 export interface ScoringRuleResponseDto {
   readonly id: string;
@@ -10,6 +11,17 @@ export interface ScoringRuleResponseDto {
   readonly status: string;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+/** PATCH body → use-case fields. Omits status/conditionsVersion (schema-rejected). */
+export function toUpdateScoringRuleFields(body: UpdateScoringRuleBody): {
+  readonly name?: string;
+  readonly conditions?: Readonly<Record<string, unknown>>;
+} {
+  return {
+    name: body.name,
+    conditions: body.conditions,
+  };
 }
 
 /** Domain → HTTP DTO for a scoring rule. */

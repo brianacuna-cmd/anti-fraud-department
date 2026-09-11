@@ -1,4 +1,5 @@
 import { createCalculateRiskScoreUseCase } from '../../../../src/modules/risk-assessment/application/CalculateRiskScore.js';
+import { createUpdateScoringRuleUseCase } from '../../../../src/modules/risk-assessment/application/UpdateScoringRule.js';
 import type {
   RiskScoringEngine,
   RiskScoringEvaluation,
@@ -7,8 +8,10 @@ import { RiskScoringRule } from '../../../../src/modules/risk-assessment/domain/
 import { generateRiskScoringRuleId } from '../../../../src/modules/risk-assessment/domain/model/value-objects/RiskScoringRuleId.js';
 import { createCanonicalRiskEvent } from '../../../../src/modules/risk-assessment/domain/model/CanonicalRiskEvent.js';
 import { RiskAssessmentError } from '../../../../src/modules/risk-assessment/domain/errors/RiskAssessmentError.js';
+import { PassthroughUnitOfWork } from '../../../../src/modules/risk-assessment/infrastructure/PassthroughUnitOfWork.js';
 import { InMemoryRiskScoringRuleRepository } from '../../../helpers/risk-assessment/InMemoryRiskScoringRuleRepository.js';
 import { InMemoryRiskAssessmentAuditRecorder } from '../../../helpers/risk-assessment/InMemoryRiskAssessmentAuditRecorder.js';
+import { ROLE_SUPERVISOR } from '../../../../src/shared/kernel/AccessTier.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 
@@ -97,6 +100,16 @@ function tenantAuth(organizationId: string | null = ORG) {
     userId: 'user-1',
     organizationId,
     actorType: organizationId === null ? 'PLATFORM_ADMIN' : 'USER',
+    ipAddress: '10.0.0.1',
+  });
+}
+
+function supervisorAuth() {
+  return createAuthContext({
+    userId: 'user-1',
+    organizationId: ORG,
+    actorType: 'USER',
+    roleId: ROLE_SUPERVISOR,
     ipAddress: '10.0.0.1',
   });
 }
@@ -306,5 +319,67 @@ describe('createCalculateRiskScoreUseCase', () => {
     ).rejects.toMatchObject({ code: 'FORBIDDEN_CROSS_TENANT' });
     expect(engine.calls).toHaveLength(0);
     expect(auditRecorder.all()).toHaveLength(0);
+  });
+
+  it('does not rewrite a frozen score snapshot when ACTIVE conditions are patched', async () => {
+    const engine = new ScriptedRiskScoringEngine([
+      { riskScore: 40, hits: [{ because: 'old-graph' }] },
+      { riskScore: 90, hits: [{ because: 'new-graph' }] },
+    ]);
+    const rule = buildRule({ conditions: { graph: 'v1' }, conditionsVersion: 1 });
+    const { calculateRiskScore, scoringRules, auditRecorder } = buildUseCase(engine, [rule]);
+    const opened = await calculateRiskScore({ auth: tenantAuth(), event: buildEvent() });
+    const frozenSnapshot = {
+      ruleId: opened.ruleId,
+      conditionsVersion: opened.conditionsVersion,
+      riskScore: opened.riskScore,
+      hits: opened.hits,
+    };
+
+    await createUpdateScoringRuleUseCase({
+      scoringRules,
+      auditRecorder,
+      unitOfWork: new PassthroughUnitOfWork(),
+      clock: { now: () => LATER },
+    })({
+      auth: supervisorAuth(),
+      ruleId: rule.id,
+      conditions: { graph: 'v2' },
+    });
+
+    expect(frozenSnapshot).toEqual({
+      ruleId: rule.id,
+      conditionsVersion: 1,
+      riskScore: 40,
+      hits: [{ because: 'old-graph' }],
+    });
+  });
+
+  it('evaluates a new event against the mutated ACTIVE graph and reports the new conditionsVersion', async () => {
+    const engine = new ScriptedRiskScoringEngine([
+      { riskScore: 40, hits: [{ because: 'old-graph' }] },
+      { riskScore: 90, hits: [{ because: 'new-graph' }] },
+    ]);
+    const rule = buildRule({ conditions: { graph: 'v1' }, conditionsVersion: 1 });
+    const { calculateRiskScore, scoringRules, auditRecorder } = buildUseCase(engine, [rule]);
+    await calculateRiskScore({ auth: tenantAuth(), event: buildEvent() });
+
+    await createUpdateScoringRuleUseCase({
+      scoringRules,
+      auditRecorder,
+      unitOfWork: new PassthroughUnitOfWork(),
+      clock: { now: () => LATER },
+    })({
+      auth: supervisorAuth(),
+      ruleId: rule.id,
+      conditions: { graph: 'v2' },
+    });
+
+    const next = await calculateRiskScore({ auth: tenantAuth(), event: buildEvent() });
+
+    expect(next.conditionsVersion).toBe(2);
+    expect(next.riskScore).toBe(90);
+    expect(next.hits).toEqual([{ because: 'new-graph' }]);
+    expect(engine.calls[1]?.conditions).toEqual({ graph: 'v2' });
   });
 });

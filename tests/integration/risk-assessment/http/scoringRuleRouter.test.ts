@@ -14,6 +14,7 @@ import { createListScoringRulesUseCase } from '../../../../src/modules/risk-asse
 import { createGetScoringRuleUseCase } from '../../../../src/modules/risk-assessment/application/GetScoringRule.js';
 import { createSimulateScoringRuleUseCase } from '../../../../src/modules/risk-assessment/application/SimulateScoringRule.js';
 import { createDeleteScoringRuleUseCase } from '../../../../src/modules/risk-assessment/application/DeleteScoringRule.js';
+import { createUpdateScoringRuleUseCase } from '../../../../src/modules/risk-assessment/application/UpdateScoringRule.js';
 import { ZenRiskScoringEngine } from '../../../../src/modules/risk-assessment/infrastructure/adapters/outbound/zen/ZenRiskScoringEngine.js';
 import { generateRiskScoringRuleId } from '../../../../src/modules/risk-assessment/domain/model/value-objects/RiskScoringRuleId.js';
 import { InMemoryRiskScoringRuleRepository } from '../../../helpers/risk-assessment/InMemoryRiskScoringRuleRepository.js';
@@ -53,6 +54,12 @@ function buildApp(actorPerRequest: () => AuthContext) {
   });
   const listScoringRules = createListScoringRulesUseCase({ scoringRules });
   const getScoringRule = createGetScoringRuleUseCase({ scoringRules });
+  const updateScoringRule = createUpdateScoringRuleUseCase({
+    scoringRules,
+    unitOfWork: new PassthroughUnitOfWork(),
+    auditRecorder,
+    clock,
+  });
 
   const api = Router();
   api.use((req: Request, _res: Response, next: NextFunction) => {
@@ -67,6 +74,7 @@ function buildApp(actorPerRequest: () => AuthContext) {
       activateScoringRule,
       listScoringRules,
       getScoringRule,
+      updateScoringRule,
       deleteScoringRule: createDeleteScoringRuleUseCase({
         scoringRules,
         auditRecorder,
@@ -410,5 +418,174 @@ describe('DELETE /risk-scoring-rules/:id', () => {
       createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), roleId: 'ANALYST' }),
     );
     await request(app).delete(`/api/v1/risk-scoring-rules/${oid('any')}`).expect(403);
+  });
+});
+
+describe('PATCH /risk-scoring-rules/:id', () => {
+  it('lets SUPERVISOR patch an INACTIVE draft name and conditions', async () => {
+    const { app, scoringRules, auditRecorder } = buildApp(() =>
+      createAuthContext({
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
+        roleId: 'SUPERVISOR',
+      }),
+    );
+
+    const created = await request(app)
+      .post('/api/v1/risk-scoring-rules')
+      .send({ name: 'draft', conditions: VALID_JDM })
+      .expect(201);
+
+    const patched = await request(app)
+      .patch(`/api/v1/risk-scoring-rules/${created.body.id}`)
+      .send({ name: 'renamed', conditions: { ...VALID_JDM, nodes: [{ id: 'n2', type: 'inputNode' }] } })
+      .expect(200);
+
+    expect(patched.body.name).toBe('renamed');
+    expect(patched.body.status).toBe('INACTIVE');
+    expect(patched.body.conditionsVersion).toBe(created.body.conditionsVersion + 1);
+    expect(scoringRules.all()[0]?.name).toBe('renamed');
+    expect(auditRecorder.all().map((e) => e.action)).toContain('UPDATE_SCORING_RULE');
+  });
+
+  it('lets SUPERVISOR patch live ACTIVE conditions without changing status', async () => {
+    const { app } = buildApp(() =>
+      createAuthContext({
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
+        roleId: 'SUPERVISOR',
+      }),
+    );
+
+    const created = await request(app)
+      .post('/api/v1/risk-scoring-rules')
+      .send({ name: 'live', conditions: VALID_JDM })
+      .expect(201);
+    await request(app).post(`/api/v1/risk-scoring-rules/${created.body.id}/activate`).expect(200);
+
+    const patched = await request(app)
+      .patch(`/api/v1/risk-scoring-rules/${created.body.id}`)
+      .send({ conditions: { ...VALID_JDM, nodes: [{ id: 'n2', type: 'inputNode' }] } })
+      .expect(200);
+
+    expect(patched.body.status).toBe('ACTIVE');
+    expect(patched.body.conditionsVersion).toBe(created.body.conditionsVersion + 1);
+  });
+
+  it('rejects ANALYST PATCH with 403 and leaves the rule unchanged', async () => {
+    const org = oid('org-1');
+    let roleId: string = 'SUPERVISOR';
+    const { app, scoringRules } = buildApp(() =>
+      createAuthContext({
+        userId: oid('user-1'),
+        organizationId: org,
+        roleId,
+      }),
+    );
+
+    const created = await request(app)
+      .post('/api/v1/risk-scoring-rules')
+      .send({ name: 'draft', conditions: VALID_JDM })
+      .expect(201);
+
+    roleId = 'ANALYST';
+    await request(app)
+      .patch(`/api/v1/risk-scoring-rules/${created.body.id}`)
+      .send({ name: 'hijacked' })
+      .expect(403);
+
+    expect(scoringRules.all()[0]?.name).toBe('draft');
+  });
+
+  it('rejects status on PATCH with 400 and leaves status unchanged', async () => {
+    const { app, scoringRules } = buildApp(() =>
+      createAuthContext({
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
+        roleId: 'SUPERVISOR',
+      }),
+    );
+
+    const created = await request(app)
+      .post('/api/v1/risk-scoring-rules')
+      .send({ name: 'draft', conditions: VALID_JDM })
+      .expect(201);
+
+    await request(app)
+      .patch(`/api/v1/risk-scoring-rules/${created.body.id}`)
+      .send({ status: 'ACTIVE' })
+      .expect(400);
+
+    expect(scoringRules.all()[0]?.status).toBe('INACTIVE');
+  });
+
+  it('rejects invalid JDM without changing the stored rule', async () => {
+    const { app, scoringRules } = buildApp(() =>
+      createAuthContext({
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
+        roleId: 'SUPERVISOR',
+      }),
+    );
+
+    const created = await request(app)
+      .post('/api/v1/risk-scoring-rules')
+      .send({ name: 'draft', conditions: VALID_JDM })
+      .expect(201);
+
+    await request(app)
+      .patch(`/api/v1/risk-scoring-rules/${created.body.id}`)
+      .send({
+        conditions: { contentType: 'application/vnd.gorules.decision', nodes: [], edges: [] },
+      })
+      .expect(400);
+
+    expect(scoringRules.all()[0]?.name).toBe('draft');
+    expect(scoringRules.all()[0]?.conditionsVersion).toBe(created.body.conditionsVersion);
+  });
+
+  /*
+   * In-memory findById still returns soft-deleted rows, so a deleted seed
+   * would PATCH successfully. Unknown id covers HTTP 404 (Mongo findById
+   * already filters deleted_at).
+   */
+  it('returns 404 for unknown id', async () => {
+    const { app } = buildApp(() =>
+      createAuthContext({
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
+        roleId: 'SUPERVISOR',
+      }),
+    );
+
+    await request(app)
+      .patch(`/api/v1/risk-scoring-rules/${oid('missing-rule')}`)
+      .send({ name: 'ghost' })
+      .expect(404);
+  });
+
+  it('treats empty body as 200 no-op without UPDATE_SCORING_RULE audit', async () => {
+    const { app, scoringRules, auditRecorder } = buildApp(() =>
+      createAuthContext({
+        userId: oid('user-1'),
+        organizationId: oid('org-1'),
+        roleId: 'SUPERVISOR',
+      }),
+    );
+
+    const created = await request(app)
+      .post('/api/v1/risk-scoring-rules')
+      .send({ name: 'draft', conditions: VALID_JDM })
+      .expect(201);
+
+    const patched = await request(app)
+      .patch(`/api/v1/risk-scoring-rules/${created.body.id}`)
+      .send({})
+      .expect(200);
+
+    expect(patched.body.name).toBe('draft');
+    expect(patched.body.conditionsVersion).toBe(created.body.conditionsVersion);
+    expect(scoringRules.all()[0]?.name).toBe('draft');
+    expect(auditRecorder.all().map((e) => e.action)).not.toContain('UPDATE_SCORING_RULE');
   });
 });

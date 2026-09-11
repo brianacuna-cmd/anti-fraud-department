@@ -296,6 +296,7 @@ import { MongoUnitOfWork as RiskAssessmentMongoUnitOfWork } from './modules/risk
 import { ZenRiskScoringEngine } from './modules/risk-assessment/infrastructure/adapters/outbound/zen/ZenRiskScoringEngine.js';
 import { createSimulateScoringRuleUseCase } from './modules/risk-assessment/application/SimulateScoringRule.js';
 import { createDeleteScoringRuleUseCase } from './modules/risk-assessment/application/DeleteScoringRule.js';
+import { createUpdateScoringRuleUseCase } from './modules/risk-assessment/application/UpdateScoringRule.js';
 import { createCalculateRiskScoreUseCase } from './modules/risk-assessment/application/CalculateRiskScore.js';
 import { createCreateScoringRuleUseCase } from './modules/risk-assessment/application/CreateScoringRule.js';
 import { createActivateScoringRuleUseCase } from './modules/risk-assessment/application/ActivateScoringRule.js';
@@ -1685,6 +1686,12 @@ async function bootstrap(): Promise<void> {
     activateScoringRule,
     listScoringRules,
     getScoringRule,
+    updateScoringRule: createUpdateScoringRuleUseCase({
+      scoringRules,
+      unitOfWork: riskAssessmentUnitOfWork,
+      auditRecorder: riskAssessmentAuditRecorder,
+      clock,
+    }),
     // Dry run for the decision editor: the same engine that scores in production.
     deleteScoringRule: createDeleteScoringRuleUseCase({
       scoringRules,
