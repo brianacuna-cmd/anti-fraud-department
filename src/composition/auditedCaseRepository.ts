@@ -33,8 +33,28 @@ export function createAuditedCaseRepository(
 ): CaseRepository {
   const collection = db.collection('cases');
 
+  /*
+   * La delegacion se escribe metodo a metodo, no con `...inner`.
+   *
+   * `MongoCaseRepository` es una CLASE: sus metodos viven en el prototipo, asi
+   * que un spread del objeto no copia ninguno y el decorador salia con un solo
+   * metodo propio, `save`. TypeScript no lo veia —`...inner` esta tipado como
+   * `CaseRepository`, asi que la forma cuadraba— y el fallo aparecia en
+   * ejecucion como `deps.cases.list is not a function`.
+   *
+   * Enumerarlos cuesta seis lineas y compra la comprobacion que faltaba: si
+   * manana el puerto gana un metodo, el tipo de retorno lo exige aqui y el
+   * compilador para la build en vez de dejar otro agujero silencioso.
+   *
+   * Cada uno va con `.bind(inner)` porque la clase guarda su coleccion en un
+   * campo de instancia: una referencia suelta perderia el `this`.
+   */
   return {
-    ...inner,
+    findById: inner.findById.bind(inner),
+    findByIdempotencyKey: inner.findByIdempotencyKey.bind(inner),
+    list: inner.list.bind(inner),
+    findByCustomerOrBridgeId: inner.findByCustomerOrBridgeId.bind(inner),
+    findByEntityIdentifiers: inner.findByEntityIdentifiers.bind(inner),
 
     async save(kase: Case, tx?: Transaction): Promise<void> {
       const auth = currentAuth();
