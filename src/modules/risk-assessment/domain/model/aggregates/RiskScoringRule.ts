@@ -32,6 +32,11 @@ export interface CreateRiskScoringRuleInput {
   readonly now: Instant;
 }
 
+export interface UpdateRiskScoringRuleInput {
+  readonly name?: string;
+  readonly conditions?: Readonly<Record<string, unknown>>;
+}
+
 /**
  * Tenant-scoped scoring rule. Clone of CaseRoutingRule without target
  * user/role — each document holds one JDM graph evaluated by ZEN.
@@ -70,6 +75,32 @@ export class RiskScoringRule {
   /** Marks this rule as INACTIVE (immutable). Caller persists via repository. */
   deactivate(now: Instant): RiskScoringRule {
     return new RiskScoringRule({ ...this.props, status: 'INACTIVE', updatedAt: now });
+  }
+
+  /**
+   * Patches name and/or conditions. Status is not patchable —
+   * activate/deactivate own that transition. conditionsVersion increments
+   * only when conditions JSON differs (JSON.stringify).
+   */
+  update(changes: UpdateRiskScoringRuleInput, now: Instant): RiskScoringRule {
+    if ('status' in changes) {
+      throw invariantViolation('RiskScoringRule status cannot be changed via update; use activate or deactivate', {
+        field: 'status',
+      });
+    }
+    const name = changes.name ?? this.props.name;
+    assertNonEmpty('name', name);
+    const conditions = changes.conditions ?? this.props.conditions;
+    const conditionsChanged =
+      changes.conditions !== undefined &&
+      JSON.stringify(changes.conditions) !== JSON.stringify(this.props.conditions);
+    return new RiskScoringRule({
+      ...this.props,
+      name,
+      conditions,
+      conditionsVersion: conditionsChanged ? this.props.conditionsVersion + 1 : this.props.conditionsVersion,
+      updatedAt: now,
+    });
   }
 
   /**
