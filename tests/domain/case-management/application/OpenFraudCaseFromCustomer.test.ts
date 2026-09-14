@@ -30,6 +30,7 @@ import { InMemoryAssigneeDirectory } from '../../../helpers/case-management/InMe
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { createAuthContext } from '../../../../src/shared/kernel/AuthContext.js';
+import { InMemoryCaseNumberAllocator } from '../../../helpers/case-management/InMemoryCaseNumberAllocator.js';
 
 class NoMatchRoutingEngine implements RoutingEngine {
   async evaluate(): Promise<RoutingEvaluation> {
@@ -150,6 +151,7 @@ function build(
     unitOfWork: new PassthroughUnitOfWork(),
     clock,
     generateCaseId,
+    caseNumbers: new InMemoryCaseNumberAllocator(),
     generateTimelineEventId,
     generateOutboxEventId,
     auditRecorder,

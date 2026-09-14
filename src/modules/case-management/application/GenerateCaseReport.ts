@@ -153,6 +153,7 @@ export function createGenerateCaseReportUseCase(deps: GenerateCaseReportDeps) {
         resolutions: resolutions.map((resolution) => ({
           id: resolution.id,
           closureType: resolution.closureType,
+          outcome: resolution.outcome,
           reason: resolution.reason,
           resolvedBy: resolution.resolvedBy,
           createdAt: resolution.createdAt,

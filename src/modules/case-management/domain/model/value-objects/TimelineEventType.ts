@@ -33,7 +33,11 @@ export type TimelineEventType =
   // notification-read-state PR5 (R5/R6, design D6): one event per
   // case-triggered notification action (ReassignCase, the approval path,
   // SweepSlaTracking) — not one per notified recipient.
-  | 'ANALYST_NOTIFIED';
+  | 'ANALYST_NOTIFIED'
+  // The case was parked in PENDING_DOCUMENTATION; `newValue` carries what
+  // was asked of the customer, so the case file shows it next to the
+  // STATE_CHANGED milestone.
+  | 'DOCUMENTATION_REQUESTED';
 
 const VALID_EVENT_TYPES: ReadonlySet<string> = new Set<TimelineEventType>([
   'STATE_CHANGED',
@@ -52,12 +56,13 @@ const VALID_EVENT_TYPES: ReadonlySet<string> = new Set<TimelineEventType>([
   'ENFORCEMENT_REQUESTED',
   'AGENT_BRIEFING',
   'ANALYST_NOTIFIED',
+  'DOCUMENTATION_REQUESTED',
 ]);
 
 export function createTimelineEventType(value: string): TimelineEventType {
   if (!VALID_EVENT_TYPES.has(value)) {
     throw invariantViolation(
-      'TimelineEventType must be one of STATE_CHANGED, ASSIGNED, NOTE_ADDED, DECISION_MADE, CASE_CREATED, CASE_REOPENED, EVIDENCE_ADDED, PRIORITY_CHANGED, TAGS_UPDATED, EVIDENCE_DELETED, NOTE_DELETED, CASE_LINKED_TO_INVESTIGATION, SNAPSHOT_REFRESHED, ENFORCEMENT_REQUESTED, AGENT_BRIEFING, ANALYST_NOTIFIED',
+      'TimelineEventType must be one of STATE_CHANGED, ASSIGNED, NOTE_ADDED, DECISION_MADE, CASE_CREATED, CASE_REOPENED, EVIDENCE_ADDED, PRIORITY_CHANGED, TAGS_UPDATED, EVIDENCE_DELETED, NOTE_DELETED, CASE_LINKED_TO_INVESTIGATION, SNAPSHOT_REFRESHED, ENFORCEMENT_REQUESTED, AGENT_BRIEFING, ANALYST_NOTIFIED, DOCUMENTATION_REQUESTED',
       { value },
     );
   }

@@ -13,6 +13,7 @@ import type { OutboxEventRepository } from '../../../shared/outbox/OutboxEventRe
 import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
 import type { EnqueueCustomerWebhookFanOutInput } from './EnqueueCustomerWebhookFanOut.js';
 import type { CaseId } from '../domain/model/value-objects/CaseId.js';
+import type { CaseNumberAllocator } from '../domain/ports/CaseNumberAllocator.js';
 import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
 import { Case } from '../domain/model/aggregates/Case.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
@@ -52,6 +53,7 @@ export interface OpenFraudCaseDeps {
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
   readonly generateCaseId: () => CaseId;
+  readonly caseNumbers: CaseNumberAllocator;
   readonly generateTimelineEventId: () => TimelineEventId;
   readonly generateOutboxEventId: () => OutboxEventId;
   readonly auditRecorder: AuditRecorder;
@@ -243,6 +245,7 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
 
       let kase = Case.create({
         id: caseId,
+        caseNumber: await deps.caseNumbers.allocate(organizationId, now),
         organizationId,
         customerId: input.customerId,
         customerEmail: input.customerEmail ?? null,

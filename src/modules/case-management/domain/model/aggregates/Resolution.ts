@@ -1,6 +1,7 @@
 import type { Instant } from '../../../../../shared/time/Instant.js';
 import type { CaseId } from '../value-objects/CaseId.js';
 import type { ResolutionId } from '../value-objects/ResolutionId.js';
+import type { ResolutionOutcome } from '../value-objects/ResolutionOutcome.js';
 import { invariantViolation } from '../../errors/CaseManagementError.js';
 
 /** The terminal status a resolution moved the case into. */
@@ -12,6 +13,12 @@ export interface ResolutionProps {
   readonly organizationId: string;
   readonly closureType: ResolutionClosureType;
   readonly reason: string;
+  /**
+   * Typed closure outcome. Set on resolve; `null` on archive (the outcome
+   * already lives on the resolution that closed the case) and on rows
+   * written before outcomes existed.
+   */
+  readonly outcome?: ResolutionOutcome | null;
   readonly resolvedBy: string;
   readonly createdAt: Instant;
 }
@@ -22,6 +29,7 @@ export interface CreateResolutionInput {
   readonly organizationId: string;
   readonly closureType: ResolutionClosureType;
   readonly reason: string;
+  readonly outcome?: ResolutionOutcome | null;
   readonly resolvedBy: string;
   readonly now: Instant;
 }
@@ -47,6 +55,7 @@ export class Resolution {
       organizationId: input.organizationId,
       closureType: input.closureType,
       reason,
+      outcome: input.outcome ?? null,
       resolvedBy: input.resolvedBy,
       createdAt: input.now,
     });
@@ -74,6 +83,10 @@ export class Resolution {
 
   get reason(): string {
     return this.props.reason;
+  }
+
+  get outcome(): ResolutionOutcome | null {
+    return this.props.outcome ?? null;
   }
 
   get resolvedBy(): string {

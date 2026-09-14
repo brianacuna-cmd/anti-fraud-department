@@ -3,21 +3,23 @@ import { invariantViolation } from '../../errors/CaseManagementError.js';
 /**
  * Case's own status union (spec: "Case aggregate status lifecycle"):
  * OPEN -> IN_REVIEW -> RESOLVED -> ARCHIVED, plus T6 reopen edges
- * RESOLVED|ARCHIVED -> OPEN|IN_REVIEW. The full edge set lives in
- * `caseStatusTransitions` (services/transitions.ts).
+ * RESOLVED|ARCHIVED -> OPEN|IN_REVIEW, and the PENDING_DOCUMENTATION detour
+ * out of IN_REVIEW (the case waits on the customer, the SLA keeps running).
+ * The full edge set lives in `caseStatusTransitions` (services/transitions.ts).
  */
-export type CaseStatus = 'OPEN' | 'IN_REVIEW' | 'RESOLVED' | 'ARCHIVED';
+export type CaseStatus = 'OPEN' | 'IN_REVIEW' | 'PENDING_DOCUMENTATION' | 'RESOLVED' | 'ARCHIVED';
 
 const VALID_STATUSES: ReadonlySet<string> = new Set<CaseStatus>([
   'OPEN',
   'IN_REVIEW',
+  'PENDING_DOCUMENTATION',
   'RESOLVED',
   'ARCHIVED',
 ]);
 
 export function createCaseStatus(value: string): CaseStatus {
   if (!VALID_STATUSES.has(value)) {
-    throw invariantViolation('CaseStatus must be one of OPEN, IN_REVIEW, RESOLVED, ARCHIVED', {
+    throw invariantViolation('CaseStatus must be one of OPEN, IN_REVIEW, PENDING_DOCUMENTATION, RESOLVED, ARCHIVED', {
       value,
     });
   }

@@ -243,6 +243,19 @@ export function caseEnforcementPending(caseId: string): CaseManagementError {
   );
 }
 
+/** The requested closure outcome contradicts the latest analyst decision. */
+export function caseOutcomeContradictsDecision(
+  caseId: string,
+  outcome: string,
+  latestDecision: string | null,
+): CaseManagementError {
+  return new CaseManagementError(
+    'CASE_OUTCOME_CONTRADICTS_DECISION',
+    `the outcome "${outcome}" contradicts the latest analyst decision "${latestDecision ?? 'none'}"`,
+    { caseId, outcome, latestDecision },
+  );
+}
+
 /** The report/dossier freezes the full case file — the case must be closed first. */
 export function caseNotResolvedForReport(caseId: string): CaseManagementError {
   return new CaseManagementError(

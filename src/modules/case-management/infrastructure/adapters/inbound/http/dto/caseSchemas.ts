@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import {
+  RESOLUTION_OUTCOMES,
+  type ResolutionOutcome,
+} from '../../../../../domain/model/value-objects/ResolutionOutcome.js';
 
 /**
  * POST /cases body (T5 manual case creation). `finturuCacheSnapshot` is
@@ -26,7 +30,7 @@ export const reassignCaseSchema = z.object({
 
 export type ReassignCaseBody = z.infer<typeof reassignCaseSchema>;
 
-const caseStatusEnum = z.enum(['OPEN', 'IN_REVIEW', 'RESOLVED', 'ARCHIVED']);
+const caseStatusEnum = z.enum(['OPEN', 'IN_REVIEW', 'PENDING_DOCUMENTATION', 'RESOLVED', 'ARCHIVED']);
 const casePriorityEnum = z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
 
 /** Coerces Express query `string | string[]` into a string array. */
@@ -130,9 +134,23 @@ export const putAgentBriefSchema = z.object({
 
 export type PutAgentBriefBody = z.infer<typeof putAgentBriefSchema>;
 
-/** POST /cases/:caseId/resolve and /archive body (formal closure). */
+/** POST /cases/:caseId/archive body (formal closure). */
 export const closeCaseSchema = z.object({
   reason: z.string().trim().min(1),
 });
 
 export type CloseCaseBody = z.infer<typeof closeCaseSchema>;
+
+/** POST /cases/:caseId/resolve body: closure with a typed outcome. */
+export const resolveCaseSchema = closeCaseSchema.extend({
+  outcome: z.enum(RESOLUTION_OUTCOMES as [ResolutionOutcome, ...ResolutionOutcome[]]),
+});
+
+export type ResolveCaseBody = z.infer<typeof resolveCaseSchema>;
+
+/** POST /cases/:caseId/request-documentation body. */
+export const requestCaseDocumentationSchema = z.object({
+  requestedDocuments: z.string().trim().min(1).max(2000),
+});
+
+export type RequestCaseDocumentationBody = z.infer<typeof requestCaseDocumentationSchema>;

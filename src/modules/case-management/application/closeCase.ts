@@ -13,11 +13,12 @@ import type { TimelineEventId } from '../domain/model/value-objects/TimelineEven
 import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
 import type { CaseManagementAuditAction } from '../domain/model/value-objects/CaseManagementAuditVocabulary.js';
 import type { ResolutionClosureType } from '../domain/model/aggregates/Resolution.js';
+import type { ResolutionOutcome } from '../domain/model/value-objects/ResolutionOutcome.js';
 import { Resolution } from '../domain/model/aggregates/Resolution.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
 import { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
-import { caseNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
+import { caseNotFound, forbiddenCrossTenant, invariantViolation } from '../domain/errors/CaseManagementError.js';
 import { assertAssigned } from '../domain/services/AssignmentGate.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
@@ -27,6 +28,8 @@ export interface CloseCaseInput {
   readonly auth: AuthContext;
   readonly caseId: string;
   readonly reason: string;
+  /** Typed outcome. Required by resolve (see `requireOutcome`); archive ignores it. */
+  readonly outcome?: ResolutionOutcome;
 }
 
 export interface CloseCaseDeps {
@@ -58,7 +61,12 @@ export interface CloseCaseConfig {
    * was `FRAUD_CONFIRMED`) — `ArchiveCase` does not, so its behavior is
    * unchanged.
    */
-  readonly assertBeforeTransition?: (existing: Case, tx: Transaction) => Promise<void>;
+  readonly assertBeforeTransition?: (existing: Case, tx: Transaction, input: CloseCaseInput) => Promise<void>;
+  /**
+   * Resolve closes WITH an outcome; archive only files away an already
+   * resolved case, whose outcome is on the resolution that closed it.
+   */
+  readonly requireOutcome?: boolean;
 }
 
 /**
@@ -75,6 +83,7 @@ export function closeCase(deps: CloseCaseDeps, config: CloseCaseConfig) {
     requireOperationalRole(input.auth, SUPERVISION_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const caseId = createCaseId(input.caseId);
+    const outcome = config.requireOutcome === true ? requiredOutcome(input) : null;
 
     return deps.unitOfWork.withTransaction(async (tx) => {
       const existing = await deps.cases.findById(caseId, tx);
@@ -87,7 +96,7 @@ export function closeCase(deps: CloseCaseDeps, config: CloseCaseConfig) {
       // Without an assignee the case is frozen. See `AssignmentGate`.
       assertAssigned(existing);
       if (config.assertBeforeTransition !== undefined) {
-        await config.assertBeforeTransition(existing, tx);
+        await config.assertBeforeTransition(existing, tx, input);
       }
 
       const now = deps.clock.now();
@@ -95,7 +104,8 @@ export function closeCase(deps: CloseCaseDeps, config: CloseCaseConfig) {
       const transitioned = existing.transitionTo(closureType, now);
       // Stop the SLA: clear the case dueDate read-model so a closed case no
       // longer surfaces an active SLA (task scope: cases, not case_sla_tracking).
-      const closed = config.stopSla === true ? transitioned.withDueDate(null, now) : transitioned;
+      const withoutSla = config.stopSla === true ? transitioned.withDueDate(null, now) : transitioned;
+      const closed = outcome === null ? withoutSla : withoutSla.withResolutionOutcome(outcome, now);
       await deps.cases.save(closed, tx);
 
       const resolution = Resolution.create({
@@ -104,6 +114,7 @@ export function closeCase(deps: CloseCaseDeps, config: CloseCaseConfig) {
         organizationId,
         closureType,
         reason: input.reason,
+        outcome,
         resolvedBy: input.auth.userId,
         now,
       });
@@ -130,7 +141,7 @@ export function closeCase(deps: CloseCaseDeps, config: CloseCaseConfig) {
           action: auditAction,
           resource: 'case',
           resourceId: caseId,
-          detail: { closureType, reason: resolution.reason, resolutionId: resolution.id },
+          detail: { closureType, outcome, reason: resolution.reason, resolutionId: resolution.id },
           ipAddress: input.auth.ipAddress,
         },
         tx,
@@ -141,6 +152,7 @@ export function closeCase(deps: CloseCaseDeps, config: CloseCaseConfig) {
           organizationId,
           caseId,
           closureType,
+          outcome,
           resolutionId: resolution.id,
           resolvedBy: input.auth.userId,
           now,
@@ -157,6 +169,7 @@ export function closeCase(deps: CloseCaseDeps, config: CloseCaseConfig) {
               case_id: String(caseId),
               organization_id: organizationId,
               closure_type: closureType,
+              outcome,
               resolution_id: resolution.id,
               resolved_by: input.auth.userId,
             },
@@ -171,10 +184,18 @@ export function closeCase(deps: CloseCaseDeps, config: CloseCaseConfig) {
   };
 }
 
+function requiredOutcome(input: CloseCaseInput): ResolutionOutcome {
+  if (input.outcome === undefined) {
+    throw invariantViolation('outcome is required to resolve a case', { field: 'outcome' });
+  }
+  return input.outcome;
+}
+
 interface OutboxContext {
   readonly organizationId: string;
   readonly caseId: string;
   readonly closureType: ResolutionClosureType;
+  readonly outcome: ResolutionOutcome | null;
   readonly resolutionId: string;
   readonly resolvedBy: string;
   readonly now: Instant;
@@ -200,6 +221,7 @@ async function emitOutbox(
         case_id: ctx.caseId,
         organization_id: ctx.organizationId,
         closure_type: ctx.closureType,
+        outcome: ctx.outcome,
         resolution_id: ctx.resolutionId,
         resolved_by: ctx.resolvedBy,
       },

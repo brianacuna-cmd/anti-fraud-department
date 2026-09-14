@@ -2,6 +2,7 @@ import type { AuthContext } from '../../../../shared/kernel/AuthContext.js';
 import {
   isObserver,
   ROLE_ADMIN,
+  ROLE_ANALYST,
   ROLE_AUDITOR,
   ROLE_SUPERVISOR,
 } from '../../../../shared/kernel/AccessTier.js';
@@ -18,6 +19,12 @@ import { forbiddenReadOnly, forbiddenRole } from '../../domain/errors/RiskAssess
  * only reads it.
  */
 export const SCORING_RULE_WRITE_ROLES: readonly string[] = [ROLE_SUPERVISOR];
+
+/**
+ * Merchant risk and payment link reconciliation are investigation reads:
+ * analysts work them, governance reviews them. Nothing here writes.
+ */
+export const MERCHANT_READ_ROLES: readonly string[] = [ROLE_ANALYST, ROLE_SUPERVISOR, ROLE_ADMIN, ROLE_AUDITOR];
 export const SCORING_RULE_READ_ROLES: readonly string[] = [
   ROLE_SUPERVISOR,
   ROLE_ADMIN,

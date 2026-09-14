@@ -10,6 +10,7 @@ import type { RouteCaseInput } from './RouteCase.js';
 import type { CalculateSlaInput } from './CalculateSla.js';
 import type { AssigneeDirectory } from '../domain/ports/AssigneeDirectory.js';
 import type { NotificationSender } from '../domain/ports/NotificationSender.js';
+import type { CaseNumberAllocator } from '../domain/ports/CaseNumberAllocator.js';
 import { Case } from '../domain/model/aggregates/Case.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
 import { createRiskScore } from '../domain/model/value-objects/RiskScore.js';
@@ -52,6 +53,8 @@ export interface CreateCaseDeps {
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
   readonly generateCaseId: () => CaseId;
+  /** Readable `FD-YYYY-NNNNNN` reference for the new case. */
+  readonly caseNumbers: CaseNumberAllocator;
   readonly generateTimelineEventId: () => TimelineEventId;
   readonly auditRecorder: AuditRecorder;
   /**
@@ -143,6 +146,7 @@ async function createAndRoute(
 ): Promise<Case> {
   const kase = Case.create({
     id: deps.generateCaseId(),
+    caseNumber: await deps.caseNumbers.allocate(organizationId, now),
     organizationId,
     customerId: input.customerId,
     customerEmail: input.customerEmail,

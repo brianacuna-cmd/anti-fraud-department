@@ -1,4 +1,7 @@
-import { createIngestedPaymentEvent } from '../../../../domain/model/IngestedPaymentEvent.js';
+import {
+  createIngestedPaymentEvent,
+  type PaymentActivityDescriptor,
+} from '../../../../domain/model/IngestedPaymentEvent.js';
 import type { EnvelopeMapResult } from './EnvelopeMapResult.js';
 import { instantFromIso } from './instantFromIso.js';
 import { isRecord } from './isRecord.js';
@@ -18,6 +21,25 @@ const MVP_TYPES = new Set([
   'Card Payment Declined',
   'Card Payment Authorized',
 ]);
+
+/**
+ * Authorized and declined card payments are attempts; suspected fraud is a
+ * fraud warning. "Pending review" is not counted: the same payment comes back
+ * later as authorized or declined, and counting both would double it.
+ */
+const ACTIVITY_BY_TYPE: Readonly<Record<string, PaymentActivityDescriptor>> = {
+  'Card Payment Authorized': { kind: 'ATTEMPT', outcome: 'SUCCEEDED' },
+  'Card Payment Declined': { kind: 'ATTEMPT', outcome: 'FAILED' },
+  'Card Payment Suspected Fraud': { kind: 'FRAUD_WARNING' },
+};
+
+function coinflowActivity(eventType: string, dataId: string): PaymentActivityDescriptor | undefined {
+  const base = ACTIVITY_BY_TYPE[eventType];
+  if (base === undefined) {
+    return undefined;
+  }
+  return dataId.length > 0 ? { ...base, providerReference: dataId } : base;
+}
 
 export function mapCoinflowEnvelope(payload: unknown): EnvelopeMapResult {
   if (!isRecord(payload)) {
@@ -53,6 +75,8 @@ export function mapCoinflowEnvelope(payload: unknown): EnvelopeMapResult {
     riskSignals.declineCode = data.declineCode;
   }
 
+  const paymentActivity = coinflowActivity(eventType, dataId);
+
   const name = readOptionalStringPath(data, ['customerName']);
   const document = readOptionalStringPath(data, ['documentId']);
   const walletAddress = readOptionalStringPath(data, ['walletAddress']);
@@ -71,6 +95,7 @@ export function mapCoinflowEnvelope(payload: unknown): EnvelopeMapResult {
       providerEventId,
       rawPayload: payload,
       subjectIdentity: { name, document, walletAddress, entryType },
+      ...(paymentActivity !== undefined ? { paymentActivity } : {}),
     }),
   };
 }

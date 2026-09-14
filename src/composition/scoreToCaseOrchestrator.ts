@@ -7,6 +7,7 @@ import type {
   createCreateCaseUseCase,
 } from '../modules/case-management/application/CreateCase.js';
 import type { CasePriority } from '../modules/case-management/domain/model/value-objects/CasePriority.js';
+import type { EnrichRiskEvent } from './customerRiskContextEnricher.js';
 
 export interface ScoreToCaseOrchestratorInput {
   readonly auth: AuthContext;
@@ -26,6 +27,11 @@ export interface ScoreToCaseOrchestratorDeps {
   readonly calculateRiskScore: ReturnType<typeof createCalculateRiskScoreUseCase>;
   readonly getOrganizationFraudConfig: ReturnType<typeof createGetOrganizationFraudConfigUseCase>;
   readonly createCase: ReturnType<typeof createCreateCaseUseCase>;
+  /**
+   * Adds the customer's accumulated activity and case history before scoring.
+   * Optional so the standalone wiring keeps working; production always sets it.
+   */
+  readonly enrichEvent?: EnrichRiskEvent;
 }
 
 /**
@@ -37,9 +43,12 @@ export function createScoreToCaseOrchestrator(deps: ScoreToCaseOrchestratorDeps)
   return async function processRiskScoreToCase(
     input: ScoreToCaseOrchestratorInput,
   ): Promise<ScoreToCaseOrchestratorResult> {
+    // The enriched event is also what gets frozen into the case, so the case
+    // shows the activity figures the rule actually saw.
+    const event = deps.enrichEvent ? await deps.enrichEvent({ auth: input.auth, event: input.event }) : input.event;
     const scoreResult = await deps.calculateRiskScore({
       auth: input.auth,
-      event: input.event,
+      event,
     });
 
     const fraudConfig = await deps.getOrganizationFraudConfig({ auth: input.auth });
@@ -54,10 +63,10 @@ export function createScoreToCaseOrchestrator(deps: ScoreToCaseOrchestratorDeps)
       };
     }
 
-    const finturuCacheSnapshot = buildFinturuCacheSnapshot(input.event, scoreResult);
+    const finturuCacheSnapshot = buildFinturuCacheSnapshot(event, scoreResult);
     const createInput: CreateCaseInput = {
       auth: input.auth,
-      customerId: input.event.caseCustomerId,
+      customerId: event.caseCustomerId,
       riskScore: scoreResult.riskScore,
       priority,
       finturuCacheSnapshot,

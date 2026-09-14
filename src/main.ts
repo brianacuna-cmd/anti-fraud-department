@@ -148,6 +148,7 @@ import type { MalwareScanner } from './modules/case-management/domain/ports/Malw
 import { NullTimestampAuthority } from './modules/case-management/infrastructure/adapters/outbound/timestamp/NullTimestampAuthority.js';
 import { MongoUnitOfWork as CaseManagementMongoUnitOfWork } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { generateCaseId } from './modules/case-management/domain/model/value-objects/CaseId.js';
+import { MongoCaseNumberAllocator } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseNumberAllocator.js';
 import { generateTimelineEventId } from './modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { createCreateCaseUseCase } from './modules/case-management/application/CreateCase.js';
 import { createEnqueueCustomerWebhookFanOut } from './modules/case-management/application/EnqueueCustomerWebhookFanOut.js';
@@ -171,6 +172,8 @@ import { generateCaseNoteId } from './modules/case-management/domain/model/value
 import { createResolveCaseUseCase } from './modules/case-management/application/ResolveCase.js';
 import { createArchiveCaseUseCase } from './modules/case-management/application/ArchiveCase.js';
 import { createStartReviewUseCase } from './modules/case-management/application/StartReview.js';
+import { createRequestCaseDocumentationUseCase } from './modules/case-management/application/RequestCaseDocumentation.js';
+import { createResumeCaseReviewUseCase } from './modules/case-management/application/ResumeCaseReview.js';
 import { createOpenInvestigationUseCase } from './modules/case-management/application/OpenInvestigation.js';
 import { createListInvestigationsUseCase } from './modules/case-management/application/ListInvestigations.js';
 import { createGetInvestigationUseCase } from './modules/case-management/application/GetInvestigation.js';
@@ -357,6 +360,18 @@ import { createScoreToCaseOrchestrator } from './composition/scoreToCaseOrchestr
 import type { ScoreToCaseOrchestratorInput, ScoreToCaseOrchestratorResult } from './composition/scoreToCaseOrchestrator.js';
 import { scoreToCaseProcessRouter } from './composition/scoreToCaseProcessRouter.js';
 import { createWebhookToScoreOrchestrator } from './composition/webhookToScoreOrchestrator.js';
+import { createCustomerRiskContextEnricher } from './composition/customerRiskContextEnricher.js';
+import { createPaymentCustomerLookup } from './composition/paymentCustomerLookup.js';
+import { caseCustomerActivityRouter } from './composition/caseCustomerActivityRouter.js';
+import { merchantRiskRouter } from './composition/merchantRiskRouter.js';
+import { paymentActivityImportRouter } from './modules/risk-assessment/infrastructure/adapters/inbound/http/paymentActivityImportRouter.js';
+import { createImportPaymentActivitiesUseCase } from './modules/risk-assessment/application/ImportPaymentActivities.js';
+import { MongoPaymentActivityRepository } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoPaymentActivityRepository.js';
+import { createRecordPaymentActivityUseCase } from './modules/risk-assessment/application/RecordPaymentActivity.js';
+import { createGetCustomerPaymentActivityUseCase } from './modules/risk-assessment/application/GetCustomerPaymentActivity.js';
+import { generatePaymentActivityId } from './modules/risk-assessment/domain/model/value-objects/PaymentActivityId.js';
+import { createGetCustomerCaseHistoryUseCase } from './modules/case-management/application/GetCustomerCaseHistory.js';
+import { MongoCustomerCaseHistoryReader } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCustomerCaseHistoryReader.js';
 import { createScreenThenScoreToCaseOrchestrator } from './composition/screenThenScoreToCaseOrchestrator.js';
 import type { CanonicalRiskEvent } from './modules/risk-assessment/domain/model/CanonicalRiskEvent.js';
 import { createScreenSubjectAgainstWatchlistUseCase } from './modules/screening/application/ScreenSubjectAgainstWatchlist.js';
@@ -920,6 +935,7 @@ async function bootstrap(): Promise<void> {
   const caseTimelineRecorder = new MongoTimelineRecorder(db);
   const caseTimelineReader = new MongoTimelineReader(db);
   const caseNotes = new MongoCaseNoteRepository(db);
+  const caseNumbers = new MongoCaseNumberAllocator(db);
   const resolutions = new MongoResolutionRepository(db);
   const outboxEvents = new MongoOutboxEventRepository(db);
   const investigations = new MongoInvestigationRepository(db);
@@ -973,6 +989,7 @@ async function bootstrap(): Promise<void> {
     unitOfWork: caseManagementUnitOfWork,
     clock,
     generateCaseId,
+    caseNumbers,
     generateTimelineEventId,
     auditRecorder: caseManagementAuditRecorder,
     routeCase,
@@ -1005,6 +1022,7 @@ async function bootstrap(): Promise<void> {
     unitOfWork: caseManagementUnitOfWork,
     clock,
     generateCaseId,
+    caseNumbers,
     generateTimelineEventId,
     generateOutboxEventId,
     auditRecorder: caseManagementAuditRecorder,
@@ -1045,6 +1063,7 @@ async function bootstrap(): Promise<void> {
     unitOfWork: caseManagementUnitOfWork,
     clock,
     generateCaseId,
+    caseNumbers,
     generateTimelineEventId,
     generateOutboxEventId,
     auditRecorder: caseManagementAuditRecorder,
@@ -1260,6 +1279,22 @@ async function bootstrap(): Promise<void> {
       generateTimelineEventId,
     }),
     startReview: createStartReviewUseCase({
+      cases,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateTimelineEventId,
+    }),
+    requestCaseDocumentation: createRequestCaseDocumentationUseCase({
+      cases,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateTimelineEventId,
+    }),
+    resumeCaseReview: createResumeCaseReviewUseCase({
       cases,
       timelineRecorder: caseTimelineRecorder,
       auditRecorder: caseManagementAuditRecorder,
@@ -1705,10 +1740,45 @@ async function bootstrap(): Promise<void> {
     }),
   });
   // Composition-only score→threshold→CreateCase path (eslint boundaries).
+  // Accumulated activity + case history as rule variables (`activity.*`,
+  // `customerHistory.*`). One store for webhooks and, later, CSV imports.
+  const paymentActivities = new MongoPaymentActivityRepository(db);
+  const recordPaymentActivity = createRecordPaymentActivityUseCase({
+    activities: paymentActivities,
+    clock,
+    generatePaymentActivityId,
+  });
+  const getCustomerPaymentActivity = createGetCustomerPaymentActivityUseCase({ activities: paymentActivities });
+  const getCustomerCaseHistory = createGetCustomerCaseHistoryUseCase({
+    reader: new MongoCustomerCaseHistoryReader(db),
+  });
   const processRiskScoreToCase = createScoreToCaseOrchestrator({
     calculateRiskScore,
     getOrganizationFraudConfig,
     createCase,
+    enrichEvent: createCustomerRiskContextEnricher({ getCustomerPaymentActivity, getCustomerCaseHistory }),
+  });
+  const caseCustomerActivityHttpRouter = caseCustomerActivityRouter({
+    getCase: createGetCaseUseCase({ cases }),
+    getCustomerPaymentActivity,
+    getCustomerCaseHistory,
+    clock,
+  });
+  // Finturu data: merchants with risk, payment link reconciliation, and the
+  // CSV import that backfills the payment history they are computed from.
+  const merchantRiskHttpRouter = merchantRiskRouter({
+    finturu: finturuApiClient,
+    activities: paymentActivities,
+    getCustomerCaseHistory,
+    clock,
+  });
+  const paymentActivityImportHttpRouter = paymentActivityImportRouter({
+    importPaymentActivities: createImportPaymentActivitiesUseCase({
+      activities: paymentActivities,
+      auditRecorder: riskAssessmentAuditRecorder,
+      clock,
+      generatePaymentActivityId,
+    }),
   });
 
   // screening-watchlist-matcher Slice 7: watchlist screening ports/adapters,
@@ -1909,6 +1979,7 @@ async function bootstrap(): Promise<void> {
     processRiskScoreToCase: processRiskScoreToCaseWithScreening,
     events: providerIngestEvents,
     clock,
+    recordPaymentActivity,
   });
   const receiveProviderWebhook = createReceiveProviderWebhookUseCase({
     secrets: inboundWebhookSecrets,
@@ -1916,6 +1987,7 @@ async function bootstrap(): Promise<void> {
     cipher: secretCipher,
     verifiers: selectVerifier,
     mapper: { map: mapProviderEnvelope },
+    paymentCustomers: createPaymentCustomerLookup(paymentActivities),
     composer: webhookToScore,
     clock,
   });
@@ -2525,6 +2597,9 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(caseExportHttpRouter);
   identityAccessRouter.use(caseMetricsHttpRouter);
   identityAccessRouter.use(caseManagementCasesRouter);
+  identityAccessRouter.use(caseCustomerActivityHttpRouter);
+  identityAccessRouter.use(merchantRiskHttpRouter);
+  identityAccessRouter.use(paymentActivityImportHttpRouter);
   identityAccessRouter.use(caseManagementFinturuRouter);
   identityAccessRouter.use(finturuWebhook);
   identityAccessRouter.use(investigationHttpRouter);

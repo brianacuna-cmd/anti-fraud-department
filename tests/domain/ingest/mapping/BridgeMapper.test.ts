@@ -185,3 +185,22 @@ describe('mapBridgeEnvelope', () => {
     expect(result.event.caseCustomerId).toBe('cust_primary');
   });
 });
+
+describe('mapBridgeEnvelope payment activity', () => {
+  const TX = { id: 'ctx_1', amount: '12.50', currency: 'usd', customer_id: 'br_cust' };
+
+  it('counts only card transaction creation, failed when the status says declined', () => {
+    const ok = mapBridgeEnvelope(bridgeEvent('card_transaction.created', { ...TX, status: 'approved' }));
+    const ko = mapBridgeEnvelope(bridgeEvent('card_transaction.created', { ...TX, status: 'Declined' }));
+    const update = mapBridgeEnvelope(bridgeEvent('card_transaction.updated', TX));
+    const transfer = mapBridgeEnvelope(bridgeEvent('transfer.created', TX));
+
+    if (ok.status !== 'mapped' || ko.status !== 'mapped' || update.status !== 'mapped' || transfer.status !== 'mapped') {
+      throw new Error('expected mapped');
+    }
+    expect(ok.event.paymentActivity).toEqual({ kind: 'ATTEMPT', outcome: 'SUCCEEDED', providerReference: 'ctx_1' });
+    expect(ko.event.paymentActivity).toMatchObject({ outcome: 'FAILED' });
+    expect(update.event.paymentActivity).toBeUndefined();
+    expect(transfer.event.paymentActivity).toBeUndefined();
+  });
+});

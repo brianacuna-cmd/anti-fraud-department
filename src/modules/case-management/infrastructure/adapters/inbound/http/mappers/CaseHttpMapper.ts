@@ -8,6 +8,7 @@ import type { Case } from '../../../../../domain/model/aggregates/Case.js';
  */
 export interface CaseResponseDto {
   readonly id: string;
+  readonly caseNumber: string | null;
   readonly organizationId: string;
   readonly customerId: string;
   readonly customerEmail: string | null;
@@ -25,11 +26,13 @@ export interface CaseResponseDto {
   readonly updatedAt: string;
   readonly deletedAt: string | null;
   readonly agentBrief: string | null;
+  readonly resolutionOutcome: string | null;
 }
 
 export function toCaseResponse(kase: Case): CaseResponseDto {
   return {
     id: kase.id,
+    caseNumber: kase.caseNumber,
     organizationId: kase.organizationId,
     customerId: kase.customerId,
     customerEmail: kase.customerEmail,
@@ -47,5 +50,6 @@ export function toCaseResponse(kase: Case): CaseResponseDto {
     updatedAt: kase.updatedAt,
     deletedAt: kase.deletedAt,
     agentBrief: kase.agentBrief,
+    resolutionOutcome: kase.resolutionOutcome,
   };
 }

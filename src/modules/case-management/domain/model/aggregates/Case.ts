@@ -1,15 +1,19 @@
 import type { Instant } from '../../../../../shared/time/Instant.js';
 import type { CaseId } from '../value-objects/CaseId.js';
+import type { CaseNumber } from '../value-objects/CaseNumber.js';
 import type { CaseStatus } from '../value-objects/CaseStatus.js';
 import type { CasePriority } from '../value-objects/CasePriority.js';
 import type { RiskScore } from '../value-objects/RiskScore.js';
 import type { AssignedTo } from '../value-objects/AssignedTo.js';
+import type { ResolutionOutcome } from '../value-objects/ResolutionOutcome.js';
 import { caseStatusTransitions } from '../../services/transitions.js';
 import { assertTransitionAllowed } from '../../services/StatusTransitionPolicy.js';
 import { invariantViolation, invalidTransition } from '../../errors/CaseManagementError.js';
 
 export interface CaseProps {
   readonly id: CaseId;
+  /** Readable reference (`FD-2026-000042`). `null` only on cases created before numbering existed and not yet backfilled. */
+  readonly caseNumber?: CaseNumber | null;
   readonly organizationId: string;
   readonly customerId: string;
   readonly customerEmail: string | null;
@@ -29,10 +33,17 @@ export interface CaseProps {
   readonly updatedAt: Instant;
   readonly deletedAt: Instant | null;
   readonly agentBrief?: string | null;
+  /**
+   * Read-model copy of the outcome of the resolution that closed the case,
+   * so the inbox can show and filter it without reading `resolutions`.
+   * `null` while the case is open and after a reopen.
+   */
+  readonly resolutionOutcome?: ResolutionOutcome | null;
 }
 
 export interface CreateCaseInput {
   readonly id: CaseId;
+  readonly caseNumber?: CaseNumber | null;
   readonly organizationId: string;
   readonly customerId: string;
   readonly customerEmail?: string | null;
@@ -62,6 +73,7 @@ export class Case {
     assertNonEmpty('customerId', input.customerId);
     return new Case({
       id: input.id,
+      caseNumber: input.caseNumber ?? null,
       organizationId: input.organizationId,
       customerId: input.customerId,
       customerEmail: input.customerEmail ?? null,
@@ -81,16 +93,26 @@ export class Case {
       updatedAt: input.now,
       deletedAt: null,
       agentBrief: null,
+      resolutionOutcome: null,
     });
   }
 
   /** Reconstructs from persisted props — no business-rule validation. */
   static rehydrate(props: CaseProps): Case {
-    return new Case({ ...props, agentBrief: props.agentBrief ?? null });
+    return new Case({
+      ...props,
+      caseNumber: props.caseNumber ?? null,
+      agentBrief: props.agentBrief ?? null,
+      resolutionOutcome: props.resolutionOutcome ?? null,
+    });
   }
 
   get id(): CaseId {
     return this.props.id;
+  }
+
+  get caseNumber(): CaseNumber | null {
+    return this.props.caseNumber ?? null;
   }
 
   get organizationId(): string {
@@ -169,6 +191,15 @@ export class Case {
     return this.props.agentBrief ?? null;
   }
 
+  get resolutionOutcome(): ResolutionOutcome | null {
+    return this.props.resolutionOutcome ?? null;
+  }
+
+  /** Mirrors the closing resolution's outcome (see `resolutionOutcome`). */
+  withResolutionOutcome(outcome: ResolutionOutcome | null, now: Instant): Case {
+    return new Case({ ...this.props, resolutionOutcome: outcome, updatedAt: now });
+  }
+
   /** Last-write-wins companion brief. Does not add a CaseNote. */
   withAgentBrief(brief: string, now: Instant): Case {
     return new Case({ ...this.props, agentBrief: brief, updatedAt: now });
@@ -197,7 +228,9 @@ export class Case {
       throw invalidTransition(this.props.status, next);
     }
     assertTransitionAllowed(caseStatusTransitions, this.props.status, next);
-    return new Case({ ...this.props, status: next, updatedAt: now });
+    // A reopened case is open work again: the previous outcome no longer
+    // describes it (the resolution row keeps it as history).
+    return new Case({ ...this.props, status: next, resolutionOutcome: null, updatedAt: now });
   }
 
   /** Reassigns the case (or clears assignment when `assignedTo` is `null`). */

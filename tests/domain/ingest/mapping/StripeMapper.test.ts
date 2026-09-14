@@ -56,6 +56,45 @@ describe('mapStripeEnvelope', () => {
     expect(result.event).not.toHaveProperty('riskScore');
   });
 
+  it('classifies a failed charge by its most specific code and exposes both countries', () => {
+    const failed = {
+      ...CHARGE,
+      status: 'failed',
+      failure_code: 'card_declined',
+      outcome: { type: 'issuer_declined', reason: 'stolen_card', risk_score: 40, risk_level: 'normal' },
+      payment_method_details: { card: { country: 'ng' } },
+      billing_details: { address: { country: 'US' } },
+    };
+
+    const result = mapStripeEnvelope(chargeEvent('charge.failed', failed));
+
+    if (result.status !== 'mapped') {
+      throw new Error('expected mapped');
+    }
+    expect(result.event.riskSignals).toMatchObject({
+      declineCode: 'stolen_card',
+      declineCategory: 'FRAUD_SUSPECTED',
+      cardCountry: 'NG',
+      billingCountry: 'US',
+    });
+  });
+
+  it('does not classify a paid charge that Radar only sent to review', () => {
+    const reviewed = {
+      ...CHARGE,
+      status: 'succeeded',
+      outcome: { type: 'manual_review', reason: 'elevated_risk_level', risk_score: 70, risk_level: 'elevated' },
+    };
+
+    const result = mapStripeEnvelope(chargeEvent('charge.succeeded', reviewed));
+
+    if (result.status !== 'mapped') {
+      throw new Error('expected mapped');
+    }
+    expect(result.event.riskSignals).not.toHaveProperty('declineCode');
+    expect(result.event.riskSignals).not.toHaveProperty('declineCategory');
+  });
+
   it('maps charge.updated when outcome is present', () => {
     const updated = { ...CHARGE, amount: 4100, outcome: { risk_score: 75, risk_level: 'highest' } };
     const result = mapStripeEnvelope(chargeEvent('charge.updated', updated));
@@ -198,5 +237,67 @@ describe('mapStripeEnvelope', () => {
     expect(result.event.currency).toBe('EUR');
     expect(result.event.riskSignals.fraudType).toBe('made_with_stolen_card');
     expect(result.event).not.toHaveProperty('riskScore');
+  });
+});
+
+describe('mapStripeEnvelope payment activity', () => {
+  const DISPUTE = {
+    id: 'evt_dispute',
+    type: 'charge.dispute.created',
+    created: CREATED,
+    data: { object: { id: 'dp_1', charge: 'ch_disputed', amount: 2500, currency: 'usd', reason: 'fraudulent', status: 'needs_response' } },
+  };
+
+  it('counts succeeded and failed charges as attempts referencing the charge, and charge.updated as nothing', () => {
+    const ok = mapStripeEnvelope(chargeEvent('charge.succeeded', CHARGE));
+    const ko = mapStripeEnvelope(chargeEvent('charge.failed', { ...CHARGE, status: 'failed' }));
+    const updated = mapStripeEnvelope(chargeEvent('charge.updated', CHARGE));
+
+    if (ok.status !== 'mapped' || ko.status !== 'mapped' || updated.status !== 'mapped') throw new Error('expected mapped');
+    expect(ok.event.paymentActivity).toEqual({ kind: 'ATTEMPT', outcome: 'SUCCEEDED', providerReference: 'ch_1' });
+    expect(ko.event.paymentActivity).toEqual({ kind: 'ATTEMPT', outcome: 'FAILED', providerReference: 'ch_1' });
+    expect(updated.event.paymentActivity).toBeUndefined();
+  });
+
+  it('reports a dispute without customer as missing_customer carrying the disputed charge', () => {
+    expect(mapStripeEnvelope(DISPUTE)).toEqual({
+      status: 'failed',
+      reason: 'missing_customer',
+      providerReference: 'ch_disputed',
+    });
+  });
+
+  it('maps the dispute as a chargeback once the charge owner is known', () => {
+    const result = mapStripeEnvelope(DISPUTE, { customerId: 'cus_owner' });
+
+    if (result.status !== 'mapped') throw new Error('expected mapped');
+    expect(result.event.caseCustomerId).toBe('cus_owner');
+    expect(result.event.amountCents).toBe(2500);
+    expect(result.event.riskSignals).toMatchObject({ disputeReason: 'fraudulent', disputeStatus: 'needs_response' });
+    expect(result.event.paymentActivity).toEqual({ kind: 'CHARGEBACK', providerReference: 'ch_disputed' });
+  });
+
+  it('never uses the hint over a customer the payload does carry', () => {
+    const result = mapStripeEnvelope(chargeEvent('charge.succeeded', CHARGE), { customerId: 'cus_wrong' });
+
+    if (result.status !== 'mapped') throw new Error('expected mapped');
+    expect(result.event.caseCustomerId).toBe('cus_1');
+  });
+});
+
+describe('mapStripeEnvelope merchant and related references', () => {
+  it('records the connected account as merchant and the PaymentIntent as related reference', () => {
+    const envelope = { ...chargeEvent('charge.succeeded', { ...CHARGE, payment_intent: 'pi_9' }), account: 'acct_merchant' };
+
+    const result = mapStripeEnvelope(envelope);
+
+    if (result.status !== 'mapped') throw new Error('expected mapped');
+    expect(result.event.paymentActivity).toEqual({
+      kind: 'ATTEMPT',
+      outcome: 'SUCCEEDED',
+      providerReference: 'ch_1',
+      relatedReferences: ['pi_9'],
+      merchantId: 'acct_merchant',
+    });
   });
 });

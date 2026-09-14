@@ -1,0 +1,139 @@
+import type { Instant } from '../../../../../shared/time/Instant.js';
+import { invariantViolation } from '../../errors/RiskAssessmentError.js';
+import type { PaymentActivityId } from '../value-objects/PaymentActivityId.js';
+
+/**
+ * What a payment event means for a customer's accumulated activity.
+ *
+ * - ATTEMPT: a payment tried (card charge, card transaction). Its `outcome`
+ *   says whether it went through.
+ * - CHARGEBACK: a dispute opened on a previous payment.
+ * - FRAUD_WARNING: the provider flagged a payment as likely fraud before any
+ *   dispute (Stripe early fraud warning, Coinflow suspected fraud).
+ */
+export type PaymentActivityKind = 'ATTEMPT' | 'CHARGEBACK' | 'FRAUD_WARNING';
+
+export type PaymentActivityOutcome = 'SUCCEEDED' | 'FAILED';
+
+/** Where the row came from. CSV imports (Finturu) land in the same history as webhooks. */
+export type PaymentActivitySource = 'WEBHOOK' | 'CSV_IMPORT';
+
+const KINDS: ReadonlySet<string> = new Set<PaymentActivityKind>(['ATTEMPT', 'CHARGEBACK', 'FRAUD_WARNING']);
+const OUTCOMES: ReadonlySet<string> = new Set<PaymentActivityOutcome>(['SUCCEEDED', 'FAILED']);
+const SOURCES: ReadonlySet<string> = new Set<PaymentActivitySource>(['WEBHOOK', 'CSV_IMPORT']);
+
+export interface PaymentActivityProps {
+  readonly id: PaymentActivityId;
+  readonly organizationId: string;
+  readonly customerId: string;
+  readonly provider: string;
+  /** Idempotency key within (organization, provider): the provider event id, or the CSV row's own id. */
+  readonly providerEventId: string;
+  /** The payment the event is about (Stripe charge id…). Lets a later dispute find its customer. */
+  readonly providerReference: string | null;
+  /**
+   * Other provider ids of the same payment (Stripe PaymentIntent next to the
+   * charge id). A Finturu payment link stores the PaymentIntent, so this is
+   * what lets reconciliation find the payment of a link.
+   */
+  readonly relatedReferences: readonly string[];
+  /**
+   * The merchant that was paid: the Stripe connected account (`acct_…`) or the
+   * Finturu user id. `null` when the provider does not say.
+   */
+  readonly merchantId: string | null;
+  readonly providerEventType: string;
+  readonly kind: PaymentActivityKind;
+  /** Only for ATTEMPT. */
+  readonly outcome: PaymentActivityOutcome | null;
+  readonly amountCents: number;
+  readonly currency: string;
+  /** Decline category for failed attempts (see `shared/payments`). */
+  readonly declineCategory: string | null;
+  readonly cardCountry: string | null;
+  readonly billingCountry: string | null;
+  readonly source: PaymentActivitySource;
+  /** When the payment happened at the provider — the clock every window counts on. */
+  readonly occurredAt: Instant;
+  readonly recordedAt: Instant;
+}
+
+export type CreatePaymentActivityInput = Omit<
+  PaymentActivityProps,
+  'kind' | 'outcome' | 'source' | 'relatedReferences' | 'merchantId'
+> & {
+  readonly kind: string;
+  readonly outcome: string | null;
+  readonly source: string;
+  readonly relatedReferences?: readonly string[];
+  readonly merchantId?: string | null;
+};
+
+/** One row of a customer's payment history. Append-only: never updated once recorded. */
+export class PaymentActivity {
+  private constructor(private readonly props: PaymentActivityProps) {}
+
+  static create(input: CreatePaymentActivityInput): PaymentActivity {
+    const REQUIRED = ['organizationId', 'customerId', 'provider', 'providerEventId', 'providerEventType'] as const;
+    const blank = REQUIRED.find((field) => input[field].trim().length === 0);
+    if (blank !== undefined) {
+      throw invariantViolation(`PaymentActivity ${blank} must be a non-empty string`, { field: blank });
+    }
+    if (!KINDS.has(input.kind)) {
+      throw invariantViolation('PaymentActivity kind must be ATTEMPT, CHARGEBACK or FRAUD_WARNING', { kind: input.kind });
+    }
+    if (!SOURCES.has(input.source)) {
+      throw invariantViolation('PaymentActivity source must be WEBHOOK or CSV_IMPORT', { source: input.source });
+    }
+    const kind = input.kind as PaymentActivityKind;
+    if (kind === 'ATTEMPT' && (input.outcome === null || !OUTCOMES.has(input.outcome))) {
+      throw invariantViolation('an ATTEMPT needs an outcome: SUCCEEDED or FAILED', { outcome: input.outcome });
+    }
+    if (!Number.isFinite(input.amountCents)) {
+      throw invariantViolation('PaymentActivity amountCents must be a number', { amountCents: input.amountCents });
+    }
+    return new PaymentActivity({
+      ...input,
+      kind,
+      outcome: kind === 'ATTEMPT' ? (input.outcome as PaymentActivityOutcome) : null,
+      source: input.source as PaymentActivitySource,
+      relatedReferences: [...new Set((input.relatedReferences ?? []).filter((r) => r.trim().length > 0))],
+      merchantId: input.merchantId?.trim() ? input.merchantId.trim() : null,
+      currency: input.currency.toUpperCase(),
+      cardCountry: input.cardCountry?.toUpperCase() ?? null,
+      billingCountry: input.billingCountry?.toUpperCase() ?? null,
+    });
+  }
+
+  static rehydrate(props: PaymentActivityProps): PaymentActivity {
+    return new PaymentActivity(props);
+  }
+
+  get id(): PaymentActivityId {
+    return this.props.id;
+  }
+
+  get organizationId(): string {
+    return this.props.organizationId;
+  }
+
+  get customerId(): string {
+    return this.props.customerId;
+  }
+
+  get kind(): PaymentActivityKind {
+    return this.props.kind;
+  }
+
+  get outcome(): PaymentActivityOutcome | null {
+    return this.props.outcome;
+  }
+
+  get occurredAt(): Instant {
+    return this.props.occurredAt;
+  }
+
+  toProps(): PaymentActivityProps {
+    return this.props;
+  }
+}

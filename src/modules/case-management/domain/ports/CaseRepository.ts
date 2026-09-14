@@ -42,8 +42,12 @@ export interface FindCaseByIdentityOptions {
   readonly statuses?: readonly CaseStatus[];
 }
 
-/** The lifecycle window that CASE-011 treats as "already has an open case". */
-export const ACTIVE_CASE_STATUSES: readonly CaseStatus[] = ['OPEN', 'IN_REVIEW'];
+/**
+ * The lifecycle window that CASE-011 treats as "already has an open case".
+ * A case waiting on documentation is still open work, so a recurrence must
+ * refresh it instead of opening a duplicate.
+ */
+export const ACTIVE_CASE_STATUSES: readonly CaseStatus[] = ['OPEN', 'IN_REVIEW', 'PENDING_DOCUMENTATION'];
 
 export interface CaseListResult {
   readonly items: readonly Case[];

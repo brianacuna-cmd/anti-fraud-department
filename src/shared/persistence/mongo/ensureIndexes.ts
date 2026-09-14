@@ -142,6 +142,17 @@ export async function ensureIndexes(db: Db): Promise<void> {
     },
   );
 
+  // Readable case numbers are unique per tenant. Partial so the cases created
+  // before numbering existed (no `case_number` until backfilled) don't collide.
+  await db.collection('cases').createIndex(
+    { organization_id: 1, case_number: 1 },
+    {
+      unique: true,
+      name: 'case_org_case_number_unique',
+      partialFilterExpression: { case_number: { $exists: true, $type: 'string' } },
+    },
+  );
+
   await db
     .collection('organization_fraud_config')
     .createIndex({ organization_id: 1 }, { unique: true, name: 'org_fraud_config_unique' });
@@ -224,6 +235,29 @@ export async function ensureIndexes(db: Db): Promise<void> {
   // Unique ACTIVE per organization. Create before dropping the legacy
   // non-unique org+status index so duplicates fail closed (E11000) rather
   // than leaving the collection without a usable constraint.
+  // Customer payment history (risk-assessment). Idempotency on the provider
+  // event, the per-customer time windows the scoring context reads, and the
+  // charge -> customer lookup a Stripe dispute needs to find its owner.
+  await db.collection('payment_activities').createIndex(
+    { organization_id: 1, provider: 1, provider_event_id: 1 },
+    { unique: true, name: 'payment_activities_org_provider_event_unique' },
+  );
+  await db
+    .collection('payment_activities')
+    .createIndex({ organization_id: 1, customer_id: 1, occurred_at: -1 }, { name: 'payment_activities_org_customer_occurred_idx' });
+  // Merchant risk (payments a merchant received) and link reconciliation
+  // (a link stores the PaymentIntent, which lives in related_references).
+  await db
+    .collection('payment_activities')
+    .createIndex({ organization_id: 1, merchant_id: 1, occurred_at: -1 }, { name: 'payment_activities_org_merchant_occurred_idx' });
+  await db
+    .collection('payment_activities')
+    .createIndex({ organization_id: 1, related_references: 1 }, { name: 'payment_activities_org_related_references_idx' });
+  await db.collection('payment_activities').createIndex(
+    { organization_id: 1, provider: 1, provider_reference: 1 },
+    { name: 'payment_activities_org_provider_reference_idx', partialFilterExpression: { provider_reference: { $type: 'string' } } },
+  );
+
   await db.collection('risk_scoring_rules').createIndex(
     { organization_id: 1 },
     {

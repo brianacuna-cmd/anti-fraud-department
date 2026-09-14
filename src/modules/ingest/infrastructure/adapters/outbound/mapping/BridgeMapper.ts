@@ -1,4 +1,7 @@
-import { createIngestedPaymentEvent } from '../../../../domain/model/IngestedPaymentEvent.js';
+import {
+  createIngestedPaymentEvent,
+  type PaymentActivityDescriptor,
+} from '../../../../domain/model/IngestedPaymentEvent.js';
 import type { EnvelopeMapResult } from './EnvelopeMapResult.js';
 import { instantFromIso } from './instantFromIso.js';
 import { isRecord } from './isRecord.js';
@@ -20,6 +23,27 @@ const MVP_TYPES = new Set([
   'transfer.created',
   'transfer.updated',
 ]);
+
+/** Card transaction statuses that mean the payment did not go through (paths UNVERIFIED, see SPIKE). */
+const FAILED_CARD_STATUSES: ReadonlySet<string> = new Set(['declined', 'failed', 'rejected', 'denied']);
+
+/**
+ * Only the creation of a card transaction counts as an attempt: its updates
+ * repeat the same payment, and transfers are money movement, not card
+ * attempts.
+ */
+function bridgeActivity(type: string, object: Record<string, unknown>): PaymentActivityDescriptor | undefined {
+  if (type !== 'card_transaction.created') {
+    return undefined;
+  }
+  const status = typeof object.status === 'string' ? object.status.toLowerCase() : '';
+  const reference = readOptionalStringPath(object, ['id']);
+  return {
+    kind: 'ATTEMPT',
+    outcome: FAILED_CARD_STATUSES.has(status) ? 'FAILED' : 'SUCCEEDED',
+    ...(reference !== undefined ? { providerReference: reference } : {}),
+  };
+}
 
 export function mapBridgeEnvelope(payload: unknown): EnvelopeMapResult {
   if (!isRecord(payload)) {
@@ -49,6 +73,8 @@ export function mapBridgeEnvelope(payload: unknown): EnvelopeMapResult {
     riskSignals.status = object.status;
   }
 
+  const paymentActivity = bridgeActivity(type, object);
+
   const name = readOptionalStringPath(object, ['customer_name']);
   const document = readOptionalStringPath(object, ['customer_document_id']);
   const walletAddress = readOptionalStringPath(object, ['wallet_address']);
@@ -68,6 +94,7 @@ export function mapBridgeEnvelope(payload: unknown): EnvelopeMapResult {
       providerEventId: eventId,
       rawPayload: payload,
       subjectIdentity: { name, document, walletAddress, entryType },
+      ...(paymentActivity !== undefined ? { paymentActivity } : {}),
     }),
   };
 }

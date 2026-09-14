@@ -5,7 +5,11 @@ import { generateProviderIngestEventId } from '../domain/model/value-objects/Pro
 import { createPaymentProvider, type PaymentProvider } from '../domain/model/value-objects/PaymentProvider.js';
 import type { InboundWebhookSecretRepository } from '../domain/ports/InboundWebhookSecretRepository.js';
 import type { PostAckComposer } from '../domain/ports/PostAckComposer.js';
-import type { EnvelopeMapResult, ProviderEnvelopeMapper } from '../domain/ports/ProviderEnvelopeMapper.js';
+import type {
+  EnvelopeMapResult,
+  PaymentCustomerLookup,
+  ProviderEnvelopeMapper,
+} from '../domain/ports/ProviderEnvelopeMapper.js';
 import type { ProviderIngestEventRepository } from '../domain/ports/ProviderIngestEventRepository.js';
 import type { SecretCipher } from '../domain/ports/SecretCipher.js';
 import type { WebhookSignatureVerifier } from '../domain/ports/WebhookSignatureVerifier.js';
@@ -27,6 +31,12 @@ export interface ReceiveProviderWebhookDeps {
   readonly cipher: SecretCipher;
   readonly verifiers: (provider: PaymentProvider) => WebhookSignatureVerifier;
   readonly mapper: ProviderEnvelopeMapper;
+  /**
+   * Optional: resolves the customer of events that only name an earlier
+   * payment (Stripe disputes). Without it those events stay FAILED with
+   * `missing_customer`, exactly as before.
+   */
+  readonly paymentCustomers?: PaymentCustomerLookup;
   readonly composer: PostAckComposer;
   readonly clock: Clock;
   readonly schedulePostAck?: (work: () => void) => void;
@@ -50,7 +60,8 @@ export function createReceiveProviderWebhookUseCase(deps: ReceiveProviderWebhook
     await verifyFailClosed(deps, input, provider);
 
     const payload = parseJson(input.rawBody);
-    const mapped = resolveMappedResult(payload, provider, deps.mapper);
+    const firstPass = resolveMappedResult(payload, provider, deps.mapper);
+    const mapped = await retryWithReferencedCustomer(deps, input.organizationId, provider, payload, firstPass);
 
     const providerEventId = resolveProviderEventId(provider, payload, mapped, input.rawBody);
     const now = deps.clock.now();
@@ -140,6 +151,31 @@ export function resolveMappedResult(
   return payload === undefined
     ? { status: 'failed', reason: 'unparseable_body' }
     : mapper.map(provider, payload);
+}
+
+/**
+ * Second mapping pass for an event whose customer lives on an earlier
+ * payment. Runs before the idempotency row is written, so the row's status
+ * reflects the final outcome. A payment never seen before leaves the first
+ * result untouched.
+ */
+async function retryWithReferencedCustomer(
+  deps: ReceiveProviderWebhookDeps,
+  organizationId: string,
+  provider: PaymentProvider,
+  payload: unknown,
+  firstPass: EnvelopeMapResult,
+): Promise<EnvelopeMapResult> {
+  if (
+    firstPass.status !== 'failed' ||
+    firstPass.reason !== 'missing_customer' ||
+    firstPass.providerReference === undefined ||
+    deps.paymentCustomers === undefined
+  ) {
+    return firstPass;
+  }
+  const customerId = await deps.paymentCustomers.findCustomerId(organizationId, provider, firstPass.providerReference);
+  return customerId === null ? firstPass : deps.mapper.map(provider, payload, { customerId });
 }
 
 function initialStatus(mapped: EnvelopeMapResult): 'RECEIVED' | 'IGNORED' | 'FAILED' {

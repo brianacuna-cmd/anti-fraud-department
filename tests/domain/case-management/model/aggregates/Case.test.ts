@@ -141,6 +141,16 @@ describe('Case#reopen', () => {
     expect(reopened.updatedAt).toBe(LATER);
   });
 
+  it('clears the closure outcome on reopen, and archiving keeps it', () => {
+    const resolved = buildCase()
+      .transitionTo('IN_REVIEW', NOW)
+      .transitionTo('RESOLVED', NOW)
+      .withResolutionOutcome('FALSE_POSITIVE', NOW);
+
+    expect(resolved.transitionTo('ARCHIVED', LATER).resolutionOutcome).toBe('FALSE_POSITIVE');
+    expect(resolved.reopen('IN_REVIEW', LATER).resolutionOutcome).toBeNull();
+  });
+
   it('reopens an ARCHIVED case to IN_REVIEW', () => {
     const archived = buildCase()
       .transitionTo('IN_REVIEW', NOW)

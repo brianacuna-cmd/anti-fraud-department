@@ -5,12 +5,15 @@ import type { PostAckComposer } from '../modules/ingest/domain/ports/PostAckComp
 import type { ProviderIngestEventRepository } from '../modules/ingest/domain/ports/ProviderIngestEventRepository.js';
 import { createCanonicalRiskEvent } from '../modules/risk-assessment/domain/model/CanonicalRiskEvent.js';
 import type { Clock } from '../shared/time/Clock.js';
+import type { createRecordPaymentActivityUseCase } from '../modules/risk-assessment/application/RecordPaymentActivity.js';
 import type { createScoreToCaseOrchestrator } from './scoreToCaseOrchestrator.js';
 
 export interface WebhookToScoreOrchestratorDeps {
   readonly processRiskScoreToCase: ReturnType<typeof createScoreToCaseOrchestrator>;
   readonly events: ProviderIngestEventRepository;
   readonly clock: Clock;
+  /** Appends the event to the customer's payment history BEFORE scoring, so the rules count it. */
+  readonly recordPaymentActivity?: ReturnType<typeof createRecordPaymentActivityUseCase>;
   readonly onError?: (error: unknown, ctx: { stage: string; ingestEventId?: string }) => void;
 }
 
@@ -23,9 +26,11 @@ export function createWebhookToScoreOrchestrator(deps: WebhookToScoreOrchestrato
   const onError = deps.onError ?? defaultOnError;
   return {
     async compose(input) {
+      const auth = createIngestSystemAuthContext(input.organizationId, input.provider);
+      await recordActivity(deps, auth, input.event, onError, input.ingestEventId);
       try {
         await deps.processRiskScoreToCase({
-          auth: createIngestSystemAuthContext(input.organizationId, input.provider),
+          auth,
           event: toCanonicalRiskEvent(input.event),
         });
         await persistOutcome(deps, input, 'processed', onError);
@@ -35,6 +40,51 @@ export function createWebhookToScoreOrchestrator(deps: WebhookToScoreOrchestrato
       }
     },
   };
+}
+
+/**
+ * A failure to record is reported but does NOT stop scoring: the event still
+ * deserves a score, just without itself in the counts. Losing the score to
+ * protect a counter would be the worse trade.
+ */
+async function recordActivity(
+  deps: WebhookToScoreOrchestratorDeps,
+  auth: ReturnType<typeof createIngestSystemAuthContext>,
+  event: IngestedPaymentEvent,
+  onError: (error: unknown, ctx: { stage: string; ingestEventId?: string }) => void,
+  ingestEventId: string,
+): Promise<void> {
+  const activity = event.paymentActivity;
+  if (deps.recordPaymentActivity === undefined || activity === undefined) {
+    return;
+  }
+  try {
+    await deps.recordPaymentActivity({
+      auth,
+      customerId: event.caseCustomerId,
+      provider: event.provider,
+      providerEventId: event.providerEventId ?? event.eventId ?? ingestEventId,
+      providerReference: activity.providerReference ?? null,
+      relatedReferences: activity.relatedReferences ?? [],
+      merchantId: activity.merchantId ?? null,
+      providerEventType: event.providerEventType,
+      kind: activity.kind,
+      outcome: activity.outcome ?? null,
+      amountCents: event.amountCents,
+      currency: event.currency,
+      declineCategory: stringSignal(event.riskSignals.declineCategory),
+      cardCountry: stringSignal(event.riskSignals.cardCountry),
+      billingCountry: stringSignal(event.riskSignals.billingCountry),
+      source: 'WEBHOOK',
+      occurredAt: event.createdAt,
+    });
+  } catch (error) {
+    onError(error, { stage: 'recordPaymentActivity', ingestEventId });
+  }
+}
+
+function stringSignal(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
 function defaultOnError(error: unknown, ctx: { stage: string; ingestEventId?: string }): void {

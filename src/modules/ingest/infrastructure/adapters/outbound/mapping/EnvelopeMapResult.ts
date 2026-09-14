@@ -1,1 +1,1 @@
-export type { EnvelopeMapResult } from '../../../../domain/ports/ProviderEnvelopeMapper.js';
+export type { EnvelopeMapHints, EnvelopeMapResult } from '../../../../domain/ports/ProviderEnvelopeMapper.js';

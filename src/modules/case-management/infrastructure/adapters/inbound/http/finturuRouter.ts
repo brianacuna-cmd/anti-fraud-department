@@ -5,6 +5,7 @@ import type { createGetFinturuDirectoryUseCase } from '../../../../application/G
 import type { createOpenFraudCaseUseCase } from '../../../../application/OpenFraudCaseFromCustomer.js';
 import type { FinturuApiClient } from '../../outbound/finturu/FinturuApiClient.js';
 import { toCaseResponse } from './mappers/CaseHttpMapper.js';
+import { withChargeDeclines, withChargeDetailDecline } from './mappers/StripeChargeDeclineEnricher.js';
 
 export interface FinturuRouterDeps {
   readonly syncFinturuData?: ReturnType<typeof createSyncFinturuDataUseCase>;
@@ -155,7 +156,7 @@ export function finturuRouter(deps: FinturuRouterDeps): Router {
     const limit = Number(req.query.limit) || 10;
     const startingAfter = typeof req.query.startingAfter === 'string' ? req.query.startingAfter : undefined;
     const data = await deps.finturuClient.getStripeConnectedAccountCharges(req.params.providerId!, limit, startingAfter);
-    res.status(200).json(data);
+    res.status(200).json(withChargeDeclines(data));
   });
 
   router.get('/cases/providers/stripe/connected-account/:providerId/charge/:chargeId', async (req, res) => {
@@ -165,7 +166,7 @@ export function finturuRouter(deps: FinturuRouterDeps): Router {
       req.params.providerId!,
       req.params.chargeId!,
     );
-    res.status(200).json(data);
+    res.status(200).json(withChargeDetailDecline(data));
   });
 
   const pagedQuery = (req: Request) => ({
