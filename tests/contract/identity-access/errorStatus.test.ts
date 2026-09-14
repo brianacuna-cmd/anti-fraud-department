@@ -43,6 +43,8 @@ describe('identityAccessErrorStatus', () => {
       ROLE_NOT_ASSIGNABLE: 400,
       // password-policy: chosen password fails the strength rules.
       WEAK_PASSWORD: 422,
+      // password-management: change-password new password equals current one.
+      PASSWORD_UNCHANGED: 422,
     });
   });
 });

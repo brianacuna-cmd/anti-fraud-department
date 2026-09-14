@@ -56,4 +56,9 @@ export type IdentityAccessErrorCode =
   // CreateOrganizationWithAdmin, ConfirmPasswordReset). The failing rules are
   // aggregated in `metadata.reasons`; safe to surface since a caller choosing
   // their OWN password is not an enumeration oracle.
-  | 'WEAK_PASSWORD';
+  | 'WEAK_PASSWORD'
+  // password-management: an authenticated change-password whose new password
+  // is identical to the current one. Rejected after the current password is
+  // verified, so it is not an enumeration oracle (the caller already proved
+  // knowledge of their own credential).
+  | 'PASSWORD_UNCHANGED';

@@ -156,6 +156,16 @@ export function weakPassword(reasons: readonly string[]): IdentityAccessError {
   return new IdentityAccessError('WEAK_PASSWORD', 'password does not meet the strength policy', { reasons });
 }
 
+/**
+ * The new password submitted to change-password is identical to the current
+ * one. Thrown only AFTER the current password is verified, so the caller has
+ * already proven knowledge of their own credential — there is no enumeration
+ * oracle to hide.
+ */
+export function passwordUnchanged(): IdentityAccessError {
+  return new IdentityAccessError('PASSWORD_UNCHANGED', 'new password must differ from the current password');
+}
+
 // mfa-user-enrollment PR2: user MFA setup/activate/disable.
 
 /** No pending TOTP secret to confirm — enrollment was never started, or is already enabled. */
