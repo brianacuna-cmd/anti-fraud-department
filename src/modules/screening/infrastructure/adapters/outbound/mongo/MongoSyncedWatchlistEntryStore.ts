@@ -1,5 +1,6 @@
 import type { AnyBulkWriteOperation, Collection, Db } from 'mongodb';
 import { ObjectId } from 'mongodb';
+import type { Instant } from '../../../../../../shared/time/Instant.js';
 import { toDate } from '../../../../../../shared/time/Instant.js';
 import { createWatchlistEntryId } from '../../../../domain/model/value-objects/WatchlistEntryId.js';
 import type { WatchlistId } from '../../../../domain/model/value-objects/WatchlistId.js';
@@ -9,9 +10,11 @@ import type {
   SyncedWatchlistEntryStore,
   WatchlistSyncChange,
 } from '../../../../domain/ports/SyncedWatchlistEntryStore.js';
+import type { WatchlistDocument } from './documents/WatchlistDocument.js';
 import type { WatchlistEntryDocument } from './documents/WatchlistEntryDocument.js';
 
-const COLLECTION_NAME = 'watchlist_entries';
+const ENTRIES_COLLECTION = 'watchlist_entries';
+const WATCHLISTS_COLLECTION = 'watchlists';
 
 /** Keeps each round trip well under Mongo's 16 MB command size, whatever the names look like. */
 const BULK_BATCH_SIZE = 1000;
@@ -68,14 +71,16 @@ function updateOperation(
  * `deleted_at`), so the candidate query already ignores delisted parties.
  */
 export class MongoSyncedWatchlistEntryStore implements SyncedWatchlistEntryStore {
-  private readonly collection: Collection<WatchlistEntryDocument>;
+  private readonly entries: Collection<WatchlistEntryDocument>;
+  private readonly watchlists: Collection<WatchlistDocument>;
 
   constructor(db: Db) {
-    this.collection = db.collection<WatchlistEntryDocument>(COLLECTION_NAME);
+    this.entries = db.collection<WatchlistEntryDocument>(ENTRIES_COLLECTION);
+    this.watchlists = db.collection<WatchlistDocument>(WATCHLISTS_COLLECTION);
   }
 
   async listSnapshots(watchlistId: WatchlistId): Promise<readonly SyncedEntrySnapshot[]> {
-    const documents = await this.collection
+    const documents = await this.entries
       .find(
         { watchlist_id: new ObjectId(watchlistId), external_ref: { $exists: true } },
         { projection: { _id: 1, external_ref: 1, sync_fingerprint: 1, status: 1 } },
@@ -104,7 +109,15 @@ export class MongoSyncedWatchlistEntryStore implements SyncedWatchlistEntryStore
       ),
     ];
     for (let start = 0; start < operations.length; start += BULK_BATCH_SIZE) {
-      await this.collection.bulkWrite(operations.slice(start, start + BULK_BATCH_SIZE), { ordered: false });
+      await this.entries.bulkWrite(operations.slice(start, start + BULK_BATCH_SIZE), { ordered: false });
     }
+  }
+
+  /**
+   * A targeted `$set`, not a watchlist save: `updated_at` stays untouched, so
+   * "last edited" and "last synced" remain two different facts.
+   */
+  async recordSync(watchlistId: WatchlistId, now: Instant): Promise<void> {
+    await this.watchlists.updateOne({ _id: new ObjectId(watchlistId) }, { $set: { last_synced_at: toDate(now) } });
   }
 }

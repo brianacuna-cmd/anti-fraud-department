@@ -83,6 +83,16 @@ export function createRescreenCustomerSanctionsUseCase(deps: RescreenCustomerSan
     }
 
     const screened = tally.flagged + tally.clear;
+    /*
+     * An empty customer universe is a failure, not a clean night. The Finturu
+     * client returns `[]` for ANY upstream problem — a timeout against Bridge,
+     * a 5xx, a missing decryption key — so "no customers" is far more likely
+     * to mean "could not read them" than "there are none", and reporting it as
+     * SUCCESS would hide that nobody was screened.
+     */
+    if (tally.failed === 0 && screened === 0) {
+      throw new Error('customer source returned no customers; refusing to report a clean rescreen');
+    }
     if (tally.failed > 0 && screened === 0) {
       throw new Error(`customer rescreen failed for all ${tally.failed} customers`);
     }

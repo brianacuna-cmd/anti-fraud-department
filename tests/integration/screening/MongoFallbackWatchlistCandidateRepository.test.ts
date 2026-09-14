@@ -157,4 +157,49 @@ describe('MongoFallbackWatchlistCandidateRepository (integration, real Mongo)', 
 
     expect(candidates).toHaveLength(1);
   });
+
+  it('ranks the entry sharing the most phonetic keys first, however many share a common one', async () => {
+    // 30 entries that share only the very common "AL" key, stored BEFORE the
+    // real match — in storage order they would fill any small limit.
+    await db.collection<WatchlistEntryDocument>('watchlist_entries').insertMany(
+      Array.from({ length: 30 }, (_, i) =>
+        buildEntry({ name: `Noise ${i}`, normalized_name: `noise ${i}`, phonetic_keys: ['AL', `N${i}`] }),
+      ),
+    );
+    await db.collection<WatchlistEntryDocument>('watchlist_entries').insertOne(
+      buildEntry({
+        name: 'Aiman Muhammad Rabi AL-ZAWAHIRI',
+        normalized_name: 'aiman muhammad rabi alzawahiri',
+        phonetic_keys: ['AMN', 'MHMT', 'RP', 'ALSH'],
+      }),
+    );
+
+    const candidates = await repository.findCandidates({
+      organizationId: oid('org-1'),
+      normalizedName: 'aiman muhammad rabi al zawahiri',
+      phoneticKeys: ['AMN', 'MHMT', 'RP', 'AL', 'SHR'],
+      entryType: 'PERSON',
+      limit: 5,
+    });
+
+    expect(candidates).toHaveLength(5);
+    expect(candidates[0]?.name).toBe('Aiman Muhammad Rabi AL-ZAWAHIRI');
+  });
+
+  it('puts an exact document match ahead of phonetic look-alikes', async () => {
+    await db.collection<WatchlistEntryDocument>('watchlist_entries').insertMany([
+      buildEntry({ name: 'John Smithson', normalized_name: 'john smithson', phonetic_keys: ['JN', 'SM0'], document: 'X1' }),
+      buildEntry({ name: 'Unrelated Name', normalized_name: 'unrelated name', phonetic_keys: ['ANRL'], document: 'P999' }),
+    ]);
+
+    const candidates = await repository.findCandidates({
+      organizationId: oid('org-1'),
+      document: 'P999',
+      phoneticKeys: ['JN', 'SM0'],
+      entryType: 'PERSON',
+      limit: 1,
+    });
+
+    expect(candidates.map((candidate) => candidate.name)).toEqual(['Unrelated Name']);
+  });
 });

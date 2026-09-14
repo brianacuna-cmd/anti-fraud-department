@@ -60,4 +60,10 @@ export interface WatchlistSyncChange {
 export interface SyncedWatchlistEntryStore {
   listSnapshots(watchlistId: WatchlistId): Promise<readonly SyncedEntrySnapshot[]>;
   apply(change: WatchlistSyncChange): Promise<void>;
+  /**
+   * Stamps the watchlist as current as of `now`. Called only when a sync was
+   * APPLIED — a refused one leaves the previous date, so a list that stopped
+   * updating shows its real age instead of last night's.
+   */
+  recordSync(watchlistId: WatchlistId, now: Instant): Promise<void>;
 }

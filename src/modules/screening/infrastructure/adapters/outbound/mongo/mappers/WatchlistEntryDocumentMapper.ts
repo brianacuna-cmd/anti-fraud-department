@@ -15,5 +15,7 @@ export function toCandidate(entry: WatchlistEntryDocument): WatchlistCandidate {
     normalizedName: entry.normalized_name,
     phoneticKeys: entry.phonetic_keys,
     country: entry.country,
+    // Only the sanctions sync writes `external_ref`; a hand-made entry never has one.
+    fromOfficialList: entry.external_ref !== undefined,
   };
 }

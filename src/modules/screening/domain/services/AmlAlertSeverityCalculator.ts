@@ -57,9 +57,14 @@ export function maxSeverity(a: AmlAlertSeverity, b: AmlAlertSeverity | null): Am
 }
 
 /**
- * Calculated alert severity: the higher of the confidence band and the
- * matched entry's `riskLevel` (when that value is a known severity).
- * `null` means similarity is below the configured alert threshold.
+ * Calculated alert severity. `null` means similarity is below the configured
+ * alert threshold.
+ *
+ * The matched entry's `riskLevel` raises the band only for a STRONG match
+ * (at or above the signal threshold). How dangerous the listed party is says
+ * nothing about whether this customer IS that party: every official sanctions
+ * entry is CRITICAL, and inheriting it on a 55% match turned thousands of weak
+ * coincidences into critical alerts, burying the real ones.
  */
 export function calculateAmlAlertSeverity(
   score: MatchScore,
@@ -69,6 +74,9 @@ export function calculateAmlAlertSeverity(
   const fromScore = severityFromConfidence(score, thresholds);
   if (fromScore === null) {
     return null;
+  }
+  if (score < thresholds.signalThreshold) {
+    return fromScore;
   }
   return maxSeverity(fromScore, parseRiskLevel(riskLevel));
 }

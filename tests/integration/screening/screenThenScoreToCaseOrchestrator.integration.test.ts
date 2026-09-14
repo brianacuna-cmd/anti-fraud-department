@@ -155,15 +155,17 @@ describe('screenThenScoreToCaseOrchestrator (integration, real Mongo, fallback c
   });
 
   it('confidence in [50,70): writes an AmlAlert but does NOT enrich riskSignals', async () => {
-    // "Mark Smith" shares two Double-Metaphone keys with "John Smith"
-    // (SM0/XMT from the shared "Smith" surname, blocking finds it) but the
-    // given name differs enough that the combined confidence formula
-    // (0.4*phoneticAgreement + 0.6*jaroWinkler) lands deterministically at
-    // 64 — inside [50,70), the ALERT_ONLY band (verified against the real
-    // talisman adapters, not a fake, so this fixture is pinned to the
-    // actual algorithm's output).
+    // Every word of "John Smith" is in this listed name, which has four more:
+    // round(100 * (0.5 * 1 + 0.5 * 2/6)) = 67 — inside [50,70), the
+    // ALERT_ONLY band, against the real talisman adapters. (It used to be
+    // "Mark Smith": sharing only the surname now caps at 49 and never alerts,
+    // which is the point of the word-pairing rule.)
     await db.collection<WatchlistEntryDocument>('watchlist_entries').insertOne(
-      buildEntry({ name: 'Mark Smith', normalized_name: 'mark smith', phonetic_keys: ['MRK', 'SM0', 'XMT'] }),
+      buildEntry({
+        name: 'John Smith Abdul Rahman Al Khalil',
+        normalized_name: 'john smith abdul rahman al khalil',
+        phonetic_keys: ['JN', 'AN', 'SM0', 'XMT'],
+      }),
     );
 
     let receivedEvent: CanonicalRiskEvent | undefined;

@@ -21,6 +21,26 @@ import { requireTenantContext } from './authorization/requireTenantContext.js';
 
 const DEFAULT_CANDIDATE_LIMIT = 25;
 
+/**
+ * Floor for matches against an official sanctions list, whatever the
+ * organization's own thresholds say.
+ *
+ * The org thresholds (default 50/70) were set for short internal lists. Against
+ * ~109k official names a 50 lets every shared first name through, and each
+ * such alert lands CRITICAL. 85 is where the sampled matches stopped being
+ * coincidences; below it, a sanctions hit is dropped rather than alerted.
+ */
+export const OFFICIAL_LIST_MIN_CONFIDENCE = 85;
+
+function tierFor(
+  candidate: WatchlistCandidate,
+  confidence: MatchScore,
+  thresholds: ConfidenceThresholds,
+): ConfidenceTier {
+  if (candidate.fromOfficialList === true && confidence < OFFICIAL_LIST_MIN_CONFIDENCE) return 'DISCARD';
+  return tierConfidence(confidence, thresholds);
+}
+
 export interface ScreenSubjectAgainstWatchlistInput {
   readonly auth: AuthContext;
   readonly customerId: string;
@@ -176,7 +196,7 @@ async function scoreCandidatesForField(
     results.push({
       match,
       confidence,
-      tier: tierConfidence(confidence, thresholds),
+      tier: tierFor(candidate, confidence, thresholds),
       alertId: null,
     });
   }

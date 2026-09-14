@@ -124,6 +124,7 @@ export function watchlistRouter(deps: WatchlistRouterDeps): Router {
       entryType: query.entryType,
       riskLevel: query.riskLevel,
       country: query.country,
+      search: query.q,
       limit: query.limit,
       offset: query.offset,
     });
