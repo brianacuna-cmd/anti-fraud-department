@@ -15,6 +15,7 @@ import type {
   WatchlistEntryToIndex,
 } from '../../../../domain/ports/WatchlistEntryRepository.js';
 import type { WatchlistEntry } from '../../../../domain/model/aggregates/WatchlistEntry.js';
+import { normalizeName } from '../../../../domain/ports/NameNormalizer.js';
 import type { WatchlistEntryDocument } from './documents/WatchlistEntryDocument.js';
 import { toDomain, toDocument } from './mappers/WatchlistEntryMapper.js';
 
@@ -44,6 +45,30 @@ function countryFilterFragment(query: WatchlistEntryListQuery): Record<string, u
   return query.country !== undefined ? { country: query.country } : {};
 }
 
+/** Whatever the analyst types is matched literally: `.` or `*` must not turn into a pattern. */
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Name search runs on `normalized_name` with the query normalized by the SAME
+ * normalizer the entries were indexed with, so «pérez», «PEREZ» and «Pérez»
+ * all find «Juan PÉREZ GÓMEZ». Documents and wallets are matched as typed,
+ * case-insensitively: a wallet pasted in a different case must still be found.
+ */
+function searchFilterFragment(query: WatchlistEntryListQuery): Record<string, unknown> {
+  const raw = query.search?.trim() ?? '';
+  if (raw.length === 0) return {};
+  const literal = escapeRegex(raw);
+  const normalized = normalizeName(raw);
+  const clauses: Record<string, unknown>[] = [
+    { document: { $regex: literal, $options: 'i' } },
+    { wallet_address: { $regex: literal, $options: 'i' } },
+  ];
+  if (normalized.length > 0) clauses.unshift({ normalized_name: { $regex: escapeRegex(normalized) } });
+  return { $or: clauses };
+}
+
 function listFilter(query: WatchlistEntryListQuery): Filter<WatchlistEntryDocument> {
   const filter: Record<string, unknown> = {
     watchlist_id: new ObjectId(query.watchlistId),
@@ -52,6 +77,7 @@ function listFilter(query: WatchlistEntryListQuery): Filter<WatchlistEntryDocume
     ...entryTypeFilterFragment(query),
     ...riskLevelFilterFragment(query),
     ...countryFilterFragment(query),
+    ...searchFilterFragment(query),
   };
   return filter as Filter<WatchlistEntryDocument>;
 }

@@ -171,7 +171,10 @@ async function syncOrganization(
     const existing = await deps.store.listSnapshots(watchlist.id);
     const plan = planWatchlistSync(existing, records);
     const refused = refuseUnsafeSync(plan, records.length, existing);
-    if (refused === null) await applyPlan(deps, watchlist, plan);
+    if (refused === null) {
+      await applyPlan(deps, watchlist, plan);
+      await deps.store.recordSync(watchlist.id, deps.clock.now());
+    }
 
     const outcome: OrganizationSyncOutcome = {
       ...empty,

@@ -16,6 +16,12 @@ export interface WatchlistCandidate {
   readonly normalizedName: string;
   readonly phoneticKeys: readonly string[];
   readonly country: string | null;
+  /**
+   * AML-001: the entry comes from an official sanctions list (written by the
+   * nightly sync). Matches against it need `OFFICIAL_LIST_MIN_CONFIDENCE`.
+   * Optional: absent means a hand-made entry.
+   */
+  readonly fromOfficialList?: boolean;
 }
 
 export interface WatchlistCandidateQuery {
