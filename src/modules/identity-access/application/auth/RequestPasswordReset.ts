@@ -12,6 +12,7 @@ import type { User } from '../../domain/model/aggregates/User.js';
 import { createSlug } from '../../domain/model/value-objects/Slug.js';
 import { createEmail } from '../../domain/model/value-objects/Email.js';
 import { IdentityAccessError } from '../../domain/errors/IdentityAccessError.js';
+import { passwordResetEmailTemplate } from './passwordResetEmailTemplate.js';
 
 export interface RequestPasswordResetInput {
   readonly email: string;
@@ -117,11 +118,16 @@ export function createRequestPasswordResetUseCase(deps: RequestPasswordResetDeps
       });
 
       try {
+        const content = passwordResetEmailTemplate({
+          resetUrl: `${deps.resetLinkBaseUrl}?token=${token}`,
+          expiresInMinutes: Math.round(deps.resetTtlSeconds / 60),
+        });
         await deps.emailSender.send({
           to: user.email,
           from: deps.emailFrom,
-          subject: 'Reset your password',
-          text: `Use this link to reset your password: ${deps.resetLinkBaseUrl}?token=${token}`,
+          subject: content.subject,
+          text: content.text,
+          html: content.html,
         });
       } catch {
         // best-effort: never let an email delivery failure change the response

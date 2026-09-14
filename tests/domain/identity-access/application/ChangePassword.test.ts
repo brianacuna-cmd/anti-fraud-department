@@ -20,7 +20,7 @@ import { IdentityAccessError } from '../../../../src/modules/identity-access/dom
 const CREATED_AT = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const CHANGED_AT = fromDate(new Date('2026-01-02T00:00:00.000Z'));
 const AUTH = createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), isPlatformAdmin: false });
-const CURRENT_PASSWORD = 'current-password';
+const CURRENT_PASSWORD = 'CurrentPassw0rd';
 const NEW_PASSWORD = 'BrandNewPassw0rd';
 
 async function seedUser(userRepositoryFactory: InMemoryUserRepositoryFactory, passwordHasher: FakePasswordHasher): Promise<void> {
@@ -110,6 +110,29 @@ describe('createChangePasswordUseCase', () => {
     ).rejects.toMatchObject({ code: 'WEAK_PASSWORD' });
 
     expect(unitOfWork.transactionCount).toBe(0);
+    expect(auditRecorder.calls()).toHaveLength(0);
+  });
+
+  it('rejects a new password identical to the current one with PASSWORD_UNCHANGED without hashing, mutating, or recording anything', async () => {
+    const userRepositoryFactory = new InMemoryUserRepositoryFactory();
+    const passwordHasher = new FakePasswordHasher();
+    await seedUser(userRepositoryFactory, passwordHasher);
+    const sessions = new InMemorySessionRepository();
+    await seedSession(sessions);
+    const unitOfWork = new InMemoryUnitOfWork();
+    const auditRecorder = new InMemoryAuditRecorder();
+    const changePassword = buildUseCase(userRepositoryFactory, unitOfWork, sessions, auditRecorder, passwordHasher);
+
+    await expect(
+      changePassword({ auth: AUTH, currentPassword: CURRENT_PASSWORD, newPassword: CURRENT_PASSWORD }),
+    ).rejects.toMatchObject({ code: 'PASSWORD_UNCHANGED' });
+
+    const stored = await userRepositoryFactory.forTenant(createOrganizationId(oid('org-1'))).findById(createUserId(oid('user-1')));
+    expect(stored?.credential).toEqual(await passwordHasher.hash(CURRENT_PASSWORD));
+
+    const stillLiveSession = await sessions.findByTokenHash('token-hash-1');
+    expect(stillLiveSession?.deletedAt).toBeNull();
+
     expect(auditRecorder.calls()).toHaveLength(0);
   });
 
