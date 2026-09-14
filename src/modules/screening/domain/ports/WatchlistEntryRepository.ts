@@ -32,6 +32,11 @@ export interface WatchlistEntryListQuery {
   readonly entryType?: readonly EntryType[];
   readonly riskLevel?: readonly RiskLevel[];
   readonly country?: string;
+  /**
+   * Free-text search: the name (normalized, so case and accents do not
+   * matter), or part of a document number or wallet address.
+   */
+  readonly search?: string;
   readonly limit: number;
   readonly offset: number;
 }

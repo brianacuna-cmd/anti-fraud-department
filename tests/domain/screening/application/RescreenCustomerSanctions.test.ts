@@ -101,4 +101,14 @@ describe('RescreenCustomerSanctions (AML-009, customers)', () => {
 
     await expect(rescreen({ auth: AUTH })).rejects.toThrow('customer rescreen failed for all 3 customers');
   });
+
+  it('fails instead of reporting a clean run when the customer source comes back empty', async () => {
+    // The Finturu client turns a timeout or a 5xx into an empty list, so an
+    // empty universe means "could not read the customers", not "all clear".
+    const screenSubject = jest.fn(async (_input: ScreenSubjectAgainstWatchlistInput) => resultWith());
+    const { rescreen } = build(screenSubject, { customers: [] });
+
+    await expect(rescreen({ auth: AUTH })).rejects.toThrow('customer source returned no customers');
+    expect(screenSubject).not.toHaveBeenCalled();
+  });
 });

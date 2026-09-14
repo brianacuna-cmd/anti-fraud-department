@@ -54,10 +54,15 @@ describe('calculateAmlAlertSeverity', () => {
     ).toBeNull();
   });
 
-  it('raises MEDIUM to HIGH when the matched entry is HIGH', () => {
+  it('does not let a weak match inherit the entry risk level', () => {
+    // A 55% match says little about whether the customer IS the listed party,
+    // however dangerous that party is. It stays at its confidence band.
     expect(
       calculateAmlAlertSeverity(createMatchScore(55), DEFAULT_CONFIDENCE_THRESHOLDS, 'HIGH'),
-    ).toBe('HIGH');
+    ).toBe('MEDIUM');
+    expect(
+      calculateAmlAlertSeverity(createMatchScore(55), DEFAULT_CONFIDENCE_THRESHOLDS, 'CRITICAL'),
+    ).toBe('MEDIUM');
   });
 
   it('raises HIGH to CRITICAL when the matched entry is CRITICAL', () => {

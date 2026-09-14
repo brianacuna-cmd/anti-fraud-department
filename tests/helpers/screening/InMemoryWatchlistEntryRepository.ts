@@ -12,6 +12,7 @@ import type {
   WatchlistEntryToIndex,
 } from '../../../src/modules/screening/domain/ports/WatchlistEntryRepository.js';
 import type { WatchlistEntry } from '../../../src/modules/screening/domain/model/aggregates/WatchlistEntry.js';
+import { normalizeName } from '../../../src/modules/screening/domain/ports/NameNormalizer.js';
 
 interface FakeEntry {
   readonly id: WatchlistEntryId;
@@ -116,6 +117,16 @@ export class InMemoryWatchlistEntryRepository implements WatchlistEntryRepositor
           query.country === undefined ||
           (e.aggregate !== undefined && e.aggregate.country === query.country),
       )
+      .filter((e) => {
+        const term = query.search?.trim().toLowerCase() ?? '';
+        if (term.length === 0 || e.aggregate === undefined) return term.length === 0;
+        const normalized = normalizeName(term);
+        return (
+          (normalized.length > 0 && normalizeName(e.aggregate.name).includes(normalized)) ||
+          (e.aggregate.document ?? '').toLowerCase().includes(term) ||
+          (e.aggregate.walletAddress ?? '').toLowerCase().includes(term)
+        );
+      })
       .sort((a, b) => {
         const ca = a.aggregate?.createdAt ?? '';
         const cb = b.aggregate?.createdAt ?? '';

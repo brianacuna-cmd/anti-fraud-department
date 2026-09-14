@@ -15,6 +15,8 @@ export interface ListWatchlistEntriesInput {
   readonly entryType?: readonly EntryType[];
   readonly riskLevel?: readonly RiskLevel[];
   readonly country?: string;
+  /** Name, document or wallet — see `WatchlistEntryListQuery.search`. */
+  readonly search?: string;
   readonly limit: number;
   readonly offset: number;
 }
@@ -46,6 +48,7 @@ export function createListWatchlistEntriesUseCase(deps: ListWatchlistEntriesDeps
       entryType: input.entryType,
       riskLevel: input.riskLevel,
       country: input.country,
+      search: input.search,
       limit: input.limit,
       offset: input.offset,
     });
