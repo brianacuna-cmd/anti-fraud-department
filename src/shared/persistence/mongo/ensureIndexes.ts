@@ -245,6 +245,14 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db
     .collection('payment_activities')
     .createIndex({ organization_id: 1, customer_id: 1, occurred_at: -1 }, { name: 'payment_activities_org_customer_occurred_idx' });
+  // Merchant risk (payments a merchant received) and link reconciliation
+  // (a link stores the PaymentIntent, which lives in related_references).
+  await db
+    .collection('payment_activities')
+    .createIndex({ organization_id: 1, merchant_id: 1, occurred_at: -1 }, { name: 'payment_activities_org_merchant_occurred_idx' });
+  await db
+    .collection('payment_activities')
+    .createIndex({ organization_id: 1, related_references: 1 }, { name: 'payment_activities_org_related_references_idx' });
   await db.collection('payment_activities').createIndex(
     { organization_id: 1, provider: 1, provider_reference: 1 },
     { name: 'payment_activities_org_provider_reference_idx', partialFilterExpression: { provider_reference: { $type: 'string' } } },

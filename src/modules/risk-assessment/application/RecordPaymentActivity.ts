@@ -12,6 +12,8 @@ export interface RecordPaymentActivityInput {
   readonly provider: string;
   readonly providerEventId: string;
   readonly providerReference?: string | null;
+  readonly relatedReferences?: readonly string[];
+  readonly merchantId?: string | null;
   readonly providerEventType: string;
   readonly kind: string;
   readonly outcome?: string | null;
@@ -50,6 +52,8 @@ export function createRecordPaymentActivityUseCase(deps: RecordPaymentActivityDe
       provider: input.provider,
       providerEventId: input.providerEventId,
       providerReference: input.providerReference ?? null,
+      relatedReferences: input.relatedReferences ?? [],
+      merchantId: input.merchantId ?? null,
       providerEventType: input.providerEventType,
       kind: input.kind,
       outcome: input.outcome ?? null,

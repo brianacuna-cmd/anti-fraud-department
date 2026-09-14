@@ -31,6 +31,17 @@ export interface PaymentActivityProps {
   readonly providerEventId: string;
   /** The payment the event is about (Stripe charge id…). Lets a later dispute find its customer. */
   readonly providerReference: string | null;
+  /**
+   * Other provider ids of the same payment (Stripe PaymentIntent next to the
+   * charge id). A Finturu payment link stores the PaymentIntent, so this is
+   * what lets reconciliation find the payment of a link.
+   */
+  readonly relatedReferences: readonly string[];
+  /**
+   * The merchant that was paid: the Stripe connected account (`acct_…`) or the
+   * Finturu user id. `null` when the provider does not say.
+   */
+  readonly merchantId: string | null;
   readonly providerEventType: string;
   readonly kind: PaymentActivityKind;
   /** Only for ATTEMPT. */
@@ -47,10 +58,15 @@ export interface PaymentActivityProps {
   readonly recordedAt: Instant;
 }
 
-export type CreatePaymentActivityInput = Omit<PaymentActivityProps, 'kind' | 'outcome' | 'source'> & {
+export type CreatePaymentActivityInput = Omit<
+  PaymentActivityProps,
+  'kind' | 'outcome' | 'source' | 'relatedReferences' | 'merchantId'
+> & {
   readonly kind: string;
   readonly outcome: string | null;
   readonly source: string;
+  readonly relatedReferences?: readonly string[];
+  readonly merchantId?: string | null;
 };
 
 /** One row of a customer's payment history. Append-only: never updated once recorded. */
@@ -81,6 +97,8 @@ export class PaymentActivity {
       kind,
       outcome: kind === 'ATTEMPT' ? (input.outcome as PaymentActivityOutcome) : null,
       source: input.source as PaymentActivitySource,
+      relatedReferences: [...new Set((input.relatedReferences ?? []).filter((r) => r.trim().length > 0))],
+      merchantId: input.merchantId?.trim() ? input.merchantId.trim() : null,
       currency: input.currency.toUpperCase(),
       cardCountry: input.cardCountry?.toUpperCase() ?? null,
       billingCountry: input.billingCountry?.toUpperCase() ?? null,

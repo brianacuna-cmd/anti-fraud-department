@@ -55,6 +55,71 @@ export interface FinturuStripeTransferDto {
   readonly status?: string;
 }
 
+/** Payment link figures of a merchant (api-business `MerchantService`). Amounts in USD. */
+export interface FinturuMerchantDto {
+  readonly userId: number;
+  readonly name: string;
+  readonly email: string | null;
+  readonly createdAt: string | null;
+  readonly companyName: string | null;
+  readonly companyCountry: string | null;
+  readonly stripeAccountId: string | null;
+  readonly stripeAccountStatus: string | null;
+  readonly stripeAccountRisk: string | null;
+  readonly links: {
+    readonly total: number;
+    readonly paid: number;
+    readonly refused: number;
+    readonly expired: number;
+    readonly refunded: number;
+    readonly paidAmount: number;
+    readonly refundedAmount: number;
+    readonly firstLinkAt: string | null;
+    readonly lastLinkAt: string | null;
+  };
+}
+
+export interface FinturuPaymentLinkDto {
+  readonly id: number;
+  readonly userId: number | null;
+  readonly description: string | null;
+  readonly amount: number;
+  readonly shippingAmount: number;
+  readonly fee: number | null;
+  readonly currency: string;
+  readonly state: string | null;
+  readonly isPaid: boolean;
+  readonly provider: string | null;
+  readonly providerPaymentId: string | null;
+  readonly reference: string | null;
+  readonly orderId: string | null;
+  readonly refundAmount: number | null;
+  readonly refundDate: string | null;
+  readonly createdAt: string | null;
+  readonly dueDate: string | null;
+}
+
+export interface FinturuPage<T> {
+  readonly items: readonly T[];
+  readonly total: number;
+}
+
+/**
+ * The Finturu API did not answer, or answered with an error. Only the STRICT
+ * reads throw it: reports built on Finturu data must fail loudly, because an
+ * empty answer would read as "no links", and a reconciliation over no links
+ * says everything is fine.
+ */
+export class FinturuUnavailableError extends Error {
+  constructor(
+    readonly path: string,
+    readonly status: number | null,
+  ) {
+    super(`Finturu API unavailable for ${path}${status === null ? '' : ` (HTTP ${status})`}`);
+    this.name = 'FinturuUnavailableError';
+  }
+}
+
 export interface FinturuApiClientOptions {
   readonly baseUrl: string;
   readonly encryptionKey?: string;
@@ -119,6 +184,64 @@ export class FinturuApiClient {
     } catch {
       return fallback;
     }
+  }
+
+  /** Like `fetchEndpoint` but never degrades: any failure throws `FinturuUnavailableError`. */
+  private async fetchStrict<T>(path: string): Promise<T> {
+    let res: Response;
+    try {
+      res = await fetch(this.normalizeUrl(path), {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch {
+      throw new FinturuUnavailableError(path, null);
+    }
+    if (res.status === 404) {
+      throw new FinturuUnavailableError(path, 404);
+    }
+    if (!res.ok) {
+      throw new FinturuUnavailableError(path, res.status);
+    }
+    const body = await res.json();
+    if (isEncryptedPayload(body)) {
+      if (!this.encryptionKey) {
+        throw new FinturuUnavailableError(path, null);
+      }
+      return decryptFinturuPayload(body, this.encryptionKey) as T;
+    }
+    return body as T;
+  }
+
+  async listMerchants(limit: number, offset: number, search?: string): Promise<FinturuPage<FinturuMerchantDto>> {
+    const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (search) query.set('search', search);
+    return this.fetchStrict<FinturuPage<FinturuMerchantDto>>(`/merchants?${query.toString()}`);
+  }
+
+  /** `null` when Finturu has no such merchant (404); other failures throw. */
+  async getMerchant(userId: number): Promise<FinturuMerchantDto | null> {
+    try {
+      return await this.fetchStrict<FinturuMerchantDto>(`/merchant/${userId}`);
+    } catch (error) {
+      if (error instanceof FinturuUnavailableError && error.status === 404) return null;
+      throw error;
+    }
+  }
+
+  async listPaymentLinks(query: {
+    readonly userId?: number;
+    readonly from?: string;
+    readonly to?: string;
+    readonly limit: number;
+    readonly offset: number;
+  }): Promise<FinturuPage<FinturuPaymentLinkDto>> {
+    const params = new URLSearchParams({ limit: String(query.limit), offset: String(query.offset) });
+    if (query.userId !== undefined) params.set('userId', String(query.userId));
+    if (query.from) params.set('from', query.from);
+    if (query.to) params.set('to', query.to);
+    return this.fetchStrict<FinturuPage<FinturuPaymentLinkDto>>(`/payment-links?${params.toString()}`);
   }
 
   async getCustomers(): Promise<readonly FinturuCustomerDto[]> {

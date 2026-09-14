@@ -32,6 +32,10 @@ export interface PaymentActivityDescriptor {
   readonly outcome?: 'SUCCEEDED' | 'FAILED';
   /** The payment the event is about (Stripe charge id…). */
   readonly providerReference?: string;
+  /** Other ids of the same payment (Stripe PaymentIntent). */
+  readonly relatedReferences?: readonly string[];
+  /** The merchant that was paid (Stripe connected account). */
+  readonly merchantId?: string;
 }
 
 export interface SubjectIdentity {

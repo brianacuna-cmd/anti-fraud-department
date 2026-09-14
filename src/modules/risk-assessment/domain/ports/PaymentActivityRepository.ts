@@ -1,6 +1,7 @@
 import type { Instant } from '../../../../shared/time/Instant.js';
 import type { PaymentActivity } from '../model/aggregates/PaymentActivity.js';
 import type { PaymentActivitySummary } from '../model/CustomerRiskContext.js';
+import type { MerchantActivitySummary } from '../model/MerchantRisk.js';
 
 /** Outbound port for the customer payment history (`payment_activities`). */
 export interface PaymentActivityRepository {
@@ -19,6 +20,16 @@ export interface PaymentActivityRepository {
 
   /** Most recent first, for the case file panel. */
   listRecent(organizationId: string, customerIds: readonly string[], limit: number): Promise<readonly PaymentActivity[]>;
+
+  /**
+   * Payments RECEIVED by a merchant in the 90 days up to `anchor`. Several ids
+   * because a merchant is known by its Finturu user id and its Stripe account.
+   * See `summarizeMerchantActivity`.
+   */
+  summarizeMerchant(organizationId: string, merchantIds: readonly string[], anchor: Instant): Promise<MerchantActivitySummary>;
+
+  /** Every row whose reference or related references include one of `references` (reconciliation). */
+  findByReferences(organizationId: string, references: readonly string[]): Promise<readonly PaymentActivity[]>;
 
   /**
    * The customer that owns an earlier payment. A Stripe dispute only carries

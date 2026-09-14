@@ -5,6 +5,10 @@ import {
   type PaymentActivitySummary,
 } from '../../../src/modules/risk-assessment/domain/model/CustomerRiskContext.js';
 import type { PaymentActivityRepository } from '../../../src/modules/risk-assessment/domain/ports/PaymentActivityRepository.js';
+import {
+  summarizeMerchantActivity,
+  type MerchantActivitySummary,
+} from '../../../src/modules/risk-assessment/domain/model/MerchantRisk.js';
 
 /** In-memory fake: the summary is the domain's reference `summarizePaymentActivity`. */
 export class InMemoryPaymentActivityRepository implements PaymentActivityRepository {
@@ -39,6 +43,28 @@ export class InMemoryPaymentActivityRepository implements PaymentActivityReposit
     return [...this.of(organizationId, customerIds)]
       .sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : -1))
       .slice(0, limit);
+  }
+
+  async summarizeMerchant(
+    organizationId: string,
+    merchantIds: readonly string[],
+    anchor: Instant,
+  ): Promise<MerchantActivitySummary> {
+    const rows = this.rows
+      .map((row) => row.toProps())
+      .filter((p) => p.organizationId === organizationId && p.merchantId !== null && merchantIds.includes(p.merchantId));
+    return summarizeMerchantActivity(rows, anchor);
+  }
+
+  async findByReferences(organizationId: string, references: readonly string[]): Promise<readonly PaymentActivity[]> {
+    return this.rows.filter((row) => {
+      const p = row.toProps();
+      return (
+        p.organizationId === organizationId &&
+        ((p.providerReference !== null && references.includes(p.providerReference)) ||
+          p.relatedReferences.some((r) => references.includes(r)))
+      );
+    });
   }
 
   async findCustomerByProviderReference(

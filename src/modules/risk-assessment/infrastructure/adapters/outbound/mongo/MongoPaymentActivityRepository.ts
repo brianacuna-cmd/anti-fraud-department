@@ -15,6 +15,7 @@ import {
   type PaymentActivitySummary,
 } from '../../../../domain/model/CustomerRiskContext.js';
 import type { PaymentActivityRepository } from '../../../../domain/ports/PaymentActivityRepository.js';
+import type { MerchantActivitySummary } from '../../../../domain/model/MerchantRisk.js';
 
 export const PAYMENT_ACTIVITIES_COLLECTION = 'payment_activities';
 
@@ -25,6 +26,9 @@ export interface PaymentActivityDocument {
   readonly provider: string;
   readonly provider_event_id: string;
   readonly provider_reference: string | null;
+  /** Absent on rows recorded before the field existed. */
+  readonly related_references?: readonly string[];
+  readonly merchant_id?: string | null;
   readonly provider_event_type: string;
   readonly kind: string;
   readonly outcome: string | null;
@@ -163,6 +167,63 @@ export class MongoPaymentActivityRepository implements PaymentActivityRepository
     return documents.map(toDomain);
   }
 
+  async summarizeMerchant(
+    organizationId: string,
+    merchantIds: readonly string[],
+    anchor: Instant,
+  ): Promise<MerchantActivitySummary> {
+    const anchorDate = toDate(anchor);
+    const since90d = new Date(anchorDate.getTime() - WINDOW_90D_MS);
+    const failed = { $and: [{ $eq: ['$kind', 'ATTEMPT'] }, { $eq: ['$outcome', 'FAILED'] }] };
+    const [row] = await this.collection
+      .aggregate<MerchantActivitySummary & { customers: string[] }>([
+        {
+          $match: {
+            organization_id: new ObjectId(organizationId),
+            merchant_id: { $in: [...merchantIds] },
+            occurred_at: { $gt: since90d, $lte: anchorDate },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            attempts90d: { $sum: { $cond: [{ $eq: ['$kind', 'ATTEMPT'] }, 1, 0] } },
+            failed90d: { $sum: { $cond: [failed, 1, 0] } },
+            suspiciousDeclines90d: {
+              $sum: { $cond: [{ $and: [failed, { $in: ['$decline_category', SUSPICIOUS_DECLINE_CATEGORIES] }] }, 1, 0] },
+            },
+            chargebacks90d: { $sum: { $cond: [{ $eq: ['$kind', 'CHARGEBACK'] }, 1, 0] } },
+            fraudWarnings90d: { $sum: { $cond: [{ $eq: ['$kind', 'FRAUD_WARNING'] }, 1, 0] } },
+            customers: { $addToSet: '$customer_id' },
+          },
+        },
+      ])
+      .toArray();
+    return {
+      attempts90d: row?.attempts90d ?? 0,
+      succeeded90d: (row?.attempts90d ?? 0) - (row?.failed90d ?? 0),
+      failed90d: row?.failed90d ?? 0,
+      suspiciousDeclines90d: row?.suspiciousDeclines90d ?? 0,
+      chargebacks90d: row?.chargebacks90d ?? 0,
+      fraudWarnings90d: row?.fraudWarnings90d ?? 0,
+      distinctCustomers90d: row?.customers.length ?? 0,
+    };
+  }
+
+  async findByReferences(organizationId: string, references: readonly string[]): Promise<readonly PaymentActivity[]> {
+    if (references.length === 0) {
+      return [];
+    }
+    const refs = [...references];
+    const documents = await this.collection
+      .find({
+        organization_id: new ObjectId(organizationId),
+        $or: [{ provider_reference: { $in: refs } }, { related_references: { $in: refs } }],
+      })
+      .toArray();
+    return documents.map(toDomain);
+  }
+
   async findCustomerByProviderReference(
     organizationId: string,
     provider: string,
@@ -185,6 +246,8 @@ function toDocument(activity: PaymentActivity): PaymentActivityDocument {
     provider: p.provider,
     provider_event_id: p.providerEventId,
     provider_reference: p.providerReference,
+    related_references: p.relatedReferences,
+    merchant_id: p.merchantId,
     provider_event_type: p.providerEventType,
     kind: p.kind,
     outcome: p.outcome,
@@ -207,6 +270,8 @@ function toDomain(document: PaymentActivityDocument): PaymentActivity {
     provider: document.provider,
     providerEventId: document.provider_event_id,
     providerReference: document.provider_reference,
+    relatedReferences: document.related_references ?? [],
+    merchantId: document.merchant_id ?? null,
     providerEventType: document.provider_event_type,
     kind: document.kind as PaymentActivityKind,
     outcome: document.outcome as PaymentActivityOutcome | null,

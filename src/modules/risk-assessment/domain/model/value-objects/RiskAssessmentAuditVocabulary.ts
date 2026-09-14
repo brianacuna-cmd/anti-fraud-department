@@ -11,6 +11,8 @@ export type RiskAssessmentAuditAction =
   /** Soft delete: the rule leaves the list, the row stays for traceability. */
   | 'DELETE_SCORING_RULE'
   /** In-place patch of name and/or JDM conditions; status is not patchable. */
-  | 'UPDATE_SCORING_RULE';
+  | 'UPDATE_SCORING_RULE'
+  /** A CSV of provider transactions loaded into the payment history; `detail` carries the counts. */
+  | 'IMPORT_PAYMENT_ACTIVITIES';
 
-export type RiskAssessmentAuditResource = 'rule';
+export type RiskAssessmentAuditResource = 'rule' | 'payment_activity';

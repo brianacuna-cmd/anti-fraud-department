@@ -284,3 +284,20 @@ describe('mapStripeEnvelope payment activity', () => {
     expect(result.event.caseCustomerId).toBe('cus_1');
   });
 });
+
+describe('mapStripeEnvelope merchant and related references', () => {
+  it('records the connected account as merchant and the PaymentIntent as related reference', () => {
+    const envelope = { ...chargeEvent('charge.succeeded', { ...CHARGE, payment_intent: 'pi_9' }), account: 'acct_merchant' };
+
+    const result = mapStripeEnvelope(envelope);
+
+    if (result.status !== 'mapped') throw new Error('expected mapped');
+    expect(result.event.paymentActivity).toEqual({
+      kind: 'ATTEMPT',
+      outcome: 'SUCCEEDED',
+      providerReference: 'ch_1',
+      relatedReferences: ['pi_9'],
+      merchantId: 'acct_merchant',
+    });
+  });
+});

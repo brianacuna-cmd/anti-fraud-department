@@ -65,6 +65,8 @@ async function recordActivity(
       provider: event.provider,
       providerEventId: event.providerEventId ?? event.eventId ?? ingestEventId,
       providerReference: activity.providerReference ?? null,
+      relatedReferences: activity.relatedReferences ?? [],
+      merchantId: activity.merchantId ?? null,
       providerEventType: event.providerEventType,
       kind: activity.kind,
       outcome: activity.outcome ?? null,

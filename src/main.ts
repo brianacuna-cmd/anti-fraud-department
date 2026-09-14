@@ -363,6 +363,9 @@ import { createWebhookToScoreOrchestrator } from './composition/webhookToScoreOr
 import { createCustomerRiskContextEnricher } from './composition/customerRiskContextEnricher.js';
 import { createPaymentCustomerLookup } from './composition/paymentCustomerLookup.js';
 import { caseCustomerActivityRouter } from './composition/caseCustomerActivityRouter.js';
+import { merchantRiskRouter } from './composition/merchantRiskRouter.js';
+import { paymentActivityImportRouter } from './modules/risk-assessment/infrastructure/adapters/inbound/http/paymentActivityImportRouter.js';
+import { createImportPaymentActivitiesUseCase } from './modules/risk-assessment/application/ImportPaymentActivities.js';
 import { MongoPaymentActivityRepository } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoPaymentActivityRepository.js';
 import { createRecordPaymentActivityUseCase } from './modules/risk-assessment/application/RecordPaymentActivity.js';
 import { createGetCustomerPaymentActivityUseCase } from './modules/risk-assessment/application/GetCustomerPaymentActivity.js';
@@ -1761,6 +1764,22 @@ async function bootstrap(): Promise<void> {
     getCustomerCaseHistory,
     clock,
   });
+  // Finturu data: merchants with risk, payment link reconciliation, and the
+  // CSV import that backfills the payment history they are computed from.
+  const merchantRiskHttpRouter = merchantRiskRouter({
+    finturu: finturuApiClient,
+    activities: paymentActivities,
+    getCustomerCaseHistory,
+    clock,
+  });
+  const paymentActivityImportHttpRouter = paymentActivityImportRouter({
+    importPaymentActivities: createImportPaymentActivitiesUseCase({
+      activities: paymentActivities,
+      auditRecorder: riskAssessmentAuditRecorder,
+      clock,
+      generatePaymentActivityId,
+    }),
+  });
 
   // screening-watchlist-matcher Slice 7: watchlist screening ports/adapters,
   // wrapped around the SAME `processRiskScoreToCase` above so a revert is a
@@ -2579,6 +2598,8 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(caseMetricsHttpRouter);
   identityAccessRouter.use(caseManagementCasesRouter);
   identityAccessRouter.use(caseCustomerActivityHttpRouter);
+  identityAccessRouter.use(merchantRiskHttpRouter);
+  identityAccessRouter.use(paymentActivityImportHttpRouter);
   identityAccessRouter.use(caseManagementFinturuRouter);
   identityAccessRouter.use(finturuWebhook);
   identityAccessRouter.use(investigationHttpRouter);

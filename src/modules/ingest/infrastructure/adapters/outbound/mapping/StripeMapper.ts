@@ -68,7 +68,7 @@ function mapCharge(
   }
   Object.assign(riskSignals, declineSignals(type, charge, outcome), countrySignals(charge));
 
-  return mappedStripe(payload, type, charge, riskSignals, hints, chargeActivity(type, charge));
+  return mappedStripe(payload, type, charge, riskSignals, hints, withMerchant(payload, chargeActivity(type, charge)));
 }
 
 /**
@@ -81,11 +81,25 @@ function chargeActivity(type: string, charge: Record<string, unknown>): PaymentA
     return undefined;
   }
   const reference = readOptionalStringPath(charge, ['id']);
+  const paymentIntent = readOptionalStringPath(charge, ['payment_intent']);
   return {
     kind: 'ATTEMPT',
     outcome: type === 'charge.failed' ? 'FAILED' : 'SUCCEEDED',
     ...(reference !== undefined ? { providerReference: reference } : {}),
+    ...(paymentIntent !== undefined ? { relatedReferences: [paymentIntent] } : {}),
   };
+}
+
+/**
+ * Connect webhooks carry the connected account at the envelope's top level
+ * (`account`): that is the merchant that was paid.
+ */
+function withMerchant(
+  payload: Record<string, unknown>,
+  activity: PaymentActivityDescriptor | undefined,
+): PaymentActivityDescriptor | undefined {
+  const merchantId = readOptionalStringPath(payload, ['account']);
+  return activity === undefined || merchantId === undefined ? activity : { ...activity, merchantId };
 }
 
 /**
@@ -139,10 +153,10 @@ function mapEarlyFraudWarning(
     riskSignals.actionable = efw.actionable;
   }
   const reference = referencedChargeId(efw.charge);
-  return mappedStripe(payload, EFW_CREATED, charge, riskSignals, hints, {
+  return mappedStripe(payload, EFW_CREATED, charge, riskSignals, hints, withMerchant(payload, {
     kind: 'FRAUD_WARNING',
     ...(reference !== undefined ? { providerReference: reference } : {}),
-  });
+  }));
 }
 
 /**
@@ -167,10 +181,12 @@ function mapDispute(
   const charge = isRecord(dispute.charge) ? dispute.charge : {};
   const reference = referencedChargeId(dispute.charge);
   const moneySource = { ...dispute, customer: charge.customer ?? dispute.customer };
-  return mappedStripe(payload, DISPUTE_CREATED, moneySource, riskSignals, hints, {
+  const paymentIntent = readOptionalStringPath(dispute, ['payment_intent']);
+  return mappedStripe(payload, DISPUTE_CREATED, moneySource, riskSignals, hints, withMerchant(payload, {
     kind: 'CHARGEBACK',
     ...(reference !== undefined ? { providerReference: reference } : {}),
-  });
+    ...(paymentIntent !== undefined ? { relatedReferences: [paymentIntent] } : {}),
+  }));
 }
 
 function referencedChargeId(charge: unknown): string | undefined {

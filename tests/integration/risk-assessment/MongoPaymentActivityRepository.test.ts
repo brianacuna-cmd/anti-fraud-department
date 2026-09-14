@@ -8,7 +8,8 @@ import {
   PAYMENT_ACTIVITIES_COLLECTION,
 } from '../../../src/modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoPaymentActivityRepository.js';
 import { MongoCustomerCaseHistoryReader } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoCustomerCaseHistoryReader.js';
-import { ANCHOR, activity, windowScenario } from '../../helpers/risk-assessment/paymentActivityFixtures.js';
+import { ANCHOR, activity, hoursBefore, windowScenario } from '../../helpers/risk-assessment/paymentActivityFixtures.js';
+import { summarizeMerchantActivity } from '../../../src/modules/risk-assessment/domain/model/MerchantRisk.js';
 import { oid } from '../../support/oid.js';
 
 jest.setTimeout(120_000);
@@ -65,6 +66,41 @@ describe('payment activity read models (integration, real replica-set Mongo)', (
       expect(await repository.record(activity({ providerEventId: 'evt_same' }))).toBe('duplicate');
       expect(await repository.findCustomerByProviderReference(oid('org-1'), 'stripe', 'ch_owner')).toBe('cus_1');
       expect(await repository.findCustomerByProviderReference(oid('org-2'), 'stripe', 'ch_owner')).toBeNull();
+    });
+  });
+
+  describe('merchant summary and references', () => {
+    it('summarizes payments received by any id of the merchant like the reference implementation', async () => {
+      const repository = new MongoPaymentActivityRepository(db);
+      const rows = [
+        activity({ merchantId: 'acct_1', occurredAt: hoursBefore(1), customerId: 'a' }),
+        activity({ merchantId: '42', occurredAt: hoursBefore(2), customerId: 'b', outcome: 'FAILED', declineCategory: 'AUTHENTICATION_FAILED' }),
+        activity({ merchantId: 'acct_1', occurredAt: hoursBefore(3), kind: 'CHARGEBACK', outcome: null, customerId: 'a' }),
+        activity({ merchantId: 'acct_1', occurredAt: hoursBefore(4), kind: 'FRAUD_WARNING', outcome: null, customerId: 'c' }),
+        activity({ merchantId: 'acct_1', occurredAt: hoursBefore(24 * 91) }),
+        activity({ merchantId: 'acct_other', occurredAt: hoursBefore(1) }),
+        activity({ merchantId: null, occurredAt: hoursBefore(1) }),
+      ];
+      for (const row of rows) await repository.record(row);
+
+      const expected = summarizeMerchantActivity(
+        rows.map((r) => r.toProps()).filter((p) => p.merchantId === 'acct_1' || p.merchantId === '42'),
+        ANCHOR,
+      );
+      expect(await repository.summarizeMerchant(oid('org-1'), ['42', 'acct_1'], ANCHOR)).toEqual(expected);
+      expect(expected).toMatchObject({ attempts90d: 2, failed90d: 1, chargebacks90d: 1, fraudWarnings90d: 1, distinctCustomers90d: 3 });
+    });
+
+    it('finds rows by provider reference or related reference, once each', async () => {
+      const repository = new MongoPaymentActivityRepository(db);
+      await repository.record(activity({ providerReference: 'ch_1', relatedReferences: ['pi_1'] }));
+      await repository.record(activity({ providerReference: 'cf_2' }));
+      await repository.record(activity({ providerReference: 'ch_3', relatedReferences: ['pi_3'] }));
+
+      const found = await repository.findByReferences(oid('org-1'), ['pi_1', 'ch_1', 'cf_2']);
+
+      expect(found.map((r) => r.toProps().providerReference).sort()).toEqual(['cf_2', 'ch_1']);
+      expect(await repository.findByReferences(oid('org-1'), [])).toEqual([]);
     });
   });
 

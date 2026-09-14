@@ -57,6 +57,7 @@ export function caseCustomerActivityRouter(deps: CaseCustomerActivityRouterDeps)
           provider: p.provider,
           providerEventType: p.providerEventType,
           providerReference: p.providerReference,
+          merchantId: p.merchantId,
           kind: p.kind,
           outcome: p.outcome,
           amountCents: p.amountCents,
