@@ -43,6 +43,10 @@ export const identityAccessErrorStatus: StatusByCode = {
   // password-policy: a well-formed request whose chosen password fails the
   // strength rules — 422 (semantic validation) rather than 400 (malformed).
   WEAK_PASSWORD: 422,
+  // password-management: a well-formed change-password request whose new
+  // password equals the current one — 422 (semantic validation), same family
+  // as WEAK_PASSWORD.
+  PASSWORD_UNCHANGED: 422,
   // two-step-login PR1a (design D3): thrown by shared `AuthScopeError` — not
   // an `IdentityAccessErrorCode` (it lives in `shared/kernel`, not this
   // module's closed error set) but `errorHandler` matches any `DomainError`

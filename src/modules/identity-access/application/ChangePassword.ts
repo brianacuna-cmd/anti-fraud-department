@@ -9,7 +9,7 @@ import type { User } from '../domain/model/aggregates/User.js';
 import { createOrganizationId } from '../domain/model/value-objects/OrganizationId.js';
 import { createUserId } from '../domain/model/value-objects/UserId.js';
 import { createPasswordCredential } from '../domain/model/value-objects/PasswordCredential.js';
-import { userNotFound, invalidCurrentPassword } from '../domain/errors/IdentityAccessError.js';
+import { userNotFound, invalidCurrentPassword, passwordUnchanged } from '../domain/errors/IdentityAccessError.js';
 import { assertPasswordPolicy } from '../domain/model/value-objects/PasswordPolicy.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 
@@ -55,6 +55,16 @@ export function createChangePasswordUseCase(deps: ChangePasswordDeps) {
       const verified = await deps.passwordHasher.verify(input.currentPassword, user.credential);
       if (!verified) {
         throw invalidCurrentPassword();
+      }
+
+      // The new password must differ from the current one. Verify the new
+      // cleartext against the STORED credential (works with bcrypt's per-hash
+      // salt, where a byte comparison of hashes would not) — checked after the
+      // current-password proof, so it reveals nothing an authenticated caller
+      // does not already know about their own credential.
+      const sameAsCurrent = await deps.passwordHasher.verify(input.newPassword, user.credential);
+      if (sameAsCurrent) {
+        throw passwordUnchanged();
       }
 
       const now = deps.clock.now();
