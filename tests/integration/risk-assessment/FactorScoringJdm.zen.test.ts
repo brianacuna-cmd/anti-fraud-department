@@ -134,4 +134,29 @@ describe('buildFactorScoringJdm evaluated by the real ZenRiskScoringEngine', () 
     expect(result.riskScore).toBe(10);
     expect((result.hits[0] as { reason: string }).reason).toBe('dice "alto"');
   });
+
+  /*
+   * Las variables de contexto (`activity.*`, `customerHistory.*`) llegan como
+   * objetos anidados, igual que `riskSignals`. Esto prueba que ZEN los lee por
+   * la ruta con punto y que un evento sin contexto no casa ni revienta.
+   */
+  it('scores on accumulated activity and customer history', async () => {
+    const graph = buildFactorScoringJdm([
+      { field: 'activity.attempts24h', operator: 'GTE', value: 10, points: 40, reason: 'Muchos intentos en 24 h' },
+      { field: 'activity.suspiciousDeclines24h', operator: 'GT', value: 2, points: 30, reason: 'Patrón de card testing' },
+      { field: 'customerHistory.fraudConfirmedCases', operator: 'GT', value: 0, points: 25, reason: 'Fraude confirmado antes' },
+    ]);
+
+    const hit = await engine.evaluate(graph, {
+      provider: 'stripe',
+      amountCents: 100,
+      riskSignals: {},
+      activity: { attempts24h: 14, suspiciousDeclines24h: 5 },
+      customerHistory: { fraudConfirmedCases: 1 },
+    });
+    const clean = await engine.evaluate(graph, { provider: 'stripe', amountCents: 100, riskSignals: {} });
+
+    expect(hit.riskScore).toBe(95);
+    expect(clean.riskScore).toBe(0);
+  });
 });

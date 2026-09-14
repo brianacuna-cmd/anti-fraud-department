@@ -1,4 +1,5 @@
 import { invariantViolation } from '../errors/RiskAssessmentError.js';
+import { ACTIVITY_VARIABLES, CUSTOMER_HISTORY_VARIABLES } from '../model/CustomerRiskContext.js';
 
 /** Comparators a factor may use. Closed: an unknown one must fail when typed. */
 export const SCORING_OPERATORS = [
@@ -63,13 +64,23 @@ const SCORABLE_FIELDS: ReadonlySet<string> = new Set([
 /** `riskSignals` is an open map each provider fills: any key of its own is fine. */
 const RISK_SIGNAL_FIELD = /^riskSignals\.[A-Za-z][A-Za-z0-9]*$/;
 
+/**
+ * Context variables computed by this service (`CustomerRiskContext`). Unlike
+ * `riskSignals` they are a CLOSED list: a typo like `activity.attempt24h`
+ * would never match and the rule would silently never fire.
+ */
+const CONTEXT_FIELDS: ReadonlySet<string> = new Set([
+  ...ACTIVITY_VARIABLES.map((key) => `activity.${key}`),
+  ...CUSTOMER_HISTORY_VARIABLES.map((key) => `customerHistory.${key}`),
+]);
+
 export function isScorableField(field: string): boolean {
-  return SCORABLE_FIELDS.has(field) || RISK_SIGNAL_FIELD.test(field);
+  return SCORABLE_FIELDS.has(field) || CONTEXT_FIELDS.has(field) || RISK_SIGNAL_FIELD.test(field);
 }
 
 /** The fixed fields, so the panel can offer them without duplicating the list. */
 export function scorableFields(): readonly string[] {
-  return [...SCORABLE_FIELDS];
+  return [...SCORABLE_FIELDS, ...CONTEXT_FIELDS];
 }
 
 /**

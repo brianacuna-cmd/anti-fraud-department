@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import {
+  ACTIVITY_VARIABLES,
+  CUSTOMER_HISTORY_VARIABLES,
+} from '../../../../../domain/model/CustomerRiskContext.js';
 
 /**
  * POST /risk-scores body. Domain/HTTP camelCase; `.strict()` rejects
@@ -27,6 +31,8 @@ export const calculateRiskScoreSchema = z
       })
       .strict()
       .optional(),
+    activity: z.partialRecord(z.enum(ACTIVITY_VARIABLES), z.number().finite()).optional(),
+    customerHistory: z.partialRecord(z.enum(CUSTOMER_HISTORY_VARIABLES), z.number().finite()).optional(),
   })
   .strict();
 

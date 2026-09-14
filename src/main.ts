@@ -360,6 +360,15 @@ import { createScoreToCaseOrchestrator } from './composition/scoreToCaseOrchestr
 import type { ScoreToCaseOrchestratorInput, ScoreToCaseOrchestratorResult } from './composition/scoreToCaseOrchestrator.js';
 import { scoreToCaseProcessRouter } from './composition/scoreToCaseProcessRouter.js';
 import { createWebhookToScoreOrchestrator } from './composition/webhookToScoreOrchestrator.js';
+import { createCustomerRiskContextEnricher } from './composition/customerRiskContextEnricher.js';
+import { createPaymentCustomerLookup } from './composition/paymentCustomerLookup.js';
+import { caseCustomerActivityRouter } from './composition/caseCustomerActivityRouter.js';
+import { MongoPaymentActivityRepository } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoPaymentActivityRepository.js';
+import { createRecordPaymentActivityUseCase } from './modules/risk-assessment/application/RecordPaymentActivity.js';
+import { createGetCustomerPaymentActivityUseCase } from './modules/risk-assessment/application/GetCustomerPaymentActivity.js';
+import { generatePaymentActivityId } from './modules/risk-assessment/domain/model/value-objects/PaymentActivityId.js';
+import { createGetCustomerCaseHistoryUseCase } from './modules/case-management/application/GetCustomerCaseHistory.js';
+import { MongoCustomerCaseHistoryReader } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCustomerCaseHistoryReader.js';
 import { createScreenThenScoreToCaseOrchestrator } from './composition/screenThenScoreToCaseOrchestrator.js';
 import type { CanonicalRiskEvent } from './modules/risk-assessment/domain/model/CanonicalRiskEvent.js';
 import { createScreenSubjectAgainstWatchlistUseCase } from './modules/screening/application/ScreenSubjectAgainstWatchlist.js';
@@ -1728,10 +1737,29 @@ async function bootstrap(): Promise<void> {
     }),
   });
   // Composition-only score→threshold→CreateCase path (eslint boundaries).
+  // Accumulated activity + case history as rule variables (`activity.*`,
+  // `customerHistory.*`). One store for webhooks and, later, CSV imports.
+  const paymentActivities = new MongoPaymentActivityRepository(db);
+  const recordPaymentActivity = createRecordPaymentActivityUseCase({
+    activities: paymentActivities,
+    clock,
+    generatePaymentActivityId,
+  });
+  const getCustomerPaymentActivity = createGetCustomerPaymentActivityUseCase({ activities: paymentActivities });
+  const getCustomerCaseHistory = createGetCustomerCaseHistoryUseCase({
+    reader: new MongoCustomerCaseHistoryReader(db),
+  });
   const processRiskScoreToCase = createScoreToCaseOrchestrator({
     calculateRiskScore,
     getOrganizationFraudConfig,
     createCase,
+    enrichEvent: createCustomerRiskContextEnricher({ getCustomerPaymentActivity, getCustomerCaseHistory }),
+  });
+  const caseCustomerActivityHttpRouter = caseCustomerActivityRouter({
+    getCase: createGetCaseUseCase({ cases }),
+    getCustomerPaymentActivity,
+    getCustomerCaseHistory,
+    clock,
   });
 
   // screening-watchlist-matcher Slice 7: watchlist screening ports/adapters,
@@ -1932,6 +1960,7 @@ async function bootstrap(): Promise<void> {
     processRiskScoreToCase: processRiskScoreToCaseWithScreening,
     events: providerIngestEvents,
     clock,
+    recordPaymentActivity,
   });
   const receiveProviderWebhook = createReceiveProviderWebhookUseCase({
     secrets: inboundWebhookSecrets,
@@ -1939,6 +1968,7 @@ async function bootstrap(): Promise<void> {
     cipher: secretCipher,
     verifiers: selectVerifier,
     mapper: { map: mapProviderEnvelope },
+    paymentCustomers: createPaymentCustomerLookup(paymentActivities),
     composer: webhookToScore,
     clock,
   });
@@ -2548,6 +2578,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(caseExportHttpRouter);
   identityAccessRouter.use(caseMetricsHttpRouter);
   identityAccessRouter.use(caseManagementCasesRouter);
+  identityAccessRouter.use(caseCustomerActivityHttpRouter);
   identityAccessRouter.use(caseManagementFinturuRouter);
   identityAccessRouter.use(finturuWebhook);
   identityAccessRouter.use(investigationHttpRouter);

@@ -137,3 +137,21 @@ describe('mapCoinflowEnvelope', () => {
     expect(result.reason).toBe('missing_customer');
   });
 });
+
+describe('mapCoinflowEnvelope payment activity', () => {
+  it.each([
+    ['Card Payment Authorized', { kind: 'ATTEMPT', outcome: 'SUCCEEDED', providerReference: 'pay_1' }],
+    ['Card Payment Declined', { kind: 'ATTEMPT', outcome: 'FAILED', providerReference: 'pay_1' }],
+    ['Card Payment Suspected Fraud', { kind: 'FRAUD_WARNING', providerReference: 'pay_1' }],
+  ])('%s is recorded as %j', (eventType, expected) => {
+    const result = mapCoinflowEnvelope(coinflowEvent(eventType, PAYMENT));
+    if (result.status !== 'mapped') throw new Error('expected mapped');
+    expect(result.event.paymentActivity).toEqual(expected);
+  });
+
+  it('does not count Payment Pending Review: the same payment comes back authorized or declined', () => {
+    const result = mapCoinflowEnvelope(coinflowEvent('Payment Pending Review', PAYMENT));
+    if (result.status !== 'mapped') throw new Error('expected mapped');
+    expect(result.event.paymentActivity).toBeUndefined();
+  });
+});

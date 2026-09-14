@@ -9,7 +9,10 @@ import { generateInboundWebhookSecretId } from '../../../../src/modules/ingest/d
 import type { PaymentProvider } from '../../../../src/modules/ingest/domain/model/value-objects/PaymentProvider.js';
 import type { InboundWebhookSecretRepository } from '../../../../src/modules/ingest/domain/ports/InboundWebhookSecretRepository.js';
 import type { PostAckComposer } from '../../../../src/modules/ingest/domain/ports/PostAckComposer.js';
-import type { ProviderEnvelopeMapper } from '../../../../src/modules/ingest/domain/ports/ProviderEnvelopeMapper.js';
+import type {
+  PaymentCustomerLookup,
+  ProviderEnvelopeMapper,
+} from '../../../../src/modules/ingest/domain/ports/ProviderEnvelopeMapper.js';
 import type { ProviderIngestEventRepository } from '../../../../src/modules/ingest/domain/ports/ProviderIngestEventRepository.js';
 import type { SecretCipher } from '../../../../src/modules/ingest/domain/ports/SecretCipher.js';
 import type { WebhookSignatureVerifier } from '../../../../src/modules/ingest/domain/ports/WebhookSignatureVerifier.js';
@@ -136,6 +139,7 @@ function buildUseCase(overrides: {
   composer?: PostAckComposer;
   scheduled?: Array<() => void>;
   mapper?: ProviderEnvelopeMapper;
+  paymentCustomers?: PaymentCustomerLookup;
 } = {}) {
   const secrets = overrides.secrets ?? new InMemorySecrets();
   if (!overrides.secrets) {
@@ -155,6 +159,7 @@ function buildUseCase(overrides: {
     cipher: new FakeCipher(),
     verifiers: () => verifier,
     mapper: overrides.mapper ?? { map: mapProviderEnvelope },
+    ...(overrides.paymentCustomers ? { paymentCustomers: overrides.paymentCustomers } : {}),
     composer,
     clock: new FixedClock(NOW),
     schedulePostAck: (work) => {
@@ -468,5 +473,55 @@ describe('createIngestSystemAuthContext', () => {
 
     expect(auth.userId).toBe('system:ingest:bridge');
     expect(auth.actorType).toBe('ORGANIZATION');
+  });
+});
+
+describe('createReceiveProviderWebhookUseCase with a referenced payment (Stripe dispute)', () => {
+  const DISPUTE_BODY = Buffer.from(
+    JSON.stringify({
+      id: 'evt_dispute_1',
+      type: 'charge.dispute.created',
+      created: 1_704_067_200,
+      data: { object: { id: 'dp_1', charge: 'ch_known', amount: 2500, currency: 'usd', reason: 'fraudulent' } },
+    }),
+    'utf8',
+  );
+
+  it('maps the dispute with the customer recorded for its charge and composes it', async () => {
+    const lookups: string[] = [];
+    const composed: string[] = [];
+    const { receive, events, scheduled } = buildUseCase({
+      paymentCustomers: {
+        findCustomerId: async (organizationId, provider, reference) => {
+          lookups.push(`${organizationId}:${provider}:${reference}`);
+          return 'cus_owner';
+        },
+      },
+      composer: { compose: async (input) => void composed.push(input.event.caseCustomerId) },
+    });
+
+    const result = await receive({ organizationId: ORG, provider: 'stripe', rawBody: DISPUTE_BODY, headers: {} });
+    scheduled.forEach((work) => work());
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(result.status).toBe('PROCESSED');
+    expect(lookups).toEqual([`${ORG}:stripe:ch_known`]);
+    expect(events.inserted[0]?.status).toBe('RECEIVED');
+    expect(composed).toEqual(['cus_owner']);
+  });
+
+  it('stays FAILED when the charge was never seen', async () => {
+    const { receive, events } = buildUseCase({ paymentCustomers: { findCustomerId: async () => null } });
+
+    const result = await receive({ organizationId: ORG, provider: 'stripe', rawBody: DISPUTE_BODY, headers: {} });
+
+    expect(result.status).toBe('FAILED');
+    expect(events.inserted[0]?.status).toBe('FAILED');
+  });
+
+  it('keeps the previous behavior when no lookup is wired', async () => {
+    const { receive } = buildUseCase();
+
+    expect((await receive({ organizationId: ORG, provider: 'stripe', rawBody: DISPUTE_BODY, headers: {} })).status).toBe('FAILED');
   });
 });

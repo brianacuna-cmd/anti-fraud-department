@@ -239,3 +239,48 @@ describe('mapStripeEnvelope', () => {
     expect(result.event).not.toHaveProperty('riskScore');
   });
 });
+
+describe('mapStripeEnvelope payment activity', () => {
+  const DISPUTE = {
+    id: 'evt_dispute',
+    type: 'charge.dispute.created',
+    created: CREATED,
+    data: { object: { id: 'dp_1', charge: 'ch_disputed', amount: 2500, currency: 'usd', reason: 'fraudulent', status: 'needs_response' } },
+  };
+
+  it('counts succeeded and failed charges as attempts referencing the charge, and charge.updated as nothing', () => {
+    const ok = mapStripeEnvelope(chargeEvent('charge.succeeded', CHARGE));
+    const ko = mapStripeEnvelope(chargeEvent('charge.failed', { ...CHARGE, status: 'failed' }));
+    const updated = mapStripeEnvelope(chargeEvent('charge.updated', CHARGE));
+
+    if (ok.status !== 'mapped' || ko.status !== 'mapped' || updated.status !== 'mapped') throw new Error('expected mapped');
+    expect(ok.event.paymentActivity).toEqual({ kind: 'ATTEMPT', outcome: 'SUCCEEDED', providerReference: 'ch_1' });
+    expect(ko.event.paymentActivity).toEqual({ kind: 'ATTEMPT', outcome: 'FAILED', providerReference: 'ch_1' });
+    expect(updated.event.paymentActivity).toBeUndefined();
+  });
+
+  it('reports a dispute without customer as missing_customer carrying the disputed charge', () => {
+    expect(mapStripeEnvelope(DISPUTE)).toEqual({
+      status: 'failed',
+      reason: 'missing_customer',
+      providerReference: 'ch_disputed',
+    });
+  });
+
+  it('maps the dispute as a chargeback once the charge owner is known', () => {
+    const result = mapStripeEnvelope(DISPUTE, { customerId: 'cus_owner' });
+
+    if (result.status !== 'mapped') throw new Error('expected mapped');
+    expect(result.event.caseCustomerId).toBe('cus_owner');
+    expect(result.event.amountCents).toBe(2500);
+    expect(result.event.riskSignals).toMatchObject({ disputeReason: 'fraudulent', disputeStatus: 'needs_response' });
+    expect(result.event.paymentActivity).toEqual({ kind: 'CHARGEBACK', providerReference: 'ch_disputed' });
+  });
+
+  it('never uses the hint over a customer the payload does carry', () => {
+    const result = mapStripeEnvelope(chargeEvent('charge.succeeded', CHARGE), { customerId: 'cus_wrong' });
+
+    if (result.status !== 'mapped') throw new Error('expected mapped');
+    expect(result.event.caseCustomerId).toBe('cus_1');
+  });
+});

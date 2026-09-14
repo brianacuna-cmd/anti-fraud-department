@@ -18,6 +18,20 @@ export interface IngestedPaymentEvent {
   readonly rail?: string;
   readonly rawPayload?: Readonly<Record<string, unknown>>;
   readonly subjectIdentity?: SubjectIdentity;
+  /**
+   * What this event adds to the customer's payment history, as the provider
+   * mapper understands it. Absent when the event is not a payment fact on its
+   * own (e.g. `charge.updated` repeats a charge already counted).
+   */
+  readonly paymentActivity?: PaymentActivityDescriptor;
+}
+
+export interface PaymentActivityDescriptor {
+  readonly kind: 'ATTEMPT' | 'CHARGEBACK' | 'FRAUD_WARNING';
+  /** Only for ATTEMPT. */
+  readonly outcome?: 'SUCCEEDED' | 'FAILED';
+  /** The payment the event is about (Stripe charge id…). */
+  readonly providerReference?: string;
 }
 
 export interface SubjectIdentity {
@@ -34,6 +48,9 @@ export function createIngestedPaymentEvent(input: Readonly<Record<string, unknow
   const rail = pickOptionalString(input.rail);
   const rawPayload = isRecord(input.rawPayload) ? input.rawPayload : undefined;
   const subjectIdentity = isRecord(input.subjectIdentity) ? pickSubjectIdentity(input.subjectIdentity) : undefined;
+  const paymentActivity = isRecord(input.paymentActivity)
+    ? (input.paymentActivity as unknown as PaymentActivityDescriptor)
+    : undefined;
   return {
     provider: asNonEmptyString('provider', input.provider),
     providerEventType: asNonEmptyString('providerEventType', input.providerEventType),
@@ -47,6 +64,7 @@ export function createIngestedPaymentEvent(input: Readonly<Record<string, unknow
     ...(rail !== undefined ? { rail } : {}),
     ...(rawPayload !== undefined ? { rawPayload } : {}),
     ...(subjectIdentity !== undefined ? { subjectIdentity } : {}),
+    ...(paymentActivity !== undefined ? { paymentActivity } : {}),
   };
 }
 

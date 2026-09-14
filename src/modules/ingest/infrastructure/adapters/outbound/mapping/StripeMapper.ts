@@ -1,7 +1,10 @@
 import { fromDate } from '../../../../../../shared/time/Instant.js';
 import { classifyStripeDecline } from '../../../../../../shared/payments/stripeDeclineClassification.js';
-import { createIngestedPaymentEvent } from '../../../../domain/model/IngestedPaymentEvent.js';
-import type { EnvelopeMapResult } from './EnvelopeMapResult.js';
+import {
+  createIngestedPaymentEvent,
+  type PaymentActivityDescriptor,
+} from '../../../../domain/model/IngestedPaymentEvent.js';
+import type { EnvelopeMapHints, EnvelopeMapResult } from './EnvelopeMapResult.js';
 import { isRecord } from './isRecord.js';
 import { inferSubjectEntryType, readOptionalStringPath } from './subjectIdentityPaths.js';
 
@@ -16,9 +19,10 @@ import { inferSubjectEntryType, readOptionalStringPath } from './subjectIdentity
 
 const CHARGE_TYPES = new Set(['charge.succeeded', 'charge.failed', 'charge.updated']);
 const EFW_CREATED = 'radar.early_fraud_warning.created';
+const DISPUTE_CREATED = 'charge.dispute.created';
 const UPDATED = 'charge.updated';
 
-export function mapStripeEnvelope(payload: unknown): EnvelopeMapResult {
+export function mapStripeEnvelope(payload: unknown, hints: EnvelopeMapHints = {}): EnvelopeMapResult {
   if (!isRecord(payload)) {
     return { status: 'ignored', reason: 'unknown_event_type' };
   }
@@ -28,7 +32,10 @@ export function mapStripeEnvelope(payload: unknown): EnvelopeMapResult {
   const object = isRecord(data.object) ? data.object : {};
 
   if (type === EFW_CREATED) {
-    return mapEarlyFraudWarning(payload, object);
+    return mapEarlyFraudWarning(payload, object, hints);
+  }
+  if (type === DISPUTE_CREATED) {
+    return mapDispute(payload, object, hints);
   }
 
   if (!CHARGE_TYPES.has(type)) {
@@ -40,7 +47,7 @@ export function mapStripeEnvelope(payload: unknown): EnvelopeMapResult {
     return { status: 'ignored', reason: 'unknown_event_type' };
   }
 
-  return mapCharge(payload, type, object, outcome);
+  return mapCharge(payload, type, object, outcome, hints);
 }
 
 function mapCharge(
@@ -48,6 +55,7 @@ function mapCharge(
   type: string,
   charge: Record<string, unknown>,
   outcome: Record<string, unknown> | null,
+  hints: EnvelopeMapHints,
 ): EnvelopeMapResult {
   const riskSignals: Record<string, unknown> = {};
   if (outcome !== null) {
@@ -60,7 +68,24 @@ function mapCharge(
   }
   Object.assign(riskSignals, declineSignals(type, charge, outcome), countrySignals(charge));
 
-  return mappedStripe(payload, type, charge, riskSignals);
+  return mappedStripe(payload, type, charge, riskSignals, hints, chargeActivity(type, charge));
+}
+
+/**
+ * A charge is counted once, when it settles as succeeded or failed.
+ * `charge.updated` repeats a charge already counted, so it adds nothing to
+ * the payment history (it is still scored: Radar may have changed its view).
+ */
+function chargeActivity(type: string, charge: Record<string, unknown>): PaymentActivityDescriptor | undefined {
+  if (type === UPDATED) {
+    return undefined;
+  }
+  const reference = readOptionalStringPath(charge, ['id']);
+  return {
+    kind: 'ATTEMPT',
+    outcome: type === 'charge.failed' ? 'FAILED' : 'SUCCEEDED',
+    ...(reference !== undefined ? { providerReference: reference } : {}),
+  };
 }
 
 /**
@@ -103,6 +128,7 @@ function countrySignals(charge: Record<string, unknown>): Record<string, unknown
 function mapEarlyFraudWarning(
   payload: Record<string, unknown>,
   efw: Record<string, unknown>,
+  hints: EnvelopeMapHints,
 ): EnvelopeMapResult {
   const charge = isRecord(efw.charge) ? efw.charge : {};
   const riskSignals: Record<string, unknown> = {};
@@ -112,7 +138,46 @@ function mapEarlyFraudWarning(
   if (typeof efw.actionable === 'boolean') {
     riskSignals.actionable = efw.actionable;
   }
-  return mappedStripe(payload, EFW_CREATED, charge, riskSignals);
+  const reference = referencedChargeId(efw.charge);
+  return mappedStripe(payload, EFW_CREATED, charge, riskSignals, hints, {
+    kind: 'FRAUD_WARNING',
+    ...(reference !== undefined ? { providerReference: reference } : {}),
+  });
+}
+
+/**
+ * A dispute is a chargeback on an earlier charge. Its own object carries the
+ * disputed amount and currency, but NOT the customer: `charge` is just an id
+ * in webhooks. `mappedStripe` then reports `missing_customer` with that id as
+ * `providerReference`, and the ingest use case retries with the customer it
+ * recorded for that charge.
+ */
+function mapDispute(
+  payload: Record<string, unknown>,
+  dispute: Record<string, unknown>,
+  hints: EnvelopeMapHints,
+): EnvelopeMapResult {
+  const riskSignals: Record<string, unknown> = {};
+  if (typeof dispute.reason === 'string') {
+    riskSignals.disputeReason = dispute.reason;
+  }
+  if (typeof dispute.status === 'string') {
+    riskSignals.disputeStatus = dispute.status;
+  }
+  const charge = isRecord(dispute.charge) ? dispute.charge : {};
+  const reference = referencedChargeId(dispute.charge);
+  const moneySource = { ...dispute, customer: charge.customer ?? dispute.customer };
+  return mappedStripe(payload, DISPUTE_CREATED, moneySource, riskSignals, hints, {
+    kind: 'CHARGEBACK',
+    ...(reference !== undefined ? { providerReference: reference } : {}),
+  });
+}
+
+function referencedChargeId(charge: unknown): string | undefined {
+  if (typeof charge === 'string' && charge.trim().length > 0) {
+    return charge;
+  }
+  return readOptionalStringPath(charge, ['id']);
 }
 
 function mappedStripe(
@@ -120,13 +185,22 @@ function mappedStripe(
   type: string,
   moneySource: Record<string, unknown>,
   riskSignals: Record<string, unknown>,
+  hints: EnvelopeMapHints,
+  paymentActivity: PaymentActivityDescriptor | undefined,
 ): EnvelopeMapResult {
   const customerId =
     typeof moneySource.customer === 'string' && moneySource.customer.trim().length > 0
       ? moneySource.customer
-      : null;
+      : (hints.customerId ?? null);
   if (customerId === null) {
-    return { status: 'failed', reason: 'missing_customer' };
+    const providerReference = paymentActivity?.providerReference;
+    return {
+      status: 'failed',
+      reason: 'missing_customer',
+      ...(providerReference !== undefined && type !== 'charge.succeeded' && type !== 'charge.failed'
+        ? { providerReference }
+        : {}),
+    };
   }
 
   if (typeof moneySource.amount !== 'number' || Number.isNaN(moneySource.amount)) {
@@ -156,6 +230,7 @@ function mappedStripe(
       providerEventId: eventId,
       rawPayload: payload,
       subjectIdentity: { name, document, entryType },
+      ...(paymentActivity !== undefined ? { paymentActivity } : {}),
     }),
   };
 }
