@@ -49,4 +49,3 @@ export function createListDlqEventsUseCase(deps: ListDlqEventsDeps) {
   };
 }
 
-export type ListDlqEventsService = ReturnType<typeof createListDlqEventsUseCase>;

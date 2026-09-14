@@ -32,4 +32,3 @@ export function createGetDlqEventUseCase(deps: GetDlqEventDeps) {
   };
 }
 
-export type GetDlqEventService = ReturnType<typeof createGetDlqEventUseCase>;

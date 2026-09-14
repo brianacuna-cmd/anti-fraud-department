@@ -78,11 +78,6 @@ export function isScorableField(field: string): boolean {
   return SCORABLE_FIELDS.has(field) || CONTEXT_FIELDS.has(field) || RISK_SIGNAL_FIELD.test(field);
 }
 
-/** The fixed fields, so the panel can offer them without duplicating the list. */
-export function scorableFields(): readonly string[] {
-  return [...SCORABLE_FIELDS, ...CONTEXT_FIELDS];
-}
-
 /**
  * Source of the function node that folds the hits into a score.
  *

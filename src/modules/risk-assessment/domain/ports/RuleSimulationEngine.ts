@@ -1,6 +1,6 @@
 import type { RuleSimulation } from '../../../../shared/rules/RuleSimulation.js';
 
-export type { RuleSimulation, RuleTrace } from '../../../../shared/rules/RuleSimulation.js';
+export type { RuleSimulation } from '../../../../shared/rules/RuleSimulation.js';
 
 /**
  * Dry-run port, deliberately separate from `RiskScoringEngine`.

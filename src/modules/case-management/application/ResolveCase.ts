@@ -9,9 +9,7 @@ import {
 } from '../domain/services/WorkflowStepGate.js';
 import type { AnalystDecision } from '../domain/model/aggregates/AnalystDecision.js';
 import type { AnalystDecisionType } from '../domain/model/value-objects/AnalystDecisionType.js';
-import { closeCase, type CloseCaseDeps, type CloseCaseInput } from './closeCase.js';
-
-export type ResolveCaseInput = CloseCaseInput;
+import { closeCase, type CloseCaseDeps } from './closeCase.js';
 /** Resolve REQUIRES the outbox deps (it always emits CASE_RESOLVED) plus the
  * decision/enforcement repos used by the workflow-step gate below. */
 export type ResolveCaseDeps = CloseCaseDeps & {
