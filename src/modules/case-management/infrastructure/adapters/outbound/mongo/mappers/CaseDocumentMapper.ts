@@ -2,10 +2,12 @@ import { ObjectId } from 'mongodb';
 import { fromDate, toDate } from '../../../../../../../shared/time/Instant.js';
 import { Case } from '../../../../../domain/model/aggregates/Case.js';
 import { createCaseId } from '../../../../../domain/model/value-objects/CaseId.js';
+import { createCaseNumber } from '../../../../../domain/model/value-objects/CaseNumber.js';
 import { createCaseStatus } from '../../../../../domain/model/value-objects/CaseStatus.js';
 import { createCasePriority } from '../../../../../domain/model/value-objects/CasePriority.js';
 import { createRiskScore } from '../../../../../domain/model/value-objects/RiskScore.js';
 import { createAssignedTo } from '../../../../../domain/model/value-objects/AssignedTo.js';
+import { createResolutionOutcome } from '../../../../../domain/model/value-objects/ResolutionOutcome.js';
 import type { CaseDocument } from '../documents/CaseDocument.js';
 
 /** camelCase (domain) -> snake_case (Mongo). Instant fields become BSON `Date`. */
@@ -13,6 +15,7 @@ export function toDocument(kase: Case): CaseDocument {
   const assignedTo = kase.assignedTo;
   return {
     _id: new ObjectId(kase.id),
+    case_number: kase.caseNumber,
     organization_id: new ObjectId(kase.organizationId),
     customer_id: kase.customerId,
     customer_email: kase.customerEmail,
@@ -33,6 +36,7 @@ export function toDocument(kase: Case): CaseDocument {
     updated_at: toDate(kase.updatedAt),
     deleted_at: kase.deletedAt === null ? null : toDate(kase.deletedAt),
     agent_brief: kase.agentBrief,
+    resolution_outcome: kase.resolutionOutcome,
   };
 }
 
@@ -40,6 +44,7 @@ export function toDocument(kase: Case): CaseDocument {
 export function toDomain(document: CaseDocument): Case {
   return Case.rehydrate({
     id: createCaseId(document._id.toString()),
+    caseNumber: document.case_number == null ? null : createCaseNumber(document.case_number),
     organizationId: document.organization_id.toString(),
     customerId: document.customer_id,
     customerEmail: document.customer_email,
@@ -62,5 +67,7 @@ export function toDomain(document: CaseDocument): Case {
     updatedAt: fromDate(document.updated_at),
     deletedAt: document.deleted_at === null ? null : fromDate(document.deleted_at),
     agentBrief: document.agent_brief ?? null,
+    resolutionOutcome:
+      document.resolution_outcome == null ? null : createResolutionOutcome(document.resolution_outcome),
   });
 }

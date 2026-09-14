@@ -11,13 +11,14 @@ import type { CaseDocument } from './documents/CaseDocument.js';
 import type { EnforcementActionDocument } from './documents/EnforcementActionDocument.js';
 import type { ResolutionDocument } from './documents/ResolutionDocument.js';
 import { toDate } from '../../../../../../shared/time/Instant.js';
+import { ACTIVE_CASE_STATUSES } from '../../../../domain/ports/CaseRepository.js';
 
 const CASES = 'cases';
 const ENFORCEMENT_ACTIONS = 'enforcement_actions';
 const RESOLUTIONS = 'resolutions';
 
 /** Statuses in which a case is still on someone's desk. */
-const ACTIVE_STATUSES = ['OPEN', 'IN_REVIEW'];
+const ACTIVE_STATUSES: string[] = [...ACTIVE_CASE_STATUSES];
 
 /**
  * Dashboard risk cuts. Fixed and named here —not configurable— so two

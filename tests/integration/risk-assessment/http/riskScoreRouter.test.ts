@@ -39,6 +39,8 @@ import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEvent
 import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
 import { createArchiveCaseUseCase } from '../../../../src/modules/case-management/application/ArchiveCase.js';
 import { createStartReviewUseCase } from '../../../../src/modules/case-management/application/StartReview.js';
+import { createRequestCaseDocumentationUseCase } from '../../../../src/modules/case-management/application/RequestCaseDocumentation.js';
+import { createResumeCaseReviewUseCase } from '../../../../src/modules/case-management/application/ResumeCaseReview.js';
 import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InMemoryCaseNoteRepository.js';
 import { generateCaseNoteId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { createReopenCaseUseCase } from '../../../../src/modules/case-management/application/ReopenCase.js';
@@ -59,6 +61,7 @@ import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/i
 import { generateCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from '../../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { generateCaseSlaTrackingId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
+import { InMemoryCaseNumberAllocator } from '../../../helpers/case-management/InMemoryCaseNumberAllocator.js';
 
 const ORG_1_ANALYST = createAuthContext({
   userId: oid('analyst-1'),
@@ -188,6 +191,7 @@ function buildApp(actorPerRequest: () => AuthContext, engine: RiskScoringEngine,
       unitOfWork,
       clock,
       generateCaseId,
+      caseNumbers: new InMemoryCaseNumberAllocator(),
       generateTimelineEventId,
       auditRecorder: caseAuditRecorder,
       routeCase,
@@ -224,6 +228,8 @@ function buildApp(actorPerRequest: () => AuthContext, engine: RiskScoringEngine,
     }),
     archiveCase: createArchiveCaseUseCase({ cases, resolutions, timelineRecorder, auditRecorder: caseAuditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
     startReview: createStartReviewUseCase({ cases, timelineRecorder, auditRecorder: caseAuditRecorder, unitOfWork, clock, generateTimelineEventId }),
+    requestCaseDocumentation: createRequestCaseDocumentationUseCase({ cases, timelineRecorder, auditRecorder: caseAuditRecorder, unitOfWork, clock, generateTimelineEventId }),
+    resumeCaseReview: createResumeCaseReviewUseCase({ cases, timelineRecorder, auditRecorder: caseAuditRecorder, unitOfWork, clock, generateTimelineEventId }),
     bulkCaseAction: createBulkCaseActionUseCase({
       cases,
       timelineRecorder,

@@ -27,6 +27,8 @@ import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEvent
 import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
 import { createArchiveCaseUseCase } from '../../../../src/modules/case-management/application/ArchiveCase.js';
 import { createStartReviewUseCase } from '../../../../src/modules/case-management/application/StartReview.js';
+import { createRequestCaseDocumentationUseCase } from '../../../../src/modules/case-management/application/RequestCaseDocumentation.js';
+import { createResumeCaseReviewUseCase } from '../../../../src/modules/case-management/application/ResumeCaseReview.js';
 import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InMemoryCaseNoteRepository.js';
 import { generateCaseNoteId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { createReopenCaseUseCase } from '../../../../src/modules/case-management/application/ReopenCase.js';
@@ -52,6 +54,7 @@ import { Case } from '../../../../src/modules/case-management/domain/model/aggre
 import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
 import { createAssignedTo } from '../../../../src/modules/case-management/domain/model/value-objects/AssignedTo.js';
+import { InMemoryCaseNumberAllocator } from '../../../helpers/case-management/InMemoryCaseNumberAllocator.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ORG_1 = oid('org-1');
@@ -115,6 +118,7 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
       unitOfWork,
       clock,
       generateCaseId,
+      caseNumbers: new InMemoryCaseNumberAllocator(),
       generateTimelineEventId,
       auditRecorder,
       routeCase,
@@ -151,6 +155,8 @@ function buildApp(actorPerRequest: () => AuthContext = () => ORG_1_ANALYST) {
     }),
     archiveCase: createArchiveCaseUseCase({ cases, resolutions, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
     startReview: createStartReviewUseCase({ cases, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateTimelineEventId }),
+    requestCaseDocumentation: createRequestCaseDocumentationUseCase({ cases, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateTimelineEventId }),
+    resumeCaseReview: createResumeCaseReviewUseCase({ cases, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateTimelineEventId }),
     bulkCaseAction: createBulkCaseActionUseCase({
       cases,
       timelineRecorder,

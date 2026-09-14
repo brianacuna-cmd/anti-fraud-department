@@ -12,6 +12,7 @@
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "bootstrap:admin": "tsx --env-file-if-exists=.env scripts/bootstrap-admin.ts",
+    "backfill:case-numbers": "tsx --env-file-if-exists=.env scripts/backfill-case-numbers.ts",
     "migrate:unique-active-scoring-rules": "tsx --env-file-if-exists=.env scripts/migrate-unique-active-scoring-rules.ts"
   },
   "dependencies": {

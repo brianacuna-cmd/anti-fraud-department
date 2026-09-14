@@ -27,6 +27,8 @@ import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEvent
 import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
 import { createArchiveCaseUseCase } from '../../../../src/modules/case-management/application/ArchiveCase.js';
 import { createStartReviewUseCase } from '../../../../src/modules/case-management/application/StartReview.js';
+import { createRequestCaseDocumentationUseCase } from '../../../../src/modules/case-management/application/RequestCaseDocumentation.js';
+import { createResumeCaseReviewUseCase } from '../../../../src/modules/case-management/application/ResumeCaseReview.js';
 import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InMemoryCaseNoteRepository.js';
 import { generateCaseNoteId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { createReopenCaseUseCase } from '../../../../src/modules/case-management/application/ReopenCase.js';
@@ -50,6 +52,7 @@ import { generateCaseRoutingRuleId } from '../../../../src/modules/case-manageme
 import { OrganizationFraudConfig } from '../../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
 import { generateOrganizationFraudConfigId } from '../../../../src/modules/case-management/domain/model/value-objects/OrganizationFraudConfigId.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
+import { InMemoryCaseNumberAllocator } from '../../../helpers/case-management/InMemoryCaseNumberAllocator.js';
 
 const ORG_1_ANALYST = createAuthContext({ userId: oid('analyst-1'), organizationId: oid('org-1'), actorType: 'USER' });
 
@@ -140,6 +143,7 @@ function buildApp(actorPerRequest: () => AuthContext, options: { seedFraudConfig
       unitOfWork,
       clock,
       generateCaseId,
+      caseNumbers: new InMemoryCaseNumberAllocator(),
       generateTimelineEventId,
       auditRecorder,
       routeCase,
@@ -176,6 +180,8 @@ function buildApp(actorPerRequest: () => AuthContext, options: { seedFraudConfig
     }),
     archiveCase: createArchiveCaseUseCase({ cases, resolutions, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
     startReview: createStartReviewUseCase({ cases, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateTimelineEventId }),
+    requestCaseDocumentation: createRequestCaseDocumentationUseCase({ cases, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateTimelineEventId }),
+    resumeCaseReview: createResumeCaseReviewUseCase({ cases, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateTimelineEventId }),
     bulkCaseAction: createBulkCaseActionUseCase({
       cases,
       timelineRecorder,

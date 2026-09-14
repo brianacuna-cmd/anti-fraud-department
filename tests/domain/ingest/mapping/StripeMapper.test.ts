@@ -56,6 +56,45 @@ describe('mapStripeEnvelope', () => {
     expect(result.event).not.toHaveProperty('riskScore');
   });
 
+  it('classifies a failed charge by its most specific code and exposes both countries', () => {
+    const failed = {
+      ...CHARGE,
+      status: 'failed',
+      failure_code: 'card_declined',
+      outcome: { type: 'issuer_declined', reason: 'stolen_card', risk_score: 40, risk_level: 'normal' },
+      payment_method_details: { card: { country: 'ng' } },
+      billing_details: { address: { country: 'US' } },
+    };
+
+    const result = mapStripeEnvelope(chargeEvent('charge.failed', failed));
+
+    if (result.status !== 'mapped') {
+      throw new Error('expected mapped');
+    }
+    expect(result.event.riskSignals).toMatchObject({
+      declineCode: 'stolen_card',
+      declineCategory: 'FRAUD_SUSPECTED',
+      cardCountry: 'NG',
+      billingCountry: 'US',
+    });
+  });
+
+  it('does not classify a paid charge that Radar only sent to review', () => {
+    const reviewed = {
+      ...CHARGE,
+      status: 'succeeded',
+      outcome: { type: 'manual_review', reason: 'elevated_risk_level', risk_score: 70, risk_level: 'elevated' },
+    };
+
+    const result = mapStripeEnvelope(chargeEvent('charge.succeeded', reviewed));
+
+    if (result.status !== 'mapped') {
+      throw new Error('expected mapped');
+    }
+    expect(result.event.riskSignals).not.toHaveProperty('declineCode');
+    expect(result.event.riskSignals).not.toHaveProperty('declineCategory');
+  });
+
   it('maps charge.updated when outcome is present', () => {
     const updated = { ...CHARGE, amount: 4100, outcome: { risk_score: 75, risk_level: 'highest' } };
     const result = mapStripeEnvelope(chargeEvent('charge.updated', updated));

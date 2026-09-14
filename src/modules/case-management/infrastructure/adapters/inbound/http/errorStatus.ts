@@ -35,6 +35,7 @@ export const caseManagementErrorStatus: StatusByCode = {
   CASE_NOT_INSTRUCTED: 409,
   CASE_NOT_DECIDED: 409,
   CASE_ENFORCEMENT_PENDING: 409,
+  CASE_OUTCOME_CONTRADICTS_DECISION: 409,
   CASE_NOT_RESOLVED_FOR_REPORT: 409,
   // 409: the request is valid, but creating/reopening the case unassigned
   // right now would leave it with no path to ever getting assigned.

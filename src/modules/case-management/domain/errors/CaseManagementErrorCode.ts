@@ -59,6 +59,13 @@ export type CaseManagementErrorCode =
    */
   | 'CASE_ENFORCEMENT_PENDING'
   /**
+   * The closure outcome says the opposite of the latest analyst decision
+   * (e.g. closed as FALSE_POSITIVE on top of a FRAUD_CONFIRMED verdict).
+   * Metrics and reports read the outcome, so a contradiction there would
+   * silently rewrite what the analyst concluded.
+   */
+  | 'CASE_OUTCOME_CONTRADICTS_DECISION'
+  /**
    * The case report/dossier freezes the FULL case file, resolution
    * included — generating it before the case is closed would freeze a
    * story that has not finished yet.

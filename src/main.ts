@@ -148,6 +148,7 @@ import type { MalwareScanner } from './modules/case-management/domain/ports/Malw
 import { NullTimestampAuthority } from './modules/case-management/infrastructure/adapters/outbound/timestamp/NullTimestampAuthority.js';
 import { MongoUnitOfWork as CaseManagementMongoUnitOfWork } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoUnitOfWork.js';
 import { generateCaseId } from './modules/case-management/domain/model/value-objects/CaseId.js';
+import { MongoCaseNumberAllocator } from './modules/case-management/infrastructure/adapters/outbound/mongo/MongoCaseNumberAllocator.js';
 import { generateTimelineEventId } from './modules/case-management/domain/model/value-objects/TimelineEventId.js';
 import { createCreateCaseUseCase } from './modules/case-management/application/CreateCase.js';
 import { createEnqueueCustomerWebhookFanOut } from './modules/case-management/application/EnqueueCustomerWebhookFanOut.js';
@@ -171,6 +172,8 @@ import { generateCaseNoteId } from './modules/case-management/domain/model/value
 import { createResolveCaseUseCase } from './modules/case-management/application/ResolveCase.js';
 import { createArchiveCaseUseCase } from './modules/case-management/application/ArchiveCase.js';
 import { createStartReviewUseCase } from './modules/case-management/application/StartReview.js';
+import { createRequestCaseDocumentationUseCase } from './modules/case-management/application/RequestCaseDocumentation.js';
+import { createResumeCaseReviewUseCase } from './modules/case-management/application/ResumeCaseReview.js';
 import { createOpenInvestigationUseCase } from './modules/case-management/application/OpenInvestigation.js';
 import { createListInvestigationsUseCase } from './modules/case-management/application/ListInvestigations.js';
 import { createGetInvestigationUseCase } from './modules/case-management/application/GetInvestigation.js';
@@ -920,6 +923,7 @@ async function bootstrap(): Promise<void> {
   const caseTimelineRecorder = new MongoTimelineRecorder(db);
   const caseTimelineReader = new MongoTimelineReader(db);
   const caseNotes = new MongoCaseNoteRepository(db);
+  const caseNumbers = new MongoCaseNumberAllocator(db);
   const resolutions = new MongoResolutionRepository(db);
   const outboxEvents = new MongoOutboxEventRepository(db);
   const investigations = new MongoInvestigationRepository(db);
@@ -973,6 +977,7 @@ async function bootstrap(): Promise<void> {
     unitOfWork: caseManagementUnitOfWork,
     clock,
     generateCaseId,
+    caseNumbers,
     generateTimelineEventId,
     auditRecorder: caseManagementAuditRecorder,
     routeCase,
@@ -1005,6 +1010,7 @@ async function bootstrap(): Promise<void> {
     unitOfWork: caseManagementUnitOfWork,
     clock,
     generateCaseId,
+    caseNumbers,
     generateTimelineEventId,
     generateOutboxEventId,
     auditRecorder: caseManagementAuditRecorder,
@@ -1045,6 +1051,7 @@ async function bootstrap(): Promise<void> {
     unitOfWork: caseManagementUnitOfWork,
     clock,
     generateCaseId,
+    caseNumbers,
     generateTimelineEventId,
     generateOutboxEventId,
     auditRecorder: caseManagementAuditRecorder,
@@ -1260,6 +1267,22 @@ async function bootstrap(): Promise<void> {
       generateTimelineEventId,
     }),
     startReview: createStartReviewUseCase({
+      cases,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateTimelineEventId,
+    }),
+    requestCaseDocumentation: createRequestCaseDocumentationUseCase({
+      cases,
+      timelineRecorder: caseTimelineRecorder,
+      auditRecorder: caseManagementAuditRecorder,
+      unitOfWork: caseManagementUnitOfWork,
+      clock,
+      generateTimelineEventId,
+    }),
+    resumeCaseReview: createResumeCaseReviewUseCase({
       cases,
       timelineRecorder: caseTimelineRecorder,
       auditRecorder: caseManagementAuditRecorder,

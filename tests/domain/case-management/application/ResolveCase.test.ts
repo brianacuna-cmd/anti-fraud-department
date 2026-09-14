@@ -119,7 +119,7 @@ describe('createResolveCaseUseCase', () => {
     await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
     await seedDecision(decisions);
 
-    const resolved = await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legitimate' });
+    const resolved = await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legitimate', outcome: 'FALSE_POSITIVE' });
 
     expect(resolved.status).toBe('RESOLVED');
     const rows = await resolutions.listByCaseId(createCaseId(oid('case-1')));
@@ -139,7 +139,7 @@ describe('createResolveCaseUseCase', () => {
     await cases.save(buildCase().transitionTo('IN_REVIEW', NOW).withDueDate(NOW, NOW));
     await seedDecision(decisions);
 
-    const resolved = await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legit' });
+    const resolved = await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legit', outcome: 'FALSE_POSITIVE' });
 
     expect(resolved.dueDate).toBeNull();
     expect(cases.all()[0]?.dueDate).toBeNull();
@@ -164,7 +164,7 @@ describe('createResolveCaseUseCase', () => {
     await cases.save(buildCase());
 
     await expect(
-      resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x' }),
+      resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x', outcome: 'FALSE_POSITIVE' }),
     ).rejects.toMatchObject({ code: 'CASE_NOT_DECIDED' });
   });
 
@@ -173,7 +173,7 @@ describe('createResolveCaseUseCase', () => {
     await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
 
     await expect(
-      resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x' }),
+      resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x', outcome: 'FALSE_POSITIVE' }),
     ).rejects.toMatchObject({ code: 'CASE_NOT_DECIDED' });
   });
 
@@ -183,7 +183,7 @@ describe('createResolveCaseUseCase', () => {
     await seedDecision(decisions, 'FRAUD_CONFIRMED');
 
     await expect(
-      resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x' }),
+      resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x', outcome: 'FRAUD_CONFIRMED' }),
     ).rejects.toMatchObject({ code: 'CASE_ENFORCEMENT_PENDING' });
   });
 
@@ -192,7 +192,7 @@ describe('createResolveCaseUseCase', () => {
     await cases.save(buildCase());
 
     await expect(
-      resolveCase({ auth: ANALYST, caseId: oid('case-1'), reason: 'x' }),
+      resolveCase({ auth: ANALYST, caseId: oid('case-1'), reason: 'x', outcome: 'FALSE_POSITIVE' }),
     ).rejects.toMatchObject({ code: 'FORBIDDEN_ROLE' });
   });
 
@@ -205,6 +205,7 @@ describe('createResolveCaseUseCase', () => {
         auth: createAuthContext({ userId: 'system:agent', organizationId: ORG_1, actorType: 'USER', roleId: 'ANALYST' }),
         caseId: oid('case-1'),
         reason: 'x',
+        outcome: 'FALSE_POSITIVE',
       }),
     ).rejects.toMatchObject({ code: 'FORBIDDEN_ROLE' });
     expect((await cases.findById(createCaseId(oid('case-1'))))?.status).toBe('IN_REVIEW');
@@ -213,10 +214,97 @@ describe('createResolveCaseUseCase', () => {
     expect(auditRecorder.all()).toHaveLength(0);
   });
 
+  it('stores the outcome on the resolution, the case read-model, the audit row and the CASE_RESOLVED payload', async () => {
+    const { cases, resolutions, decisions, auditRecorder, outbox, resolveCase } = build();
+    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
+    await seedDecision(decisions, 'INCONCLUSIVE');
+
+    const resolved = await resolveCase({
+      auth: SUPERVISOR,
+      caseId: oid('case-1'),
+      reason: 'nothing conclusive',
+      outcome: 'INSUFFICIENT_EVIDENCE',
+    });
+
+    expect(resolved.resolutionOutcome).toBe('INSUFFICIENT_EVIDENCE');
+    expect((await cases.findById(createCaseId(oid('case-1'))))?.resolutionOutcome).toBe('INSUFFICIENT_EVIDENCE');
+    const [row] = await resolutions.listByCaseId(createCaseId(oid('case-1')));
+    expect(row?.outcome).toBe('INSUFFICIENT_EVIDENCE');
+    expect(auditRecorder.all()[0]?.detail).toMatchObject({ outcome: 'INSUFFICIENT_EVIDENCE' });
+    expect(outbox.all()[0]?.payload).toMatchObject({ outcome: 'INSUFFICIENT_EVIDENCE' });
+  });
+
+  it('rejects a resolve without an outcome and leaves the case untouched', async () => {
+    const { cases, decisions, resolutions, resolveCase } = build();
+    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
+    await seedDecision(decisions);
+
+    await expect(resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x' })).rejects.toMatchObject({
+      code: 'INVARIANT_VIOLATION',
+    });
+    expect((await cases.findById(createCaseId(oid('case-1'))))?.status).toBe('IN_REVIEW');
+    expect(await resolutions.listByCaseId(createCaseId(oid('case-1')))).toHaveLength(0);
+  });
+
+  it('rejects an outcome that contradicts the decision (CASE_OUTCOME_CONTRADICTS_DECISION)', async () => {
+    const { cases, decisions, resolveCase } = build();
+    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
+    await seedDecision(decisions, 'FALSE_POSITIVE');
+
+    await expect(
+      resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x', outcome: 'INSUFFICIENT_EVIDENCE' }),
+    ).rejects.toMatchObject({ code: 'CASE_OUTCOME_CONTRADICTS_DECISION' });
+  });
+
+  it('checks the outcome against the LATEST decision, not the first one', async () => {
+    const { cases, decisions, resolveCase } = build();
+    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
+    await seedDecision(decisions, 'INCONCLUSIVE');
+    await decisions.save(
+      AnalystDecision.create({
+        id: generateAnalystDecisionId(),
+        caseId: createCaseId(oid('case-1')),
+        organizationId: ORG_1,
+        decision: createAnalystDecisionType('FALSE_POSITIVE'),
+        confidence: 90,
+        comment: 'documents cleared it',
+        createdBy: oid('analyst-1'),
+        now: fromDate(new Date('2026-01-02T00:00:00.000Z')),
+      }),
+    );
+
+    const resolved = await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x', outcome: 'FALSE_POSITIVE' });
+    expect(resolved.resolutionOutcome).toBe('FALSE_POSITIVE');
+  });
+
+  it('accepts the procedural outcomes on top of any decision', async () => {
+    const { cases, decisions, resolveCase } = build();
+    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
+    await seedDecision(decisions, 'INCONCLUSIVE');
+
+    const resolved = await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x', outcome: 'DUPLICATE' });
+    expect(resolved.resolutionOutcome).toBe('DUPLICATE');
+  });
+
+  it('resolves straight from PENDING_DOCUMENTATION when the documents never arrive', async () => {
+    const { cases, decisions, resolveCase } = build();
+    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW).transitionTo('PENDING_DOCUMENTATION', NOW));
+    await seedDecision(decisions, 'INCONCLUSIVE');
+
+    const resolved = await resolveCase({
+      auth: SUPERVISOR,
+      caseId: oid('case-1'),
+      reason: 'customer did not answer',
+      outcome: 'DOCUMENTATION_NOT_PROVIDED',
+    });
+    expect(resolved.status).toBe('RESOLVED');
+    expect(resolved.resolutionOutcome).toBe('DOCUMENTATION_NOT_PROVIDED');
+  });
+
   it('throws caseNotFound when the case does not exist', async () => {
     const { resolveCase } = build();
     await expect(
-      resolveCase({ auth: SUPERVISOR, caseId: oid('missing'), reason: 'x' }),
+      resolveCase({ auth: SUPERVISOR, caseId: oid('missing'), reason: 'x', outcome: 'FALSE_POSITIVE' }),
     ).rejects.toBeInstanceOf(CaseManagementError);
   });
 
@@ -224,7 +312,7 @@ describe('createResolveCaseUseCase', () => {
     const { cases, resolveCase } = build();
     await cases.save(buildCase(ORG_2));
     await expect(
-      resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x' }),
+      resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x', outcome: 'FALSE_POSITIVE' }),
     ).rejects.toMatchObject({ code: 'FORBIDDEN_CROSS_TENANT' });
   });
 });
@@ -234,13 +322,16 @@ describe('createArchiveCaseUseCase', () => {
     const { cases, resolutions, decisions, auditRecorder, resolveCase, archiveCase } = build();
     await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
     await seedDecision(decisions);
-    await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legit' });
+    await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legit', outcome: 'FALSE_POSITIVE' });
 
     const archived = await archiveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'filed' });
 
     expect(archived.status).toBe('ARCHIVED');
     const rows = await resolutions.listByCaseId(createCaseId(oid('case-1')));
     expect(rows.map((r) => r.closureType)).toEqual(['RESOLVED', 'ARCHIVED']);
+    // Archiving keeps the outcome of the resolution that closed the case.
+    expect(rows.map((r) => r.outcome)).toEqual(['FALSE_POSITIVE', null]);
+    expect(archived.resolutionOutcome).toBe('FALSE_POSITIVE');
     expect(auditRecorder.all().map((a) => a.action)).toEqual(['RESOLVE_CASE', 'ARCHIVE_CASE']);
   });
 
@@ -248,7 +339,7 @@ describe('createArchiveCaseUseCase', () => {
     const { cases, outbox, decisions, resolveCase, archiveCase } = build();
     await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
     await seedDecision(decisions);
-    await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legit' });
+    await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legit', outcome: 'FALSE_POSITIVE' });
     await archiveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'filed' });
 
     // exactly one — from resolve, not archive
@@ -269,7 +360,7 @@ describe('createArchiveCaseUseCase', () => {
     );
     await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
     await seedDecision(decisions);
-    await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legit' });
+    await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legit', outcome: 'FALSE_POSITIVE' });
 
     expect(outgoingEvents.all()).toHaveLength(1);
     expect(outgoingEvents.all()[0]!.eventType).toBe('case.resolved');

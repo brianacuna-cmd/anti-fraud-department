@@ -10,6 +10,7 @@ import type { OutboxEventRepository } from '../../../shared/outbox/OutboxEventRe
 import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
 import type { EnqueueCustomerWebhookFanOutInput } from './EnqueueCustomerWebhookFanOut.js';
 import type { CaseId } from '../domain/model/value-objects/CaseId.js';
+import type { CaseNumberAllocator } from '../domain/ports/CaseNumberAllocator.js';
 import type { TimelineEventId } from '../domain/model/value-objects/TimelineEventId.js';
 import { invariantViolation } from '../domain/errors/CaseManagementError.js';
 import { Case } from '../domain/model/aggregates/Case.js';
@@ -33,6 +34,7 @@ export interface IngestFinturuCaseDeps {
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
   readonly generateCaseId: () => CaseId;
+  readonly caseNumbers: CaseNumberAllocator;
   readonly generateTimelineEventId: () => TimelineEventId;
   readonly auditRecorder: AuditRecorder;
   readonly generateOutboxEventId: () => OutboxEventId;
@@ -298,6 +300,7 @@ export function createIngestFinturuCaseUseCase(deps: IngestFinturuCaseDeps) {
 
       const kase = Case.create({
         id: caseId,
+        caseNumber: await deps.caseNumbers.allocate(organizationId, now),
         organizationId,
         customerId,
         customerEmail,

@@ -22,6 +22,10 @@ import { MongoOrganizationFraudConfigRepository } from '../../../src/modules/cas
 import { generateCaseSlaTrackingId } from '../../../src/modules/case-management/domain/model/value-objects/CaseSlaTrackingId.js';
 import { generateCaseId } from '../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { generateTimelineEventId } from '../../../src/modules/case-management/domain/model/value-objects/TimelineEventId.js';
+import { InMemoryCaseNumberAllocator } from '../../helpers/case-management/InMemoryCaseNumberAllocator.js';
+
+// One counter for the whole file: both use-case instances below write to the same database.
+const caseNumbers = new InMemoryCaseNumberAllocator();
 
 jest.setTimeout(120_000);
 
@@ -66,6 +70,7 @@ describe('IngestFinturuCase (integration)', () => {
       unitOfWork,
       clock,
       generateCaseId,
+      caseNumbers,
       generateTimelineEventId,
       generateOutboxEventId,
       auditRecorder,
@@ -183,6 +188,7 @@ describe('IngestFinturuCase (integration)', () => {
       unitOfWork,
       clock,
       generateCaseId,
+      caseNumbers,
       generateTimelineEventId,
       generateOutboxEventId,
       auditRecorder,

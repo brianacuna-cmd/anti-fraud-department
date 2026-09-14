@@ -13,6 +13,8 @@ import type { createListCaseNotesUseCase } from '../../../../application/ListCas
 import type { createResolveCaseUseCase } from '../../../../application/ResolveCase.js';
 import type { createArchiveCaseUseCase } from '../../../../application/ArchiveCase.js';
 import type { createStartReviewUseCase } from '../../../../application/StartReview.js';
+import type { createRequestCaseDocumentationUseCase } from '../../../../application/RequestCaseDocumentation.js';
+import type { createResumeCaseReviewUseCase } from '../../../../application/ResumeCaseReview.js';
 import type { createGetCaseAnalysisPack } from '../../../../../../composition/getCaseAnalysisPack.js';
 import type { createPutAgentBriefUseCase } from '../../../../application/PutAgentBrief.js';
 import {
@@ -24,6 +26,8 @@ import {
   bulkCaseActionSchema,
   addCaseNoteSchema,
   closeCaseSchema,
+  resolveCaseSchema,
+  requestCaseDocumentationSchema,
   putAgentBriefSchema,
 } from './dto/caseSchemas.js';
 import { toCaseResponse } from './mappers/CaseHttpMapper.js';
@@ -48,6 +52,8 @@ export interface CaseRouterDeps {
   readonly resolveCase: ReturnType<typeof createResolveCaseUseCase>;
   readonly archiveCase: ReturnType<typeof createArchiveCaseUseCase>;
   readonly startReview: ReturnType<typeof createStartReviewUseCase>;
+  readonly requestCaseDocumentation: ReturnType<typeof createRequestCaseDocumentationUseCase>;
+  readonly resumeCaseReview: ReturnType<typeof createResumeCaseReviewUseCase>;
 }
 
 /**
@@ -147,10 +153,32 @@ export function caseRouter(deps: CaseRouterDeps): Router {
     res.status(200).json(toCaseResponse(kase));
   });
 
+  router.post('/cases/:caseId/request-documentation', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const body = parseRequest(requestCaseDocumentationSchema, req.body);
+    const kase = await deps.requestCaseDocumentation({
+      auth,
+      caseId: req.params.caseId!,
+      requestedDocuments: body.requestedDocuments,
+    });
+    res.status(200).json(toCaseResponse(kase));
+  });
+
+  router.post('/cases/:caseId/resume-review', async (req, res) => {
+    const auth = requireAuthContext(req);
+    const kase = await deps.resumeCaseReview({ auth, caseId: req.params.caseId! });
+    res.status(200).json(toCaseResponse(kase));
+  });
+
   router.post('/cases/:caseId/resolve', async (req, res) => {
     const auth = requireAuthContext(req);
-    const body = parseRequest(closeCaseSchema, req.body);
-    const kase = await deps.resolveCase({ auth, caseId: req.params.caseId!, reason: body.reason });
+    const body = parseRequest(resolveCaseSchema, req.body);
+    const kase = await deps.resolveCase({
+      auth,
+      caseId: req.params.caseId!,
+      reason: body.reason,
+      outcome: body.outcome,
+    });
     res.status(200).json(toCaseResponse(kase));
   });
 

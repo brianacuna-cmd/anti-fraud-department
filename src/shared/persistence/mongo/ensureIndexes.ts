@@ -142,6 +142,17 @@ export async function ensureIndexes(db: Db): Promise<void> {
     },
   );
 
+  // Readable case numbers are unique per tenant. Partial so the cases created
+  // before numbering existed (no `case_number` until backfilled) don't collide.
+  await db.collection('cases').createIndex(
+    { organization_id: 1, case_number: 1 },
+    {
+      unique: true,
+      name: 'case_org_case_number_unique',
+      partialFilterExpression: { case_number: { $exists: true, $type: 'string' } },
+    },
+  );
+
   await db
     .collection('organization_fraud_config')
     .createIndex({ organization_id: 1 }, { unique: true, name: 'org_fraud_config_unique' });

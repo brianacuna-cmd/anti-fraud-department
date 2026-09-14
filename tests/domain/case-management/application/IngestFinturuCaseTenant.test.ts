@@ -15,6 +15,7 @@ import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { oid } from '../../../support/oid.js';
+import { InMemoryCaseNumberAllocator } from '../../../helpers/case-management/InMemoryCaseNumberAllocator.js';
 
 const NOW = fromDate(new Date('2026-08-20T10:00:00.000Z'));
 const ORG = oid('org-finturu');
@@ -31,6 +32,7 @@ function build() {
     unitOfWork: new PassthroughUnitOfWork(),
     clock: new FixedClock(NOW),
     generateCaseId,
+    caseNumbers: new InMemoryCaseNumberAllocator(),
     generateTimelineEventId,
     generateOutboxEventId,
     auditRecorder: new InMemoryCaseManagementAuditRecorder(),

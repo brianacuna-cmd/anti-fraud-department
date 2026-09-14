@@ -9,6 +9,7 @@ import type { EnforcementActionType } from '../../../../../domain/model/value-ob
 import type { InvestigationStatus } from '../../../../../domain/model/value-objects/InvestigationStatus.js';
 import type { InvestigationSubjectType } from '../../../../../domain/model/value-objects/InvestigationSubjectType.js';
 import type { ResolutionClosureType } from '../../../../../domain/model/aggregates/Resolution.js';
+import type { ResolutionOutcome } from '../../../../../domain/model/value-objects/ResolutionOutcome.js';
 import type { SlaStatus } from '../../../../../domain/model/value-objects/SlaStatus.js';
 import type { TimelineEventType } from '../../../../../domain/model/value-objects/TimelineEventType.js';
 
@@ -41,6 +42,7 @@ type Translatable =
   | InvestigationStatus
   | InvestigationSubjectType
   | ResolutionClosureType
+  | ResolutionOutcome
   | SlaStatus
   | TimelineEventType;
 
@@ -57,6 +59,7 @@ const LABELS: Readonly<Record<Translatable, string>> = {
   // Case status
   OPEN: 'Abierto',
   IN_REVIEW: 'En revisión',
+  PENDING_DOCUMENTATION: 'Pendiente de documentación',
   RESOLVED: 'Resuelto',
   ARCHIVED: 'Archivado',
   // Priority
@@ -81,10 +84,14 @@ const LABELS: Readonly<Record<Translatable, string>> = {
   ENFORCEMENT_REQUESTED: 'Medida cautelar solicitada',
   AGENT_BRIEFING: 'Informe del agente',
   ANALYST_NOTIFIED: 'Analista notificado',
+  DOCUMENTATION_REQUESTED: 'Documentación solicitada',
   // Decision and closure
   FRAUD_CONFIRMED: 'Fraude confirmado',
   FALSE_POSITIVE: 'Falso positivo',
   INCONCLUSIVE: 'No concluyente',
+  INSUFFICIENT_EVIDENCE: 'Evidencia insuficiente',
+  DOCUMENTATION_NOT_PROVIDED: 'Documentación no aportada',
+  DUPLICATE: 'Duplicado',
   // Sanctions
   BLOCK: 'Bloqueo',
   RESTRICT: 'Restricción',
@@ -256,7 +263,7 @@ const SECTIONS: readonly {
     key: 'resolutions',
     title: 'Resolución',
     line: (row, ctx) => [
-      label(row.closureType),
+      row.outcome ? `${label(row.closureType)} · ${label(row.outcome)}` : label(row.closureType),
       [str(row.reason) || '—', ctx.actor(row.resolvedBy), date(row.createdAt)]
         .filter(Boolean)
         .join(' · '),
@@ -368,7 +375,14 @@ export class CaseReportPdfRenderer {
       doc,
       'Cierre',
       closure
-        ? `${label(closure.closureType)} · ${ctx.actor(closure.resolvedBy)} · ${date(closure.createdAt)}`
+        ? [
+            label(closure.closureType),
+            closure.outcome ? label(closure.outcome) : null,
+            ctx.actor(closure.resolvedBy),
+            date(closure.createdAt),
+          ]
+            .filter(Boolean)
+            .join(' · ')
         : 'Expediente sin cerrar al congelar este informe',
     );
     if (closure && str(closure.reason)) {

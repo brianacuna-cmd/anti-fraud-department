@@ -11,6 +11,10 @@ export type CaseManagementAuditAction =
   | 'CREATE_CASE'
   | 'UPDATE_SCORE'
   | 'START_REVIEW'
+  /** IN_REVIEW -> PENDING_DOCUMENTATION; `detail.requestedDocuments` says what was asked. */
+  | 'REQUEST_CASE_DOCUMENTATION'
+  /** PENDING_DOCUMENTATION -> IN_REVIEW once the documents arrive. */
+  | 'RESUME_CASE_REVIEW'
   | 'RESOLVE_CASE'
   | 'ARCHIVE_CASE'
   | 'REASSIGN_CASE'

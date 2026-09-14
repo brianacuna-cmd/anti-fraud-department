@@ -3,6 +3,7 @@ import { fromDate, toDate } from '../../../../../../../shared/time/Instant.js';
 import { Resolution, type ResolutionClosureType } from '../../../../../domain/model/aggregates/Resolution.js';
 import { createResolutionId } from '../../../../../domain/model/value-objects/ResolutionId.js';
 import { createCaseId } from '../../../../../domain/model/value-objects/CaseId.js';
+import { createResolutionOutcome } from '../../../../../domain/model/value-objects/ResolutionOutcome.js';
 import type { ResolutionDocument } from '../documents/ResolutionDocument.js';
 
 /** camelCase (domain) -> snake_case (Mongo). Instant fields become BSON `Date`. */
@@ -13,6 +14,7 @@ export function toDocument(resolution: Resolution): ResolutionDocument {
     organization_id: new ObjectId(resolution.organizationId),
     closure_type: resolution.closureType,
     reason: resolution.reason,
+    outcome: resolution.outcome,
     resolved_by: resolution.resolvedBy,
     created_at: toDate(resolution.createdAt),
   };
@@ -26,6 +28,7 @@ export function toDomain(document: ResolutionDocument): Resolution {
     organizationId: document.organization_id.toString(),
     closureType: document.closure_type as ResolutionClosureType,
     reason: document.reason,
+    outcome: document.outcome == null ? null : createResolutionOutcome(document.outcome),
     resolvedBy: document.resolved_by,
     createdAt: fromDate(document.created_at),
   });

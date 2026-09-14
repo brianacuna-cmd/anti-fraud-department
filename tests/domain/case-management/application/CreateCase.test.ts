@@ -35,6 +35,7 @@ import { generateCustomerOutgoingEventId } from '../../../../src/modules/case-ma
 import { InMemoryCustomerWebhookSubscriptionRepository } from '../../../helpers/case-management/InMemoryCustomerWebhookSubscriptionRepository.js';
 import { InMemoryCustomerOutgoingEventRepository } from '../../../helpers/case-management/InMemoryCustomerOutgoingEventRepository.js';
 import type { WebhookTicketEventType } from '../../../../src/modules/case-management/domain/model/value-objects/WebhookTicketEventType.js';
+import { InMemoryCaseNumberAllocator } from '../../../helpers/case-management/InMemoryCaseNumberAllocator.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ANALYST = createAuthContext({ userId: oid('analyst-1'), organizationId: oid('org-1'), actorType: 'USER' });
@@ -170,6 +171,7 @@ function buildCreateCase(options: {
     unitOfWork: new PassthroughUnitOfWork(),
     clock,
     generateCaseId,
+    caseNumbers: new InMemoryCaseNumberAllocator(),
     generateTimelineEventId,
     auditRecorder,
     routeCase,
@@ -216,6 +218,18 @@ describe('createCreateCaseUseCase (T2 SLA after RouteCase)', () => {
     expect(tracking[0]?.caseId).toBe(kase.id);
     expect(tracking[0]?.status).toBe('ON_TRACK');
     expect(tracking[0]?.dueDate).toBe(expectedDue);
+  });
+
+  it('gives every new case the next readable number of its organization', async () => {
+    const { createCase } = buildCreateCase({
+      slaMinutes: { low: 240, medium: 120, high: 60, critical: 30 },
+    });
+
+    const first = await createCase({ auth: ANALYST, customerId: 'customer-1', riskScore: 42, priority: 'HIGH' });
+    const second = await createCase({ auth: ANALYST, customerId: 'customer-2', riskScore: 42, priority: 'HIGH' });
+
+    expect(first.caseNumber).toMatch(/^FD-\d{4}-000001$/);
+    expect(second.caseNumber).toMatch(/^FD-\d{4}-000002$/);
   });
 
   it('uses each priority\'s minutes when creating cases at different priorities', async () => {
@@ -366,6 +380,7 @@ describe('createCreateCaseUseCase idempotent short-circuit (D2/D3)', () => {
       unitOfWork: new PassthroughUnitOfWork(),
       clock,
       generateCaseId,
+      caseNumbers: new InMemoryCaseNumberAllocator(),
       generateTimelineEventId,
       auditRecorder,
       routeCase,

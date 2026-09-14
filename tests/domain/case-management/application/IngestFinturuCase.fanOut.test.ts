@@ -22,6 +22,7 @@ import { InMemoryCustomerOutgoingEventRepository } from '../../../helpers/case-m
 import { PassthroughUnitOfWork } from '../../../../src/modules/case-management/infrastructure/PassthroughUnitOfWork.js';
 import { FixedClock } from '../../../helpers/FixedClock.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
+import { InMemoryCaseNumberAllocator } from '../../../helpers/case-management/InMemoryCaseNumberAllocator.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const ORG = oid('org-1');
@@ -56,6 +57,7 @@ function build() {
     unitOfWork: new PassthroughUnitOfWork(),
     clock: new FixedClock(NOW),
     generateCaseId,
+    caseNumbers: new InMemoryCaseNumberAllocator(),
     generateTimelineEventId,
     generateOutboxEventId,
     auditRecorder,

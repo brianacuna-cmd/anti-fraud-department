@@ -9,6 +9,8 @@ import type { ObjectId } from 'mongodb';
 
 export interface CaseDocument {
   readonly _id: ObjectId;
+  /** Absent on cases created before numbering existed (see the backfill script). */
+  readonly case_number?: string | null;
   readonly organization_id: ObjectId;
   readonly customer_id: string;
   readonly customer_email: string | null;
@@ -29,4 +31,5 @@ export interface CaseDocument {
   readonly updated_at: Date;
   readonly deleted_at: Date | null;
   readonly agent_brief?: string | null;
+  readonly resolution_outcome?: string | null;
 }

@@ -10,6 +10,8 @@ export interface ResolutionDocument {
   readonly organization_id: ObjectId;
   readonly closure_type: string;
   readonly reason: string;
+  /** Absent on rows written before closure outcomes existed. */
+  readonly outcome?: string | null;
   readonly resolved_by: string;
   readonly created_at: Date;
 }

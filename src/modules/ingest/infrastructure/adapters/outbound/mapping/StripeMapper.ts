@@ -1,4 +1,5 @@
 import { fromDate } from '../../../../../../shared/time/Instant.js';
+import { classifyStripeDecline } from '../../../../../../shared/payments/stripeDeclineClassification.js';
 import { createIngestedPaymentEvent } from '../../../../domain/model/IngestedPaymentEvent.js';
 import type { EnvelopeMapResult } from './EnvelopeMapResult.js';
 import { isRecord } from './isRecord.js';
@@ -57,8 +58,46 @@ function mapCharge(
       riskSignals.stripeRiskLevel = outcome.risk_level;
     }
   }
+  Object.assign(riskSignals, declineSignals(type, charge, outcome), countrySignals(charge));
 
   return mappedStripe(payload, type, charge, riskSignals);
+}
+
+/**
+ * Only a FAILED charge is classified. A succeeded charge placed in review
+ * also carries `outcome.reason` (e.g. `elevated_risk_level`), and reading it
+ * as a decline would count a paid charge as a failure.
+ */
+function declineSignals(
+  type: string,
+  charge: Record<string, unknown>,
+  outcome: Record<string, unknown> | null,
+): Record<string, unknown> {
+  if (type !== 'charge.failed' && charge.status !== 'failed') {
+    return {};
+  }
+  const classification = classifyStripeDecline([
+    readOptionalStringPath(outcome, ['network_decline_code']),
+    readOptionalStringPath(outcome, ['reason']),
+    readOptionalStringPath(charge, ['failure_code']),
+    readOptionalStringPath(outcome, ['type']),
+  ]);
+  return classification === null
+    ? {}
+    : { declineCode: classification.code, declineCategory: classification.category };
+}
+
+/**
+ * Card issuer country (BIN) and the billing country the buyer typed. Kept
+ * apart on purpose: a mismatch between them is a signal in itself.
+ */
+function countrySignals(charge: Record<string, unknown>): Record<string, unknown> {
+  const cardCountry = readOptionalStringPath(charge, ['payment_method_details', 'card', 'country']);
+  const billingCountry = readOptionalStringPath(charge, ['billing_details', 'address', 'country']);
+  return {
+    ...(cardCountry !== undefined ? { cardCountry: cardCountry.toUpperCase() } : {}),
+    ...(billingCountry !== undefined ? { billingCountry: billingCountry.toUpperCase() } : {}),
+  };
 }
 
 function mapEarlyFraudWarning(

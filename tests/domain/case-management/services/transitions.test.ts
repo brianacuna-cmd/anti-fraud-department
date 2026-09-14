@@ -6,7 +6,18 @@ import {
 describe('caseStatusTransitions', () => {
   it('allows the forward path OPEN -> IN_REVIEW -> RESOLVED -> ARCHIVED', () => {
     expect(caseStatusTransitions.OPEN).toEqual(['IN_REVIEW']);
-    expect(caseStatusTransitions.IN_REVIEW).toEqual(['RESOLVED']);
+    expect(caseStatusTransitions.IN_REVIEW).toEqual(expect.arrayContaining(['RESOLVED']));
+  });
+
+  it('lets a case wait on documentation and come back to review or close from there', () => {
+    expect(caseStatusTransitions.IN_REVIEW).toEqual(expect.arrayContaining(['PENDING_DOCUMENTATION']));
+    expect(caseStatusTransitions.PENDING_DOCUMENTATION).toEqual(['IN_REVIEW', 'RESOLVED']);
+  });
+
+  it('never reaches PENDING_DOCUMENTATION straight from OPEN or from a closed case', () => {
+    expect(caseStatusTransitions.OPEN).not.toContain('PENDING_DOCUMENTATION');
+    expect(caseStatusTransitions.RESOLVED).not.toContain('PENDING_DOCUMENTATION');
+    expect(caseStatusTransitions.ARCHIVED).not.toContain('PENDING_DOCUMENTATION');
   });
 
   it('allows T6 reopen edges from RESOLVED and ARCHIVED', () => {

@@ -28,6 +28,8 @@ import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEvent
 import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
 import { createArchiveCaseUseCase } from '../../../../src/modules/case-management/application/ArchiveCase.js';
 import { createStartReviewUseCase } from '../../../../src/modules/case-management/application/StartReview.js';
+import { createRequestCaseDocumentationUseCase } from '../../../../src/modules/case-management/application/RequestCaseDocumentation.js';
+import { createResumeCaseReviewUseCase } from '../../../../src/modules/case-management/application/ResumeCaseReview.js';
 import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InMemoryCaseNoteRepository.js';
 import { generateCaseNoteId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { createReopenCaseUseCase } from '../../../../src/modules/case-management/application/ReopenCase.js';
@@ -53,6 +55,7 @@ import { Case } from '../../../../src/modules/case-management/domain/model/aggre
 import { CaseSlaTracking } from '../../../../src/modules/case-management/domain/model/aggregates/CaseSlaTracking.js';
 import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
 import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
+import { InMemoryCaseNumberAllocator } from '../../../helpers/case-management/InMemoryCaseNumberAllocator.js';
 
 const NOW = fromDate(new Date('2026-01-01T00:00:00.000Z'));
 const OLD_DUE = fromDate(new Date('2025-12-01T00:00:00.000Z'));
@@ -169,6 +172,7 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
       unitOfWork,
       clock,
       generateCaseId,
+      caseNumbers: new InMemoryCaseNumberAllocator(),
       generateTimelineEventId,
       auditRecorder,
       routeCase,
@@ -205,6 +209,8 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
     }),
     archiveCase: createArchiveCaseUseCase({ cases, resolutions, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
     startReview: createStartReviewUseCase({ cases, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateTimelineEventId }),
+    requestCaseDocumentation: createRequestCaseDocumentationUseCase({ cases, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateTimelineEventId }),
+    resumeCaseReview: createResumeCaseReviewUseCase({ cases, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateTimelineEventId }),
     reopenCase: createReopenCaseUseCase({
       cases,
       slaTracking,
@@ -463,5 +469,72 @@ describe('caseRouter POST /cases/bulk-action', () => {
 
     expect(response.status).toBe(404);
     expect(response.body.error.code).toBe('CASE_NOT_FOUND');
+  });
+});
+
+describe('caseRouter documentation and resolve-outcome routes', () => {
+  function buildInReviewCase(): Case {
+    return Case.create({
+      id: CASE_ID,
+      organizationId: ORG_1,
+      customerId: 'customer-1',
+      riskScore: createRiskScore(40),
+      priority: 'MEDIUM',
+      assignedTo: createAssignedTo('USER', oid('analyst-1')),
+      now: NOW,
+    })
+      .transitionTo('IN_REVIEW', NOW)
+      .withDueDate(OLD_DUE, NOW);
+  }
+
+  it('parks a case in PENDING_DOCUMENTATION and brings it back, keeping dueDate', async () => {
+    const { app, cases, timelineRecorder } = buildApp(() => ANALYST);
+    await cases.save(buildInReviewCase());
+
+    const parked = await request(app)
+      .post(`/api/v1/cases/${CASE_ID}/request-documentation`)
+      .send({ requestedDocuments: 'Extracto bancario' });
+
+    expect(parked.status).toBe(200);
+    expect(parked.body).toMatchObject({ status: 'PENDING_DOCUMENTATION', dueDate: toDate(OLD_DUE).toISOString() });
+    expect(timelineRecorder.all().map((e) => e.eventType)).toEqual(['STATE_CHANGED', 'DOCUMENTATION_REQUESTED']);
+
+    const resumed = await request(app).post(`/api/v1/cases/${CASE_ID}/resume-review`).send({});
+
+    expect(resumed.status).toBe(200);
+    expect(resumed.body.status).toBe('IN_REVIEW');
+  });
+
+  it('returns 400 when requestedDocuments is missing', async () => {
+    const { app, cases } = buildApp(() => ANALYST);
+    await cases.save(buildInReviewCase());
+
+    const response = await request(app).post(`/api/v1/cases/${CASE_ID}/request-documentation`).send({});
+
+    expect(response.status).toBe(400);
+  });
+
+  it('returns 400 when resolving without a valid outcome', async () => {
+    const { app, cases } = buildApp();
+    await cases.save(buildInReviewCase());
+
+    const missing = await request(app).post(`/api/v1/cases/${CASE_ID}/resolve`).send({ reason: 'x' });
+    const invalid = await request(app)
+      .post(`/api/v1/cases/${CASE_ID}/resolve`)
+      .send({ reason: 'x', outcome: 'WHATEVER' });
+
+    expect(missing.status).toBe(400);
+    expect(invalid.status).toBe(400);
+  });
+
+  it('exposes caseNumber and resolutionOutcome on the case response', async () => {
+    const { app, cases } = buildApp();
+    await cases.save(buildInReviewCase());
+
+    const response = await request(app).get(`/api/v1/cases/${CASE_ID}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('caseNumber', null);
+    expect(response.body).toHaveProperty('resolutionOutcome', null);
   });
 });

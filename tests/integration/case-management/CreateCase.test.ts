@@ -39,6 +39,7 @@ import { MongoNotificationRepository } from '../../../src/modules/notifications/
 import { MongoNotificationPreferenceRepository } from '../../../src/modules/notifications/infrastructure/adapters/outbound/mongo/MongoNotificationPreferenceRepository.js';
 import { createNotificationId } from '../../../src/modules/notifications/domain/model/value-objects/NotificationId.js';
 import type { NotificationDocument } from '../../../src/modules/notifications/infrastructure/adapters/outbound/mongo/documents/NotificationDocument.js';
+import { InMemoryCaseNumberAllocator } from '../../helpers/case-management/InMemoryCaseNumberAllocator.js';
 
 jest.setTimeout(120_000);
 
@@ -203,6 +204,7 @@ describe('CreateCase (integration, real replica-set Mongo transaction)', () => {
       unitOfWork: new MongoUnitOfWork(client),
       clock,
       generateCaseId,
+      caseNumbers: new InMemoryCaseNumberAllocator(),
       generateTimelineEventId,
       auditRecorder,
       routeCase,
