@@ -104,9 +104,11 @@ function pairWords(
 ): { similarities: number[]; used: number } {
   const available: (string | null)[] = [...longer];
   const similarities = shorter.map((word) => {
-    const options = pairOptions(word, available, deps);
-    if (options.length === 0) return 0;
-    const best = options.reduce((top, option) => (option.similarity > top.similarity ? option : top));
+    const best = pairOptions(word, available, deps).reduce<PairOption | null>(
+      (top, option) => (top === null || option.similarity > top.similarity ? option : top),
+      null,
+    );
+    if (best === null) return 0;
     best.indexes.forEach((index) => {
       available[index] = null;
     });
@@ -146,8 +148,8 @@ function scoreNameMatch(
     return createMatchScore(0);
   }
   if (subjectTokens.length === 1 || candidateTokens.length === 1) {
-    const same = [...subjectTokens].sort().join(' ') === [...candidateTokens].sort().join(' ');
-    return createMatchScore(same ? 100 : 0);
+    // Equal only if BOTH are that one word; with a single word order cannot matter.
+    return createMatchScore(subjectTokens.join(' ') === candidateTokens.join(' ') ? 100 : 0);
   }
 
   const [shorter, longer] =
