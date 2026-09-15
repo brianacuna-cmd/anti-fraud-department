@@ -179,10 +179,16 @@ function buildApp(
     approveEnforcementAction: createApproveEnforcementActionUseCase({
       enforcementActions,
       approvalRequests,
+      outgoingEvents,
+      cases,
+      fraudConfig,
       auditRecorder,
+      outbox: outbox,
       unitOfWork,
       clock,
       generateApprovalRequestId,
+      generateCustomerOutgoingEventId,
+      generateOutboxEventId,
     }),
     rejectEnforcementAction: createRejectEnforcementActionUseCase({
       enforcementActions,

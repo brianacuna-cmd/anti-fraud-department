@@ -13,6 +13,17 @@ import {
   generateApprovalRequestId,
 } from '../../../../src/modules/case-management/domain/model/value-objects/ApprovalRequestId.js';
 import { createEnforcementActionType } from '../../../../src/modules/case-management/domain/model/value-objects/EnforcementActionType.js';
+import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
+import { OrganizationFraudConfig } from '../../../../src/modules/case-management/domain/model/aggregates/OrganizationFraudConfig.js';
+import { createRiskScore } from '../../../../src/modules/case-management/domain/model/value-objects/RiskScore.js';
+import { createCasePriority } from '../../../../src/modules/case-management/domain/model/value-objects/CasePriority.js';
+import { createOrganizationFraudConfigId } from '../../../../src/modules/case-management/domain/model/value-objects/OrganizationFraudConfigId.js';
+import { generateCustomerOutgoingEventId } from '../../../../src/modules/case-management/domain/model/value-objects/CustomerOutgoingEventId.js';
+import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
+import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
+import { InMemoryCustomerOutgoingEventRepository } from '../../../helpers/case-management/InMemoryCustomerOutgoingEventRepository.js';
+import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
+import { InMemoryOrganizationFraudConfigRepository } from '../../../helpers/case-management/InMemoryOrganizationFraudConfigRepository.js';
 import { InMemoryEnforcementActionRepository } from '../../../helpers/case-management/InMemoryEnforcementActionRepository.js';
 import { InMemoryApprovalRequestRepository } from '../../../helpers/case-management/InMemoryApprovalRequestRepository.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
@@ -70,8 +81,41 @@ function buildPendingAction(
   });
 }
 
-function buildUseCase(seed?: EnforcementAction, seedApproval?: ApprovalRequest) {
+function buildUseCase(seed?: EnforcementAction, seedApproval?: ApprovalRequest, webhookUrl: string | null = null) {
   const enforcementActions = new InMemoryEnforcementActionRepository();
+  const cases = new InMemoryCaseRepository();
+  const fraudConfig = new InMemoryOrganizationFraudConfigRepository();
+  const outgoingEvents = new InMemoryCustomerOutgoingEventRepository();
+  const outbox = new InMemoryOutboxEventRepository();
+  void cases.save(
+    Case.create({
+      id: CASE_ID,
+      organizationId: ORG_1,
+      customerId: 'customer-1',
+      riskScore: createRiskScore(80),
+      priority: createCasePriority('HIGH'),
+      now: NOW,
+    }),
+  );
+  if (webhookUrl !== null) {
+    fraudConfig.seed(
+      OrganizationFraudConfig.create({
+        id: createOrganizationFraudConfigId(oid('config-approve-1')),
+        organizationId: ORG_1,
+        slaLowMinutes: 240,
+        slaMediumMinutes: 120,
+        slaHighMinutes: 60,
+        slaCriticalMinutes: 30,
+        riskThresholdLow: 25,
+        riskThresholdMedium: 50,
+        riskThresholdHigh: 75,
+        riskThresholdCritical: 90,
+        featureFlags: {},
+        outboundWebhookUrl: webhookUrl,
+        now: NOW,
+      }),
+    );
+  }
   const approvalRequests = new InMemoryApprovalRequestRepository();
   const auditRecorder = new InMemoryCaseManagementAuditRecorder();
   if (seed !== undefined) {
@@ -83,15 +127,58 @@ function buildUseCase(seed?: EnforcementAction, seedApproval?: ApprovalRequest) 
   const approveEnforcementAction = createApproveEnforcementActionUseCase({
     enforcementActions,
     approvalRequests,
+    outgoingEvents,
+    cases,
+    fraudConfig,
     auditRecorder,
+    outbox,
     unitOfWork: new PassthroughUnitOfWork(),
     clock: new FixedClock(NOW),
     generateApprovalRequestId,
+    generateCustomerOutgoingEventId,
+    generateOutboxEventId,
   });
-  return { approveEnforcementAction, enforcementActions, approvalRequests, auditRecorder };
+  return { approveEnforcementAction, enforcementActions, approvalRequests, auditRecorder, outgoingEvents, outbox };
 }
 
 describe('createApproveEnforcementActionUseCase', () => {
+  it('executes the measure it approves when the tenant can deliver it', async () => {
+    const { approveEnforcementAction, enforcementActions, approvalRequests, auditRecorder, outgoingEvents, outbox } =
+      buildUseCase(buildPendingAction({ actionType: 'BLOCK' }), undefined, 'https://hooks.example/fraud');
+
+    const result = await approveEnforcementAction({
+      auth: SUPERVISOR,
+      enforcementActionId: ACTION_ID,
+      reviewerComment: 'confirmed',
+    });
+
+    expect(result.executed).toBe(true);
+    expect(result.enforcementAction.status).toBe('EXECUTED');
+    expect(result.outgoingEvent).not.toBeNull();
+    expect(enforcementActions.all()[0]?.status).toBe('EXECUTED');
+    expect(approvalRequests.all()[0]?.status).toBe('APPROVED');
+    expect(outgoingEvents.all()).toHaveLength(1);
+    expect(outbox.all().map((e) => e.eventType)).toEqual(['ENFORCEMENT_EXECUTED']);
+    expect(auditRecorder.all().map((e) => e.action)).toEqual([
+      'APPROVE_ENFORCEMENT_ACTION',
+      'EXECUTE_ENFORCEMENT_ACTION',
+    ]);
+  });
+
+  it('leaves a webhook-bound measure APPROVED when no outbound webhook is configured', async () => {
+    const { approveEnforcementAction, auditRecorder } = buildUseCase(buildPendingAction({ actionType: 'SUSPEND' }));
+
+    const result = await approveEnforcementAction({
+      auth: SUPERVISOR,
+      enforcementActionId: ACTION_ID,
+      reviewerComment: null,
+    });
+
+    expect(result.executed).toBe(false);
+    expect(result.enforcementAction.status).toBe('APPROVED');
+    expect(auditRecorder.all().map((e) => e.action)).toEqual(['APPROVE_ENFORCEMENT_ACTION']);
+  });
+
   it('approves PENDING non-REVIEW action to APPROVED and transitions approval_request PENDING→APPROVED', async () => {
     const action = buildPendingAction({ actionType: 'RESTRICT' });
     const existingApproval = ApprovalRequest.create({

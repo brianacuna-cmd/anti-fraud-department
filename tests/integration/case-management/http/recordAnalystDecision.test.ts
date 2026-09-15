@@ -111,10 +111,16 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
     approveEnforcementAction: createApproveEnforcementActionUseCase({
       enforcementActions,
       approvalRequests,
+      outgoingEvents,
+      cases,
+      fraudConfig,
       auditRecorder,
+      outbox: new InMemoryOutboxEventRepository(),
       unitOfWork,
       clock,
       generateApprovalRequestId,
+      generateCustomerOutgoingEventId,
+      generateOutboxEventId,
     }),
     rejectEnforcementAction: createRejectEnforcementActionUseCase({
       enforcementActions,

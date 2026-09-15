@@ -270,7 +270,6 @@ import { webhookTestRouter } from './modules/case-management/infrastructure/adap
 import { createTestOutgoingWebhookUseCase } from './modules/case-management/application/TestOutgoingWebhook.js';
 import { enforcementRouter } from './modules/case-management/infrastructure/adapters/inbound/http/enforcementRouter.js';
 import { approvalRequestRouter } from './modules/case-management/infrastructure/adapters/inbound/http/approvalRequestRouter.js';
-import { createReviewApprovalRequestUseCase } from './modules/case-management/application/ReviewApprovalRequest.js';
 import { createListApprovalRequestsUseCase } from './modules/case-management/application/ListApprovalRequests.js';
 import { routingRuleRouter } from './modules/case-management/infrastructure/adapters/inbound/http/routingRuleRouter.js';
 import { dlqAdminRouter } from './modules/case-management/infrastructure/adapters/inbound/http/dlqAdminRouter.js';
@@ -1574,10 +1573,16 @@ async function bootstrap(): Promise<void> {
     approveEnforcementAction: createApproveEnforcementActionUseCase({
       enforcementActions,
       approvalRequests,
+      outgoingEvents: customerOutgoingEvents,
+      cases,
+      fraudConfig: organizationFraudConfig,
       auditRecorder: caseManagementAuditRecorder,
+      outbox: outboxEvents,
       unitOfWork: caseManagementUnitOfWork,
       clock,
       generateApprovalRequestId,
+      generateCustomerOutgoingEventId,
+      generateOutboxEventId,
     }),
     rejectEnforcementAction: createRejectEnforcementActionUseCase({
       enforcementActions,
@@ -1610,13 +1615,6 @@ async function bootstrap(): Promise<void> {
     listEnforcementActions: createListEnforcementActionsUseCase({ enforcementActions }),
   });
   const approvalRequestHttpRouter = approvalRequestRouter({
-    reviewApprovalRequest: createReviewApprovalRequestUseCase({
-      approvalRequests,
-      enforcementActions,
-      auditRecorder: caseManagementAuditRecorder,
-      unitOfWork: caseManagementUnitOfWork,
-      clock,
-    }),
     listApprovalRequests: createListApprovalRequestsUseCase({
       enforcementActions,
       approvalRequests,
