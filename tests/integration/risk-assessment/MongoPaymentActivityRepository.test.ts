@@ -8,7 +8,7 @@ import {
   PAYMENT_ACTIVITIES_COLLECTION,
 } from '../../../src/modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoPaymentActivityRepository.js';
 import { MongoCustomerCaseHistoryReader } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoCustomerCaseHistoryReader.js';
-import { ANCHOR, activity, hoursBefore, windowScenario } from '../../helpers/risk-assessment/paymentActivityFixtures.js';
+import { ANCHOR, activity, contextScenario, hoursBefore, windowScenario } from '../../helpers/risk-assessment/paymentActivityFixtures.js';
 import { summarizeMerchantActivity } from '../../../src/modules/risk-assessment/domain/model/MerchantRisk.js';
 import { oid } from '../../support/oid.js';
 
@@ -44,6 +44,19 @@ describe('payment activity read models (integration, real replica-set Mongo)', (
       for (const row of rows) await repository.record(row);
 
       expect(await repository.summarize(oid('org-1'), ['cus_1'], ANCHOR)).toEqual(expected);
+    });
+
+    it('counts the event link and seller exactly like the domain reference implementation', async () => {
+      const repository = new MongoPaymentActivityRepository(db);
+      const { rows, expected } = contextScenario();
+      for (const row of rows) await repository.record(row);
+
+      expect(
+        await repository.summarizePaymentContext(oid('org-1'), { paymentLinkReference: 'pi_link', merchantId: 'acct_seller' }, ANCHOR),
+      ).toEqual(expected);
+      expect(
+        await repository.summarizePaymentContext(oid('org-2'), { paymentLinkReference: 'pi_link', merchantId: 'acct_seller' }, ANCHOR),
+      ).toEqual({ linkSuspiciousDeclines: 0, linkDistinctCards: 0, merchantLinksWithRepeatedFailures: 0 });
     });
 
     it('merges several ids of the same customer and never crosses tenants', async () => {

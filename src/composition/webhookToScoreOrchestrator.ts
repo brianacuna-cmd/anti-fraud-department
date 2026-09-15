@@ -75,6 +75,7 @@ async function recordActivity(
       declineCategory: stringSignal(event.riskSignals.declineCategory),
       cardCountry: stringSignal(event.riskSignals.cardCountry),
       billingCountry: stringSignal(event.riskSignals.billingCountry),
+      cardFingerprint: activity.cardFingerprint ?? null,
       source: 'WEBHOOK',
       occurredAt: event.createdAt,
     });
@@ -105,6 +106,11 @@ function toCanonicalRiskEvent(event: IngestedPaymentEvent) {
     ...(event.rail !== undefined ? { rail: event.rail } : {}),
     ...(event.rawPayload !== undefined ? { rawPayload: event.rawPayload } : {}),
     ...(event.subjectIdentity !== undefined ? { subjectIdentity: event.subjectIdentity } : {}),
+    // The link and merchant of the payment, so the rules can count on them.
+    ...(event.paymentActivity?.relatedReferences?.[0] !== undefined
+      ? { paymentLinkReference: event.paymentActivity.relatedReferences[0] }
+      : {}),
+    ...(event.paymentActivity?.merchantId !== undefined ? { merchantId: event.paymentActivity.merchantId } : {}),
   });
 }
 

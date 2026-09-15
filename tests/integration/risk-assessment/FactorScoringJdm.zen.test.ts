@@ -50,6 +50,28 @@ describe('buildFactorScoringJdm evaluated by the real ZenRiskScoringEngine', () 
     ]);
   });
 
+  it('with MAX, the gravest factor that holds sets the score and every hit stays as evidence', async () => {
+    const rules: readonly ScoringFactor[] = [
+      { field: 'activity.distinctCardCountries24h', operator: 'GTE', value: 2, points: 60, reason: 'Geo dispersa' },
+      { field: 'activity.merchantLinksWithRepeatedFailures', operator: 'GTE', value: 3, points: 75, reason: 'Seller reincidente' },
+      { field: 'activity.failedAttempts10m', operator: 'GTE', value: 5, points: 80, reason: 'Velocidad' },
+      { field: 'activity.linkSuspiciousDeclines', operator: 'GTE', value: 3, points: 85, reason: 'Link expira' },
+      { field: 'activity.linkDistinctCards', operator: 'GTE', value: 3, points: 90, reason: 'Card testing' },
+      { field: 'activity.chargebacks90d', operator: 'GTE', value: 1, points: 95, reason: 'Chargeback' },
+    ];
+
+    const result = await engine.evaluate(buildFactorScoringJdm(rules, 'MAX'), {
+      provider: 'stripe',
+      amountCents: 1_000,
+      currency: 'USD',
+      riskSignals: {},
+      activity: { distinctCardCountries24h: 3, failedAttempts10m: 6, linkDistinctCards: 4, chargebacks90d: 0 },
+    });
+
+    expect(result.riskScore).toBe(90);
+    expect(result.hits.map((h) => (h as { reason: string }).reason)).toEqual(['Geo dispersa', 'Velocidad', 'Card testing']);
+  });
+
   /*
    * El evento de Bridge es el que mas rompe una regla mal escrita: llega casi
    * sin senales. Tiene que dar 0 y no reventar.

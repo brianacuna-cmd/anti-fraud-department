@@ -22,6 +22,7 @@ export interface RecordPaymentActivityInput {
   readonly declineCategory?: string | null;
   readonly cardCountry?: string | null;
   readonly billingCountry?: string | null;
+  readonly cardFingerprint?: string | null;
   readonly source: string;
   readonly occurredAt: Instant;
 }
@@ -62,6 +63,7 @@ export function createRecordPaymentActivityUseCase(deps: RecordPaymentActivityDe
       declineCategory: input.declineCategory ?? null,
       cardCountry: input.cardCountry ?? null,
       billingCountry: input.billingCountry ?? null,
+      cardFingerprint: input.cardFingerprint ?? null,
       source: input.source,
       occurredAt: input.occurredAt,
       recordedAt: deps.clock.now(),

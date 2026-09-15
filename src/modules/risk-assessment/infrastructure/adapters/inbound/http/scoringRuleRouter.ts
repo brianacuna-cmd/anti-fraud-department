@@ -81,7 +81,7 @@ export function scoringRuleRouter(deps: ScoringRuleRouterDeps): Router {
     const rule = await deps.createScoringRule({
       auth,
       name: body.name,
-      conditions: buildFactorScoringJdm(body.factors),
+      conditions: buildFactorScoringJdm(body.factors, body.combination),
       conditionsVersion: 1,
     });
     res.status(201).json(toScoringRuleResponse(rule));

@@ -20,6 +20,10 @@ export interface CanonicalRiskEvent {
   readonly rail?: string;
   readonly rawPayload?: Readonly<Record<string, unknown>>;
   readonly subjectIdentity?: SubjectIdentity;
+  /** The payment link the event belongs to (Stripe PaymentIntent). Keys `activity.link*`. */
+  readonly paymentLinkReference?: string;
+  /** The merchant that was paid (Stripe connected account). Keys `activity.merchant*`. */
+  readonly merchantId?: string;
   /**
    * Accumulated activity of the customer (`ACTIVITY_VARIABLES`), filled by the
    * composition root from recorded history right before scoring. Anything a
@@ -43,6 +47,8 @@ export function createCanonicalRiskEvent(input: Readonly<Record<string, unknown>
   const eventId = pickOptionalString(input.eventId);
   const providerEventId = pickOptionalString(input.providerEventId);
   const rail = pickOptionalString(input.rail);
+  const paymentLinkReference = pickOptionalString(input.paymentLinkReference);
+  const merchantId = pickOptionalString(input.merchantId);
   const rawPayload = isRecord(input.rawPayload) ? input.rawPayload : undefined;
   const subjectIdentity = isRecord(input.subjectIdentity) ? pickSubjectIdentity(input.subjectIdentity) : undefined;
   const activity = pickNumberMap('activity', input.activity, ACTIVITY_VARIABLES);
@@ -58,6 +64,8 @@ export function createCanonicalRiskEvent(input: Readonly<Record<string, unknown>
     ...(eventId !== undefined ? { eventId } : {}),
     ...(providerEventId !== undefined ? { providerEventId } : {}),
     ...(rail !== undefined ? { rail } : {}),
+    ...(paymentLinkReference !== undefined ? { paymentLinkReference } : {}),
+    ...(merchantId !== undefined ? { merchantId } : {}),
     ...(rawPayload !== undefined ? { rawPayload } : {}),
     ...(subjectIdentity !== undefined ? { subjectIdentity } : {}),
     ...(activity !== undefined ? { activity } : {}),

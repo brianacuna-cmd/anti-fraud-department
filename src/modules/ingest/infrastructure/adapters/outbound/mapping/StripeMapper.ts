@@ -82,11 +82,13 @@ function chargeActivity(type: string, charge: Record<string, unknown>): PaymentA
   }
   const reference = readOptionalStringPath(charge, ['id']);
   const paymentIntent = readOptionalStringPath(charge, ['payment_intent']);
+  const cardFingerprint = readOptionalStringPath(charge, ['payment_method_details', 'card', 'fingerprint']);
   return {
     kind: 'ATTEMPT',
     outcome: type === 'charge.failed' ? 'FAILED' : 'SUCCEEDED',
     ...(reference !== undefined ? { providerReference: reference } : {}),
     ...(paymentIntent !== undefined ? { relatedReferences: [paymentIntent] } : {}),
+    ...(cardFingerprint !== undefined ? { cardFingerprint } : {}),
   };
 }
 

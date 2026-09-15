@@ -119,6 +119,25 @@ describe('scoringRuleRouter (HTTP)', () => {
     expect(auditRecorder.all()[0]?.action).toBe('CREATE_SCORING_RULE');
   });
 
+  it('builds a factor rule where the gravest factor sets the score when combination is MAX', async () => {
+    const { app, scoringRules } = buildApp(() =>
+      createAuthContext({ userId: oid('user-1'), organizationId: oid('org-1'), roleId: 'SUPERVISOR', actorType: 'USER' }),
+    );
+
+    const response = await request(app)
+      .post('/api/v1/risk-scoring-rules/factor-scoring')
+      .send({
+        name: 'max-rule',
+        combination: 'MAX',
+        factors: [{ field: 'activity.chargebacks90d', operator: 'GTE', value: 1, points: 95, reason: 'Chargeback' }],
+      })
+      .expect(201);
+
+    expect(response.body.status).toBe('INACTIVE');
+    const graph = scoringRules.all()[0]!.conditions as { nodes: { type: string; content?: { source?: string } }[] };
+    expect(graph.nodes.find((n) => n.type === 'functionNode')?.content?.source).toContain('Math.max(acc');
+  });
+
   it('rejects invalid JDM without persisting', async () => {
     const { app, scoringRules } = buildApp(() =>
       createAuthContext({

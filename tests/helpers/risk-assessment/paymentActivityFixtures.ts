@@ -47,7 +47,8 @@ export function activity(overrides: Partial<CreatePaymentActivityInput> = {}): P
 export function windowScenario(): { rows: PaymentActivity[]; expected: Record<string, unknown> } {
   const rows = [
     activity({ occurredAt: hoursBefore(1), cardCountry: 'US' }),
-    activity({ occurredAt: hoursBefore(2), outcome: 'FAILED', providerEventType: 'charge.failed', declineCategory: 'FRAUD_SUSPECTED', cardCountry: 'NG' }),
+    // 6 minutes before: inside the 10 min velocity window too.
+    activity({ occurredAt: hoursBefore(0.1), outcome: 'FAILED', providerEventType: 'charge.failed', declineCategory: 'FRAUD_SUSPECTED', cardCountry: 'NG' }),
     activity({ occurredAt: hoursBefore(3), outcome: 'FAILED', providerEventType: 'charge.failed', declineCategory: 'INSUFFICIENT_FUNDS', cardCountry: 'NG' }),
     activity({ occurredAt: hoursBefore(23.9), outcome: 'FAILED', providerEventType: 'charge.failed', declineCategory: 'AUTHENTICATION_FAILED', cardCountry: null }),
     // Exactly 24 h before: OUT of the 24 h window (it is `(anchor - 24h, anchor]`).
@@ -66,6 +67,7 @@ export function windowScenario(): { rows: PaymentActivity[]; expected: Record<st
     expected: {
       attempts24h: 4,
       failedAttempts24h: 3,
+      failedAttempts10m: 1,
       suspiciousDeclines24h: 2,
       distinctCardCountries24h: 2,
       chargebacks90d: 1,
@@ -74,5 +76,40 @@ export function windowScenario(): { rows: PaymentActivity[]; expected: Record<st
       lifetimeChargebacks: 2,
       firstActivityAt: hoursBefore(24 * 200),
     },
+  };
+}
+
+/**
+ * One payment link and one merchant, across several customers, for the
+ * event-scoped counts. Shared by the domain reference and the Mongo adapter.
+ */
+export function contextScenario(): { rows: PaymentActivity[]; expected: Record<string, number> } {
+  const failed = (overrides: Partial<CreatePaymentActivityInput>) =>
+    activity({ outcome: 'FAILED', providerEventType: 'charge.failed', merchantId: 'acct_seller', ...overrides });
+  const rows = [
+    // pi_link: 3 suspicious failures and 3 distinct cards (one card twice), from two customers.
+    failed({ relatedReferences: ['pi_link'], declineCategory: 'FRAUD_SUSPECTED', cardFingerprint: 'fp_a', occurredAt: hoursBefore(1) }),
+    failed({ relatedReferences: ['pi_link'], declineCategory: 'AUTHENTICATION_FAILED', cardFingerprint: 'fp_b', occurredAt: hoursBefore(2) }),
+    failed({ customerId: 'cus_2', relatedReferences: ['pi_link'], declineCategory: 'FRAUD_SUSPECTED', cardFingerprint: 'fp_c', occurredAt: hoursBefore(3) }),
+    failed({ relatedReferences: ['pi_link'], declineCategory: 'INSUFFICIENT_FUNDS', cardFingerprint: 'fp_a', occurredAt: hoursBefore(4) }),
+    activity({ relatedReferences: ['pi_link'], cardFingerprint: null, merchantId: 'acct_seller', occurredAt: hoursBefore(5) }),
+    // After the anchor: ignored.
+    failed({ relatedReferences: ['pi_link'], declineCategory: 'FRAUD_SUSPECTED', cardFingerprint: 'fp_z', occurredAt: hoursBefore(-1) }),
+    // pi_two: 3 failures in 30 days -> a second repeatedly failing link of the seller.
+    failed({ relatedReferences: ['pi_two'], occurredAt: hoursBefore(24) }),
+    failed({ relatedReferences: ['pi_two'], occurredAt: hoursBefore(48) }),
+    failed({ relatedReferences: ['pi_two'], occurredAt: hoursBefore(24 * 29) }),
+    // pi_old: 3 failures but one is older than 30 days -> does not count.
+    failed({ relatedReferences: ['pi_old'], occurredAt: hoursBefore(24) }),
+    failed({ relatedReferences: ['pi_old'], occurredAt: hoursBefore(48) }),
+    failed({ relatedReferences: ['pi_old'], occurredAt: hoursBefore(24 * 31) }),
+    // Another seller's link: never counted for acct_seller.
+    failed({ relatedReferences: ['pi_else'], merchantId: 'acct_else', occurredAt: hoursBefore(1) }),
+    failed({ relatedReferences: ['pi_else'], merchantId: 'acct_else', occurredAt: hoursBefore(2) }),
+    failed({ relatedReferences: ['pi_else'], merchantId: 'acct_else', occurredAt: hoursBefore(3) }),
+  ];
+  return {
+    rows,
+    expected: { linkSuspiciousDeclines: 3, linkDistinctCards: 3, merchantLinksWithRepeatedFailures: 2 },
   };
 }

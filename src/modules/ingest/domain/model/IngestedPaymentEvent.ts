@@ -36,6 +36,8 @@ export interface PaymentActivityDescriptor {
   readonly relatedReferences?: readonly string[];
   /** The merchant that was paid (Stripe connected account). */
   readonly merchantId?: string;
+  /** Stripe card fingerprint of the card used. */
+  readonly cardFingerprint?: string;
 }
 
 export interface SubjectIdentity {

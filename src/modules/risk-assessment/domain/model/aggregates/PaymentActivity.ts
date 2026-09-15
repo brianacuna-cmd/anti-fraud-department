@@ -52,6 +52,11 @@ export interface PaymentActivityProps {
   readonly declineCategory: string | null;
   readonly cardCountry: string | null;
   readonly billingCountry: string | null;
+  /**
+   * Stripe card fingerprint: the same card gives the same value across
+   * charges, without exposing the number. `null` when the provider has none.
+   */
+  readonly cardFingerprint: string | null;
   readonly source: PaymentActivitySource;
   /** When the payment happened at the provider — the clock every window counts on. */
   readonly occurredAt: Instant;
@@ -60,13 +65,14 @@ export interface PaymentActivityProps {
 
 export type CreatePaymentActivityInput = Omit<
   PaymentActivityProps,
-  'kind' | 'outcome' | 'source' | 'relatedReferences' | 'merchantId'
+  'kind' | 'outcome' | 'source' | 'relatedReferences' | 'merchantId' | 'cardFingerprint'
 > & {
   readonly kind: string;
   readonly outcome: string | null;
   readonly source: string;
   readonly relatedReferences?: readonly string[];
   readonly merchantId?: string | null;
+  readonly cardFingerprint?: string | null;
 };
 
 /** One row of a customer's payment history. Append-only: never updated once recorded. */
@@ -99,6 +105,7 @@ export class PaymentActivity {
       source: input.source as PaymentActivitySource,
       relatedReferences: [...new Set((input.relatedReferences ?? []).filter((r) => r.trim().length > 0))],
       merchantId: input.merchantId?.trim() ? input.merchantId.trim() : null,
+      cardFingerprint: input.cardFingerprint?.trim() ? input.cardFingerprint.trim() : null,
       currency: input.currency.toUpperCase(),
       cardCountry: input.cardCountry?.toUpperCase() ?? null,
       billingCountry: input.billingCountry?.toUpperCase() ?? null,

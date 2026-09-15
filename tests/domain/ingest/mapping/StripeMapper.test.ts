@@ -301,3 +301,19 @@ describe('mapStripeEnvelope merchant and related references', () => {
     });
   });
 });
+
+
+describe('mapStripeEnvelope card fingerprint', () => {
+  it('records the card fingerprint so card testing on a link can be counted', () => {
+    const charge = {
+      ...CHARGE,
+      payment_intent: 'pi_9',
+      payment_method_details: { card: { country: 'US', fingerprint: 'fp_card_1' } },
+    };
+
+    const result = mapStripeEnvelope(chargeEvent('charge.failed', charge));
+
+    if (result.status !== 'mapped') throw new Error('expected mapped');
+    expect(result.event.paymentActivity).toMatchObject({ relatedReferences: ['pi_9'], cardFingerprint: 'fp_card_1' });
+  });
+});

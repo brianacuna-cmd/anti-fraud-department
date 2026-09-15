@@ -32,18 +32,20 @@ export type EnrichRiskEvent = (input: {
  */
 export function createCustomerRiskContextEnricher(deps: CustomerRiskContextEnricherDeps): EnrichRiskEvent {
   return async function enrichRiskEvent({ auth, event }) {
-    const [{ summary }, cases] = await Promise.all([
+    const [{ summary, context }, cases] = await Promise.all([
       deps.getCustomerPaymentActivity({
         auth,
         customerIds: [event.caseCustomerId],
         anchor: event.createdAt,
         recentLimit: 0,
+        paymentLinkReference: event.paymentLinkReference ?? null,
+        merchantId: event.merchantId ?? null,
       }),
       deps.getCustomerCaseHistory({ auth, customerId: event.caseCustomerId }),
     ]);
     return createCanonicalRiskEvent({
       ...event,
-      activity: toActivityVariables(summary),
+      activity: toActivityVariables(summary, context),
       customerHistory: toCustomerHistoryVariables(summary, cases, event.createdAt),
     });
   };

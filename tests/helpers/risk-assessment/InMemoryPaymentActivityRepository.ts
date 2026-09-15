@@ -2,7 +2,10 @@ import type { Instant } from '../../../src/shared/time/Instant.js';
 import type { PaymentActivity } from '../../../src/modules/risk-assessment/domain/model/aggregates/PaymentActivity.js';
 import {
   summarizePaymentActivity,
+  summarizePaymentContext,
   type PaymentActivitySummary,
+  type PaymentContextKeys,
+  type PaymentContextSummary,
 } from '../../../src/modules/risk-assessment/domain/model/CustomerRiskContext.js';
 import type { PaymentActivityRepository } from '../../../src/modules/risk-assessment/domain/ports/PaymentActivityRepository.js';
 import {
@@ -37,6 +40,15 @@ export class InMemoryPaymentActivityRepository implements PaymentActivityReposit
     anchor: Instant,
   ): Promise<PaymentActivitySummary> {
     return summarizePaymentActivity(this.of(organizationId, customerIds).map((row) => row.toProps()), anchor);
+  }
+
+  async summarizePaymentContext(
+    organizationId: string,
+    keys: PaymentContextKeys,
+    anchor: Instant,
+  ): Promise<PaymentContextSummary> {
+    const rows = this.rows.map((row) => row.toProps()).filter((p) => p.organizationId === organizationId);
+    return summarizePaymentContext(rows, keys, anchor);
   }
 
   async listRecent(organizationId: string, customerIds: readonly string[], limit: number): Promise<readonly PaymentActivity[]> {
