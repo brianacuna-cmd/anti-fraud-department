@@ -210,20 +210,6 @@ export class MongoPaymentActivityRepository implements PaymentActivityRepository
     };
   }
 
-  async findByReferences(organizationId: string, references: readonly string[]): Promise<readonly PaymentActivity[]> {
-    if (references.length === 0) {
-      return [];
-    }
-    const refs = [...references];
-    const documents = await this.collection
-      .find({
-        organization_id: new ObjectId(organizationId),
-        $or: [{ provider_reference: { $in: refs } }, { related_references: { $in: refs } }],
-      })
-      .toArray();
-    return documents.map(toDomain);
-  }
-
   async findCustomerByProviderReference(
     organizationId: string,
     provider: string,

@@ -56,17 +56,6 @@ export class InMemoryPaymentActivityRepository implements PaymentActivityReposit
     return summarizeMerchantActivity(rows, anchor);
   }
 
-  async findByReferences(organizationId: string, references: readonly string[]): Promise<readonly PaymentActivity[]> {
-    return this.rows.filter((row) => {
-      const p = row.toProps();
-      return (
-        p.organizationId === organizationId &&
-        ((p.providerReference !== null && references.includes(p.providerReference)) ||
-          p.relatedReferences.some((r) => references.includes(r)))
-      );
-    });
-  }
-
   async findCustomerByProviderReference(
     organizationId: string,
     provider: string,

@@ -1,5 +1,3 @@
-import type { PaymentActivityProps } from './aggregates/PaymentActivity.js';
-
 /** A Finturu payment link, as the reconciliation needs it. Amounts in USD. */
 export interface PaymentLinkRecord {
   readonly id: number;
@@ -18,6 +16,21 @@ export interface PaymentLinkRecord {
 /** Same list api-business uses for its monthly cap. */
 export const PAID_LINK_STATES: readonly string[] = ['PAID', 'DISBURSED', 'PROCESS', 'PARTIAL_REFUND', 'REFUND_IN_PROGRESS'];
 
+/**
+ * A charge as the provider reports it right now (Stripe, queried live through
+ * api-business). Amounts in cents.
+ */
+export interface ProviderChargeRecord {
+  readonly chargeId: string;
+  /** What the payment link stores: the Stripe PaymentIntent. */
+  readonly paymentIntentId: string | null;
+  readonly amountCents: number;
+  /** Stripe `status === 'succeeded'`. */
+  readonly succeeded: boolean;
+  /** A dispute was opened on the charge. */
+  readonly disputed: boolean;
+}
+
 export type ReconciliationStatus =
   /** Link and provider agree. */
   | 'MATCHED'
@@ -32,7 +45,13 @@ export type ReconciliationStatus =
   /** The payment was disputed. */
   | 'CHARGEBACK'
   /** Paid in Finturu with no provider id stored: it cannot be checked at all. */
-  | 'NO_PROVIDER_REFERENCE';
+  | 'NO_PROVIDER_REFERENCE'
+  /**
+   * The provider could not be asked: not a Stripe link, the merchant has no
+   * Stripe Connect account, or Stripe did not answer. Reported apart so it is
+   * never mistaken for "paid without provider payment".
+   */
+  | 'PROVIDER_NOT_QUERIED';
 
 export interface ReconciliationItem {
   readonly linkId: number;
@@ -63,22 +82,23 @@ const AMOUNT_TOLERANCE_CENTS = 1;
 const QUIET: ReadonlySet<ReconciliationStatus> = new Set(['MATCHED', 'UNPAID']);
 
 /**
- * Crosses Finturu payment links with the payment history the providers
- * reported (webhooks and CSV imports). Matching is by the provider payment id
- * stored on the link against each activity's reference or related references
- * (Stripe: PaymentIntent; Coinflow: payment id).
+ * Crosses Finturu payment links with the charges the provider reports when
+ * asked (Stripe, live). Matching is by the PaymentIntent stored on the link
+ * against each charge's PaymentIntent, or its charge id.
  *
- * A link can only be proven paid by activity this service recorded: links paid
- * before the history started show as PAID_WITHOUT_PROVIDER_PAYMENT until the
- * provider export for that period is imported. That is expected, and the
- * report says so rather than hiding those links.
+ * `queriedMerchants` are the merchants whose charges were actually fetched:
+ * a link of any other merchant, or of a provider that is not queried, is
+ * PROVIDER_NOT_QUERIED instead of looking unpaid.
  */
 export function reconcilePaymentLinks(
   links: readonly PaymentLinkRecord[],
-  activities: readonly PaymentActivityProps[],
+  charges: readonly ProviderChargeRecord[],
+  queriedMerchants: ReadonlySet<number>,
 ): ReconciliationReport {
-  const byReference = indexByReference(activities);
-  const items = links.map((link) => reconcileOne(link, link.providerPaymentId ? (byReference.get(link.providerPaymentId) ?? []) : []));
+  const byReference = indexByReference(charges);
+  const items = links.map((link) =>
+    reconcileOne(link, link.providerPaymentId ? (byReference.get(link.providerPaymentId) ?? []) : [], queriedMerchants),
+  );
 
   const totals = Object.fromEntries(STATUSES.map((status) => [status, 0])) as Record<ReconciliationStatus, number>;
   for (const item of items) totals[item.status] += 1;
@@ -90,6 +110,11 @@ export function reconcilePaymentLinks(
   };
 }
 
+/** Stripe is the provider queried live. */
+export function isQueriedProvider(provider: string | null): boolean {
+  return (provider ?? '').toLowerCase() === 'stripe';
+}
+
 const STATUSES: readonly ReconciliationStatus[] = [
   'MATCHED',
   'UNPAID',
@@ -98,33 +123,40 @@ const STATUSES: readonly ReconciliationStatus[] = [
   'AMOUNT_MISMATCH',
   'CHARGEBACK',
   'NO_PROVIDER_REFERENCE',
+  'PROVIDER_NOT_QUERIED',
 ];
 
-function indexByReference(activities: readonly PaymentActivityProps[]): Map<string, PaymentActivityProps[]> {
-  const index = new Map<string, PaymentActivityProps[]>();
-  const pairs = activities.flatMap((row) =>
-    [row.providerReference, ...row.relatedReferences]
+function indexByReference(charges: readonly ProviderChargeRecord[]): Map<string, ProviderChargeRecord[]> {
+  const index = new Map<string, ProviderChargeRecord[]>();
+  const pairs = charges.flatMap((charge) =>
+    [charge.paymentIntentId, charge.chargeId]
       .filter((reference): reference is string => !!reference)
-      .map((reference) => [reference, row] as const),
+      .map((reference) => [reference, charge] as const),
   );
-  for (const [reference, row] of pairs) {
+  for (const [reference, charge] of pairs) {
     const bucket = index.get(reference) ?? [];
-    index.set(reference, bucket.includes(row) ? bucket : [...bucket, row]);
+    index.set(reference, bucket.includes(charge) ? bucket : [...bucket, charge]);
   }
   return index;
 }
 
-function reconcileOne(link: PaymentLinkRecord, rows: readonly PaymentActivityProps[]): ReconciliationItem {
+function reconcileOne(
+  link: PaymentLinkRecord,
+  rows: readonly ProviderChargeRecord[],
+  queriedMerchants: ReadonlySet<number>,
+): ReconciliationItem {
   const linkPaid = link.isPaid || PAID_LINK_STATES.includes(link.state ?? '');
-  const succeeded = rows.filter((row) => row.kind === 'ATTEMPT' && row.outcome === 'SUCCEEDED');
+  const succeeded = rows.filter((row) => row.succeeded);
   const providerAmountCents = succeeded.length === 0 ? null : succeeded.reduce((sum, row) => sum + row.amountCents, 0);
-  const chargebacks = rows.filter((row) => row.kind === 'CHARGEBACK').length;
+  const chargebacks = rows.filter((row) => row.disputed).length;
+  const queried =
+    isQueriedProvider(link.provider) && link.merchantUserId !== null && queriedMerchants.has(link.merchantUserId);
   const expectedAmountCents = Math.round((link.amount + link.shippingAmount) * 100);
 
   return {
     linkId: link.id,
     merchantUserId: link.merchantUserId,
-    status: statusOf({ link, linkPaid, providerAmountCents, expectedAmountCents, chargebacks }),
+    status: statusOf({ link, linkPaid, providerAmountCents, expectedAmountCents, chargebacks, queried }),
     linkState: link.state,
     linkPaid,
     provider: link.provider,
@@ -142,10 +174,12 @@ function statusOf(facts: {
   providerAmountCents: number | null;
   expectedAmountCents: number;
   chargebacks: number;
+  queried: boolean;
 }): ReconciliationStatus {
   if (facts.chargebacks > 0) return 'CHARGEBACK';
   const providerPaid = facts.providerAmountCents !== null;
   if (facts.linkPaid && facts.link.providerPaymentId === null) return 'NO_PROVIDER_REFERENCE';
+  if (!facts.queried) return facts.linkPaid ? 'PROVIDER_NOT_QUERIED' : 'UNPAID';
   if (facts.linkPaid && !providerPaid) return 'PAID_WITHOUT_PROVIDER_PAYMENT';
   if (!facts.linkPaid && providerPaid) return 'PROVIDER_PAID_LINK_UNPAID';
   if (!facts.linkPaid) return 'UNPAID';
