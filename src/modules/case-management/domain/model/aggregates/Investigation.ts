@@ -3,7 +3,7 @@ import type { CaseId } from '../value-objects/CaseId.js';
 import type { InvestigationId } from '../value-objects/InvestigationId.js';
 import type { InvestigationSubjectType } from '../value-objects/InvestigationSubjectType.js';
 import type { InvestigationStatus } from '../value-objects/InvestigationStatus.js';
-import { invariantViolation, invalidTransition } from '../../errors/CaseManagementError.js';
+import { invariantViolation } from '../../errors/CaseManagementError.js';
 
 export interface InvestigationProps {
   readonly id: InvestigationId;
@@ -37,8 +37,13 @@ export interface OpenInvestigationInput {
 
 /**
  * An investigation into one entity (wallet/email/customer) tied to a case
- * (1:N). Opens OPEN with no findings; `close` (PR3) records findings and sets
- * CLOSED. Carries a stable id so later cuts (evidence, SAR) can reference it.
+ * (1:N): the anchor of a network view. It has no lifecycle of its own — the
+ * case already has one, and a second set of statuses nobody drove only
+ * duplicated it. What the analyst concludes goes into a case note.
+ *
+ * `status`, `findings` and `closedAt` stay readable because investigations
+ * closed before this change carry them; new ones are born OPEN and stay so.
+ * Carries a stable id so evidence and SAR can reference it.
  */
 export class Investigation {
   private constructor(private readonly props: InvestigationProps) {}
@@ -70,31 +75,8 @@ export class Investigation {
   }
 
   /**
-   * Closes an OPEN investigation, recording non-empty findings and the close
-   * time. Closing an already-CLOSED investigation throws `invalidTransition`.
-   */
-  close(findings: string, now: Instant): Investigation {
-    if (this.props.status !== 'OPEN') {
-      throw invalidTransition(this.props.status, 'CLOSED');
-    }
-    const trimmed = findings.trim();
-    if (trimmed.length === 0) {
-      throw invariantViolation('Investigation findings must be a non-empty string', { field: 'findings' });
-    }
-    return new Investigation({
-      ...this.props,
-      status: 'CLOSED',
-      findings: trimmed,
-      updatedAt: now,
-      closedAt: now,
-    });
-  }
-
-  /**
    * Records the structured JSON findings and the exploration depth
-   * (`profundidad_explorada`) of the investigated network. Independent of the
-   * OPEN/CLOSED lifecycle — an investigation can be amended while active or
-   * after closure. `explorationDepth` must be a non-negative integer.
+   * (`profundidad_explorada`) of the investigated network. `explorationDepth` must be a non-negative integer.
    */
   recordFindings(
     findingsData: Record<string, unknown>,
@@ -129,22 +111,6 @@ export class Investigation {
       collectLinkedCase(caseId, primary, seen, merged);
     }
     return new Investigation({ ...this.props, linkedCaseIds: merged, updatedAt: now });
-  }
-
-  /**
-   * Advances the lifecycle to INVESTIGATING or RESOLVED. Allowed edges:
-   * OPEN -> INVESTIGATING, OPEN -> RESOLVED, INVESTIGATING -> RESOLVED.
-   * Any other source (RESOLVED/CLOSED, or a no-op) throws `invalidTransition`.
-   * The findings-based `close()` path (-> CLOSED) is independent.
-   */
-  changeStatus(next: 'INVESTIGATING' | 'RESOLVED', now: Instant): Investigation {
-    const allowed =
-      (next === 'INVESTIGATING' && this.props.status === 'OPEN') ||
-      (next === 'RESOLVED' && (this.props.status === 'OPEN' || this.props.status === 'INVESTIGATING'));
-    if (!allowed) {
-      throw invalidTransition(this.props.status, next);
-    }
-    return new Investigation({ ...this.props, status: next, updatedAt: now });
   }
 
   get id(): InvestigationId {

@@ -21,11 +21,8 @@ import { generateCaseReportId } from '../../../../src/modules/case-management/do
 import { InMemoryAnalystDecisionRepository } from '../../../helpers/case-management/InMemoryAnalystDecisionRepository.js';
 import { InMemoryEnforcementActionRepository } from '../../../helpers/case-management/InMemoryEnforcementActionRepository.js';
 import { createGetInvestigationUseCase } from '../../../../src/modules/case-management/application/GetInvestigation.js';
-import { createCloseInvestigationUseCase } from '../../../../src/modules/case-management/application/CloseInvestigation.js';
 import { createUpdateInvestigationFindingsUseCase } from '../../../../src/modules/case-management/application/UpdateInvestigationFindings.js';
 import { createLinkInvestigationCasesUseCase } from '../../../../src/modules/case-management/application/LinkInvestigationCases.js';
-import { createListActiveInvestigationsUseCase } from '../../../../src/modules/case-management/application/ListActiveInvestigations.js';
-import { createUpdateInvestigationStatusUseCase } from '../../../../src/modules/case-management/application/UpdateInvestigationStatus.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryInvestigationRepository } from '../../../helpers/case-management/InMemoryInvestigationRepository.js';
 import { InMemoryCaseManagementAuditRecorder } from '../../../helpers/case-management/InMemoryCaseManagementAuditRecorder.js';
@@ -111,7 +108,6 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
     listInvestigations: createListInvestigationsUseCase({ cases, investigations }),
     getInvestigation: createGetInvestigationUseCase({ investigations }),
     buildEntityNetworkGraph: createBuildEntityNetworkGraphUseCase({ cases, investigations }),
-    closeInvestigation: createCloseInvestigationUseCase(deps),
     updateInvestigationFindings: createUpdateInvestigationFindingsUseCase(deps),
     linkInvestigationCases: createLinkInvestigationCasesUseCase({
       investigations,
@@ -120,13 +116,6 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
       unitOfWork,
       clock,
       generateTimelineEventId,
-    }),
-    listActiveInvestigations: createListActiveInvestigationsUseCase({ investigations }),
-    updateInvestigationStatus: createUpdateInvestigationStatusUseCase({
-      investigations,
-      auditRecorder,
-      unitOfWork,
-      clock,
     }),
   });
 

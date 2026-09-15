@@ -8,13 +8,6 @@ export const openInvestigationSchema = z.object({
 
 export type OpenInvestigationBody = z.infer<typeof openInvestigationSchema>;
 
-/** POST /cases/:caseId/investigations/:investigationId/close body. */
-export const closeInvestigationSchema = z.object({
-  findings: z.string().trim().min(1),
-});
-
-export type CloseInvestigationBody = z.infer<typeof closeInvestigationSchema>;
-
 /** PATCH /investigations/:investigationId/findings body. */
 export const updateInvestigationFindingsSchema = z.object({
   findings: z.record(z.string(), z.unknown()),
@@ -29,13 +22,6 @@ export const linkInvestigationCasesSchema = z.object({
 });
 
 export type LinkInvestigationCasesBody = z.infer<typeof linkInvestigationCasesSchema>;
-
-/** PATCH /investigations/:investigationId/status body. */
-export const updateInvestigationStatusSchema = z.object({
-  status: z.enum(['INVESTIGATING', 'RESOLVED']),
-});
-
-export type UpdateInvestigationStatusBody = z.infer<typeof updateInvestigationStatusSchema>;
 
 /**
  * GET /investigations/:investigationId/graph query (INV-013).
