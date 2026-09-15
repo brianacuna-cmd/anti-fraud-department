@@ -440,6 +440,7 @@ import { createWalletRescreenCaseLinker } from './composition/walletRescreenCase
 import { createSyncSanctionWatchlistsUseCase } from './modules/screening/application/SyncSanctionWatchlists.js';
 import { createRescreenCustomerSanctionsUseCase } from './modules/screening/application/RescreenCustomerSanctions.js';
 import { createCaseLinkingOpenAmlAlert } from './modules/screening/application/CaseLinkingOpenAmlAlert.js';
+import { createEscalatingOpenAmlAlert } from './modules/screening/application/EscalatingOpenAmlAlert.js';
 import { createDailyBogotaScheduler, msUntilNextBogotaTime } from './modules/screening/application/DailyBogotaScheduler.js';
 import { HttpSanctionListFeed } from './modules/screening/infrastructure/adapters/outbound/sanctions/HttpSanctionListFeed.js';
 import type { SanctionListParser } from './modules/screening/infrastructure/adapters/outbound/sanctions/HttpSanctionListFeed.js';
@@ -1804,6 +1805,14 @@ async function bootstrap(): Promise<void> {
     clock,
     generateTimelineEventId: generateObjectIdHex,
   });
+  // Strong matches go straight into a fraud case; only doubtful ones wait
+  // in the AML inbox. See `EscalatingOpenAmlAlert`.
+  const escalateStrongAmlMatches = (open: typeof openAmlAlert) =>
+    createEscalatingOpenAmlAlert({
+      openAmlAlert: open,
+      escalateAmlAlert,
+      onEscalationError: (alertId, error) => console.error(`[aml-escalation] alert ${alertId}:`, error),
+    });
   // Screening's own AuditRecorder port, bridged at the composition root to
   // the SAME `recordAuditLog` instance built above (design D6/D7) — the
   // resolve disposition (RF-3) commits its audit row atomically with the
@@ -1892,7 +1901,7 @@ async function bootstrap(): Promise<void> {
       : new MongoFallbackWatchlistCandidateRepository(db);
   const screenSubjectAgainstWatchlist = createScreenSubjectAgainstWatchlistUseCase({
     watchlistCandidateRepository: watchlistCandidates,
-    openAmlAlert,
+    openAmlAlert: escalateStrongAmlMatches(openAmlAlert),
     phoneticEncoder: new TalismanPhoneticEncoder(),
     similarityCalculator: new TalismanSimilarityCalculator(),
   });
@@ -2394,7 +2403,7 @@ async function bootstrap(): Promise<void> {
     watchlistEntryRepository: watchlistEntries,
     watermarkRepository: walletWatermarkRepository,
     walletSource,
-    openAmlAlert,
+    openAmlAlert: escalateStrongAmlMatches(openAmlAlert),
     amlAlertRepository: amlAlerts,
     unitOfWork: screeningUnitOfWork,
     isOrganizationActive: async (id: string) => {
@@ -2464,13 +2473,15 @@ async function bootstrap(): Promise<void> {
     customerSource: createFinturuScreeningCustomerSource(finturuApiClient),
     screenSubject: createScreenSubjectAgainstWatchlistUseCase({
       watchlistCandidateRepository: watchlistCandidates,
-      openAmlAlert: createCaseLinkingOpenAmlAlert({
-        openAmlAlert,
-        caseLinker: walletCaseLinker,
-        amlAlertRepository: amlAlerts,
-        unitOfWork: screeningUnitOfWork,
-        clock,
-      }),
+      openAmlAlert: escalateStrongAmlMatches(
+        createCaseLinkingOpenAmlAlert({
+          openAmlAlert,
+          caseLinker: walletCaseLinker,
+          amlAlertRepository: amlAlerts,
+          unitOfWork: screeningUnitOfWork,
+          clock,
+        }),
+      ),
       phoneticEncoder: new TalismanPhoneticEncoder(),
       similarityCalculator: new TalismanSimilarityCalculator(),
     }),

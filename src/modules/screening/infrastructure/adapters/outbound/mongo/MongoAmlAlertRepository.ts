@@ -45,6 +45,13 @@ function watchlistFilterFragment(query: AmlAlertListQuery): Record<string, unkno
     : {};
 }
 
+function linkedFilterFragment(query: AmlAlertListQuery): Record<string, unknown> {
+  if (query.linkedToCase === undefined) {
+    return {};
+  }
+  return query.linkedToCase ? { case_id: { $ne: null } } : { case_id: null };
+}
+
 function createdAtFilterFragment(query: AmlAlertListQuery): Record<string, unknown> {
   if (query.createdAfter === undefined && query.createdBefore === undefined) {
     return {};
@@ -64,6 +71,7 @@ function listFilter(query: AmlAlertListQuery): Filter<AmlAlertDocument> {
     ...statusFilterFragment(query),
     ...severityFilterFragment(query),
     ...watchlistFilterFragment(query),
+    ...linkedFilterFragment(query),
     ...createdAtFilterFragment(query),
   };
   return filter as Filter<AmlAlertDocument>;

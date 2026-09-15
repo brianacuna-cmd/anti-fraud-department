@@ -291,6 +291,19 @@ describe('MongoAmlAlertRepository (integration, real Mongo)', () => {
     expect(noMatch.items).toEqual([]);
   });
 
+  it('filters the triage inbox by whether the alert is already linked to a case', async () => {
+    const unlinked = buildAlert({ customerId: oid('customer-unlinked') });
+    const linked = buildAlert({ customerId: oid('customer-linked') }).linkCase(oid('case-1'), NOW);
+    await repository.save(unlinked);
+    await repository.save(linked);
+
+    const inbox = await repository.list({ organizationId: oid('org-1'), linkedToCase: false, limit: 20, offset: 0 });
+    const inCases = await repository.list({ organizationId: oid('org-1'), linkedToCase: true, limit: 20, offset: 0 });
+
+    expect(inbox.items.map((a) => a.customerId)).toEqual([oid('customer-unlinked')]);
+    expect(inCases.items.map((a) => a.customerId)).toEqual([oid('customer-linked')]);
+  });
+
   it('findByNaturalKey returns the stored alert', async () => {
     const alert = buildAlert();
     await repository.save(alert);

@@ -37,6 +37,7 @@ export function amlAlertRouter(deps: AmlAlertRouterDeps): Router {
       status: query.status,
       severity: query.severity,
       watchlistId: query.watchlist_id,
+      linkedToCase: query.linked,
       createdAfter: query.from !== undefined ? fromDate(new Date(query.from)) : undefined,
       createdBefore: query.to !== undefined ? fromDate(new Date(query.to)) : undefined,
       limit: query.limit,

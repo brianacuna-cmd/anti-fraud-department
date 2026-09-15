@@ -55,6 +55,7 @@ export class InMemoryAmlAlertRepository implements AmlAlertRepository {
       .filter(
         (alert) => query.watchlistId === undefined || String(alert.matchedEntry.watchlistId) === query.watchlistId,
       )
+      .filter((alert) => query.linkedToCase === undefined || (alert.caseId !== null) === query.linkedToCase)
       .filter(
         (alert) =>
           query.createdAfter === undefined || (alert.createdAt as string) >= (query.createdAfter as string),

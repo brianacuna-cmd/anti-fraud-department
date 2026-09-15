@@ -19,6 +19,8 @@ export const listAmlAlertsQuerySchema = z.object({
   status: z.preprocess(asStringArray, z.array(amlAlertStatusEnum).optional()),
   severity: z.preprocess(asStringArray, z.array(amlAlertSeverityEnum).optional()),
   watchlist_id: z.string().min(1).optional(),
+  /** `false` = triage inbox: strong matches already went to a case. */
+  linked: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
   from: z.iso.datetime().optional(),
   to: z.iso.datetime().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
