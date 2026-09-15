@@ -514,16 +514,14 @@ describe('caseRouter documentation and resolve-outcome routes', () => {
     expect(response.status).toBe(400);
   });
 
-  it('returns 400 when resolving without a valid outcome', async () => {
+  it('returns 400 when resolving with an invalid outcome', async () => {
     const { app, cases } = buildApp();
     await cases.save(buildInReviewCase());
 
-    const missing = await request(app).post(`/api/v1/cases/${CASE_ID}/resolve`).send({ reason: 'x' });
     const invalid = await request(app)
       .post(`/api/v1/cases/${CASE_ID}/resolve`)
       .send({ reason: 'x', outcome: 'WHATEVER' });
 
-    expect(missing.status).toBe(400);
     expect(invalid.status).toBe(400);
   });
 

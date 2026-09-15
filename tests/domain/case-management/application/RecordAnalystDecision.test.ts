@@ -14,8 +14,6 @@ import { createEnforcementActionId } from '../../../../src/modules/case-manageme
 import { createEnforcementActionType } from '../../../../src/modules/case-management/domain/model/value-objects/EnforcementActionType.js';
 import { CaseNote } from '../../../../src/modules/case-management/domain/model/aggregates/CaseNote.js';
 import { Evidence } from '../../../../src/modules/case-management/domain/model/aggregates/Evidence.js';
-import { generateCaseNoteId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseNoteId.js';
-import { generateEvidenceId } from '../../../../src/modules/case-management/domain/model/value-objects/EvidenceId.js';
 import { InMemoryCaseRepository } from '../../../helpers/case-management/InMemoryCaseRepository.js';
 import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InMemoryCaseNoteRepository.js';
 import { InMemoryEvidenceRepository } from '../../../helpers/case-management/InMemoryEvidenceRepository.js';
@@ -106,26 +104,11 @@ function buildCase(overrides: { organizationId?: string; deletedAt?: typeof NOW 
   return kase;
 }
 
-function buildUseCase(seed?: Case, options: { instructed?: boolean } = {}) {
+function buildUseCase(seed?: Case) {
   const cases = new InMemoryCaseRepository();
   if (seed !== undefined) {
     void cases.save(seed);
   }
-  const notes = new InMemoryCaseNoteRepository();
-  // A verdict needs something behind it. See `WorkflowStepGate.assertInstructed`.
-  if (options.instructed !== false) {
-    void notes.save(
-      CaseNote.create({
-        id: generateCaseNoteId(),
-        caseId: CASE_ID,
-        organizationId: ORG_1,
-        authorId: ANALYST_ID,
-        body: 'instructing note',
-        now: NOW,
-      }),
-    );
-  }
-  const evidence = new InMemoryEvidenceRepository();
   const decisions = new InMemoryAnalystDecisionRepository();
   const enforcementActions = new InMemoryEnforcementActionRepository();
   const approvalRequests = new InMemoryApprovalRequestRepository();
@@ -138,8 +121,6 @@ function buildUseCase(seed?: Case, options: { instructed?: boolean } = {}) {
   assigneeDirectory.allowRoleRecipients(ORG_1, 'SUPERVISOR', [SUPERVISOR_ID, ANALYST_ID]);
   const recordAnalystDecision = createRecordAnalystDecisionUseCase({
     cases,
-    notes,
-    evidence,
     decisions,
     enforcementActions,
     approvalRequests,
@@ -157,8 +138,6 @@ function buildUseCase(seed?: Case, options: { instructed?: boolean } = {}) {
   return {
     recordAnalystDecision,
     cases,
-    notes,
-    evidence,
     decisions,
     enforcementActions,
     approvalRequests,
@@ -488,51 +467,15 @@ describe('createRecordAnalystDecisionUseCase', () => {
     } satisfies Partial<CaseManagementError>);
   });
 
-  it('rejects a decision on a case with no notes or evidence yet (CASE_NOT_INSTRUCTED)', async () => {
-    const { recordAnalystDecision, decisions } = buildUseCase(buildCase({ status: 'IN_REVIEW' }), {
-      instructed: false,
-    });
-
-    await expect(
-      recordAnalystDecision({
-        auth: ANALYST,
-        caseId: CASE_ID,
-        decision: 'FALSE_POSITIVE',
-        confidence: 40,
-        comment: 'too early',
-      }),
-    ).rejects.toMatchObject({ code: 'CASE_NOT_INSTRUCTED' });
-    expect(decisions.all()).toHaveLength(0);
-  });
-
-  it('allows the decision once evidence (not just a note) is on file', async () => {
-    const { recordAnalystDecision, evidence, decisions } = buildUseCase(buildCase({ status: 'IN_REVIEW' }), {
-      instructed: false,
-    });
-    await evidence.save(
-      Evidence.register({
-        id: generateEvidenceId(),
-        caseId: CASE_ID,
-        investigationId: null,
-        organizationId: ORG_1,
-        filename: 'x.pdf',
-        contentType: 'application/pdf',
-        byteSize: 3,
-        sha256: 'abc',
-        storageKey: 'org/case/evidence',
-        timestamp: null,
-        scanStatus: 'CLEAN',
-        uploadedBy: ANALYST_ID,
-        now: NOW,
-      }),
-    );
+  it('records a decision on a case with no notes or evidence: the comment is the instruction', async () => {
+    const { recordAnalystDecision, decisions } = buildUseCase(buildCase({ status: 'IN_REVIEW' }));
 
     await recordAnalystDecision({
       auth: ANALYST,
       caseId: CASE_ID,
       decision: 'FALSE_POSITIVE',
       confidence: 40,
-      comment: 'now instructed',
+      comment: 'customer confirmed the purchase by phone',
     });
 
     expect(decisions.all()).toHaveLength(1);

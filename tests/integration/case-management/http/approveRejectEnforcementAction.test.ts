@@ -110,8 +110,6 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
     }),
     recordAnalystDecision: createRecordAnalystDecisionUseCase({
       cases,
-      notes: new InMemoryCaseNoteRepository(),
-      evidence: new InMemoryEvidenceRepository(),
       decisions,
       enforcementActions,
       approvalRequests,

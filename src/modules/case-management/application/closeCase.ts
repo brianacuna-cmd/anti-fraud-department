@@ -14,11 +14,12 @@ import type { OutboxEventId } from '../../../shared/outbox/OutboxEventId.js';
 import type { CaseManagementAuditAction } from '../domain/model/value-objects/CaseManagementAuditVocabulary.js';
 import type { ResolutionClosureType } from '../domain/model/aggregates/Resolution.js';
 import type { ResolutionOutcome } from '../domain/model/value-objects/ResolutionOutcome.js';
+import type { ClosureVerdict } from '../domain/services/WorkflowStepGate.js';
 import { Resolution } from '../domain/model/aggregates/Resolution.js';
 import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.js';
 import { OutboxEvent } from '../../../shared/outbox/OutboxEvent.js';
 import { createCaseId } from '../domain/model/value-objects/CaseId.js';
-import { caseNotFound, forbiddenCrossTenant, invariantViolation } from '../domain/errors/CaseManagementError.js';
+import { caseNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
 import { assertAssigned } from '../domain/services/AssignmentGate.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
@@ -27,8 +28,9 @@ import type { EnqueueCustomerWebhookFanOutInput } from './EnqueueCustomerWebhook
 export interface CloseCaseInput {
   readonly auth: AuthContext;
   readonly caseId: string;
-  readonly reason: string;
-  /** Typed outcome. Required by resolve (see `requireOutcome`); archive ignores it. */
+  /** Resolve derives it from the latest decision when omitted. */
+  readonly reason?: string;
+  /** Typed outcome. Resolve derives it from the latest decision when omitted; archive ignores it. */
   readonly outcome?: ResolutionOutcome;
 }
 
@@ -55,18 +57,13 @@ export interface CloseCaseConfig {
   /** When set, emit an `outbox_events` row of this type in the same transaction. */
   readonly outboxEventType?: string;
   /**
-   * Extra invariant check run right after `assertAssigned`, before the
-   * status transition. Only `ResolveCase` supplies one (workflow-step
-   * gating: a decision on file, and enforcement resolved when the decision
-   * was `FRAUD_CONFIRMED`) — `ArchiveCase` does not, so its behavior is
-   * unchanged.
+   * Runs right after `assertAssigned`, before the status transition, and
+   * settles the closure's outcome and reason. Only `ResolveCase` supplies
+   * one (workflow-step gating plus the verdict taken from the latest
+   * decision); without it the closure carries no outcome and the reason must
+   * be given.
    */
-  readonly assertBeforeTransition?: (existing: Case, tx: Transaction, input: CloseCaseInput) => Promise<void>;
-  /**
-   * Resolve closes WITH an outcome; archive only files away an already
-   * resolved case, whose outcome is on the resolution that closed it.
-   */
-  readonly requireOutcome?: boolean;
+  readonly prepareClosure?: (existing: Case, tx: Transaction, input: CloseCaseInput) => Promise<ClosureVerdict>;
 }
 
 /**
@@ -83,7 +80,6 @@ export function closeCase(deps: CloseCaseDeps, config: CloseCaseConfig) {
     requireOperationalRole(input.auth, SUPERVISION_ROLES);
     const organizationId = requireTenantContext(input.auth);
     const caseId = createCaseId(input.caseId);
-    const outcome = config.requireOutcome === true ? requiredOutcome(input) : null;
 
     return deps.unitOfWork.withTransaction(async (tx) => {
       const existing = await deps.cases.findById(caseId, tx);
@@ -95,9 +91,11 @@ export function closeCase(deps: CloseCaseDeps, config: CloseCaseConfig) {
       }
       // Without an assignee the case is frozen. See `AssignmentGate`.
       assertAssigned(existing);
-      if (config.assertBeforeTransition !== undefined) {
-        await config.assertBeforeTransition(existing, tx, input);
-      }
+      const verdict =
+        config.prepareClosure === undefined
+          ? { outcome: null, reason: input.reason ?? '' }
+          : await config.prepareClosure(existing, tx, input);
+      const { outcome } = verdict;
 
       const now = deps.clock.now();
       const previousStatus = existing.status;
@@ -113,7 +111,7 @@ export function closeCase(deps: CloseCaseDeps, config: CloseCaseConfig) {
         caseId,
         organizationId,
         closureType,
-        reason: input.reason,
+        reason: verdict.reason,
         outcome,
         resolvedBy: input.auth.userId,
         now,
@@ -182,13 +180,6 @@ export function closeCase(deps: CloseCaseDeps, config: CloseCaseConfig) {
       return closed;
     });
   };
-}
-
-function requiredOutcome(input: CloseCaseInput): ResolutionOutcome {
-  if (input.outcome === undefined) {
-    throw invariantViolation('outcome is required to resolve a case', { field: 'outcome' });
-  }
-  return input.outcome;
 }
 
 interface OutboxContext {

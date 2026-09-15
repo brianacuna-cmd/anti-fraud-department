@@ -45,7 +45,6 @@ export type CaseManagementErrorCode =
    * one piece of evidence: a verdict with nothing behind it is not a
    * verdict, it is a guess.
    */
-  | 'CASE_NOT_INSTRUCTED'
   /**
    * A case cannot be resolved before at least one analyst decision was
    * recorded on it — closing with no verdict on file is exactly the file

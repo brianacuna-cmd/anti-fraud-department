@@ -1541,8 +1541,6 @@ async function bootstrap(): Promise<void> {
   const enforcementHttpRouter = enforcementRouter({
     recordAnalystDecision: createRecordAnalystDecisionUseCase({
       cases,
-      notes: caseNotes,
-      evidence,
       decisions: analystDecisions,
       enforcementActions,
       approvalRequests,

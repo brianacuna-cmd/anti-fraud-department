@@ -216,15 +216,6 @@ export function caseNotReviewed(caseId: string): CaseManagementError {
   );
 }
 
-/** A decision needs at least one note or one piece of evidence behind it. */
-export function caseNotInstructed(caseId: string): CaseManagementError {
-  return new CaseManagementError(
-    'CASE_NOT_INSTRUCTED',
-    'the case has no notes or evidence yet: instruct it before recording a decision',
-    { caseId },
-  );
-}
-
 /** Closing a case requires at least one analyst decision on file. */
 export function caseNotDecided(caseId: string): CaseManagementError {
   return new CaseManagementError(

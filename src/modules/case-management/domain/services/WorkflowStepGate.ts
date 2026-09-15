@@ -4,7 +4,6 @@ import type { ResolutionOutcome } from '../model/value-objects/ResolutionOutcome
 import { isClosed } from './ClosedCaseGate.js';
 import {
   caseNotReviewed,
-  caseNotInstructed,
   caseNotDecided,
   caseEnforcementPending,
   caseNotResolvedForReport,
@@ -13,7 +12,7 @@ import {
 
 /**
  * Real, backend-enforced version of the guide `CaseProgress.tsx` already
- * shows in the UI (Asignado -> Revisión -> Instrucción -> Dictamen ->
+ * shows in the UI (Asignado -> Revisión -> Dictamen ->
  * [Medidas] -> Resolución -> Informe). Each `assert*` mirrors one boolean
  * that guide already computes from the same data, so the visual guide and
  * the real gate always tell the same story.
@@ -31,20 +30,6 @@ export function isReviewed(kase: Case): boolean {
 export function assertReviewStarted(kase: Case): void {
   if (!isReviewed(kase)) {
     throw caseNotReviewed(kase.id);
-  }
-}
-
-/** A decision needs at least one note or one piece of evidence on file. */
-export function assertInstructed(kase: Case, hasNoteOrEvidence: boolean): void {
-  if (!hasNoteOrEvidence) {
-    throw caseNotInstructed(kase.id);
-  }
-}
-
-/** Resolving requires at least one recorded analyst decision. */
-export function assertDecided(kase: Case, hasDecision: boolean): void {
-  if (!hasDecision) {
-    throw caseNotDecided(kase.id);
   }
 }
 
@@ -67,7 +52,7 @@ export function assertEnforcementResolved(
  * Outcomes that restate a verdict must agree with the LATEST decision (a
  * later decision supersedes an earlier one). The procedural outcomes
  * (DOCUMENTATION_NOT_PROVIDED, DUPLICATE) close the case for reasons that are
- * independent of the verdict, so any decision is compatible with them.
+ * independent of the verdict, so they need no decision at all.
  */
 const OUTCOME_REQUIRED_DECISION: Readonly<Partial<Record<ResolutionOutcome, AnalystDecisionType>>> = {
   FRAUD_CONFIRMED: 'FRAUD_CONFIRMED',
@@ -75,15 +60,51 @@ const OUTCOME_REQUIRED_DECISION: Readonly<Partial<Record<ResolutionOutcome, Anal
   INSUFFICIENT_EVIDENCE: 'INCONCLUSIVE',
 };
 
-export function assertOutcomeMatchesDecision(
+const DECISION_OUTCOME: Readonly<Record<AnalystDecisionType, ResolutionOutcome>> = {
+  FRAUD_CONFIRMED: 'FRAUD_CONFIRMED',
+  FALSE_POSITIVE: 'FALSE_POSITIVE',
+  INCONCLUSIVE: 'INSUFFICIENT_EVIDENCE',
+};
+
+export function isProceduralOutcome(outcome: ResolutionOutcome): boolean {
+  return OUTCOME_REQUIRED_DECISION[outcome] === undefined;
+}
+
+export interface LatestDecision {
+  readonly decision: AnalystDecisionType;
+  readonly comment: string;
+}
+
+export interface ClosureVerdict {
+  readonly outcome: ResolutionOutcome;
+  readonly reason: string;
+}
+
+/**
+ * The verdict is written ONCE, in the analyst decision. Resolving restates
+ * it: when the supervisor omits the outcome or the reason, both come from
+ * the latest decision. An explicit outcome is still honoured, but a
+ * verdict-type outcome must agree with that decision, and only procedural
+ * outcomes may close a case nobody has decided.
+ */
+export function resolveClosureVerdict(
   kase: Case,
-  outcome: ResolutionOutcome,
-  latestDecision: AnalystDecisionType | null,
-): void {
-  const required = OUTCOME_REQUIRED_DECISION[outcome];
-  if (required !== undefined && required !== latestDecision) {
-    throw caseOutcomeContradictsDecision(kase.id, outcome, latestDecision);
+  requested: { readonly outcome?: ResolutionOutcome; readonly reason?: string },
+  latest: LatestDecision | null,
+): ClosureVerdict {
+  const outcome = requested.outcome ?? (latest === null ? null : DECISION_OUTCOME[latest.decision]);
+  if (outcome === null) {
+    throw caseNotDecided(kase.id);
   }
+  const required = OUTCOME_REQUIRED_DECISION[outcome];
+  if (required !== undefined && latest === null) {
+    throw caseNotDecided(kase.id);
+  }
+  if (required !== undefined && required !== latest?.decision) {
+    throw caseOutcomeContradictsDecision(kase.id, outcome, latest?.decision ?? null);
+  }
+  const reason = requested.reason?.trim() || latest?.comment.trim() || outcome;
+  return { outcome, reason };
 }
 
 /** The report freezes the full case file — the case must be closed first. */

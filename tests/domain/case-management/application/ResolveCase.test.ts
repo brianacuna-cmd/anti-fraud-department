@@ -153,9 +153,7 @@ describe('createResolveCaseUseCase', () => {
   });
 
   /**
-   * An OPEN case can never have a decision on file (recording one requires
-   * `assertInstructed`, which requires a note/evidence, which requires
-   * review first) — so `assertDecided` now rejects before the transition
+   * An OPEN case with no decision on file — so `resolveClosureVerdict` rejects before the transition
    * table even gets a chance to. Still the same root cause (never reviewed),
    * just reported at the step that actually explains it to the caller.
    */
@@ -234,16 +232,37 @@ describe('createResolveCaseUseCase', () => {
     expect(outbox.all()[0]?.payload).toMatchObject({ outcome: 'INSUFFICIENT_EVIDENCE' });
   });
 
-  it('rejects a resolve without an outcome and leaves the case untouched', async () => {
+  it('takes outcome and reason from the latest decision when both are omitted', async () => {
     const { cases, decisions, resolutions, resolveCase } = build();
     await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
-    await seedDecision(decisions);
+    await seedDecision(decisions, 'INCONCLUSIVE');
 
-    await expect(resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x' })).rejects.toMatchObject({
-      code: 'INVARIANT_VIOLATION',
+    const resolved = await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1') });
+
+    expect(resolved.resolutionOutcome).toBe('INSUFFICIENT_EVIDENCE');
+    const [resolution] = await resolutions.listByCaseId(createCaseId(oid('case-1')));
+    expect(resolution?.outcome).toBe('INSUFFICIENT_EVIDENCE');
+    expect(resolution?.reason).toBe('instructed verdict');
+  });
+
+  it('closes a case with no decision only for a procedural outcome', async () => {
+    const { cases, resolveCase } = build();
+    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
+
+    await expect(resolveCase({ auth: SUPERVISOR, caseId: oid('case-1') })).rejects.toMatchObject({
+      code: 'CASE_NOT_DECIDED',
     });
-    expect((await cases.findById(createCaseId(oid('case-1'))))?.status).toBe('IN_REVIEW');
-    expect(await resolutions.listByCaseId(createCaseId(oid('case-1')))).toHaveLength(0);
+    await expect(
+      resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), outcome: 'FALSE_POSITIVE' }),
+    ).rejects.toMatchObject({ code: 'CASE_NOT_DECIDED' });
+
+    const resolved = await resolveCase({
+      auth: SUPERVISOR,
+      caseId: oid('case-1'),
+      outcome: 'DUPLICATE',
+      reason: 'same customer as FD-2026-000001',
+    });
+    expect(resolved.status).toBe('RESOLVED');
   });
 
   it('rejects an outcome that contradicts the decision (CASE_OUTCOME_CONTRADICTS_DECISION)', async () => {
