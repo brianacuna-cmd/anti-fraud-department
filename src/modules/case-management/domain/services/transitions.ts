@@ -13,9 +13,13 @@ export type TransitionTable<S extends string> = Readonly<Record<S, readonly S[]>
 
 /**
  * Case status edges (spec: "Case aggregate status lifecycle"). Forward path
- * OPEN -> IN_REVIEW [-> PENDING_DOCUMENTATION] -> RESOLVED -> ARCHIVED, plus T6 reopen edges
+ * OPEN -> IN_REVIEW [-> PENDING_DOCUMENTATION] -> RESOLVED, plus T6 reopen edges
  * RESOLVED|ARCHIVED -> OPEN|IN_REVIEW encoded directly in the table (no
  * actor-gating needed for Case, unlike identity-access's reactivation edge).
+ *
+ * ARCHIVED is legacy: archiving a resolved case added nothing a resolution
+ * did not already record, so nothing moves a case there anymore. Cases
+ * archived before remain readable, closed, and reopenable.
  */
 export const caseStatusTransitions: TransitionTable<CaseStatus> = {
   // OPEN must pass through IN_REVIEW before it can be RESOLVED (review gate,
@@ -27,7 +31,7 @@ export const caseStatusTransitions: TransitionTable<CaseStatus> = {
   // do. It deliberately does NOT pause the SLA: the sweep only skips closed
   // cases, and a case parked here keeps counting against its deadline.
   PENDING_DOCUMENTATION: ['IN_REVIEW', 'RESOLVED'],
-  RESOLVED: ['ARCHIVED', 'OPEN', 'IN_REVIEW'],
+  RESOLVED: ['OPEN', 'IN_REVIEW'],
   ARCHIVED: ['OPEN', 'IN_REVIEW'],
 };
 

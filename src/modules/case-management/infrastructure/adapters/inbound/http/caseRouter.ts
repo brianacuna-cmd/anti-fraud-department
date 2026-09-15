@@ -11,7 +11,6 @@ import type { createGetCaseTimelineUseCase } from '../../../../application/GetCa
 import type { createAddCaseNoteUseCase } from '../../../../application/AddCaseNote.js';
 import type { createListCaseNotesUseCase } from '../../../../application/ListCaseNotes.js';
 import type { createResolveCaseUseCase } from '../../../../application/ResolveCase.js';
-import type { createArchiveCaseUseCase } from '../../../../application/ArchiveCase.js';
 import type { createStartReviewUseCase } from '../../../../application/StartReview.js';
 import type { createRequestCaseDocumentationUseCase } from '../../../../application/RequestCaseDocumentation.js';
 import type { createResumeCaseReviewUseCase } from '../../../../application/ResumeCaseReview.js';
@@ -25,7 +24,6 @@ import {
   updateCasePriorityTagsSchema,
   bulkCaseActionSchema,
   addCaseNoteSchema,
-  closeCaseSchema,
   resolveCaseSchema,
   requestCaseDocumentationSchema,
   putAgentBriefSchema,
@@ -50,7 +48,6 @@ export interface CaseRouterDeps {
   readonly addCaseNote: ReturnType<typeof createAddCaseNoteUseCase>;
   readonly listCaseNotes: ReturnType<typeof createListCaseNotesUseCase>;
   readonly resolveCase: ReturnType<typeof createResolveCaseUseCase>;
-  readonly archiveCase: ReturnType<typeof createArchiveCaseUseCase>;
   readonly startReview: ReturnType<typeof createStartReviewUseCase>;
   readonly requestCaseDocumentation: ReturnType<typeof createRequestCaseDocumentationUseCase>;
   readonly resumeCaseReview: ReturnType<typeof createResumeCaseReviewUseCase>;
@@ -179,13 +176,6 @@ export function caseRouter(deps: CaseRouterDeps): Router {
       reason: body.reason,
       outcome: body.outcome,
     });
-    res.status(200).json(toCaseResponse(kase));
-  });
-
-  router.post('/cases/:caseId/archive', async (req, res) => {
-    const auth = requireAuthContext(req);
-    const body = parseRequest(closeCaseSchema, req.body);
-    const kase = await deps.archiveCase({ auth, caseId: req.params.caseId!, reason: body.reason });
     res.status(200).json(toCaseResponse(kase));
   });
 

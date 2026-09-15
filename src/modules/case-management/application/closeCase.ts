@@ -30,7 +30,7 @@ export interface CloseCaseInput {
   readonly caseId: string;
   /** Resolve derives it from the latest decision when omitted. */
   readonly reason?: string;
-  /** Typed outcome. Resolve derives it from the latest decision when omitted; archive ignores it. */
+  /** Typed outcome. Resolve derives it from the latest decision when omitted. */
   readonly outcome?: ResolutionOutcome;
 }
 

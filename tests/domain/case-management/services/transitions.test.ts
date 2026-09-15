@@ -21,7 +21,9 @@ describe('caseStatusTransitions', () => {
   });
 
   it('allows T6 reopen edges from RESOLVED and ARCHIVED', () => {
-    expect(caseStatusTransitions.RESOLVED).toEqual(expect.arrayContaining(['OPEN', 'IN_REVIEW', 'ARCHIVED']));
+    expect(caseStatusTransitions.RESOLVED).toEqual(expect.arrayContaining(['OPEN', 'IN_REVIEW']));
+    // Archiving is gone; legacy ARCHIVED cases can still be reopened.
+    expect(caseStatusTransitions.RESOLVED).not.toContain('ARCHIVED');
     expect(caseStatusTransitions.ARCHIVED).toEqual(expect.arrayContaining(['OPEN', 'IN_REVIEW']));
   });
 });

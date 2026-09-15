@@ -134,13 +134,6 @@ export const putAgentBriefSchema = z.object({
 
 export type PutAgentBriefBody = z.infer<typeof putAgentBriefSchema>;
 
-/** POST /cases/:caseId/archive body (formal closure). */
-export const closeCaseSchema = z.object({
-  reason: z.string().trim().min(1),
-});
-
-export type CloseCaseBody = z.infer<typeof closeCaseSchema>;
-
 /**
  * POST /cases/:caseId/resolve body. Both fields are optional: the verdict
  * comes from the latest analyst decision unless the supervisor overrides it.

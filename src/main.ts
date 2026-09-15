@@ -170,7 +170,6 @@ import { createPutAgentBriefUseCase } from './modules/case-management/applicatio
 import { createListCaseNotesUseCase } from './modules/case-management/application/ListCaseNotes.js';
 import { generateCaseNoteId } from './modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { createResolveCaseUseCase } from './modules/case-management/application/ResolveCase.js';
-import { createArchiveCaseUseCase } from './modules/case-management/application/ArchiveCase.js';
 import { createStartReviewUseCase } from './modules/case-management/application/StartReview.js';
 import { createRequestCaseDocumentationUseCase } from './modules/case-management/application/RequestCaseDocumentation.js';
 import { createResumeCaseReviewUseCase } from './modules/case-management/application/ResumeCaseReview.js';
@@ -1266,16 +1265,6 @@ async function bootstrap(): Promise<void> {
         enqueueCustomerWebhookFanOut,
       }),
       generateCaseReport,
-    }),
-    archiveCase: createArchiveCaseUseCase({
-      cases,
-      resolutions,
-      timelineRecorder: caseTimelineRecorder,
-      auditRecorder: caseManagementAuditRecorder,
-      unitOfWork: caseManagementUnitOfWork,
-      clock,
-      generateResolutionId,
-      generateTimelineEventId,
     }),
     startReview: createStartReviewUseCase({
       cases,

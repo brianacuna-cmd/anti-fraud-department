@@ -192,7 +192,7 @@ describe('createReopenCaseUseCase (role-gated reopen + SLA reset)', () => {
   });
 
   it('allows SUPERVISOR to reopen an ARCHIVED case to IN_REVIEW', async () => {
-    const archived = buildResolvedCase().transitionTo('ARCHIVED', NOW);
+    const archived = Case.rehydrate({ ...buildResolvedCase().toProps(), status: 'ARCHIVED' });
     const { reopenCase } = buildUseCase(archived);
 
     const result = await reopenCase({
