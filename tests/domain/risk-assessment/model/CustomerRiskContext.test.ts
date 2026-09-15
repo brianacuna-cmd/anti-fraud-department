@@ -15,7 +15,7 @@ describe('summarizePaymentContext', () => {
     const { rows, expected } = contextScenario();
 
     expect(
-      summarizePaymentContext(rows.map((r) => r.toProps()), { paymentLinkReference: 'pi_link', merchantId: 'acct_seller' }, ANCHOR),
+      summarizePaymentContext(rows.map((r) => r.toProps()), { paymentLinkReference: 'pi_link', merchantId: 'acct_seller', counterparty: '0xWallet', customerIds: ['cus_1'] }, ANCHOR),
     ).toEqual(expected);
   });
 
@@ -26,6 +26,7 @@ describe('summarizePaymentContext', () => {
       linkSuspiciousDeclines: 0,
       linkDistinctCards: 0,
       merchantLinksWithRepeatedFailures: 0,
+      counterpartyPreviousTransfers: 0,
     });
   });
 });

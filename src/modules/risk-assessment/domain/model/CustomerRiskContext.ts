@@ -38,6 +38,16 @@ export const ACTIVITY_VARIABLES = [
    * last 30 days: a seller whose links keep failing. 0 without a merchant.
    */
   'merchantLinksWithRepeatedFailures',
+  /** Delivered transfers of the customer in 24 h (Bridge). */
+  'transfers24h',
+  /** Cents moved by delivered transfers in 24 h, whatever the currency. */
+  'transferVolume24hCents',
+  /** Distinct transfer destinations (wallet or external account) in 7 days. */
+  'distinctCounterparties7d',
+  /** The event's own amount when it is a transfer, 0 otherwise: "a large transfer". */
+  'currentTransferCents',
+  /** The event's amount when it is a transfer to a destination the customer never sent to before, 0 otherwise. */
+  'newCounterpartyTransferCents',
 ] as const;
 
 export const CUSTOMER_HISTORY_VARIABLES = [
@@ -76,6 +86,9 @@ export interface PaymentActivitySummary {
   readonly failedAttempts10m: number;
   readonly suspiciousDeclines24h: number;
   readonly distinctCardCountries24h: number;
+  readonly transfers24h: number;
+  readonly transferVolume24hCents: number;
+  readonly distinctCounterparties7d: number;
   readonly chargebacks90d: number;
   readonly fraudWarnings90d: number;
   readonly lifetimeAttempts: number;
@@ -87,6 +100,7 @@ const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
 export const WINDOW_10M_MS = 10 * 60_000;
 export const WINDOW_24H_MS = DAY_MS;
+export const WINDOW_7D_MS = 7 * DAY_MS;
 export const WINDOW_30D_MS = 30 * DAY_MS;
 export const WINDOW_90D_MS = 90 * DAY_MS;
 /** Failed attempts on one link that make it count as a repeatedly failing link. */
@@ -119,6 +133,8 @@ export function summarizePaymentActivity(
   const attempts24h = attempts.filter((row) => within(row, WINDOW_24H_MS));
   const failed24h = attempts24h.filter((row) => row.outcome === 'FAILED');
   const chargebacks = past.filter((row) => row.kind === 'CHARGEBACK');
+  const delivered = past.filter((row) => row.kind === 'TRANSFER' && row.outcome === 'SUCCEEDED');
+  const delivered24h = delivered.filter((row) => within(row, WINDOW_24H_MS));
   const first = past.reduce<number | null>((min, row) => {
     const ms = toDate(row.occurredAt).getTime();
     return min === null || ms < min ? ms : min;
@@ -130,6 +146,14 @@ export function summarizePaymentActivity(
     failedAttempts10m: failed24h.filter((row) => within(row, WINDOW_10M_MS)).length,
     suspiciousDeclines24h: failed24h.filter((row) => SUSPICIOUS_DECLINES.has(row.declineCategory ?? '')).length,
     distinctCardCountries24h: new Set(attempts24h.map((row) => row.cardCountry).filter((c) => c !== null)).size,
+    transfers24h: delivered24h.length,
+    transferVolume24hCents: delivered24h.reduce((sum, row) => sum + row.amountCents, 0),
+    distinctCounterparties7d: new Set(
+      past
+        .filter((row) => row.kind === 'TRANSFER' && within(row, WINDOW_7D_MS))
+        .map((row) => row.counterparty)
+        .filter((c) => c !== null),
+    ).size,
     chargebacks90d: chargebacks.filter((row) => within(row, WINDOW_90D_MS)).length,
     fraudWarnings90d: past.filter((row) => row.kind === 'FRAUD_WARNING' && within(row, WINDOW_90D_MS)).length,
     lifetimeAttempts: attempts.length,
@@ -147,12 +171,15 @@ export interface PaymentContextSummary {
   readonly linkSuspiciousDeclines: number;
   readonly linkDistinctCards: number;
   readonly merchantLinksWithRepeatedFailures: number;
+  /** Earlier transfers of the customer to the event's destination (strictly before the event). */
+  readonly counterpartyPreviousTransfers: number;
 }
 
 export const EMPTY_PAYMENT_CONTEXT: PaymentContextSummary = {
   linkSuspiciousDeclines: 0,
   linkDistinctCards: 0,
   merchantLinksWithRepeatedFailures: 0,
+  counterpartyPreviousTransfers: 0,
 };
 
 export interface PaymentContextKeys {
@@ -160,6 +187,9 @@ export interface PaymentContextKeys {
   readonly paymentLinkReference: string | null;
   /** The merchant that was paid (Stripe connected account). */
   readonly merchantId: string | null;
+  /** Destination of the event when it is a transfer, and every id of its customer. */
+  readonly counterparty?: string | null;
+  readonly customerIds?: readonly string[];
 }
 
 /**
@@ -204,13 +234,36 @@ export function summarizePaymentContext(
     linkDistinctCards: new Set(linkAttempts.map((row) => row.cardFingerprint).filter((f) => f !== null)).size,
     merchantLinksWithRepeatedFailures: [...failuresByLink.values()].filter((n) => n >= REPEATED_FAILURES_PER_LINK)
       .length,
+    counterpartyPreviousTransfers: previousTransfersTo(rows, keys, anchorMs),
   };
+}
+
+function previousTransfersTo(rows: readonly PaymentActivityProps[], keys: PaymentContextKeys, anchorMs: number): number {
+  const counterparty = keys.counterparty?.toLowerCase() ?? null;
+  const customers = new Set(keys.customerIds ?? []);
+  if (counterparty === null || customers.size === 0) return 0;
+  return rows.filter(
+    (row) =>
+      row.kind === 'TRANSFER' &&
+      row.counterparty === counterparty &&
+      customers.has(row.customerId) &&
+      toDate(row.occurredAt).getTime() < anchorMs,
+  ).length;
+}
+
+/** The payment being scored, for the variables about the event itself. */
+export interface CurrentPayment {
+  readonly activityKind: string | null;
+  readonly amountCents: number;
+  readonly counterparty: string | null;
 }
 
 export function toActivityVariables(
   summary: PaymentActivitySummary,
   context: PaymentContextSummary = EMPTY_PAYMENT_CONTEXT,
+  current: CurrentPayment | null = null,
 ): ActivityVariables {
+  const transferCents = current?.activityKind === 'TRANSFER' ? Math.max(0, current.amountCents) : 0;
   return {
     attempts24h: summary.attempts24h,
     failedAttempts24h: summary.failedAttempts24h,
@@ -224,6 +277,12 @@ export function toActivityVariables(
     linkSuspiciousDeclines: context.linkSuspiciousDeclines,
     linkDistinctCards: context.linkDistinctCards,
     merchantLinksWithRepeatedFailures: context.merchantLinksWithRepeatedFailures,
+    transfers24h: summary.transfers24h,
+    transferVolume24hCents: summary.transferVolume24hCents,
+    distinctCounterparties7d: summary.distinctCounterparties7d,
+    currentTransferCents: transferCents,
+    newCounterpartyTransferCents:
+      current?.counterparty && context.counterpartyPreviousTransfers === 0 ? transferCents : 0,
   };
 }
 

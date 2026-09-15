@@ -61,6 +61,12 @@ export function windowScenario(): { rows: PaymentActivity[]; expected: Record<st
     activity({ occurredAt: hoursBefore(-1), outcome: 'FAILED', providerEventType: 'charge.failed' }),
     // Another customer: must never leak in.
     activity({ customerId: 'cus_other', occurredAt: hoursBefore(1) }),
+    // Transfers: two delivered in 24 h, one failed, one delivered 2 days ago (7 d only), one 8 days ago (out).
+    activity({ kind: 'TRANSFER', occurredAt: hoursBefore(1), amountCents: 500_000, counterparty: '0xABC' }),
+    activity({ kind: 'TRANSFER', occurredAt: hoursBefore(3), amountCents: 200_000, counterparty: '0xdef' }),
+    activity({ kind: 'TRANSFER', outcome: 'FAILED', occurredAt: hoursBefore(2), amountCents: 900_000, counterparty: '0xghi' }),
+    activity({ kind: 'TRANSFER', occurredAt: hoursBefore(48), amountCents: 100_000, counterparty: '0xabc' }),
+    activity({ kind: 'TRANSFER', occurredAt: hoursBefore(24 * 8), amountCents: 100_000, counterparty: '0xzzz' }),
   ];
   return {
     rows,
@@ -70,6 +76,9 @@ export function windowScenario(): { rows: PaymentActivity[]; expected: Record<st
       failedAttempts10m: 1,
       suspiciousDeclines24h: 2,
       distinctCardCountries24h: 2,
+      transfers24h: 2,
+      transferVolume24hCents: 700_000,
+      distinctCounterparties7d: 3,
       chargebacks90d: 1,
       fraudWarnings90d: 1,
       lifetimeAttempts: 6,
@@ -107,9 +116,13 @@ export function contextScenario(): { rows: PaymentActivity[]; expected: Record<s
     failed({ relatedReferences: ['pi_else'], merchantId: 'acct_else', occurredAt: hoursBefore(1) }),
     failed({ relatedReferences: ['pi_else'], merchantId: 'acct_else', occurredAt: hoursBefore(2) }),
     failed({ relatedReferences: ['pi_else'], merchantId: 'acct_else', occurredAt: hoursBefore(3) }),
+    // Transfers to 0xwallet: one earlier by cus_1 counts; another customer's and a later one do not.
+    activity({ kind: 'TRANSFER', counterparty: '0xwallet', occurredAt: hoursBefore(5) }),
+    activity({ kind: 'TRANSFER', customerId: 'cus_2', counterparty: '0xwallet', occurredAt: hoursBefore(6) }),
+    activity({ kind: 'TRANSFER', counterparty: '0xwallet', occurredAt: hoursBefore(-1) }),
   ];
   return {
     rows,
-    expected: { linkSuspiciousDeclines: 3, linkDistinctCards: 3, merchantLinksWithRepeatedFailures: 2 },
+    expected: { linkSuspiciousDeclines: 3, linkDistinctCards: 3, merchantLinksWithRepeatedFailures: 2, counterpartyPreviousTransfers: 1 },
   };
 }

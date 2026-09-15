@@ -1,7 +1,7 @@
 import { runCreateFraudRules } from './createFraudRulesCore.js';
 
 /**
- * Creates and activates the six payment fraud rules through the API.
+ * Creates and activates the payment and transfer fraud rules through the API.
  *
  *   FRAUD_API_URL=https://<host>/api/v1 FRAUD_API_TOKEN=<token de supervisor> \
  *     pnpm rules:create-fraud            # solo dice qué haría

@@ -10,15 +10,17 @@ import type { PaymentActivityId } from '../value-objects/PaymentActivityId.js';
  * - CHARGEBACK: a dispute opened on a previous payment.
  * - FRAUD_WARNING: the provider flagged a payment as likely fraud before any
  *   dispute (Stripe early fraud warning, Coinflow suspected fraud).
+ * - TRANSFER: money the customer moved out (Bridge transfer that reached a
+ *   final state). `outcome` says whether it was delivered.
  */
-export type PaymentActivityKind = 'ATTEMPT' | 'CHARGEBACK' | 'FRAUD_WARNING';
+export type PaymentActivityKind = 'ATTEMPT' | 'CHARGEBACK' | 'FRAUD_WARNING' | 'TRANSFER';
 
 export type PaymentActivityOutcome = 'SUCCEEDED' | 'FAILED';
 
 /** Where the row came from. CSV imports (Finturu) land in the same history as webhooks. */
 export type PaymentActivitySource = 'WEBHOOK' | 'CSV_IMPORT';
 
-const KINDS: ReadonlySet<string> = new Set<PaymentActivityKind>(['ATTEMPT', 'CHARGEBACK', 'FRAUD_WARNING']);
+const KINDS: ReadonlySet<string> = new Set<PaymentActivityKind>(['ATTEMPT', 'CHARGEBACK', 'FRAUD_WARNING', 'TRANSFER']);
 const OUTCOMES: ReadonlySet<string> = new Set<PaymentActivityOutcome>(['SUCCEEDED', 'FAILED']);
 const SOURCES: ReadonlySet<string> = new Set<PaymentActivitySource>(['WEBHOOK', 'CSV_IMPORT']);
 
@@ -57,6 +59,8 @@ export interface PaymentActivityProps {
    * charges, without exposing the number. `null` when the provider has none.
    */
   readonly cardFingerprint: string | null;
+  /** Where a TRANSFER went: destination wallet address or external account. */
+  readonly counterparty: string | null;
   readonly source: PaymentActivitySource;
   /** When the payment happened at the provider — the clock every window counts on. */
   readonly occurredAt: Instant;
@@ -65,7 +69,7 @@ export interface PaymentActivityProps {
 
 export type CreatePaymentActivityInput = Omit<
   PaymentActivityProps,
-  'kind' | 'outcome' | 'source' | 'relatedReferences' | 'merchantId' | 'cardFingerprint'
+  'kind' | 'outcome' | 'source' | 'relatedReferences' | 'merchantId' | 'cardFingerprint' | 'counterparty'
 > & {
   readonly kind: string;
   readonly outcome: string | null;
@@ -73,6 +77,7 @@ export type CreatePaymentActivityInput = Omit<
   readonly relatedReferences?: readonly string[];
   readonly merchantId?: string | null;
   readonly cardFingerprint?: string | null;
+  readonly counterparty?: string | null;
 };
 
 /** One row of a customer's payment history. Append-only: never updated once recorded. */
@@ -86,14 +91,15 @@ export class PaymentActivity {
       throw invariantViolation(`PaymentActivity ${blank} must be a non-empty string`, { field: blank });
     }
     if (!KINDS.has(input.kind)) {
-      throw invariantViolation('PaymentActivity kind must be ATTEMPT, CHARGEBACK or FRAUD_WARNING', { kind: input.kind });
+      throw invariantViolation('PaymentActivity kind must be ATTEMPT, CHARGEBACK, FRAUD_WARNING or TRANSFER', { kind: input.kind });
     }
     if (!SOURCES.has(input.source)) {
       throw invariantViolation('PaymentActivity source must be WEBHOOK or CSV_IMPORT', { source: input.source });
     }
     const kind = input.kind as PaymentActivityKind;
-    if (kind === 'ATTEMPT' && (input.outcome === null || !OUTCOMES.has(input.outcome))) {
-      throw invariantViolation('an ATTEMPT needs an outcome: SUCCEEDED or FAILED', { outcome: input.outcome });
+    const needsOutcome = kind === 'ATTEMPT' || kind === 'TRANSFER';
+    if (needsOutcome && (input.outcome === null || !OUTCOMES.has(input.outcome))) {
+      throw invariantViolation(`a ${kind} needs an outcome: SUCCEEDED or FAILED`, { outcome: input.outcome });
     }
     if (!Number.isFinite(input.amountCents)) {
       throw invariantViolation('PaymentActivity amountCents must be a number', { amountCents: input.amountCents });
@@ -101,11 +107,12 @@ export class PaymentActivity {
     return new PaymentActivity({
       ...input,
       kind,
-      outcome: kind === 'ATTEMPT' ? (input.outcome as PaymentActivityOutcome) : null,
+      outcome: needsOutcome ? (input.outcome as PaymentActivityOutcome) : null,
       source: input.source as PaymentActivitySource,
       relatedReferences: [...new Set((input.relatedReferences ?? []).filter((r) => r.trim().length > 0))],
       merchantId: input.merchantId?.trim() ? input.merchantId.trim() : null,
       cardFingerprint: input.cardFingerprint?.trim() ? input.cardFingerprint.trim() : null,
+      counterparty: input.counterparty?.trim() ? input.counterparty.trim().toLowerCase() : null,
       currency: input.currency.toUpperCase(),
       cardCountry: input.cardCountry?.toUpperCase() ?? null,
       billingCountry: input.billingCountry?.toUpperCase() ?? null,

@@ -52,11 +52,15 @@ describe('payment activity read models (integration, real replica-set Mongo)', (
       for (const row of rows) await repository.record(row);
 
       expect(
-        await repository.summarizePaymentContext(oid('org-1'), { paymentLinkReference: 'pi_link', merchantId: 'acct_seller' }, ANCHOR),
+        await repository.summarizePaymentContext(
+          oid('org-1'),
+          { paymentLinkReference: 'pi_link', merchantId: 'acct_seller', counterparty: '0xWallet', customerIds: ['cus_1'] },
+          ANCHOR,
+        ),
       ).toEqual(expected);
       expect(
         await repository.summarizePaymentContext(oid('org-2'), { paymentLinkReference: 'pi_link', merchantId: 'acct_seller' }, ANCHOR),
-      ).toEqual({ linkSuspiciousDeclines: 0, linkDistinctCards: 0, merchantLinksWithRepeatedFailures: 0 });
+      ).toEqual({ linkSuspiciousDeclines: 0, linkDistinctCards: 0, merchantLinksWithRepeatedFailures: 0, counterpartyPreviousTransfers: 0 });
     });
 
     it('merges several ids of the same customer and never crosses tenants', async () => {

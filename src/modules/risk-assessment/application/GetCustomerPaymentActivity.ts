@@ -20,6 +20,8 @@ export interface GetCustomerPaymentActivityInput {
   /** When scoring one payment: its link and merchant, for the `activity.link*` / `activity.merchant*` counts. */
   readonly paymentLinkReference?: string | null;
   readonly merchantId?: string | null;
+  /** Destination of the event when it is a transfer. */
+  readonly counterparty?: string | null;
 }
 
 export interface GetCustomerPaymentActivityResult {
@@ -43,11 +45,16 @@ export function createGetCustomerPaymentActivityUseCase(deps: GetCustomerPayment
     const organizationId = requireTenantContext(input.auth);
     const limit = Math.max(0, Math.min(MAX_RECENT, Math.trunc(input.recentLimit)));
     const customerIds = [...new Set(input.customerIds.map((id) => id.trim()).filter((id) => id.length > 0))];
-    const keys = { paymentLinkReference: input.paymentLinkReference ?? null, merchantId: input.merchantId ?? null };
+    const keys = {
+      paymentLinkReference: input.paymentLinkReference ?? null,
+      merchantId: input.merchantId ?? null,
+      counterparty: input.counterparty ?? null,
+      customerIds,
+    };
     const [summary, recent, context] = await Promise.all([
       deps.activities.summarize(organizationId, customerIds, input.anchor),
       limit === 0 ? Promise.resolve([]) : deps.activities.listRecent(organizationId, customerIds, limit),
-      keys.paymentLinkReference === null && keys.merchantId === null
+      keys.paymentLinkReference === null && keys.merchantId === null && keys.counterparty === null
         ? Promise.resolve(EMPTY_PAYMENT_CONTEXT)
         : deps.activities.summarizePaymentContext(organizationId, keys, input.anchor),
     ]);

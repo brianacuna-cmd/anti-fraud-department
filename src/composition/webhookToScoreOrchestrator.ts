@@ -76,6 +76,7 @@ async function recordActivity(
       cardCountry: stringSignal(event.riskSignals.cardCountry),
       billingCountry: stringSignal(event.riskSignals.billingCountry),
       cardFingerprint: activity.cardFingerprint ?? null,
+      counterparty: activity.counterparty ?? null,
       source: 'WEBHOOK',
       occurredAt: event.createdAt,
     });
@@ -111,6 +112,8 @@ function toCanonicalRiskEvent(event: IngestedPaymentEvent) {
       ? { paymentLinkReference: event.paymentActivity.relatedReferences[0] }
       : {}),
     ...(event.paymentActivity?.merchantId !== undefined ? { merchantId: event.paymentActivity.merchantId } : {}),
+    ...(event.paymentActivity !== undefined ? { activityKind: event.paymentActivity.kind } : {}),
+    ...(event.paymentActivity?.counterparty !== undefined ? { counterparty: event.paymentActivity.counterparty } : {}),
   });
 }
 

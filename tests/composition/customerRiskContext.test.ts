@@ -80,6 +80,29 @@ describe('createCustomerRiskContextEnricher', () => {
     expect(enriched.customerHistory).toMatchObject({ ...HISTORY, lifetimeAttempts: 2 });
   });
 
+  it('flags a transfer to a destination the customer never used, and its daily volume', async () => {
+    const { activities, enrich } = buildContext();
+    await activities.record(activity({ kind: 'TRANSFER', counterparty: '0xknown', amountCents: 300_000, occurredAt: hoursBefore(2) }));
+    // The event itself, recorded before scoring as the webhook composition does.
+    await activities.record(activity({ kind: 'TRANSFER', counterparty: '0xnew', amountCents: 800_000, occurredAt: ANCHOR }));
+    const transfer = (counterparty: string) =>
+      event({ provider: 'bridge', providerEventType: 'transfer.updated.status_transitioned', amountCents: 800_000, activityKind: 'TRANSFER', counterparty });
+
+    const toNew = await enrich({ auth: AUTH, event: transfer('0xNEW') });
+    const toKnown = await enrich({ auth: AUTH, event: transfer('0xknown') });
+
+    expect(toNew.activity).toMatchObject({
+      transfers24h: 2,
+      transferVolume24hCents: 1_100_000,
+      distinctCounterparties7d: 2,
+      currentTransferCents: 800_000,
+      newCounterpartyTransferCents: 800_000,
+    });
+    expect(toKnown.activity).toMatchObject({ currentTransferCents: 800_000, newCounterpartyTransferCents: 0 });
+    // A card charge is not a transfer.
+    expect((await enrich({ auth: AUTH, event: event() })).activity).toMatchObject({ currentTransferCents: 0 });
+  });
+
   it('counts activity and cases across every id of the person when a resolver is given', async () => {
     const { activities, historyQueries, getCustomerPaymentActivity, getCustomerCaseHistory } = buildContext();
     // The same person: a Bridge card attempt and a Stripe charge, each under its provider's id.

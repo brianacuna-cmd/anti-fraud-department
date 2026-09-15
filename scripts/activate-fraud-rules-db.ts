@@ -15,7 +15,7 @@ import { buildFactorScoringJdm } from '../src/modules/risk-assessment/domain/ser
 import { FRAUD_RULES_NAME, FRAUD_RULE_FACTORS } from './createFraudRulesCore.js';
 
 /**
- * Creates and activates the six payment fraud rules for the default
+ * Creates and activates the payment and transfer fraud rules for the default
  * organization (DEFAULT_ORGANIZATION_ID) straight in its database, through
  * the same use cases as the API: same graph, same validation, same audit row
  * (actor: the organization).
@@ -46,7 +46,7 @@ async function main(): Promise<void> {
     console.log(`Reglas existentes: ${rules.length}. Activa: ${active ? `"${active.name}" (${active.id})` : 'ninguna'}.`);
 
     if (active?.name === FRAUD_RULES_NAME) {
-      console.log('Las 6 reglas ya están activas. No se cambia nada.');
+      console.log('Esta versión de las reglas ya está activa. No se cambia nada.');
       return;
     }
     if (!confirm) {

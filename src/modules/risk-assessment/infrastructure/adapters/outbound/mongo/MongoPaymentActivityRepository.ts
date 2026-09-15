@@ -14,6 +14,7 @@ import {
   WINDOW_10M_MS,
   WINDOW_24H_MS,
   WINDOW_30D_MS,
+  WINDOW_7D_MS,
   WINDOW_90D_MS,
   type PaymentActivitySummary,
   type PaymentContextKeys,
@@ -44,6 +45,8 @@ export interface PaymentActivityDocument {
   readonly billing_country: string | null;
   /** Absent on rows recorded before the field existed. */
   readonly card_fingerprint?: string | null;
+  /** Absent on rows recorded before the field existed. */
+  readonly counterparty?: string | null;
   readonly source: string;
   readonly occurred_at: Date;
   readonly recorded_at: Date;
@@ -58,6 +61,8 @@ interface SummaryFacets {
     countries: (string | null)[];
   }[];
   readonly quarter: readonly { chargebacks: number; warnings: number }[];
+  readonly transfersDay: readonly { transfers: number; volume: number }[];
+  readonly transfersWeek: readonly { counterparties: (string | null)[] }[];
   readonly lifetime: readonly { attempts: number; chargebacks: number; first: Date | null }[];
 }
 
@@ -138,6 +143,14 @@ export class MongoPaymentActivityRepository implements PaymentActivityRepository
                 },
               },
             ],
+            transfersDay: [
+              { $match: { kind: 'TRANSFER', outcome: 'SUCCEEDED', occurred_at: { $gt: since24h } } },
+              { $group: { _id: null, transfers: { $sum: 1 }, volume: { $sum: '$amount_cents' } } },
+            ],
+            transfersWeek: [
+              { $match: { kind: 'TRANSFER', occurred_at: { $gt: new Date(anchorDate.getTime() - WINDOW_7D_MS) } } },
+              { $group: { _id: null, counterparties: { $addToSet: '$counterparty' } } },
+            ],
             quarter: [
               { $match: { occurred_at: { $gt: since90d } } },
               { $group: { _id: null, chargebacks: { $sum: isKind('CHARGEBACK') }, warnings: { $sum: isKind('FRAUD_WARNING') } } },
@@ -166,6 +179,9 @@ export class MongoPaymentActivityRepository implements PaymentActivityRepository
       failedAttempts10m: day?.failed10m ?? 0,
       suspiciousDeclines24h: day?.suspicious ?? 0,
       distinctCardCountries24h: (day?.countries ?? []).filter((c) => c !== null).length,
+      transfers24h: facets?.transfersDay[0]?.transfers ?? 0,
+      transferVolume24hCents: facets?.transfersDay[0]?.volume ?? 0,
+      distinctCounterparties7d: (facets?.transfersWeek[0]?.counterparties ?? []).filter((c) => typeof c === 'string').length,
       chargebacks90d: quarter?.chargebacks ?? 0,
       fraudWarnings90d: quarter?.warnings ?? 0,
       lifetimeAttempts: lifetime?.attempts ?? 0,
@@ -181,7 +197,8 @@ export class MongoPaymentActivityRepository implements PaymentActivityRepository
   ): Promise<PaymentContextSummary> {
     const anchorDate = toDate(anchor);
     const organization = new ObjectId(organizationId);
-    const [link, merchant] = await Promise.all([
+    const counterparty = keys.counterparty?.toLowerCase() ?? null;
+    const [link, merchant, previousTransfers] = await Promise.all([
       keys.paymentLinkReference === null
         ? Promise.resolve([])
         : this.collection
@@ -229,11 +246,21 @@ export class MongoPaymentActivityRepository implements PaymentActivityRepository
               { $count: 'links' },
             ])
             .toArray(),
+      counterparty === null || (keys.customerIds ?? []).length === 0
+        ? Promise.resolve(0)
+        : this.collection.countDocuments({
+            organization_id: organization,
+            customer_id: { $in: [...(keys.customerIds ?? [])] },
+            kind: 'TRANSFER',
+            counterparty,
+            occurred_at: { $lt: anchorDate },
+          }),
     ]);
     return {
       linkSuspiciousDeclines: link[0]?.suspicious ?? 0,
       linkDistinctCards: (link[0]?.cards ?? []).filter((card) => typeof card === 'string').length,
       merchantLinksWithRepeatedFailures: merchant[0]?.links ?? 0,
+      counterpartyPreviousTransfers: previousTransfers,
     };
   }
 
@@ -326,6 +353,7 @@ function toDocument(activity: PaymentActivity): PaymentActivityDocument {
     card_country: p.cardCountry,
     billing_country: p.billingCountry,
     card_fingerprint: p.cardFingerprint,
+    counterparty: p.counterparty,
     source: p.source,
     occurred_at: toDate(p.occurredAt),
     recorded_at: toDate(p.recordedAt),
@@ -351,6 +379,7 @@ function toDomain(document: PaymentActivityDocument): PaymentActivity {
     cardCountry: document.card_country,
     billingCountry: document.billing_country,
     cardFingerprint: document.card_fingerprint ?? null,
+    counterparty: document.counterparty ?? null,
     source: document.source as PaymentActivitySource,
     occurredAt: fromDate(document.occurred_at),
     recordedAt: fromDate(document.recorded_at),

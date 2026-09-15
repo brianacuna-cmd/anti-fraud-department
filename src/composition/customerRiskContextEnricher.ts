@@ -52,12 +52,17 @@ export function createCustomerRiskContextEnricher(deps: CustomerRiskContextEnric
         recentLimit: 0,
         paymentLinkReference: event.paymentLinkReference ?? null,
         merchantId: event.merchantId ?? null,
+        counterparty: event.counterparty ?? null,
       }),
       deps.getCustomerCaseHistory({ auth, customerId: event.caseCustomerId, alsoKnownAs: customerIds }),
     ]);
     return createCanonicalRiskEvent({
       ...event,
-      activity: toActivityVariables(summary, context),
+      activity: toActivityVariables(summary, context, {
+        activityKind: event.activityKind ?? null,
+        amountCents: event.amountCents,
+        counterparty: event.counterparty ?? null,
+      }),
       customerHistory: toCustomerHistoryVariables(summary, cases, event.createdAt),
     });
   };

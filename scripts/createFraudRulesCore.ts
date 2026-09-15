@@ -1,9 +1,10 @@
 import type { ScoringFactor } from '../src/modules/risk-assessment/domain/services/factorScoringJdm.js';
 
-export const FRAUD_RULES_NAME = 'Reglas antifraude de pagos (6 reglas, gana la más grave)';
+/** Versioned on purpose: a new name is what makes the scripts replace an older active version. */
+export const FRAUD_RULES_NAME = 'Reglas antifraude de pagos y transferencias v2 (gana la más grave)';
 
 /**
- * The department's six payment fraud rules, from least to most severe. They
+ * The department's payment (Stripe) and transfer (Bridge) fraud rules, from least to most severe. They
  * go into ONE scoring rule — an organization has a single active rule — with
  * `MAX`: the gravest rule that holds sets the score, and every rule that
  * holds stays in the case as evidence.
@@ -50,6 +51,42 @@ export const FRAUD_RULE_FACTORS: readonly ScoringFactor[] = [
     value: 1,
     points: 95,
     reason: 'Regla 3 · Chargeback: 1+ chargeback en 90 días',
+  },
+  // Bridge (transferencias). Importes en centavos: 1.000.000 = 10.000 USD.
+  {
+    field: 'activity.distinctCounterparties7d',
+    operator: 'GTE',
+    value: 3,
+    points: 60,
+    reason: 'Bridge · Destinos distintos: transferencias a 3+ wallets o cuentas en 7 días',
+  },
+  {
+    field: 'activity.transfers24h',
+    operator: 'GTE',
+    value: 5,
+    points: 65,
+    reason: 'Bridge · Ráfaga: 5+ transferencias entregadas en 24 h',
+  },
+  {
+    field: 'activity.currentTransferCents',
+    operator: 'GTE',
+    value: 1_000_000,
+    points: 70,
+    reason: 'Bridge · Transferencia grande: 10.000 USD o más',
+  },
+  {
+    field: 'activity.transferVolume24hCents',
+    operator: 'GTE',
+    value: 2_500_000,
+    points: 75,
+    reason: 'Bridge · Volumen diario: 25.000 USD o más transferidos en 24 h',
+  },
+  {
+    field: 'activity.newCounterpartyTransferCents',
+    operator: 'GTE',
+    value: 500_000,
+    points: 80,
+    reason: 'Bridge · Destino nuevo: 5.000 USD o más a una wallet o cuenta nunca usada',
   },
 ];
 
@@ -111,7 +148,7 @@ export async function runCreateFraudRules(options: CreateFraudRulesOptions): Pro
   if (!options.confirm) {
     options.log(
       active === null
-        ? 'No hay ninguna regla activa. Ejecuta con --confirm para crear y activar las 6 reglas.'
+        ? 'No hay ninguna regla activa. Ejecuta con --confirm para crear y activar las reglas.'
         : `Regla activa ahora: "${active.name}" (${active.id}). Activar la nueva la RETIRA. Ejecuta con --confirm para seguir.`,
     );
     return { outcome: 'DRY_RUN', currentActive: active?.id ?? null };

@@ -27,8 +27,8 @@ export interface IngestedPaymentEvent {
 }
 
 export interface PaymentActivityDescriptor {
-  readonly kind: 'ATTEMPT' | 'CHARGEBACK' | 'FRAUD_WARNING';
-  /** Only for ATTEMPT. */
+  readonly kind: 'ATTEMPT' | 'CHARGEBACK' | 'FRAUD_WARNING' | 'TRANSFER';
+  /** Only for ATTEMPT and TRANSFER. */
   readonly outcome?: 'SUCCEEDED' | 'FAILED';
   /** The payment the event is about (Stripe charge id…). */
   readonly providerReference?: string;
@@ -38,6 +38,8 @@ export interface PaymentActivityDescriptor {
   readonly merchantId?: string;
   /** Stripe card fingerprint of the card used. */
   readonly cardFingerprint?: string;
+  /** Destination of a TRANSFER (wallet address or external account). */
+  readonly counterparty?: string;
 }
 
 export interface SubjectIdentity {

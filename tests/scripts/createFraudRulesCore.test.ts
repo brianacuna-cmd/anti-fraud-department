@@ -89,7 +89,7 @@ describe('runCreateFraudRules', () => {
     expect(api.scoringRules.all()).toHaveLength(0);
   });
 
-  it('creates the six rules as one MAX rule, activates it, and does nothing on a second run', async () => {
+  it('creates every rule as one MAX rule, activates it, and does nothing on a second run', async () => {
     const first = await run(true);
     const second = await run(true);
 
@@ -121,6 +121,11 @@ describe('FRAUD_RULE_FACTORS evaluated by ZEN', () => {
     ['Link expira', { linkSuspiciousDeclines: 3 }, 85],
     ['Card testing', { linkDistinctCards: 3 }, 90],
     ['Chargeback', { chargebacks90d: 1 }, 95],
+    ['Bridge · Destinos distintos', { distinctCounterparties7d: 3 }, 60],
+    ['Bridge · Ráfaga', { transfers24h: 5 }, 65],
+    ['Bridge · Transferencia grande', { currentTransferCents: 1_000_000 }, 70],
+    ['Bridge · Volumen diario', { transferVolume24hCents: 2_500_000 }, 75],
+    ['Bridge · Destino nuevo', { newCounterpartyTransferCents: 500_000 }, 80],
   ])('%s alone scores its points', async (_name, activity, points) => {
     expect((await engine.evaluate(graph, event(activity))).riskScore).toBe(points);
   });
@@ -133,6 +138,11 @@ describe('FRAUD_RULE_FACTORS evaluated by ZEN', () => {
       linkSuspiciousDeclines: 2,
       linkDistinctCards: 2,
       chargebacks90d: 0,
+      distinctCounterparties7d: 2,
+      transfers24h: 4,
+      currentTransferCents: 999_999,
+      transferVolume24hCents: 2_499_999,
+      newCounterpartyTransferCents: 499_999,
     };
     expect((await engine.evaluate(graph, event(below))).riskScore).toBe(0);
 
