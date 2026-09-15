@@ -3,7 +3,6 @@ import type { AnalystDecisionType } from '../model/value-objects/AnalystDecision
 import type { ResolutionOutcome } from '../model/value-objects/ResolutionOutcome.js';
 import { isClosed } from './ClosedCaseGate.js';
 import {
-  caseNotReviewed,
   caseNotDecided,
   caseEnforcementPending,
   caseNotResolvedForReport,
@@ -21,17 +20,6 @@ import {
  * the first step and the general "case is not worked once closed" rule —
  * this file only adds the steps in between.
  */
-
-export function isReviewed(kase: Case): boolean {
-  return kase.status !== 'OPEN';
-}
-
-/** Notes and evidence require the case to have entered `IN_REVIEW` already. */
-export function assertReviewStarted(kase: Case): void {
-  if (!isReviewed(kase)) {
-    throw caseNotReviewed(kase.id);
-  }
-}
 
 /**
  * When any decision on the case is `FRAUD_CONFIRMED`, resolving also

@@ -31,7 +31,6 @@ export const caseManagementErrorStatus: StatusByCode = {
   CASE_CLOSED: 409,
   // 409 same family: the case is not (yet) in the state the workflow step
   // requires. See `WorkflowStepGate`.
-  CASE_NOT_REVIEWED: 409,
   CASE_NOT_DECIDED: 409,
   CASE_ENFORCEMENT_PENDING: 409,
   CASE_OUTCOME_CONTRADICTS_DECISION: 409,

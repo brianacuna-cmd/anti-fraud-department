@@ -219,8 +219,10 @@ describe('createRecordAnalystDecisionUseCase', () => {
     expect(result.enforcementAction).toBeNull();
     expect(decisions.all()).toHaveLength(1);
     expect(enforcementActions.all()).toHaveLength(0);
-    expect(timelineRecorder.all()[0]?.eventType).toBe('DECISION_MADE');
-    expect(timelineRecorder.all()[0]?.newValue).toBe('FALSE_POSITIVE');
+    // Deciding an OPEN case starts its review first.
+    expect(timelineRecorder.all().map((e) => e.eventType)).toEqual(['STATE_CHANGED', 'DECISION_MADE']);
+    expect(timelineRecorder.all()[1]?.newValue).toBe('FALSE_POSITIVE');
+    expect(result.caseStatus).toBe('IN_REVIEW');
   });
 
   it('records INCONCLUSIVE without creating an enforcement action', async () => {

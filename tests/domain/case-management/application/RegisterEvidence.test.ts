@@ -173,7 +173,7 @@ describe('createRegisterEvidenceUseCase', () => {
     ).rejects.toMatchObject({ code: 'FORBIDDEN_CROSS_TENANT' });
   });
 
-  it('throws CASE_NOT_REVIEWED for a case still OPEN', async () => {
+  it('starts the review of a case still OPEN', async () => {
     const h = build();
     const open = Case.create({
       id: createCaseId(oid('case-1')),
@@ -185,9 +185,9 @@ describe('createRegisterEvidenceUseCase', () => {
       now: NOW,
     });
     await h.cases.save(open);
-    await expect(
-      h.registerEvidence({ auth: ANALYST, caseId: oid('case-1'), filename: 'x', contentType: 'text/plain', bytes: Buffer.from('x') }),
-    ).rejects.toMatchObject({ code: 'CASE_NOT_REVIEWED' });
+    await h.registerEvidence({ auth: ANALYST, caseId: oid('case-1'), filename: 'x', contentType: 'text/plain', bytes: Buffer.from('x') });
+    expect((await h.cases.findById(createCaseId(oid('case-1'))))?.status).toBe('IN_REVIEW');
+    expect(h.auditRecorder.all().map((a) => a.action)).toContain('START_REVIEW');
   });
 });
 

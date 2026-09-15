@@ -10,6 +10,7 @@ import { CaseTimelineEvent } from '../domain/model/aggregates/CaseTimelineEvent.
 import { invariantViolation } from '../domain/errors/CaseManagementError.js';
 import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
 import { loadWorkableCase } from './loadWorkableCase.js';
+import { beginReviewOnWork } from './beginReviewOnWork.js';
 
 export interface RequestCaseDocumentationInput {
   readonly auth: AuthContext;
@@ -29,7 +30,9 @@ export interface RequestCaseDocumentationDeps {
 
 /**
  * Parks a case IN_REVIEW -> PENDING_DOCUMENTATION while the customer is
- * asked for supporting documents. ANALYST|SUPERVISOR only.
+ * asked for supporting documents (an OPEN case enters review first, see
+ * `beginReviewOnWork`),
+ * ANALYST|SUPERVISOR only.
  *
  * The SLA is NOT paused: the deadline keeps running while the case waits, so
  * nothing here touches `CaseSlaTracking` or `dueDate`.
@@ -47,7 +50,9 @@ export function createRequestCaseDocumentationUseCase(deps: RequestCaseDocumenta
     }
 
     return deps.unitOfWork.withTransaction(async (tx) => {
-      const { existing, organizationId } = await loadWorkableCase(deps.cases, input, tx);
+      const loaded = await loadWorkableCase(deps.cases, input, tx);
+      const { organizationId } = loaded;
+      const existing = await beginReviewOnWork(deps, loaded.existing, input.auth, 'REQUEST_CASE_DOCUMENTATION', tx);
 
       const now = deps.clock.now();
       const previousStatus = existing.status;

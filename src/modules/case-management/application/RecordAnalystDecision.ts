@@ -33,6 +33,7 @@ import {
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
 import { notifyApprovers } from './notifyApprovers.js';
+import { beginReviewOnWork } from './beginReviewOnWork.js';
 
 export interface RecordAnalystDecisionInput {
   readonly auth: AuthContext;
@@ -116,6 +117,8 @@ export function createRecordAnalystDecisionUseCase(deps: RecordAnalystDecisionDe
       assertNotClosed(existing);
       // The decision's own comment is the instruction behind the verdict:
       // demanding a separate note first only made the analyst write it twice.
+      // Deciding an OPEN case also starts its review. See `beginReviewOnWork`.
+      const reviewed = await beginReviewOnWork(deps, existing, input.auth, 'RECORD_ANALYST_DECISION', tx);
 
       const now = deps.clock.now();
       const decision = AnalystDecision.create({
@@ -223,7 +226,7 @@ export function createRecordAnalystDecisionUseCase(deps: RecordAnalystDecisionDe
         decision,
         enforcementAction,
         approvalRequest,
-        caseStatus: existing.status,
+        caseStatus: reviewed.status,
       };
     });
   };
