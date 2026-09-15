@@ -22,6 +22,21 @@ const MVP_TYPES = new Set([
   'card_transaction.updated.status_transitioned',
   'transfer.created',
   'transfer.updated',
+  'transfer.updated.status_transitioned',
+]);
+
+/**
+ * Transfer states (field `state`, as api-business reads Bridge webhooks).
+ * Only final states count in the history: money that left, or a transfer
+ * that will not be delivered.
+ */
+const DELIVERED_TRANSFER_STATES: ReadonlySet<string> = new Set(['payment_processed']);
+const FAILED_TRANSFER_STATES: ReadonlySet<string> = new Set([
+  'error',
+  'returned',
+  'undeliverable',
+  'canceled',
+  'refund_failed',
 ]);
 
 /** Card transaction statuses that mean the payment did not go through (paths UNVERIFIED, see SPIKE). */
@@ -33,16 +48,46 @@ const FAILED_CARD_STATUSES: ReadonlySet<string> = new Set(['declined', 'failed',
  * attempts.
  */
 function bridgeActivity(type: string, object: Record<string, unknown>): PaymentActivityDescriptor | undefined {
-  if (type !== 'card_transaction.created') {
+  const state = stateOf(object);
+  const reference = readOptionalStringPath(object, ['id']);
+  if (type === 'card_transaction.created') {
+    return {
+      kind: 'ATTEMPT',
+      outcome: FAILED_CARD_STATUSES.has(state) ? 'FAILED' : 'SUCCEEDED',
+      ...(reference !== undefined ? { providerReference: reference } : {}),
+    };
+  }
+  /*
+   * A transfer counts once, when it REACHES a final state: on the creation
+   * (already final) or on the status transition. Plain `transfer.updated`
+   * events repeat a transfer in the same state and would count it twice.
+   */
+  const final = DELIVERED_TRANSFER_STATES.has(state) || FAILED_TRANSFER_STATES.has(state);
+  if (!final || (type !== 'transfer.created' && type !== 'transfer.updated.status_transitioned')) {
     return undefined;
   }
-  const status = typeof object.status === 'string' ? object.status.toLowerCase() : '';
-  const reference = readOptionalStringPath(object, ['id']);
+  const counterparty = counterpartyOf(object);
   return {
-    kind: 'ATTEMPT',
-    outcome: FAILED_CARD_STATUSES.has(status) ? 'FAILED' : 'SUCCEEDED',
+    kind: 'TRANSFER',
+    outcome: DELIVERED_TRANSFER_STATES.has(state) ? 'SUCCEEDED' : 'FAILED',
     ...(reference !== undefined ? { providerReference: reference } : {}),
+    ...(counterparty !== undefined ? { counterparty } : {}),
   };
+}
+
+/** Bridge sends `state`; `status` is the older name, still read as a fallback. */
+function stateOf(object: Record<string, unknown>): string {
+  const value = typeof object.state === 'string' ? object.state : object.status;
+  return typeof value === 'string' ? value.toLowerCase() : '';
+}
+
+/** Where the money went: a crypto address, or the external bank account. */
+function counterpartyOf(object: Record<string, unknown>): string | undefined {
+  return (
+    readOptionalStringPath(object, ['destination', 'to_address']) ??
+    readOptionalStringPath(object, ['destination', 'external_account_id']) ??
+    readOptionalStringPath(object, ['to_address'])
+  );
 }
 
 export function mapBridgeEnvelope(payload: unknown): EnvelopeMapResult {
@@ -69,15 +114,21 @@ export function mapBridgeEnvelope(payload: unknown): EnvelopeMapResult {
   const eventId = typeof payload.event_id === 'string' ? payload.event_id : '';
   const currency = typeof object.currency === 'string' ? object.currency.toUpperCase() : '';
   const riskSignals: Record<string, unknown> = {};
-  if (typeof object.status === 'string') {
-    riskSignals.status = object.status;
+  const state = stateOf(object);
+  if (state.length > 0) {
+    riskSignals.status = state;
+  }
+  const paymentRail = readOptionalStringPath(object, ['destination', 'payment_rail']);
+  if (paymentRail !== undefined) {
+    riskSignals.paymentRail = paymentRail;
   }
 
   const paymentActivity = bridgeActivity(type, object);
 
   const name = readOptionalStringPath(object, ['customer_name']);
   const document = readOptionalStringPath(object, ['customer_document_id']);
-  const walletAddress = readOptionalStringPath(object, ['wallet_address']);
+  const walletAddress =
+    readOptionalStringPath(object, ['wallet_address']) ?? readOptionalStringPath(object, ['destination', 'to_address']);
   const entryType = inferSubjectEntryType(name, document, walletAddress);
 
   return {
@@ -99,8 +150,9 @@ export function mapBridgeEnvelope(payload: unknown): EnvelopeMapResult {
   };
 }
 
+/** Bridge sends "10", "10.5" or "10.50"; more than two decimals is refused rather than rounded. */
 function parseTwoDecimalAmountCents(amount: unknown): number | null {
-  if (typeof amount !== 'string' || !/^-?\d+\.\d{2}$/.test(amount)) {
+  if (typeof amount !== 'string' || !/^-?\d+(\.\d{1,2})?$/.test(amount)) {
     return null;
   }
   return Math.round(Number(amount) * 100);

@@ -9,10 +9,17 @@ import {
 } from '../modules/risk-assessment/domain/model/CustomerRiskContext.js';
 import type { createGetCustomerPaymentActivityUseCase } from '../modules/risk-assessment/application/GetCustomerPaymentActivity.js';
 import type { createGetCustomerCaseHistoryUseCase } from '../modules/case-management/application/GetCustomerCaseHistory.js';
+import { requireTenantContext } from '../modules/risk-assessment/application/authorization/requireTenantContext.js';
+import type { ResolveCustomerIds } from './customerIdentityResolver.js';
 
 export interface CustomerRiskContextEnricherDeps {
   readonly getCustomerPaymentActivity: ReturnType<typeof createGetCustomerPaymentActivityUseCase>;
   readonly getCustomerCaseHistory: ReturnType<typeof createGetCustomerCaseHistoryUseCase>;
+  /**
+   * Every id of the customer (Finturu, Bridge, Stripe). Without it activity
+   * and history count only under the id the provider sent.
+   */
+  readonly resolveCustomerIds?: ResolveCustomerIds;
 }
 
 export type EnrichRiskEvent = (input: {
@@ -23,7 +30,9 @@ export type EnrichRiskEvent = (input: {
 /**
  * Composition-root seam (eslint boundaries): joins the customer's payment
  * history (risk-assessment) with their earlier cases (case-management) into
- * the `activity.*` / `customerHistory.*` variables the rules read.
+ * the `activity.*` / `customerHistory.*` variables the rules read. Both are
+ * counted across every id of the person (`resolveCustomerIds`): Bridge, Stripe
+ * and Finturu each report the same customer under their own id.
  *
  * Windows are anchored on the EVENT's `createdAt`, not on "now": a late
  * webhook or an imported row is scored against what had happened by the time
@@ -32,18 +41,28 @@ export type EnrichRiskEvent = (input: {
  */
 export function createCustomerRiskContextEnricher(deps: CustomerRiskContextEnricherDeps): EnrichRiskEvent {
   return async function enrichRiskEvent({ auth, event }) {
-    const [{ summary }, cases] = await Promise.all([
+    const customerIds = deps.resolveCustomerIds
+      ? await deps.resolveCustomerIds(requireTenantContext(auth), event.caseCustomerId)
+      : [event.caseCustomerId];
+    const [{ summary, context }, cases] = await Promise.all([
       deps.getCustomerPaymentActivity({
         auth,
-        customerIds: [event.caseCustomerId],
+        customerIds,
         anchor: event.createdAt,
         recentLimit: 0,
+        paymentLinkReference: event.paymentLinkReference ?? null,
+        merchantId: event.merchantId ?? null,
+        counterparty: event.counterparty ?? null,
       }),
-      deps.getCustomerCaseHistory({ auth, customerId: event.caseCustomerId }),
+      deps.getCustomerCaseHistory({ auth, customerId: event.caseCustomerId, alsoKnownAs: customerIds }),
     ]);
     return createCanonicalRiskEvent({
       ...event,
-      activity: toActivityVariables(summary),
+      activity: toActivityVariables(summary, context, {
+        activityKind: event.activityKind ?? null,
+        amountCents: event.amountCents,
+        counterparty: event.counterparty ?? null,
+      }),
       customerHistory: toCustomerHistoryVariables(summary, cases, event.createdAt),
     });
   };

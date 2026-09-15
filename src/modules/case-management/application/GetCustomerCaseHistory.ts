@@ -8,6 +8,7 @@ import { requireTenantContext } from './authorization/requireTenantContext.js';
 export interface GetCustomerCaseHistoryInput {
   readonly auth: AuthContext;
   readonly customerId: string;
+  readonly alsoKnownAs?: readonly string[];
   readonly excludeCaseId?: string;
 }
 
@@ -22,6 +23,7 @@ export function createGetCustomerCaseHistoryUseCase(deps: GetCustomerCaseHistory
     return deps.reader.countByCustomer({
       organizationId,
       customerId: input.customerId,
+      ...(input.alsoKnownAs !== undefined ? { alsoKnownAs: input.alsoKnownAs } : {}),
       ...(input.excludeCaseId !== undefined ? { excludeCaseId: input.excludeCaseId } : {}),
     });
   };

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { jdmGraphSchema, type JdmGraph } from '../../../../../../../shared/http/dto/jdmGraphSchema.js';
-import { SCORING_OPERATORS } from '../../../../../domain/services/factorScoringJdm.js';
+import { SCORING_COMBINATIONS, SCORING_OPERATORS } from '../../../../../domain/services/factorScoringJdm.js';
 
 import { calculateRiskScoreSchema } from './riskScoreSchemas.js';
 
@@ -82,6 +82,8 @@ export const createFactorScoringRuleSchema = z
           .strict(),
       )
       .min(1),
+    /** `SUM` (default): points add up. `MAX`: the gravest factor that holds sets the score. */
+    combination: z.enum(SCORING_COMBINATIONS).default('SUM'),
   })
   .strict();
 

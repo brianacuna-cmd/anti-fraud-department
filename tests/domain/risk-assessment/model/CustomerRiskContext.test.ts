@@ -1,5 +1,6 @@
 import {
   summarizePaymentActivity,
+  summarizePaymentContext,
   toActivityVariables,
   toCustomerHistoryVariables,
   ACTIVITY_VARIABLES,
@@ -7,7 +8,28 @@ import {
 } from '../../../../src/modules/risk-assessment/domain/model/CustomerRiskContext.js';
 import { createCanonicalRiskEvent } from '../../../../src/modules/risk-assessment/domain/model/CanonicalRiskEvent.js';
 import { isScorableField } from '../../../../src/modules/risk-assessment/domain/services/factorScoringJdm.js';
-import { ANCHOR, activity, hoursBefore, windowScenario } from '../../../helpers/risk-assessment/paymentActivityFixtures.js';
+import { ANCHOR, activity, contextScenario, hoursBefore, windowScenario } from '../../../helpers/risk-assessment/paymentActivityFixtures.js';
+
+describe('summarizePaymentContext', () => {
+  it('counts the event link (any customer, whole life) and the seller links failing 3+ times in 30 days', () => {
+    const { rows, expected } = contextScenario();
+
+    expect(
+      summarizePaymentContext(rows.map((r) => r.toProps()), { paymentLinkReference: 'pi_link', merchantId: 'acct_seller', counterparty: '0xWallet', customerIds: ['cus_1'] }, ANCHOR),
+    ).toEqual(expected);
+  });
+
+  it('is all zeros without a link or merchant', () => {
+    const { rows } = contextScenario();
+
+    expect(summarizePaymentContext(rows.map((r) => r.toProps()), { paymentLinkReference: null, merchantId: null }, ANCHOR)).toEqual({
+      linkSuspiciousDeclines: 0,
+      linkDistinctCards: 0,
+      merchantLinksWithRepeatedFailures: 0,
+      counterpartyPreviousTransfers: 0,
+    });
+  });
+});
 
 describe('summarizePaymentActivity', () => {
   it('counts each window on (anchor - window, anchor], per customer, ignoring the future', () => {

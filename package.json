@@ -13,6 +13,8 @@
     "typecheck": "tsc --noEmit",
     "bootstrap:admin": "tsx --env-file-if-exists=.env scripts/bootstrap-admin.ts",
     "backfill:case-numbers": "tsx --env-file-if-exists=.env scripts/backfill-case-numbers.ts",
+    "rules:create-fraud": "tsx scripts/create-fraud-rules.ts",
+    "rules:activate-fraud-db": "tsx --env-file-if-exists=.env scripts/activate-fraud-rules-db.ts",
     "migrate:unique-active-scoring-rules": "tsx --env-file-if-exists=.env scripts/migrate-unique-active-scoring-rules.ts"
   },
   "dependencies": {

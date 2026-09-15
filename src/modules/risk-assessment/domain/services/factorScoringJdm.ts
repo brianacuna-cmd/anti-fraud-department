@@ -19,6 +19,21 @@ export type ScoringOperator = (typeof SCORING_OPERATORS)[number];
 export type ScoringValue = string | number | boolean | readonly (string | number)[];
 
 /**
+ * How the factors that hold become one score.
+ *
+ * - `SUM`: each factor adds its points (clamped to 0..100). Factors are
+ *   independent aggravating or mitigating circumstances.
+ * - `MAX`: the gravest factor that holds sets the score. Factors are
+ *   alternative rules ranked by severity, where two weak ones must not add up
+ *   to a severe one.
+ *
+ * Both keep every hit as evidence.
+ */
+export const SCORING_COMBINATIONS = ['SUM', 'MAX'] as const;
+
+export type ScoringCombination = (typeof SCORING_COMBINATIONS)[number];
+
+/**
  * One risk factor: a condition on the incoming event and the points it adds
  * when it holds.
  *
@@ -98,6 +113,14 @@ const SUM_FACTORS_SOURCE = `export const handler = async (input) => {
   return { riskScore: bounded, hits };
 };`;
 
+/** Same contract as `SUM_FACTORS_SOURCE`, keeping the highest points instead of adding them. */
+const MAX_FACTORS_SOURCE = `export const handler = async (input) => {
+  const hits = Array.isArray(input) ? input : [];
+  const highest = hits.reduce((acc, hit) => Math.max(acc, Number(hit.points) || 0), 0);
+  const bounded = Math.max(0, Math.min(100, Math.round(highest)));
+  return { riskScore: bounded, hits };
+};`;
+
 /**
  * Builds the JDM graph of a weighted-factor scoring rule: a `collect` table
  * that gathers EVERY factor that holds, and a function node that sums and
@@ -113,7 +136,10 @@ const SUM_FACTORS_SOURCE = `export const handler = async (input) => {
  * a failure. A field the event does not carry does not match either: it adds
  * no points and does not break the evaluation.
  */
-export function buildFactorScoringJdm(factors: readonly ScoringFactor[]): Record<string, unknown> {
+export function buildFactorScoringJdm(
+  factors: readonly ScoringFactor[],
+  combination: ScoringCombination = 'SUM',
+): Record<string, unknown> {
   assertScorable(factors);
 
   const fields = distinctFields(factors);
@@ -141,9 +167,9 @@ export function buildFactorScoringJdm(factors: readonly ScoringFactor[]): Record
       {
         id: 'total',
         type: 'functionNode',
-        name: 'Suma acotada',
+        name: combination === 'MAX' ? 'Factor más grave' : 'Suma acotada',
         position: { x: 550, y: 0 },
-        content: { source: SUM_FACTORS_SOURCE },
+        content: { source: combination === 'MAX' ? MAX_FACTORS_SOURCE : SUM_FACTORS_SOURCE },
       },
       { id: 'output', type: 'outputNode', name: 'Puntuación', position: { x: 850, y: 0 } },
     ],

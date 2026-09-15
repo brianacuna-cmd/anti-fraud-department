@@ -79,6 +79,66 @@ describe('createCustomerRiskContextEnricher', () => {
     expect(enriched.activity).toMatchObject({ attempts24h: 2, failedAttempts24h: 1, failureRate24h: 50, suspiciousDeclines24h: 1 });
     expect(enriched.customerHistory).toMatchObject({ ...HISTORY, lifetimeAttempts: 2 });
   });
+
+  it('flags a transfer to a destination the customer never used, and its daily volume', async () => {
+    const { activities, enrich } = buildContext();
+    await activities.record(activity({ kind: 'TRANSFER', counterparty: '0xknown', amountCents: 300_000, occurredAt: hoursBefore(2) }));
+    // The event itself, recorded before scoring as the webhook composition does.
+    await activities.record(activity({ kind: 'TRANSFER', counterparty: '0xnew', amountCents: 800_000, occurredAt: ANCHOR }));
+    const transfer = (counterparty: string) =>
+      event({ provider: 'bridge', providerEventType: 'transfer.updated.status_transitioned', amountCents: 800_000, activityKind: 'TRANSFER', counterparty });
+
+    const toNew = await enrich({ auth: AUTH, event: transfer('0xNEW') });
+    const toKnown = await enrich({ auth: AUTH, event: transfer('0xknown') });
+
+    expect(toNew.activity).toMatchObject({
+      transfers24h: 2,
+      transferVolume24hCents: 1_100_000,
+      distinctCounterparties7d: 2,
+      currentTransferCents: 800_000,
+      newCounterpartyTransferCents: 800_000,
+    });
+    expect(toKnown.activity).toMatchObject({ currentTransferCents: 800_000, newCounterpartyTransferCents: 0 });
+    // A card charge is not a transfer.
+    expect((await enrich({ auth: AUTH, event: event() })).activity).toMatchObject({ currentTransferCents: 0 });
+  });
+
+  it('counts activity and cases across every id of the person when a resolver is given', async () => {
+    const { activities, historyQueries, getCustomerPaymentActivity, getCustomerCaseHistory } = buildContext();
+    // The same person: a Bridge card attempt and a Stripe charge, each under its provider's id.
+    await activities.record(activity({ customerId: 'bridge-uuid-1', provider: 'bridge', outcome: 'FAILED', occurredAt: hoursBefore(1) }));
+    await activities.record(activity({ customerId: 'cus_1', outcome: 'FAILED', occurredAt: hoursBefore(2) }));
+    const enrich = createCustomerRiskContextEnricher({
+      getCustomerPaymentActivity,
+      getCustomerCaseHistory,
+      resolveCustomerIds: async (_org, id) => (id === 'cus_1' ? ['cus_1', '42', 'bridge-uuid-1'] : [id]),
+    });
+
+    const enriched = await enrich({ auth: AUTH, event: event() });
+
+    expect(enriched.activity).toMatchObject({ attempts24h: 2, failedAttempts24h: 2 });
+    expect(historyQueries[0]).toMatchObject({ customerId: 'cus_1', alsoKnownAs: ['cus_1', '42', 'bridge-uuid-1'] });
+  });
+
+  it('counts the event payment link and merchant across every customer of the organization', async () => {
+    const { activities, enrich } = buildContext();
+    const onLink = { relatedReferences: ['pi_link'], merchantId: 'acct_seller', outcome: 'FAILED', declineCategory: 'FRAUD_SUSPECTED' };
+    await activities.record(activity({ ...onLink, cardFingerprint: 'fp_1', occurredAt: hoursBefore(1) }));
+    await activities.record(activity({ ...onLink, customerId: 'cus_other', cardFingerprint: 'fp_2', occurredAt: hoursBefore(2) }));
+    await activities.record(activity({ ...onLink, cardFingerprint: 'fp_3', occurredAt: hoursBefore(0.05) }));
+
+    const enriched = await enrich({
+      auth: AUTH,
+      event: event({ paymentLinkReference: 'pi_link', merchantId: 'acct_seller' }),
+    });
+
+    expect(enriched.activity).toMatchObject({
+      failedAttempts10m: 1,
+      linkSuspiciousDeclines: 3,
+      linkDistinctCards: 3,
+      merchantLinksWithRepeatedFailures: 1,
+    });
+  });
 });
 
 describe('scoreToCaseOrchestrator with enrichment', () => {
@@ -143,13 +203,25 @@ describe('webhookToScoreOrchestrator activity recording', () => {
       riskSignals: { declineCategory: 'AUTHENTICATION_FAILED', cardCountry: 'NG', billingCountry: 'US' },
       createdAt: ANCHOR,
       providerEventId: 'evt_1',
-      ...(withActivity ? { paymentActivity: { kind: 'ATTEMPT', outcome: 'FAILED', providerReference: 'ch_9' } } : {}),
+      ...(withActivity
+        ? {
+            paymentActivity: {
+              kind: 'ATTEMPT',
+              outcome: 'FAILED',
+              providerReference: 'ch_9',
+              relatedReferences: ['pi_9'],
+              merchantId: 'acct_9',
+              cardFingerprint: 'fp_9',
+            },
+          }
+        : {}),
     });
   }
 
   it('records the attempt BEFORE scoring, so the rules count the event itself', async () => {
     const { activities, enrich } = buildContext();
     const seenAttempts: number[] = [];
+    const seenLink: unknown[] = [];
     const composer = createWebhookToScoreOrchestrator({
       events: events(),
       clock: new FixedClock(ANCHOR),
@@ -157,6 +229,7 @@ describe('webhookToScoreOrchestrator activity recording', () => {
       processRiskScoreToCase: async (input) => {
         const enriched = await enrich(input);
         seenAttempts.push(enriched.activity?.attempts24h ?? -1);
+        seenLink.push({ paymentLinkReference: input.event.paymentLinkReference, merchantId: input.event.merchantId });
         return { riskScore: 0, ruleId: 'r', conditionsVersion: 1, opened: false };
       },
     });
@@ -164,12 +237,14 @@ describe('webhookToScoreOrchestrator activity recording', () => {
     await composer.compose({ organizationId: ORG, provider: 'stripe', event: failedCharge(), ingestEventId: INGEST_ID });
 
     expect(seenAttempts).toEqual([1]);
+    expect(seenLink).toEqual([{ paymentLinkReference: 'pi_9', merchantId: 'acct_9' }]);
     expect(activities.all()[0]?.toProps()).toMatchObject({
       customerId: 'cus_1',
       providerReference: 'ch_9',
       outcome: 'FAILED',
       declineCategory: 'AUTHENTICATION_FAILED',
       cardCountry: 'NG',
+      cardFingerprint: 'fp_9',
       source: 'WEBHOOK',
     });
     expect(await createPaymentCustomerLookup(activities).findCustomerId(ORG, 'stripe', 'ch_9')).toBe('cus_1');

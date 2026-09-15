@@ -253,10 +253,23 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db
     .collection('payment_activities')
     .createIndex({ organization_id: 1, related_references: 1 }, { name: 'payment_activities_org_related_references_idx' });
+  // "Has this customer ever sent to this destination?" (Bridge transfers).
+  await db.collection('payment_activities').createIndex(
+    { organization_id: 1, counterparty: 1, customer_id: 1 },
+    { name: 'payment_activities_org_counterparty_idx', partialFilterExpression: { counterparty: { $type: 'string' } } },
+  );
   await db.collection('payment_activities').createIndex(
     { organization_id: 1, provider: 1, provider_reference: 1 },
     { name: 'payment_activities_org_provider_reference_idx', partialFilterExpression: { provider_reference: { $type: 'string' } } },
   );
+
+  // Identity links: looked up by any id of the person; expired rows are purged by Mongo.
+  await db
+    .collection('customer_identity_links')
+    .createIndex({ organization_id: 1, ids: 1 }, { name: 'customer_identity_links_org_ids_idx' });
+  await db
+    .collection('customer_identity_links')
+    .createIndex({ expires_at: 1 }, { name: 'customer_identity_links_expires_ttl', expireAfterSeconds: 0 });
 
   await db.collection('risk_scoring_rules').createIndex(
     { organization_id: 1 },

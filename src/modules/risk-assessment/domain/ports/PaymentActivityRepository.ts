@@ -1,6 +1,10 @@
 import type { Instant } from '../../../../shared/time/Instant.js';
 import type { PaymentActivity } from '../model/aggregates/PaymentActivity.js';
-import type { PaymentActivitySummary } from '../model/CustomerRiskContext.js';
+import type {
+  PaymentActivitySummary,
+  PaymentContextKeys,
+  PaymentContextSummary,
+} from '../model/CustomerRiskContext.js';
 import type { MerchantActivitySummary } from '../model/MerchantRisk.js';
 
 /** Outbound port for the customer payment history (`payment_activities`). */
@@ -17,6 +21,9 @@ export interface PaymentActivityRepository {
    * the Finturu, Stripe and Bridge ids); their rows are summarized together.
    */
   summarize(organizationId: string, customerIds: readonly string[], anchor: Instant): Promise<PaymentActivitySummary>;
+
+  /** See `summarizePaymentContext`: the event's link and merchant, across every customer of the org. */
+  summarizePaymentContext(organizationId: string, keys: PaymentContextKeys, anchor: Instant): Promise<PaymentContextSummary>;
 
   /** Most recent first, for the case file panel. */
   listRecent(organizationId: string, customerIds: readonly string[], limit: number): Promise<readonly PaymentActivity[]>;

@@ -360,6 +360,7 @@ import { createPaymentCustomerLookup } from './composition/paymentCustomerLookup
 import { caseCustomerActivityRouter } from './composition/caseCustomerActivityRouter.js';
 import { merchantRiskRouter } from './composition/merchantRiskRouter.js';
 import { customerProfileRouter } from './composition/customerProfileRouter.js';
+import { createCustomerIdentityResolver } from './composition/customerIdentityResolver.js';
 import { MongoPaymentActivityRepository } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoPaymentActivityRepository.js';
 import { createRecordPaymentActivityUseCase } from './modules/risk-assessment/application/RecordPaymentActivity.js';
 import { createGetCustomerPaymentActivityUseCase } from './modules/risk-assessment/application/GetCustomerPaymentActivity.js';
@@ -1725,7 +1726,16 @@ async function bootstrap(): Promise<void> {
     calculateRiskScore,
     getOrganizationFraudConfig,
     createCase,
-    enrichEvent: createCustomerRiskContextEnricher({ getCustomerPaymentActivity, getCustomerCaseHistory }),
+    enrichEvent: createCustomerRiskContextEnricher({
+      getCustomerPaymentActivity,
+      getCustomerCaseHistory,
+      resolveCustomerIds: createCustomerIdentityResolver({
+        finturu: finturuApiClient,
+        db,
+        clock,
+        onError: (error) => console.error('[customer-identity]', error),
+      }),
+    }),
   });
   const caseCustomerActivityHttpRouter = caseCustomerActivityRouter({
     getCase: createGetCaseUseCase({ cases }),

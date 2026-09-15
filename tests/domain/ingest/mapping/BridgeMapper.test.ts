@@ -201,6 +201,40 @@ describe('mapBridgeEnvelope payment activity', () => {
     expect(ok.event.paymentActivity).toEqual({ kind: 'ATTEMPT', outcome: 'SUCCEEDED', providerReference: 'ctx_1' });
     expect(ko.event.paymentActivity).toMatchObject({ outcome: 'FAILED' });
     expect(update.event.paymentActivity).toBeUndefined();
+    // A transfer without a final state does not count yet.
     expect(transfer.event.paymentActivity).toBeUndefined();
+  });
+
+  const TRANSFER = {
+    id: 'tr_1',
+    amount: '2500',
+    currency: 'usd',
+    on_behalf_of: 'br_cust',
+    destination: { payment_rail: 'ethereum', currency: 'usdc', to_address: '0xAbC123' },
+  };
+
+  it('counts a transfer once, when it reaches a final state, with its destination', () => {
+    const delivered = mapBridgeEnvelope(
+      bridgeEvent('transfer.updated.status_transitioned', { ...TRANSFER, state: 'payment_processed' }),
+    );
+    const returned = mapBridgeEnvelope(bridgeEvent('transfer.updated.status_transitioned', { ...TRANSFER, state: 'returned' }));
+    const inFlight = mapBridgeEnvelope(bridgeEvent('transfer.updated.status_transitioned', { ...TRANSFER, state: 'funds_received' }));
+    const repeated = mapBridgeEnvelope(bridgeEvent('transfer.updated', { ...TRANSFER, state: 'payment_processed' }));
+
+    if ([delivered, returned, inFlight, repeated].some((r) => r.status !== 'mapped')) throw new Error('expected mapped');
+    const activityOf = (r: typeof delivered) => (r.status === 'mapped' ? r.event.paymentActivity : undefined);
+    expect(activityOf(delivered)).toEqual({ kind: 'TRANSFER', outcome: 'SUCCEEDED', providerReference: 'tr_1', counterparty: '0xAbC123' });
+    expect(activityOf(returned)).toMatchObject({ kind: 'TRANSFER', outcome: 'FAILED' });
+    expect(activityOf(inFlight)).toBeUndefined();
+    expect(activityOf(repeated)).toBeUndefined();
+  });
+
+  it('reads the state Bridge sends, whole-unit amounts, the rail and the destination wallet', () => {
+    const result = mapBridgeEnvelope(bridgeEvent('transfer.created', { ...TRANSFER, state: 'payment_processed' }));
+
+    if (result.status !== 'mapped') throw new Error('expected mapped');
+    expect(result.event.amountCents).toBe(250_000);
+    expect(result.event.riskSignals).toMatchObject({ status: 'payment_processed', paymentRail: 'ethereum' });
+    expect(result.event.subjectIdentity).toMatchObject({ walletAddress: '0xAbC123' });
   });
 });

@@ -8,7 +8,7 @@ import {
   PAYMENT_ACTIVITIES_COLLECTION,
 } from '../../../src/modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoPaymentActivityRepository.js';
 import { MongoCustomerCaseHistoryReader } from '../../../src/modules/case-management/infrastructure/adapters/outbound/mongo/MongoCustomerCaseHistoryReader.js';
-import { ANCHOR, activity, hoursBefore, windowScenario } from '../../helpers/risk-assessment/paymentActivityFixtures.js';
+import { ANCHOR, activity, contextScenario, hoursBefore, windowScenario } from '../../helpers/risk-assessment/paymentActivityFixtures.js';
 import { summarizeMerchantActivity } from '../../../src/modules/risk-assessment/domain/model/MerchantRisk.js';
 import { oid } from '../../support/oid.js';
 
@@ -44,6 +44,23 @@ describe('payment activity read models (integration, real replica-set Mongo)', (
       for (const row of rows) await repository.record(row);
 
       expect(await repository.summarize(oid('org-1'), ['cus_1'], ANCHOR)).toEqual(expected);
+    });
+
+    it('counts the event link and seller exactly like the domain reference implementation', async () => {
+      const repository = new MongoPaymentActivityRepository(db);
+      const { rows, expected } = contextScenario();
+      for (const row of rows) await repository.record(row);
+
+      expect(
+        await repository.summarizePaymentContext(
+          oid('org-1'),
+          { paymentLinkReference: 'pi_link', merchantId: 'acct_seller', counterparty: '0xWallet', customerIds: ['cus_1'] },
+          ANCHOR,
+        ),
+      ).toEqual(expected);
+      expect(
+        await repository.summarizePaymentContext(oid('org-2'), { paymentLinkReference: 'pi_link', merchantId: 'acct_seller' }, ANCHOR),
+      ).toEqual({ linkSuspiciousDeclines: 0, linkDistinctCards: 0, merchantLinksWithRepeatedFailures: 0, counterpartyPreviousTransfers: 0 });
     });
 
     it('merges several ids of the same customer and never crosses tenants', async () => {
@@ -133,6 +150,20 @@ describe('payment activity read models (integration, real replica-set Mongo)', (
         fraudConfirmedCases: 0,
         falsePositiveCases: 0,
       });
+    });
+
+    it('also counts the cases filed under the other ids of the same person', async () => {
+      await insertCase({ customer_id: '42' });
+      await insertCase({ bridge_user_id: 'bridge-uuid-42', status: 'RESOLVED', resolution_outcome: 'FRAUD_CONFIRMED' });
+      await insertCase({ customer_id: 'someone-else' });
+
+      const history = await new MongoCustomerCaseHistoryReader(db).countByCustomer({
+        organizationId: oid('org-1'),
+        customerId: 'bridge-uuid-42',
+        alsoKnownAs: ['bridge-uuid-42', '42', 'cus_42'],
+      });
+
+      expect(history).toEqual({ previousCases: 2, openCases: 1, fraudConfirmedCases: 1, falsePositiveCases: 0 });
     });
   });
 });
