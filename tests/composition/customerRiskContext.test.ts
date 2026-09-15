@@ -80,6 +80,23 @@ describe('createCustomerRiskContextEnricher', () => {
     expect(enriched.customerHistory).toMatchObject({ ...HISTORY, lifetimeAttempts: 2 });
   });
 
+  it('counts activity and cases across every id of the person when a resolver is given', async () => {
+    const { activities, historyQueries, getCustomerPaymentActivity, getCustomerCaseHistory } = buildContext();
+    // The same person: a Bridge card attempt and a Stripe charge, each under its provider's id.
+    await activities.record(activity({ customerId: 'bridge-uuid-1', provider: 'bridge', outcome: 'FAILED', occurredAt: hoursBefore(1) }));
+    await activities.record(activity({ customerId: 'cus_1', outcome: 'FAILED', occurredAt: hoursBefore(2) }));
+    const enrich = createCustomerRiskContextEnricher({
+      getCustomerPaymentActivity,
+      getCustomerCaseHistory,
+      resolveCustomerIds: async (_org, id) => (id === 'cus_1' ? ['cus_1', '42', 'bridge-uuid-1'] : [id]),
+    });
+
+    const enriched = await enrich({ auth: AUTH, event: event() });
+
+    expect(enriched.activity).toMatchObject({ attempts24h: 2, failedAttempts24h: 2 });
+    expect(historyQueries[0]).toMatchObject({ customerId: 'cus_1', alsoKnownAs: ['cus_1', '42', 'bridge-uuid-1'] });
+  });
+
   it('counts the event payment link and merchant across every customer of the organization', async () => {
     const { activities, enrich } = buildContext();
     const onLink = { relatedReferences: ['pi_link'], merchantId: 'acct_seller', outcome: 'FAILED', declineCategory: 'FRAUD_SUSPECTED' };

@@ -147,5 +147,19 @@ describe('payment activity read models (integration, real replica-set Mongo)', (
         falsePositiveCases: 0,
       });
     });
+
+    it('also counts the cases filed under the other ids of the same person', async () => {
+      await insertCase({ customer_id: '42' });
+      await insertCase({ bridge_user_id: 'bridge-uuid-42', status: 'RESOLVED', resolution_outcome: 'FRAUD_CONFIRMED' });
+      await insertCase({ customer_id: 'someone-else' });
+
+      const history = await new MongoCustomerCaseHistoryReader(db).countByCustomer({
+        organizationId: oid('org-1'),
+        customerId: 'bridge-uuid-42',
+        alsoKnownAs: ['bridge-uuid-42', '42', 'cus_42'],
+      });
+
+      expect(history).toEqual({ previousCases: 2, openCases: 1, fraudConfirmedCases: 1, falsePositiveCases: 0 });
+    });
   });
 });

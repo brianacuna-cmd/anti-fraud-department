@@ -118,6 +118,22 @@ export interface FinturuReconciliationChargesDto {
   readonly truncated: boolean;
 }
 
+/** Every id of one Finturu customer (api-business `IdentityService`). */
+export interface FinturuIdentityDto {
+  readonly userId: number;
+  readonly email: string | null;
+  readonly bridgeCustomerId: string | null;
+  readonly stripeAccountId: string | null;
+  readonly stripeCustomerId: string | null;
+}
+
+/** Exactly one of them. */
+export type FinturuIdentityQuery =
+  | { readonly userId: number }
+  | { readonly bridgeCustomerId: string }
+  | { readonly stripeAccountId: string }
+  | { readonly stripeCustomerId: string };
+
 export interface FinturuPage<T> {
   readonly items: readonly T[];
   readonly total: number;
@@ -275,6 +291,12 @@ export class FinturuApiClient {
   }): Promise<FinturuReconciliationChargesDto> {
     const params = new URLSearchParams({ userId: String(query.userId), from: query.from, to: query.to });
     return this.fetchStrict<FinturuReconciliationChargesDto>(`/stripe/reconciliation-charges?${params.toString()}`, 60_000);
+  }
+
+  /** `identity: null` when nobody in Finturu has that id; any failure throws. */
+  async getIdentity(query: FinturuIdentityQuery): Promise<{ readonly identity: FinturuIdentityDto | null }> {
+    const params = new URLSearchParams(Object.entries(query).map(([key, value]) => [key, String(value)]));
+    return this.fetchStrict<{ identity: FinturuIdentityDto | null }>(`/identity?${params.toString()}`);
   }
 
   async getCustomers(): Promise<readonly FinturuCustomerDto[]> {

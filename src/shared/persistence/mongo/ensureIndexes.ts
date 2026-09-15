@@ -258,6 +258,14 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { name: 'payment_activities_org_provider_reference_idx', partialFilterExpression: { provider_reference: { $type: 'string' } } },
   );
 
+  // Identity links: looked up by any id of the person; expired rows are purged by Mongo.
+  await db
+    .collection('customer_identity_links')
+    .createIndex({ organization_id: 1, ids: 1 }, { name: 'customer_identity_links_org_ids_idx' });
+  await db
+    .collection('customer_identity_links')
+    .createIndex({ expires_at: 1 }, { name: 'customer_identity_links_expires_ttl', expireAfterSeconds: 0 });
+
   await db.collection('risk_scoring_rules').createIndex(
     { organization_id: 1 },
     {

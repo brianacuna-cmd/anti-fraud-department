@@ -11,6 +11,8 @@ export interface CustomerCaseHistoryQuery {
   readonly organizationId: string;
   /** Matched against `customerId`, `stripeCustomerId` and `bridgeUserId`: the event may carry any of them. */
   readonly customerId: string;
+  /** Other ids of the same person (Bridge, Stripe, Finturu); their cases count too. */
+  readonly alsoKnownAs?: readonly string[];
   /** The case being looked at, left out so it does not count as its own history. */
   readonly excludeCaseId?: string;
 }

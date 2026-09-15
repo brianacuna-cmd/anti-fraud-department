@@ -21,13 +21,14 @@ export class MongoCustomerCaseHistoryReader implements CustomerCaseHistoryReader
   }
 
   async countByCustomer(query: CustomerCaseHistoryQuery): Promise<CustomerCaseHistory> {
+    const ids = [...new Set([query.customerId, ...(query.alsoKnownAs ?? [])])];
     const match: Document = {
       organization_id: new ObjectId(query.organizationId),
       deleted_at: null,
       $or: [
-        { customer_id: query.customerId },
-        { stripe_customer_id: query.customerId },
-        { bridge_user_id: query.customerId },
+        { customer_id: { $in: ids } },
+        { stripe_customer_id: { $in: ids } },
+        { bridge_user_id: { $in: ids } },
       ],
     };
     if (query.excludeCaseId !== undefined) {
