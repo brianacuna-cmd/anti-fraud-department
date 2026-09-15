@@ -359,6 +359,7 @@ import { createCustomerRiskContextEnricher } from './composition/customerRiskCon
 import { createPaymentCustomerLookup } from './composition/paymentCustomerLookup.js';
 import { caseCustomerActivityRouter } from './composition/caseCustomerActivityRouter.js';
 import { merchantRiskRouter } from './composition/merchantRiskRouter.js';
+import { customerProfileRouter } from './composition/customerProfileRouter.js';
 import { paymentActivityImportRouter } from './modules/risk-assessment/infrastructure/adapters/inbound/http/paymentActivityImportRouter.js';
 import { createImportPaymentActivitiesUseCase } from './modules/risk-assessment/application/ImportPaymentActivities.js';
 import { MongoPaymentActivityRepository } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoPaymentActivityRepository.js';
@@ -1742,6 +1743,18 @@ async function bootstrap(): Promise<void> {
     getCustomerCaseHistory,
     clock,
   });
+  // One profile for a person or company: cases, AML alerts, measures,
+  // payment activity and, for merchants, their risk.
+  const customerProfileHttpRouter = customerProfileRouter({
+    listCases: createListCasesUseCase({ cases }),
+    listAmlAlerts,
+    enforcementActions,
+    getCustomerPaymentActivity,
+    getCustomerCaseHistory,
+    activities: paymentActivities,
+    finturu: finturuApiClient,
+    clock,
+  });
   const paymentActivityImportHttpRouter = paymentActivityImportRouter({
     importPaymentActivities: createImportPaymentActivitiesUseCase({
       activities: paymentActivities,
@@ -2579,6 +2592,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(caseManagementCasesRouter);
   identityAccessRouter.use(caseCustomerActivityHttpRouter);
   identityAccessRouter.use(merchantRiskHttpRouter);
+  identityAccessRouter.use(customerProfileHttpRouter);
   identityAccessRouter.use(paymentActivityImportHttpRouter);
   identityAccessRouter.use(caseManagementFinturuRouter);
   identityAccessRouter.use(finturuWebhook);
