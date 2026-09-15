@@ -146,7 +146,15 @@ function mapEarlyFraudWarning(
   efw: Record<string, unknown>,
   hints: EnvelopeMapHints,
 ): EnvelopeMapResult {
-  const charge = isRecord(efw.charge) ? efw.charge : {};
+  /*
+   * Stripe delivers the warning with `charge` as a bare id (verified against
+   * a live event): there is no amount or currency to read. The warning still
+   * counts — rules look at how many warnings there are, not their amount — so
+   * an unexpanded charge becomes amount 0 in "XXX", the ISO code for "no
+   * currency". Reading it as a charge made every real warning fail as
+   * `unparsable_amount`.
+   */
+  const charge = isRecord(efw.charge) ? efw.charge : { amount: 0, currency: 'xxx' };
   const riskSignals: Record<string, unknown> = {};
   if (typeof efw.fraud_type === 'string') {
     riskSignals.fraudType = efw.fraud_type;

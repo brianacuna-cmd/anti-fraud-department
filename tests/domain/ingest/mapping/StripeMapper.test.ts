@@ -336,3 +336,23 @@ describe('mapStripeEnvelope on a Connect payment link charge without customer', 
     expect(mapStripeEnvelope(chargeEvent('charge.failed', anonymous))).toMatchObject({ status: 'failed', reason: 'missing_customer' });
   });
 });
+
+describe('mapStripeEnvelope early fraud warning as Stripe really sends it', () => {
+  it('counts a warning whose charge is only an id, on a Connect account', () => {
+    const envelope = {
+      id: 'evt_efw_live',
+      object: 'event',
+      type: 'radar.early_fraud_warning.created',
+      created: CREATED,
+      account: 'acct_seller',
+      data: { object: { id: 'issfr_1', object: 'radar.early_fraud_warning', actionable: true, charge: 'ch_9', fraud_type: 'made_with_stolen_card', payment_intent: 'pi_9', created: CREATED, livemode: true } },
+    };
+
+    const result = mapStripeEnvelope(envelope);
+
+    if (result.status !== 'mapped') throw new Error(`expected mapped, got ${JSON.stringify(result)}`);
+    expect(result.event).toMatchObject({ caseCustomerId: 'acct_seller', amountCents: 0, currency: 'XXX' });
+    expect(result.event.riskSignals).toMatchObject({ fraudType: 'made_with_stolen_card', actionable: true });
+    expect(result.event.paymentActivity).toMatchObject({ kind: 'FRAUD_WARNING', providerReference: 'ch_9', merchantId: 'acct_seller' });
+  });
+});
