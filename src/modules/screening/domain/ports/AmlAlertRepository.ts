@@ -19,6 +19,8 @@ export interface AmlAlertListQuery {
   readonly status?: readonly AmlAlertStatus[];
   readonly severity?: readonly AmlAlertSeverity[];
   readonly watchlistId?: string;
+  /** `false`: only alerts not yet attached to a case (the triage inbox). */
+  readonly linkedToCase?: boolean;
   readonly createdAfter?: Instant;
   readonly createdBefore?: Instant;
   readonly limit: number;

@@ -87,4 +87,3 @@ export function createRequeueDlqEventUseCase(deps: RequeueDlqEventDeps) {
   };
 }
 
-export type RequeueDlqEventService = ReturnType<typeof createRequeueDlqEventUseCase>;

@@ -38,7 +38,6 @@ import { generateResolutionId } from '../../../../src/modules/case-management/do
 import { createResolveCaseUseCase } from '../../../../src/modules/case-management/application/ResolveCase.js';
 import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
 import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
-import { createArchiveCaseUseCase } from '../../../../src/modules/case-management/application/ArchiveCase.js';
 import { createStartReviewUseCase } from '../../../../src/modules/case-management/application/StartReview.js';
 import { createRequestCaseDocumentationUseCase } from '../../../../src/modules/case-management/application/RequestCaseDocumentation.js';
 import { createResumeCaseReviewUseCase } from '../../../../src/modules/case-management/application/ResumeCaseReview.js';
@@ -237,7 +236,6 @@ function buildApp(
       decisions: new InMemoryAnalystDecisionRepository(),
       enforcementActions: new InMemoryEnforcementActionRepository(),
     }),
-    archiveCase: createArchiveCaseUseCase({ cases, resolutions, timelineRecorder, auditRecorder: caseAuditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
     startReview: createStartReviewUseCase({ cases, timelineRecorder, auditRecorder: caseAuditRecorder, unitOfWork, clock, generateTimelineEventId }),
     requestCaseDocumentation: createRequestCaseDocumentationUseCase({ cases, timelineRecorder, auditRecorder: caseAuditRecorder, unitOfWork, clock, generateTimelineEventId }),
     resumeCaseReview: createResumeCaseReviewUseCase({ cases, timelineRecorder, auditRecorder: caseAuditRecorder, unitOfWork, clock, generateTimelineEventId }),

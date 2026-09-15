@@ -95,16 +95,8 @@ export function accountLocked(blockedUntil: string): IdentityAccessError {
   return new IdentityAccessError('ACCOUNT_LOCKED', `account is locked until ${blockedUntil}`, { blockedUntil });
 }
 
-export function sessionExpired(): IdentityAccessError {
-  return new IdentityAccessError('SESSION_EXPIRED', 'session has expired');
-}
-
 export function sessionInvalid(): IdentityAccessError {
   return new IdentityAccessError('SESSION_INVALID', 'session is invalid or has been revoked');
-}
-
-export function organizationSuspended(): IdentityAccessError {
-  return new IdentityAccessError('ORGANIZATION_SUSPENDED', 'organization is suspended');
 }
 
 // password-management PR-1: authenticated change-password.

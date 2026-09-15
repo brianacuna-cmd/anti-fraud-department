@@ -93,8 +93,6 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
     }),
     recordAnalystDecision: createRecordAnalystDecisionUseCase({
       cases,
-      notes,
-      evidence,
       decisions,
       enforcementActions,
       approvalRequests,
@@ -113,10 +111,16 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
     approveEnforcementAction: createApproveEnforcementActionUseCase({
       enforcementActions,
       approvalRequests,
+      outgoingEvents,
+      cases,
+      fraudConfig,
       auditRecorder,
+      outbox: new InMemoryOutboxEventRepository(),
       unitOfWork,
       clock,
       generateApprovalRequestId,
+      generateCustomerOutgoingEventId,
+      generateOutboxEventId,
     }),
     rejectEnforcementAction: createRejectEnforcementActionUseCase({
       enforcementActions,
@@ -182,7 +186,7 @@ describe('enforcementRouter POST /cases/:caseId/decisions', () => {
         now: NOW,
       }).transitionTo('IN_REVIEW', NOW),
     );
-    // A verdict needs something behind it. See `WorkflowStepGate.assertInstructed`.
+    // A verdict needs something behind it. Not required anymore, kept as realistic case work.
     await notes.save(
       CaseNote.create({
         id: generateCaseNoteId(),
@@ -233,7 +237,7 @@ describe('enforcementRouter POST /cases/:caseId/decisions', () => {
         now: NOW,
       }).transitionTo('IN_REVIEW', NOW),
     );
-    // A verdict needs something behind it. See `WorkflowStepGate.assertInstructed`.
+    // A verdict needs something behind it. Not required anymore, kept as realistic case work.
     await notes.save(
       CaseNote.create({
         id: generateCaseNoteId(),

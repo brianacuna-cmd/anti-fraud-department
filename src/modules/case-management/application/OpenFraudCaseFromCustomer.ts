@@ -153,14 +153,22 @@ export function createOpenFraudCaseUseCase(deps: OpenFraudCaseDeps) {
       );
 
       // Nobody picked an assignee AND the case (new or reopened) has none
-      // today: without at least one active routing rule to try, this would
-      // silently open an orphan case that only an ADMIN/organization login
-      // can ever find and assign by hand. Checked BEFORE writing anything.
+      // today. With no active routing rule to try, the case falls to whoever
+      // is opening it, when they can work cases: whoever opens a case by hand
+      // is already looking at it, and failing forced a trip to the routing
+      // screen first. Only when the opener cannot hold it (ADMIN, AUDITOR,
+      // the ORGANIZATION actor) does it still fail, instead of silently
+      // opening an orphan case. Checked BEFORE writing anything.
       const wouldBeUnassigned = assignedTo === null && (existing === null || existing.assignedTo === null);
       if (wouldBeUnassigned) {
         const activeRules = await deps.routingRules.findActiveByOrganization(organizationId, tx);
         if (activeRules.length === 0) {
-          throw noActiveRoutingRule(organizationId);
+          const opener =
+            input.auth.actorType === 'USER' && input.auth.userId ? createAssignedTo('USER', input.auth.userId) : null;
+          if (opener === null || !(await deps.assigneeDirectory.canWorkCases(organizationId, opener))) {
+            throw noActiveRoutingRule(organizationId);
+          }
+          assignedTo = opener;
         }
       }
 

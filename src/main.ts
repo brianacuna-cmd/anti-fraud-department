@@ -170,7 +170,6 @@ import { createPutAgentBriefUseCase } from './modules/case-management/applicatio
 import { createListCaseNotesUseCase } from './modules/case-management/application/ListCaseNotes.js';
 import { generateCaseNoteId } from './modules/case-management/domain/model/value-objects/CaseNoteId.js';
 import { createResolveCaseUseCase } from './modules/case-management/application/ResolveCase.js';
-import { createArchiveCaseUseCase } from './modules/case-management/application/ArchiveCase.js';
 import { createStartReviewUseCase } from './modules/case-management/application/StartReview.js';
 import { createRequestCaseDocumentationUseCase } from './modules/case-management/application/RequestCaseDocumentation.js';
 import { createResumeCaseReviewUseCase } from './modules/case-management/application/ResumeCaseReview.js';
@@ -180,11 +179,8 @@ import { createGetInvestigationUseCase } from './modules/case-management/applica
 import { createBuildEntityNetworkGraphUseCase } from './modules/case-management/application/BuildEntityNetworkGraph.js';
 import { createExportInvestigationUseCase } from './modules/case-management/application/ExportInvestigation.js';
 import { createExportInvestigationSummaryUseCase } from './modules/case-management/application/ExportInvestigationSummary.js';
-import { createCloseInvestigationUseCase } from './modules/case-management/application/CloseInvestigation.js';
 import { createUpdateInvestigationFindingsUseCase } from './modules/case-management/application/UpdateInvestigationFindings.js';
 import { createLinkInvestigationCasesUseCase } from './modules/case-management/application/LinkInvestigationCases.js';
-import { createListActiveInvestigationsUseCase } from './modules/case-management/application/ListActiveInvestigations.js';
-import { createUpdateInvestigationStatusUseCase } from './modules/case-management/application/UpdateInvestigationStatus.js';
 import { generateInvestigationId } from './modules/case-management/domain/model/value-objects/InvestigationId.js';
 import { investigationRouter } from './modules/case-management/infrastructure/adapters/inbound/http/investigationRouter.js';
 import { createResolveToReportOrchestrator } from './composition/resolveToReportOrchestrator.js';
@@ -270,7 +266,6 @@ import { webhookTestRouter } from './modules/case-management/infrastructure/adap
 import { createTestOutgoingWebhookUseCase } from './modules/case-management/application/TestOutgoingWebhook.js';
 import { enforcementRouter } from './modules/case-management/infrastructure/adapters/inbound/http/enforcementRouter.js';
 import { approvalRequestRouter } from './modules/case-management/infrastructure/adapters/inbound/http/approvalRequestRouter.js';
-import { createReviewApprovalRequestUseCase } from './modules/case-management/application/ReviewApprovalRequest.js';
 import { createListApprovalRequestsUseCase } from './modules/case-management/application/ListApprovalRequests.js';
 import { routingRuleRouter } from './modules/case-management/infrastructure/adapters/inbound/http/routingRuleRouter.js';
 import { dlqAdminRouter } from './modules/case-management/infrastructure/adapters/inbound/http/dlqAdminRouter.js';
@@ -364,6 +359,7 @@ import { createCustomerRiskContextEnricher } from './composition/customerRiskCon
 import { createPaymentCustomerLookup } from './composition/paymentCustomerLookup.js';
 import { caseCustomerActivityRouter } from './composition/caseCustomerActivityRouter.js';
 import { merchantRiskRouter } from './composition/merchantRiskRouter.js';
+import { customerProfileRouter } from './composition/customerProfileRouter.js';
 import { paymentActivityImportRouter } from './modules/risk-assessment/infrastructure/adapters/inbound/http/paymentActivityImportRouter.js';
 import { createImportPaymentActivitiesUseCase } from './modules/risk-assessment/application/ImportPaymentActivities.js';
 import { MongoPaymentActivityRepository } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoPaymentActivityRepository.js';
@@ -442,6 +438,7 @@ import { createWalletRescreenCaseLinker } from './composition/walletRescreenCase
 import { createSyncSanctionWatchlistsUseCase } from './modules/screening/application/SyncSanctionWatchlists.js';
 import { createRescreenCustomerSanctionsUseCase } from './modules/screening/application/RescreenCustomerSanctions.js';
 import { createCaseLinkingOpenAmlAlert } from './modules/screening/application/CaseLinkingOpenAmlAlert.js';
+import { createEscalatingOpenAmlAlert } from './modules/screening/application/EscalatingOpenAmlAlert.js';
 import { createDailyBogotaScheduler, msUntilNextBogotaTime } from './modules/screening/application/DailyBogotaScheduler.js';
 import { HttpSanctionListFeed } from './modules/screening/infrastructure/adapters/outbound/sanctions/HttpSanctionListFeed.js';
 import type { SanctionListParser } from './modules/screening/infrastructure/adapters/outbound/sanctions/HttpSanctionListFeed.js';
@@ -1268,16 +1265,6 @@ async function bootstrap(): Promise<void> {
       }),
       generateCaseReport,
     }),
-    archiveCase: createArchiveCaseUseCase({
-      cases,
-      resolutions,
-      timelineRecorder: caseTimelineRecorder,
-      auditRecorder: caseManagementAuditRecorder,
-      unitOfWork: caseManagementUnitOfWork,
-      clock,
-      generateResolutionId,
-      generateTimelineEventId,
-    }),
     startReview: createStartReviewUseCase({
       cases,
       timelineRecorder: caseTimelineRecorder,
@@ -1323,12 +1310,6 @@ async function bootstrap(): Promise<void> {
       clock,
       generateCaseReportId,
     }),
-    closeInvestigation: createCloseInvestigationUseCase({
-      investigations,
-      auditRecorder: caseManagementAuditRecorder,
-      unitOfWork: caseManagementUnitOfWork,
-      clock,
-    }),
     updateInvestigationFindings: createUpdateInvestigationFindingsUseCase({
       investigations,
       auditRecorder: caseManagementAuditRecorder,
@@ -1342,13 +1323,6 @@ async function bootstrap(): Promise<void> {
       unitOfWork: caseManagementUnitOfWork,
       clock,
       generateTimelineEventId,
-    }),
-    listActiveInvestigations: createListActiveInvestigationsUseCase({ investigations }),
-    updateInvestigationStatus: createUpdateInvestigationStatusUseCase({
-      investigations,
-      auditRecorder: caseManagementAuditRecorder,
-      unitOfWork: caseManagementUnitOfWork,
-      clock,
     }),
   });
   const organizationFraudConfigHttpRouter = organizationFraudConfigRouter({
@@ -1541,8 +1515,6 @@ async function bootstrap(): Promise<void> {
   const enforcementHttpRouter = enforcementRouter({
     recordAnalystDecision: createRecordAnalystDecisionUseCase({
       cases,
-      notes: caseNotes,
-      evidence,
       decisions: analystDecisions,
       enforcementActions,
       approvalRequests,
@@ -1576,10 +1548,16 @@ async function bootstrap(): Promise<void> {
     approveEnforcementAction: createApproveEnforcementActionUseCase({
       enforcementActions,
       approvalRequests,
+      outgoingEvents: customerOutgoingEvents,
+      cases,
+      fraudConfig: organizationFraudConfig,
       auditRecorder: caseManagementAuditRecorder,
+      outbox: outboxEvents,
       unitOfWork: caseManagementUnitOfWork,
       clock,
       generateApprovalRequestId,
+      generateCustomerOutgoingEventId,
+      generateOutboxEventId,
     }),
     rejectEnforcementAction: createRejectEnforcementActionUseCase({
       enforcementActions,
@@ -1612,13 +1590,6 @@ async function bootstrap(): Promise<void> {
     listEnforcementActions: createListEnforcementActionsUseCase({ enforcementActions }),
   });
   const approvalRequestHttpRouter = approvalRequestRouter({
-    reviewApprovalRequest: createReviewApprovalRequestUseCase({
-      approvalRequests,
-      enforcementActions,
-      auditRecorder: caseManagementAuditRecorder,
-      unitOfWork: caseManagementUnitOfWork,
-      clock,
-    }),
     listApprovalRequests: createListApprovalRequestsUseCase({
       enforcementActions,
       approvalRequests,
@@ -1772,6 +1743,18 @@ async function bootstrap(): Promise<void> {
     getCustomerCaseHistory,
     clock,
   });
+  // One profile for a person or company: cases, AML alerts, measures,
+  // payment activity and, for merchants, their risk.
+  const customerProfileHttpRouter = customerProfileRouter({
+    listCases: createListCasesUseCase({ cases }),
+    listAmlAlerts,
+    enforcementActions,
+    getCustomerPaymentActivity,
+    getCustomerCaseHistory,
+    activities: paymentActivities,
+    finturu: finturuApiClient,
+    clock,
+  });
   const paymentActivityImportHttpRouter = paymentActivityImportRouter({
     importPaymentActivities: createImportPaymentActivitiesUseCase({
       activities: paymentActivities,
@@ -1819,6 +1802,14 @@ async function bootstrap(): Promise<void> {
     clock,
     generateTimelineEventId: generateObjectIdHex,
   });
+  // Strong matches go straight into a fraud case; only doubtful ones wait
+  // in the AML inbox. See `EscalatingOpenAmlAlert`.
+  const escalateStrongAmlMatches = (open: typeof openAmlAlert) =>
+    createEscalatingOpenAmlAlert({
+      openAmlAlert: open,
+      escalateAmlAlert,
+      onEscalationError: (alertId, error) => console.error(`[aml-escalation] alert ${alertId}:`, error),
+    });
   // Screening's own AuditRecorder port, bridged at the composition root to
   // the SAME `recordAuditLog` instance built above (design D6/D7) — the
   // resolve disposition (RF-3) commits its audit row atomically with the
@@ -1907,7 +1898,7 @@ async function bootstrap(): Promise<void> {
       : new MongoFallbackWatchlistCandidateRepository(db);
   const screenSubjectAgainstWatchlist = createScreenSubjectAgainstWatchlistUseCase({
     watchlistCandidateRepository: watchlistCandidates,
-    openAmlAlert,
+    openAmlAlert: escalateStrongAmlMatches(openAmlAlert),
     phoneticEncoder: new TalismanPhoneticEncoder(),
     similarityCalculator: new TalismanSimilarityCalculator(),
   });
@@ -2409,7 +2400,7 @@ async function bootstrap(): Promise<void> {
     watchlistEntryRepository: watchlistEntries,
     watermarkRepository: walletWatermarkRepository,
     walletSource,
-    openAmlAlert,
+    openAmlAlert: escalateStrongAmlMatches(openAmlAlert),
     amlAlertRepository: amlAlerts,
     unitOfWork: screeningUnitOfWork,
     isOrganizationActive: async (id: string) => {
@@ -2479,13 +2470,15 @@ async function bootstrap(): Promise<void> {
     customerSource: createFinturuScreeningCustomerSource(finturuApiClient),
     screenSubject: createScreenSubjectAgainstWatchlistUseCase({
       watchlistCandidateRepository: watchlistCandidates,
-      openAmlAlert: createCaseLinkingOpenAmlAlert({
-        openAmlAlert,
-        caseLinker: walletCaseLinker,
-        amlAlertRepository: amlAlerts,
-        unitOfWork: screeningUnitOfWork,
-        clock,
-      }),
+      openAmlAlert: escalateStrongAmlMatches(
+        createCaseLinkingOpenAmlAlert({
+          openAmlAlert,
+          caseLinker: walletCaseLinker,
+          amlAlertRepository: amlAlerts,
+          unitOfWork: screeningUnitOfWork,
+          clock,
+        }),
+      ),
       phoneticEncoder: new TalismanPhoneticEncoder(),
       similarityCalculator: new TalismanSimilarityCalculator(),
     }),
@@ -2599,6 +2592,7 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(caseManagementCasesRouter);
   identityAccessRouter.use(caseCustomerActivityHttpRouter);
   identityAccessRouter.use(merchantRiskHttpRouter);
+  identityAccessRouter.use(customerProfileHttpRouter);
   identityAccessRouter.use(paymentActivityImportHttpRouter);
   identityAccessRouter.use(caseManagementFinturuRouter);
   identityAccessRouter.use(finturuWebhook);

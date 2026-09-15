@@ -402,7 +402,7 @@ describe('createSweepSlaTrackingUseCase', () => {
     {
       closed: 'ARCHIVED',
       close: (kase: ReturnType<typeof buildCase>) =>
-        kase.transitionTo('IN_REVIEW', NOW).transitionTo('RESOLVED', NOW).transitionTo('ARCHIVED', NOW),
+        Case.rehydrate({ ...kase.transitionTo('IN_REVIEW', NOW).transitionTo('RESOLVED', NOW).toProps(), status: 'ARCHIVED' }),
     },
   ])('inserts no outbox and does not advance when the Case is $closed', async ({ close }) => {
     const { sweepSlaTracking, cases, slaTracking, outbox } = buildUseCase();

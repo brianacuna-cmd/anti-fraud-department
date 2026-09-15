@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuthContext } from '../shared/http/requestAuthContext.js';
 import type { Clock } from '../shared/time/Clock.js';
+import type { PaymentActivity } from '../modules/risk-assessment/domain/model/aggregates/PaymentActivity.js';
 import type { createGetCaseUseCase } from '../modules/case-management/application/GetCase.js';
 import type { createGetCustomerCaseHistoryUseCase } from '../modules/case-management/application/GetCustomerCaseHistory.js';
 import type { createGetCustomerPaymentActivityUseCase } from '../modules/risk-assessment/application/GetCustomerPaymentActivity.js';
@@ -50,27 +51,30 @@ export function caseCustomerActivityRouter(deps: CaseCustomerActivityRouterDeps)
       firstActivityAt: summary.firstActivityAt,
       activity: toActivityVariables(summary),
       customerHistory: toCustomerHistoryVariables(summary, cases, anchor),
-      recent: recent.map((row) => {
-        const p = row.toProps();
-        return {
-          id: p.id,
-          provider: p.provider,
-          providerEventType: p.providerEventType,
-          providerReference: p.providerReference,
-          merchantId: p.merchantId,
-          kind: p.kind,
-          outcome: p.outcome,
-          amountCents: p.amountCents,
-          currency: p.currency,
-          declineCategory: p.declineCategory,
-          cardCountry: p.cardCountry,
-          billingCountry: p.billingCountry,
-          source: p.source,
-          occurredAt: p.occurredAt,
-        };
-      }),
+      recent: recent.map(toRecentActivityResponse),
     });
   });
 
   return router;
+}
+
+/** One payment row as the activity panels show it. */
+export function toRecentActivityResponse(row: PaymentActivity) {
+  const p = row.toProps();
+  return {
+    id: p.id,
+    provider: p.provider,
+    providerEventType: p.providerEventType,
+    providerReference: p.providerReference,
+    merchantId: p.merchantId,
+    kind: p.kind,
+    outcome: p.outcome,
+    amountCents: p.amountCents,
+    currency: p.currency,
+    declineCategory: p.declineCategory,
+    cardCountry: p.cardCountry,
+    billingCountry: p.billingCountry,
+    source: p.source,
+    occurredAt: p.occurredAt,
+  };
 }

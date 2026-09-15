@@ -126,7 +126,7 @@ describe('Case#transitionTo', () => {
   it('rejects an invalid transition and leaves the original instance untouched', () => {
     const kase = buildCase();
 
-    expect(() => kase.transitionTo('ARCHIVED', LATER)).toThrow(CaseManagementError);
+    expect(() => kase.transitionTo('RESOLVED', LATER)).toThrow(CaseManagementError);
     expect(kase.status).toBe('OPEN');
   });
 });
@@ -141,21 +141,18 @@ describe('Case#reopen', () => {
     expect(reopened.updatedAt).toBe(LATER);
   });
 
-  it('clears the closure outcome on reopen, and archiving keeps it', () => {
+  it('clears the closure outcome on reopen', () => {
     const resolved = buildCase()
       .transitionTo('IN_REVIEW', NOW)
       .transitionTo('RESOLVED', NOW)
       .withResolutionOutcome('FALSE_POSITIVE', NOW);
 
-    expect(resolved.transitionTo('ARCHIVED', LATER).resolutionOutcome).toBe('FALSE_POSITIVE');
     expect(resolved.reopen('IN_REVIEW', LATER).resolutionOutcome).toBeNull();
   });
 
-  it('reopens an ARCHIVED case to IN_REVIEW', () => {
-    const archived = buildCase()
-      .transitionTo('IN_REVIEW', NOW)
-      .transitionTo('RESOLVED', NOW)
-      .transitionTo('ARCHIVED', NOW);
+  it('reopens a legacy ARCHIVED case to IN_REVIEW', () => {
+    const resolved = buildCase().transitionTo('IN_REVIEW', NOW).transitionTo('RESOLVED', NOW);
+    const archived = Case.rehydrate({ ...resolved.toProps(), status: 'ARCHIVED' });
 
     const reopened = archived.reopen('IN_REVIEW', LATER);
 

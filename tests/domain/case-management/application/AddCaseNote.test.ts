@@ -134,9 +134,9 @@ function toProps(kase: Case) {
   };
 }
 
-describe('la instruccion viene despues de la revision', () => {
-  it('rechaza anadir una nota a un caso todavia OPEN (CASE_NOT_REVIEWED)', async () => {
-    const { addCaseNote, cases } = build();
+describe('trabajar el caso es revisarlo', () => {
+  it('la primera nota sobre un caso OPEN lo pasa a IN_REVIEW con cronologia y auditoria', async () => {
+    const { addCaseNote, cases, timelineRecorder, auditRecorder } = build();
     const open = Case.create({
       id: createCaseId(oid('case-1')),
       organizationId: ORG_1,
@@ -148,8 +148,11 @@ describe('la instruccion viene despues de la revision', () => {
     });
     await cases.save(open);
 
-    await expect(
-      addCaseNote({ auth: ANALYST, caseId: oid('case-1'), body: 'demasiado pronto' }),
-    ).rejects.toMatchObject({ code: 'CASE_NOT_REVIEWED' });
+    await addCaseNote({ auth: ANALYST, caseId: oid('case-1'), body: 'primer hallazgo' });
+
+    expect((await cases.findById(createCaseId(oid('case-1'))))?.status).toBe('IN_REVIEW');
+    expect(timelineRecorder.all().map((e) => e.eventType)).toEqual(['STATE_CHANGED', 'NOTE_ADDED']);
+    expect(auditRecorder.all().map((a) => a.action)).toEqual(['START_REVIEW', 'ADD_CASE_NOTE']);
+    expect(auditRecorder.all()[0]?.detail).toMatchObject({ previousStatus: 'OPEN', trigger: 'ADD_CASE_NOTE' });
   });
 });

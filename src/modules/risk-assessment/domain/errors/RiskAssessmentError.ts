@@ -72,11 +72,3 @@ export function scoringRuleByIdNotFound(ruleId: string): RiskAssessmentError {
     { ruleId },
   );
 }
-
-export function scoringRuleActive(ruleId: string): RiskAssessmentError {
-  return new RiskAssessmentError(
-    'SCORING_RULE_ACTIVE',
-    `scoring rule "${ruleId}" is ACTIVE: activate another rule to relieve it before deleting it`,
-    { ruleId },
-  );
-}

@@ -110,8 +110,6 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
     }),
     recordAnalystDecision: createRecordAnalystDecisionUseCase({
       cases,
-      notes: new InMemoryCaseNoteRepository(),
-      evidence: new InMemoryEvidenceRepository(),
       decisions,
       enforcementActions,
       approvalRequests,
@@ -130,10 +128,16 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
     approveEnforcementAction: createApproveEnforcementActionUseCase({
       enforcementActions,
       approvalRequests,
+      outgoingEvents,
+      cases,
+      fraudConfig,
       auditRecorder,
+      outbox: new InMemoryOutboxEventRepository(),
       unitOfWork,
       clock,
       generateApprovalRequestId,
+      generateCustomerOutgoingEventId,
+      generateOutboxEventId,
     }),
     rejectEnforcementAction: createRejectEnforcementActionUseCase({
       enforcementActions,

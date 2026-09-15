@@ -41,12 +41,3 @@ export function createPrivacyRequestType(value: string): PrivacyRequestType {
   }
   return value as PrivacyRequestType;
 }
-
-/**
- * Types whose fulfilment means handing data BACK to the subject, as opposed
- * to changing or removing it. Both produce an export package; the difference
- * is that portability requires a machine-readable format and access does not.
- */
-export function producesExport(type: PrivacyRequestType): boolean {
-  return type === 'ACCESS' || type === 'PORTABILITY';
-}

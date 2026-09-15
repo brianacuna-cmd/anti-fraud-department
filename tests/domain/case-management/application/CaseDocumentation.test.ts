@@ -86,13 +86,13 @@ describe('createRequestCaseDocumentationUseCase', () => {
     expect(pending.dueDate).toBe(DUE);
   });
 
-  it('rejects asking for documentation on an OPEN case (review comes first)', async () => {
+  it('asking for documentation on an OPEN case starts its review first', async () => {
     const { cases, requestDocumentation } = build();
     await cases.save(buildCase());
 
-    await expect(
-      requestDocumentation({ auth: ANALYST, caseId: CASE_ID, requestedDocuments: 'KYC' }),
-    ).rejects.toMatchObject({ code: 'INVALID_TRANSITION' });
+    const pending = await requestDocumentation({ auth: ANALYST, caseId: CASE_ID, requestedDocuments: 'KYC' });
+
+    expect(pending.status).toBe('PENDING_DOCUMENTATION');
   });
 
   it('rejects a blank request before touching the case', async () => {

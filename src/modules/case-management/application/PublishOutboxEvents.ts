@@ -128,4 +128,3 @@ export function createLogOutboxPublisher(): OutboxPublisher {
   };
 }
 
-export type PublishOutboxEventsService = ReturnType<typeof createPublishOutboxEventsUseCase>;

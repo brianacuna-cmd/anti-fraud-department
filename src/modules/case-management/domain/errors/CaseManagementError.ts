@@ -204,27 +204,6 @@ export function caseClosed(caseId: string, status: string): CaseManagementError 
   );
 }
 
-/**
- * Instruction (notes, evidence) requires the case to already be `IN_REVIEW`.
- * Named after the step it is missing, like `caseNotAssigned`/`caseClosed`.
- */
-export function caseNotReviewed(caseId: string): CaseManagementError {
-  return new CaseManagementError(
-    'CASE_NOT_REVIEWED',
-    'the case has not entered review yet: start the review before adding notes or evidence',
-    { caseId },
-  );
-}
-
-/** A decision needs at least one note or one piece of evidence behind it. */
-export function caseNotInstructed(caseId: string): CaseManagementError {
-  return new CaseManagementError(
-    'CASE_NOT_INSTRUCTED',
-    'the case has no notes or evidence yet: instruct it before recording a decision',
-    { caseId },
-  );
-}
-
 /** Closing a case requires at least one analyst decision on file. */
 export function caseNotDecided(caseId: string): CaseManagementError {
   return new CaseManagementError(

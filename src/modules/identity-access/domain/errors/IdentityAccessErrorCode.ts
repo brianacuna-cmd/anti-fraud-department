@@ -20,9 +20,7 @@ export type IdentityAccessErrorCode =
   // Phase 4 (design D18, D19, D24, D29): login/logout/lockout.
   | 'INVALID_CREDENTIALS'
   | 'ACCOUNT_LOCKED'
-  | 'SESSION_EXPIRED'
   | 'SESSION_INVALID'
-  | 'ORGANIZATION_SUSPENDED'
   // mfa-user-enrollment PR2: user MFA setup/activate/disable.
   | 'MFA_ENROLLMENT_NOT_PENDING'
   | 'MFA_TOKEN_INVALID'

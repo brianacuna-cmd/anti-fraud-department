@@ -1,6 +1,5 @@
 import { oid } from '../../../support/oid.js';
 import { createResolveCaseUseCase } from '../../../../src/modules/case-management/application/ResolveCase.js';
-import { createArchiveCaseUseCase } from '../../../../src/modules/case-management/application/ArchiveCase.js';
 import { Case } from '../../../../src/modules/case-management/domain/model/aggregates/Case.js';
 import { AnalystDecision } from '../../../../src/modules/case-management/domain/model/aggregates/AnalystDecision.js';
 import { createCaseId } from '../../../../src/modules/case-management/domain/model/value-objects/CaseId.js';
@@ -90,7 +89,6 @@ function build() {
     outgoingEvents,
     subscriptions,
     resolveCase: createResolveCaseUseCase(deps),
-    archiveCase: createArchiveCaseUseCase(deps),
   };
 }
 
@@ -153,9 +151,7 @@ describe('createResolveCaseUseCase', () => {
   });
 
   /**
-   * An OPEN case can never have a decision on file (recording one requires
-   * `assertInstructed`, which requires a note/evidence, which requires
-   * review first) — so `assertDecided` now rejects before the transition
+   * An OPEN case with no decision on file — so `resolveClosureVerdict` rejects before the transition
    * table even gets a chance to. Still the same root cause (never reviewed),
    * just reported at the step that actually explains it to the caller.
    */
@@ -234,16 +230,37 @@ describe('createResolveCaseUseCase', () => {
     expect(outbox.all()[0]?.payload).toMatchObject({ outcome: 'INSUFFICIENT_EVIDENCE' });
   });
 
-  it('rejects a resolve without an outcome and leaves the case untouched', async () => {
+  it('takes outcome and reason from the latest decision when both are omitted', async () => {
     const { cases, decisions, resolutions, resolveCase } = build();
     await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
-    await seedDecision(decisions);
+    await seedDecision(decisions, 'INCONCLUSIVE');
 
-    await expect(resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x' })).rejects.toMatchObject({
-      code: 'INVARIANT_VIOLATION',
+    const resolved = await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1') });
+
+    expect(resolved.resolutionOutcome).toBe('INSUFFICIENT_EVIDENCE');
+    const [resolution] = await resolutions.listByCaseId(createCaseId(oid('case-1')));
+    expect(resolution?.outcome).toBe('INSUFFICIENT_EVIDENCE');
+    expect(resolution?.reason).toBe('instructed verdict');
+  });
+
+  it('closes a case with no decision only for a procedural outcome', async () => {
+    const { cases, resolveCase } = build();
+    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
+
+    await expect(resolveCase({ auth: SUPERVISOR, caseId: oid('case-1') })).rejects.toMatchObject({
+      code: 'CASE_NOT_DECIDED',
     });
-    expect((await cases.findById(createCaseId(oid('case-1'))))?.status).toBe('IN_REVIEW');
-    expect(await resolutions.listByCaseId(createCaseId(oid('case-1')))).toHaveLength(0);
+    await expect(
+      resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), outcome: 'FALSE_POSITIVE' }),
+    ).rejects.toMatchObject({ code: 'CASE_NOT_DECIDED' });
+
+    const resolved = await resolveCase({
+      auth: SUPERVISOR,
+      caseId: oid('case-1'),
+      outcome: 'DUPLICATE',
+      reason: 'same customer as FD-2026-000001',
+    });
+    expect(resolved.status).toBe('RESOLVED');
   });
 
   it('rejects an outcome that contradicts the decision (CASE_OUTCOME_CONTRADICTS_DECISION)', async () => {
@@ -317,69 +334,3 @@ describe('createResolveCaseUseCase', () => {
   });
 });
 
-describe('createArchiveCaseUseCase', () => {
-  it('archives a RESOLVED case (RESOLVED -> ARCHIVED) and appends a second resolution row', async () => {
-    const { cases, resolutions, decisions, auditRecorder, resolveCase, archiveCase } = build();
-    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
-    await seedDecision(decisions);
-    await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legit', outcome: 'FALSE_POSITIVE' });
-
-    const archived = await archiveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'filed' });
-
-    expect(archived.status).toBe('ARCHIVED');
-    const rows = await resolutions.listByCaseId(createCaseId(oid('case-1')));
-    expect(rows.map((r) => r.closureType)).toEqual(['RESOLVED', 'ARCHIVED']);
-    // Archiving keeps the outcome of the resolution that closed the case.
-    expect(rows.map((r) => r.outcome)).toEqual(['FALSE_POSITIVE', null]);
-    expect(archived.resolutionOutcome).toBe('FALSE_POSITIVE');
-    expect(auditRecorder.all().map((a) => a.action)).toEqual(['RESOLVE_CASE', 'ARCHIVE_CASE']);
-  });
-
-  it('does NOT emit an outbox event on archive (only resolve does)', async () => {
-    const { cases, outbox, decisions, resolveCase, archiveCase } = build();
-    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
-    await seedDecision(decisions);
-    await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legit', outcome: 'FALSE_POSITIVE' });
-    await archiveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'filed' });
-
-    // exactly one — from resolve, not archive
-    expect(outbox.all()).toHaveLength(1);
-    expect(outbox.all()[0]?.eventType).toBe('CASE_RESOLVED');
-  });
-
-  it('enqueues PENDING case.resolved on resolve and none on archive', async () => {
-    const { cases, decisions, resolveCase, archiveCase, subscriptions, outgoingEvents } = build();
-    await subscriptions.create(
-      CustomerWebhookSubscription.create({
-        id: generateCustomerWebhookSubscriptionId(),
-        organizationId: ORG_1,
-        url: 'https://hooks.example/resolved',
-        eventTypes: ['case.resolved'],
-        now: NOW,
-      }),
-    );
-    await cases.save(buildCase().transitionTo('IN_REVIEW', NOW));
-    await seedDecision(decisions);
-    await resolveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'legit', outcome: 'FALSE_POSITIVE' });
-
-    expect(outgoingEvents.all()).toHaveLength(1);
-    expect(outgoingEvents.all()[0]!.eventType).toBe('case.resolved');
-    expect(outgoingEvents.all()[0]!.payload).toMatchObject({
-      event_type: 'case.resolved',
-      case_id: oid('case-1'),
-      closure_type: 'RESOLVED',
-    });
-
-    await archiveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'filed' });
-    expect(outgoingEvents.all()).toHaveLength(1);
-  });
-
-  it('rejects archiving an OPEN case with INVALID_TRANSITION', async () => {
-    const { cases, archiveCase } = build();
-    await cases.save(buildCase());
-
-    await expect(
-      archiveCase({ auth: SUPERVISOR, caseId: oid('case-1'), reason: 'x' }),
-    ).rejects.toMatchObject({ code: 'INVALID_TRANSITION' });
-  });
-});

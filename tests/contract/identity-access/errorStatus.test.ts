@@ -18,9 +18,7 @@ describe('identityAccessErrorStatus', () => {
       // Phase 4 (design D18, D19, D24, D29): login/logout/lockout codes.
       INVALID_CREDENTIALS: 401,
       ACCOUNT_LOCKED: 423,
-      SESSION_EXPIRED: 401,
       SESSION_INVALID: 401,
-      ORGANIZATION_SUSPENDED: 403,
       // mfa-user-enrollment PR2: user MFA setup/activate/disable.
       MFA_ENROLLMENT_NOT_PENDING: 409,
       MFA_TOKEN_INVALID: 401,

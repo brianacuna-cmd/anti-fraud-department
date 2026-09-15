@@ -161,8 +161,6 @@ function buildApp(
     }),
     recordAnalystDecision: createRecordAnalystDecisionUseCase({
       cases,
-      notes: new InMemoryCaseNoteRepository(),
-      evidence: new InMemoryEvidenceRepository(),
       decisions,
       enforcementActions,
       approvalRequests,
@@ -181,10 +179,16 @@ function buildApp(
     approveEnforcementAction: createApproveEnforcementActionUseCase({
       enforcementActions,
       approvalRequests,
+      outgoingEvents,
+      cases,
+      fraudConfig,
       auditRecorder,
+      outbox: outbox,
       unitOfWork,
       clock,
       generateApprovalRequestId,
+      generateCustomerOutgoingEventId,
+      generateOutboxEventId,
     }),
     rejectEnforcementAction: createRejectEnforcementActionUseCase({
       enforcementActions,

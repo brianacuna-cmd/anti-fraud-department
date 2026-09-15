@@ -1,12 +1,10 @@
 import type { AuthContext } from '../../../shared/kernel/AuthContext.js';
-import type { Clock } from '../../../shared/time/Clock.js';
 import type { Instant } from '../../../shared/time/Instant.js';
-import type { EnforcementActionRepository } from '../domain/ports/EnforcementActionRepository.js';
 import type { ApprovalRequestRepository } from '../domain/ports/ApprovalRequestRepository.js';
-import type { AuditRecorder } from '../domain/ports/AuditRecorder.js';
 import type { UnitOfWork, Transaction } from '../domain/ports/UnitOfWork.js';
 import type { ApprovalRequestId } from '../domain/model/value-objects/ApprovalRequestId.js';
 import type { EnforcementAction } from '../domain/model/aggregates/EnforcementAction.js';
+import type { CustomerOutgoingEvent } from '../domain/model/aggregates/CustomerOutgoingEvent.js';
 import type { ApprovalRequest } from '../domain/model/aggregates/ApprovalRequest.js';
 import { ApprovalRequest as ApprovalRequestAggregate } from '../domain/model/aggregates/ApprovalRequest.js';
 import { createEnforcementActionId } from '../domain/model/value-objects/EnforcementActionId.js';
@@ -17,6 +15,11 @@ import {
 } from '../domain/errors/CaseManagementError.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireOperationalRole, SUPERVISION_ROLES } from './authorization/policy.js';
+import {
+  canExecuteNow,
+  executeEnforcementWithin,
+  type EnforcementExecutionDeps,
+} from './enforcementExecution.js';
 
 export interface ApproveEnforcementActionInput {
   readonly auth: AuthContext;
@@ -27,22 +30,32 @@ export interface ApproveEnforcementActionInput {
 export interface ApproveEnforcementActionResult {
   readonly enforcementAction: EnforcementAction;
   readonly approvalRequest: ApprovalRequest;
+  /** True when the approval also executed the measure (see below). */
+  readonly executed: boolean;
+  readonly outgoingEvent: CustomerOutgoingEvent | null;
 }
 
-export interface ApproveEnforcementActionDeps {
-  readonly enforcementActions: EnforcementActionRepository;
+export interface ApproveEnforcementActionDeps extends EnforcementExecutionDeps {
   readonly approvalRequests: ApprovalRequestRepository;
-  readonly auditRecorder: AuditRecorder;
   readonly unitOfWork: UnitOfWork;
-  readonly clock: Clock;
   readonly generateApprovalRequestId: () => ApprovalRequestId;
 }
 
 /**
- * Approves a PENDING non-REVIEW enforcement action (PR3). SUPERVISOR only. Transitions approval_requests PENDING→APPROVED and the action
- * PENDING→APPROVED in one UoW. REVIEW skips this gate (execute in PR4).
- * Creates a PENDING approval_request if none exists yet (PR2 does not
- * create them at decision time).
+ * Approves a PENDING non-REVIEW enforcement action. SUPERVISOR only; the
+ * second pair of eyes is enforced by `ApprovalRequest.approve`.
+ *
+ * Approving IS executing: in the same transaction the approval_request and
+ * the action move to APPROVED and the action is executed right away
+ * (`executeEnforcementWithin`). A separate execute click after a supervisor
+ * had already authorized the measure only added a step where it could be
+ * forgotten. The one exception is fail-closed delivery: a
+ * BLOCK/RESTRICT/SUSPEND/DELETE with no outbound webhook configured stays
+ * APPROVED (`executed: false`) until the tenant configures it and someone
+ * executes it.
+ *
+ * Creates the PENDING approval_request if none exists (legacy actions born
+ * before requests were created at decision time).
  */
 export function createApproveEnforcementActionUseCase(deps: ApproveEnforcementActionDeps) {
   return async function approveEnforcementAction(
@@ -97,7 +110,16 @@ export function createApproveEnforcementActionUseCase(deps: ApproveEnforcementAc
         tx,
       );
 
-      return { enforcementAction, approvalRequest };
+      if (!(await canExecuteNow(deps, enforcementAction, tx))) {
+        return { enforcementAction, approvalRequest, executed: false, outgoingEvent: null };
+      }
+      const execution = await executeEnforcementWithin(deps, enforcementAction, input.auth, tx);
+      return {
+        enforcementAction: execution.enforcementAction,
+        approvalRequest,
+        executed: true,
+        outgoingEvent: execution.outgoingEvent,
+      };
     });
   };
 }

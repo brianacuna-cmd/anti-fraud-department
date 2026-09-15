@@ -61,7 +61,7 @@ export function merchantRiskRouter(deps: MerchantRiskRouterDeps): Router {
     await withFinturu(res, async () => {
       const page = await deps.finturu.listMerchants(limit, offset, search);
       const now = deps.clock.now();
-      const items = await Promise.all(page.items.map((merchant) => withRisk(deps, auth, merchant, now)));
+      const items = await Promise.all(page.items.map((merchant) => assessMerchantWithRisk(deps, auth, merchant, now)));
       return { items, total: page.total };
     });
   });
@@ -75,7 +75,7 @@ export function merchantRiskRouter(deps: MerchantRiskRouterDeps): Router {
       if (merchant === null) {
         return { status: 404, body: { error: { code: 'MERCHANT_NOT_FOUND', message: `no merchant ${userId}`, metadata: {} } } };
       }
-      return withRisk(deps, auth, merchant, deps.clock.now());
+      return assessMerchantWithRisk(deps, auth, merchant, deps.clock.now());
     });
   });
 
@@ -144,7 +144,13 @@ function authorize(auth: AuthContext): AuthContext {
   return auth;
 }
 
-async function withRisk(deps: MerchantRiskRouterDeps, auth: AuthContext, merchant: FinturuMerchantDto, now: Instant) {
+/** A Finturu merchant with its received activity, earlier cases and explained risk. */
+export async function assessMerchantWithRisk(
+  deps: Pick<MerchantRiskRouterDeps, 'activities' | 'getCustomerCaseHistory'>,
+  auth: AuthContext,
+  merchant: FinturuMerchantDto,
+  now: Instant,
+) {
   const organizationId = requireTenantContext(auth);
   const merchantIds = [String(merchant.userId), merchant.stripeAccountId].filter((id): id is string => !!id);
   const [activity, cases] = await Promise.all([

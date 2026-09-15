@@ -39,13 +39,11 @@ export type CaseManagementErrorCode =
    * Notes and evidence require the case to have entered `IN_REVIEW` first
    * (`StartReview`). Instruction is the step after review, not before it.
    */
-  | 'CASE_NOT_REVIEWED'
   /**
    * A decision cannot be recorded before the case has at least one note or
    * one piece of evidence: a verdict with nothing behind it is not a
    * verdict, it is a guess.
    */
-  | 'CASE_NOT_INSTRUCTED'
   /**
    * A case cannot be resolved before at least one analyst decision was
    * recorded on it — closing with no verdict on file is exactly the file

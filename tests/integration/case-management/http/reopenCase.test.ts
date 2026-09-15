@@ -26,7 +26,6 @@ import { generateResolutionId } from '../../../../src/modules/case-management/do
 import { createResolveCaseUseCase } from '../../../../src/modules/case-management/application/ResolveCase.js';
 import { generateOutboxEventId } from '../../../../src/shared/outbox/OutboxEventId.js';
 import { InMemoryOutboxEventRepository } from '../../../helpers/case-management/InMemoryOutboxEventRepository.js';
-import { createArchiveCaseUseCase } from '../../../../src/modules/case-management/application/ArchiveCase.js';
 import { createStartReviewUseCase } from '../../../../src/modules/case-management/application/StartReview.js';
 import { createRequestCaseDocumentationUseCase } from '../../../../src/modules/case-management/application/RequestCaseDocumentation.js';
 import { createResumeCaseReviewUseCase } from '../../../../src/modules/case-management/application/ResumeCaseReview.js';
@@ -207,7 +206,6 @@ function buildApp(actorPerRequest: () => AuthContext = () => SUPERVISOR) {
       decisions: new InMemoryAnalystDecisionRepository(),
       enforcementActions: new InMemoryEnforcementActionRepository(),
     }),
-    archiveCase: createArchiveCaseUseCase({ cases, resolutions, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateResolutionId, generateTimelineEventId }),
     startReview: createStartReviewUseCase({ cases, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateTimelineEventId }),
     requestCaseDocumentation: createRequestCaseDocumentationUseCase({ cases, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateTimelineEventId }),
     resumeCaseReview: createResumeCaseReviewUseCase({ cases, timelineRecorder, auditRecorder: auditRecorder, unitOfWork, clock, generateTimelineEventId }),
@@ -514,16 +512,14 @@ describe('caseRouter documentation and resolve-outcome routes', () => {
     expect(response.status).toBe(400);
   });
 
-  it('returns 400 when resolving without a valid outcome', async () => {
+  it('returns 400 when resolving with an invalid outcome', async () => {
     const { app, cases } = buildApp();
     await cases.save(buildInReviewCase());
 
-    const missing = await request(app).post(`/api/v1/cases/${CASE_ID}/resolve`).send({ reason: 'x' });
     const invalid = await request(app)
       .post(`/api/v1/cases/${CASE_ID}/resolve`)
       .send({ reason: 'x', outcome: 'WHATEVER' });
 
-    expect(missing.status).toBe(400);
     expect(invalid.status).toBe(400);
   });
 

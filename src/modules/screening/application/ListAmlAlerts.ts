@@ -11,6 +11,7 @@ export interface ListAmlAlertsInput {
   readonly status?: readonly AmlAlertStatus[];
   readonly severity?: readonly AmlAlertSeverity[];
   readonly watchlistId?: string;
+  readonly linkedToCase?: boolean;
   readonly createdAfter?: Instant;
   readonly createdBefore?: Instant;
   readonly limit: number;
@@ -31,6 +32,7 @@ export function createListAmlAlertsUseCase(deps: ListAmlAlertsDeps) {
       status: input.status,
       severity: input.severity,
       watchlistId: input.watchlistId,
+      linkedToCase: input.linkedToCase,
       createdAfter: input.createdAfter,
       createdBefore: input.createdBefore,
       limit: input.limit,

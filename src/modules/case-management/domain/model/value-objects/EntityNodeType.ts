@@ -1,5 +1,3 @@
-import { invariantViolation } from '../../errors/CaseManagementError.js';
-
 /**
  * The identifiers by which two cases may turn out to be the same network.
  *
@@ -13,23 +11,6 @@ import { invariantViolation } from '../../errors/CaseManagementError.js';
  * values that do not belong to it.
  */
 export type EntityNodeType = 'CUSTOMER' | 'EMAIL' | 'WALLET' | 'BRIDGE_USER' | 'STRIPE_CUSTOMER';
-
-export const ENTITY_NODE_TYPES = [
-  'CUSTOMER',
-  'EMAIL',
-  'WALLET',
-  'BRIDGE_USER',
-  'STRIPE_CUSTOMER',
-] as const;
-
-const VALID: ReadonlySet<string> = new Set<EntityNodeType>(ENTITY_NODE_TYPES);
-
-export function createEntityNodeType(value: string): EntityNodeType {
-  if (!VALID.has(value)) {
-    throw invariantViolation(`EntityNodeType must be one of ${ENTITY_NODE_TYPES.join(', ')}`, { value });
-  }
-  return value as EntityNodeType;
-}
 
 /**
  * Translates an investigation's subject type to the graph node from which

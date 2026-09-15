@@ -82,7 +82,6 @@ export function createRunScheduledJobUseCase(deps: RunScheduledJobDeps) {
   };
 }
 
-export type RunScheduledJobService = ReturnType<typeof createRunScheduledJobUseCase>;
 
 function lookupRunner(
   runners: ScheduledJobRunnerRegistry,

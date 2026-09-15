@@ -46,12 +46,3 @@ export function isObserver(auth: AuthContext): boolean {
   }
   return auth.actorType === 'USER' && OBSERVER_ROLES.includes(auth.roleId ?? '');
 }
-
-/**
- * Label used when an actor without an operational role appears in an error
- * message. Without this the organization read as `role "null"`, which tells
- * the recipient nothing.
- */
-export function describeActor(auth: AuthContext): string {
-  return auth.actorType === 'USER' ? (auth.roleId ?? 'sin rol') : auth.actorType;
-}

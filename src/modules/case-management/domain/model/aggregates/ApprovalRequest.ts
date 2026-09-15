@@ -35,10 +35,9 @@ export interface ReviewApprovalRequestInput {
  * home of the FOUR-EYES principle.
  *
  * The rule —whoever requests cannot review— lives HERE and not in the use
- * case on purpose: there are three paths that decide a request
- * (`ApproveEnforcementAction`, `RejectEnforcementAction`, and
- * `ReviewApprovalRequest`), and a check repeated in three places is a check
- * that someday will be in two. In the aggregate there is no way to reach
+ * case on purpose: more than one path decides a request
+ * (`ApproveEnforcementAction`, `RejectEnforcementAction`), and a check
+ * repeated in several places is a check that someday will be in one. In the aggregate there is no way to reach
  * `APPROVED` or `REJECTED` without passing through it.
  */
 export class ApprovalRequest {

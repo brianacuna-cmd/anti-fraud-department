@@ -15,7 +15,7 @@ import { createCaseId } from '../domain/model/value-objects/CaseId.js';
 import { caseNotFound, forbiddenCrossTenant } from '../domain/errors/CaseManagementError.js';
 import { assertAssigned } from '../domain/services/AssignmentGate.js';
 import { assertNotClosed } from '../domain/services/ClosedCaseGate.js';
-import { assertReviewStarted } from '../domain/services/WorkflowStepGate.js';
+import { beginReviewOnWork } from './beginReviewOnWork.js';
 import { requireTenantContext } from './authorization/requireTenantContext.js';
 import { requireOperationalRole, CASE_WORK_ROLES } from './authorization/policy.js';
 
@@ -61,8 +61,8 @@ export function createAddCaseNoteUseCase(deps: AddCaseNoteDeps) {
       assertAssigned(kase);
       // A closed case is not worked. See `ClosedCaseGate`.
       assertNotClosed(kase);
-      // Instruction comes after review. See `WorkflowStepGate`.
-      assertReviewStarted(kase);
+      // The first note starts the review. See `beginReviewOnWork`.
+      await beginReviewOnWork(deps, kase, input.auth, 'ADD_CASE_NOTE', tx);
 
       const now = deps.clock.now();
       const note = CaseNoteAggregate.create({

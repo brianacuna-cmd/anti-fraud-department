@@ -315,11 +315,21 @@ describe('createOpenFraudCaseUseCase — asignación manual al crear', () => {
 });
 
 describe('createOpenFraudCaseUseCase — auto-routing (CASE-002) cuando nadie eligió asignatario', () => {
-  it('lanza NO_ACTIVE_ROUTING_RULE si nadie elige asignatario y la organización no tiene ninguna regla activa', async () => {
+  it('sin regla activa, el caso queda para quien lo abre si puede trabajar casos', async () => {
     const { openFraudCase, cases } = build({ seedActiveRule: false });
 
+    const result = await openFraudCase({ auth: ANALYST, customerId: 'customer-1', rawSnapshot: {} });
+
+    expect(result.assignedTo).toEqual({ type: 'USER', id: ANALYST.userId });
+    expect(cases.all()).toHaveLength(1);
+  });
+
+  it('lanza NO_ACTIVE_ROUTING_RULE sin regla activa cuando quien abre no puede quedarse el caso', async () => {
+    const { openFraudCase, cases, assigneeDirectory } = build({ seedActiveRule: false });
+    assigneeDirectory.denyCaseWork(ORG, createAssignedTo('USER', ADMIN.userId));
+
     await expect(
-      openFraudCase({ auth: ANALYST, customerId: 'customer-1', rawSnapshot: {} }),
+      openFraudCase({ auth: ADMIN, customerId: 'customer-1', rawSnapshot: {} }),
     ).rejects.toMatchObject({ code: 'NO_ACTIVE_ROUTING_RULE' });
     expect(cases.all()).toHaveLength(0);
   });

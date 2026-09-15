@@ -16,11 +16,8 @@ import { createExportInvestigationSummaryUseCase } from '../../../../src/modules
 import { InMemoryAnalystDecisionRepository } from '../../../helpers/case-management/InMemoryAnalystDecisionRepository.js';
 import { InMemoryEnforcementActionRepository } from '../../../helpers/case-management/InMemoryEnforcementActionRepository.js';
 import { createGetInvestigationUseCase } from '../../../../src/modules/case-management/application/GetInvestigation.js';
-import { createCloseInvestigationUseCase } from '../../../../src/modules/case-management/application/CloseInvestigation.js';
 import { createUpdateInvestigationFindingsUseCase } from '../../../../src/modules/case-management/application/UpdateInvestigationFindings.js';
 import { createLinkInvestigationCasesUseCase } from '../../../../src/modules/case-management/application/LinkInvestigationCases.js';
-import { createListActiveInvestigationsUseCase } from '../../../../src/modules/case-management/application/ListActiveInvestigations.js';
-import { createUpdateInvestigationStatusUseCase } from '../../../../src/modules/case-management/application/UpdateInvestigationStatus.js';
 import { createExportInvestigationUseCase } from '../../../../src/modules/case-management/application/ExportInvestigation.js';
 import { InMemoryCaseNoteRepository } from '../../../helpers/case-management/InMemoryCaseNoteRepository.js';
 import { InMemoryEvidenceRepository } from '../../../helpers/case-management/InMemoryEvidenceRepository.js';
@@ -106,7 +103,6 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
     listInvestigations: createListInvestigationsUseCase({ cases, investigations }),
     getInvestigation: createGetInvestigationUseCase({ investigations }),
     buildEntityNetworkGraph: createBuildEntityNetworkGraphUseCase({ cases, investigations }),
-    closeInvestigation: createCloseInvestigationUseCase(deps),
     updateInvestigationFindings: createUpdateInvestigationFindingsUseCase(deps),
     linkInvestigationCases: createLinkInvestigationCasesUseCase({
       investigations,
@@ -115,13 +111,6 @@ function buildApp(actorPerRequest: () => AuthContext = () => ANALYST) {
       unitOfWork,
       clock,
       generateTimelineEventId,
-    }),
-    listActiveInvestigations: createListActiveInvestigationsUseCase({ investigations }),
-    updateInvestigationStatus: createUpdateInvestigationStatusUseCase({
-      investigations,
-      auditRecorder,
-      unitOfWork,
-      clock,
     }),
   });
 
@@ -246,64 +235,6 @@ describe('investigationRouter POST /investigations/:id/link-cases', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('INVARIANT_VIOLATION');
-  });
-});
-
-describe('investigationRouter GET /investigations + PATCH /investigations/:id/status', () => {
-  it('lists active investigations for the org and reflects a status change', async () => {
-    const { app, investigations } = buildApp();
-    await investigations.save(seedInvestigation());
-
-    const before = await request(app).get('/api/v1/investigations').expect(200);
-    expect(before.body.items).toHaveLength(1);
-    expect(before.body.items[0]).toMatchObject({ id: INV_ID, status: 'OPEN' });
-
-    const patched = await request(app)
-      .patch(`/api/v1/investigations/${INV_ID}/status`)
-      .send({ status: 'INVESTIGATING' })
-      .expect(200);
-    expect(patched.body.status).toBe('INVESTIGATING');
-
-    // still active after INVESTIGATING
-    const afterInvestigating = await request(app).get('/api/v1/investigations').expect(200);
-    expect(afterInvestigating.body.items).toHaveLength(1);
-
-    // resolving removes it from the active list
-    await request(app).patch(`/api/v1/investigations/${INV_ID}/status`).send({ status: 'RESOLVED' }).expect(200);
-    const afterResolved = await request(app).get('/api/v1/investigations').expect(200);
-    expect(afterResolved.body.items).toHaveLength(0);
-  });
-
-  it('returns 400 for an invalid target status', async () => {
-    const { app, investigations } = buildApp();
-    await investigations.save(seedInvestigation());
-
-    const res = await request(app)
-      .patch(`/api/v1/investigations/${INV_ID}/status`)
-      .send({ status: 'CLOSED' })
-      .expect(400);
-    expect(res.body.error.code).toBe('INVARIANT_VIOLATION');
-  });
-
-  it('returns 422 for an illegal transition (RESOLVED -> INVESTIGATING)', async () => {
-    const { app, investigations } = buildApp();
-    await investigations.save(seedInvestigation());
-    await request(app).patch(`/api/v1/investigations/${INV_ID}/status`).send({ status: 'RESOLVED' }).expect(200);
-
-    const res = await request(app)
-      .patch(`/api/v1/investigations/${INV_ID}/status`)
-      .send({ status: 'INVESTIGATING' })
-      .expect(422);
-    expect(res.body.error.code).toBe('INVALID_TRANSITION');
-  });
-
-  it('returns 404 for a missing investigation status update', async () => {
-    const { app } = buildApp();
-    const res = await request(app)
-      .patch(`/api/v1/investigations/${oid('missing')}/status`)
-      .send({ status: 'RESOLVED' })
-      .expect(404);
-    expect(res.body.error.code).toBe('INVESTIGATION_NOT_FOUND');
   });
 });
 
