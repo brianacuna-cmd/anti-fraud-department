@@ -317,3 +317,22 @@ describe('mapStripeEnvelope card fingerprint', () => {
     expect(result.event.paymentActivity).toMatchObject({ relatedReferences: ['pi_9'], cardFingerprint: 'fp_card_1' });
   });
 });
+
+describe('mapStripeEnvelope on a Connect payment link charge without customer', () => {
+  it('uses the connected account (the merchant) as the customer', () => {
+    const { customer: _none, ...anonymous } = CHARGE;
+    const envelope = { ...chargeEvent('charge.failed', { ...anonymous, payment_intent: 'pi_link' }), account: 'acct_seller' };
+
+    const result = mapStripeEnvelope(envelope);
+
+    if (result.status !== 'mapped') throw new Error('expected mapped');
+    expect(result.event.caseCustomerId).toBe('acct_seller');
+    expect(result.event.paymentActivity).toMatchObject({ merchantId: 'acct_seller', relatedReferences: ['pi_link'] });
+  });
+
+  it('still fails without customer when it is not a Connect event', () => {
+    const { customer: _none, ...anonymous } = CHARGE;
+
+    expect(mapStripeEnvelope(chargeEvent('charge.failed', anonymous))).toMatchObject({ status: 'failed', reason: 'missing_customer' });
+  });
+});

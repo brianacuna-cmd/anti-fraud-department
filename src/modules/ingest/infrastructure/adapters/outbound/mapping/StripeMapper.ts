@@ -206,10 +206,18 @@ function mappedStripe(
   hints: EnvelopeMapHints,
   paymentActivity: PaymentActivityDescriptor | undefined,
 ): EnvelopeMapResult {
+  /*
+   * Payment link charges on a Connect account usually carry no `customer`:
+   * the buyer is anonymous. For Finturu the customer that matters there is
+   * the MERCHANT who owns the account (the identity resolver maps `acct_…` to
+   * the Finturu user), so the connected account stands in for it. Without
+   * this, every such charge failed as `missing_customer` and never reached
+   * the rules.
+   */
   const customerId =
     typeof moneySource.customer === 'string' && moneySource.customer.trim().length > 0
       ? moneySource.customer
-      : (hints.customerId ?? null);
+      : (hints.customerId ?? readOptionalStringPath(payload, ['account']) ?? null);
   if (customerId === null) {
     const providerReference = paymentActivity?.providerReference;
     return {

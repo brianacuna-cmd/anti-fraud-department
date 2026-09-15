@@ -59,44 +59,97 @@ export function createReceiveProviderWebhookUseCase(deps: ReceiveProviderWebhook
     const provider = createPaymentProvider(input.provider);
     await verifyFailClosed(deps, input, provider);
 
-    const payload = parseJson(input.rawBody);
-    const firstPass = resolveMappedResult(payload, provider, deps.mapper);
-    const mapped = await retryWithReferencedCustomer(deps, input.organizationId, provider, payload, firstPass);
-
-    const providerEventId = resolveProviderEventId(provider, payload, mapped, input.rawBody);
-    const now = deps.clock.now();
-    const row = ProviderIngestEvent.create({
-      id: generateProviderIngestEventId(),
-      organizationId: input.organizationId,
-      provider,
-      providerEventId,
-      status: initialStatus(mapped),
-      now,
-    });
-
-    const insertOutcome = await insertIgnoringDuplicate(deps.events, row);
-    if (insertOutcome === 'duplicate') {
-      return { status: 'DUPLICATE' };
-    }
-
-    if (mapped.status === 'mapped') {
-      const event = mapped.event;
-      const ingestEventId = row.id;
-      schedule(() => {
-        void deps.composer
-          .compose({
-            organizationId: input.organizationId,
-            provider,
-            event,
-            ingestEventId,
-          })
-          .catch(onPostAckError);
-      });
-      return { status: 'PROCESSED' };
-    }
-
-    return { status: mapped.status === 'ignored' ? 'IGNORED' : 'FAILED' };
+    return ingestPayload(
+      deps,
+      { organizationId: input.organizationId, provider, payload: parseJson(input.rawBody), rawBody: input.rawBody },
+      (compose) => {
+        schedule(() => {
+          void compose().catch(onPostAckError);
+        });
+      },
+    );
   };
+}
+
+export type IngestPolledProviderEventDeps = Omit<
+  ReceiveProviderWebhookDeps,
+  'secrets' | 'cipher' | 'verifiers' | 'schedulePostAck' | 'onPostAckError'
+>;
+
+export interface IngestPolledProviderEventInput {
+  readonly organizationId: string;
+  readonly provider: string;
+  /** The provider's object, shaped exactly as its webhook would deliver it. */
+  readonly payload: Record<string, unknown>;
+}
+
+/**
+ * The same ingestion as a webhook — idempotency row, mapping, payment
+ * history, scoring, case — for an event this service went and FETCHED from
+ * the provider (see `PollProviderEvents`). There is no signature to verify:
+ * the payload comes from the provider's API through api-business, not from
+ * an inbound request. The scoring runs before returning, so a poll does not
+ * pile up hundreds of concurrent compositions.
+ *
+ * The idempotency key is the provider event id, the same one a webhook
+ * carries: an event received both ways is processed once.
+ */
+export function createIngestPolledProviderEventUseCase(deps: IngestPolledProviderEventDeps) {
+  return async function ingestPolledProviderEvent(
+    input: IngestPolledProviderEventInput,
+  ): Promise<ReceiveProviderWebhookResult> {
+    const provider = createPaymentProvider(input.provider);
+    return ingestPayload(
+      deps,
+      {
+        organizationId: input.organizationId,
+        provider,
+        payload: input.payload,
+        rawBody: Buffer.from(JSON.stringify(input.payload)),
+      },
+      (compose) => compose(),
+    );
+  };
+}
+
+async function ingestPayload(
+  deps: IngestPolledProviderEventDeps,
+  input: {
+    readonly organizationId: string;
+    readonly provider: PaymentProvider;
+    readonly payload: unknown;
+    readonly rawBody: Buffer;
+  },
+  dispatch: (compose: () => Promise<void>) => Promise<void> | void,
+): Promise<ReceiveProviderWebhookResult> {
+  const { organizationId, provider, payload } = input;
+  const firstPass = resolveMappedResult(payload, provider, deps.mapper);
+  const mapped = await retryWithReferencedCustomer(deps, organizationId, provider, payload, firstPass);
+
+  const providerEventId = resolveProviderEventId(provider, payload, mapped, input.rawBody);
+  const now = deps.clock.now();
+  const row = ProviderIngestEvent.create({
+    id: generateProviderIngestEventId(),
+    organizationId,
+    provider,
+    providerEventId,
+    status: initialStatus(mapped),
+    now,
+  });
+
+  const insertOutcome = await insertIgnoringDuplicate(deps.events, row);
+  if (insertOutcome === 'duplicate') {
+    return { status: 'DUPLICATE' };
+  }
+
+  if (mapped.status === 'mapped') {
+    const event = mapped.event;
+    const ingestEventId = row.id;
+    await dispatch(() => deps.composer.compose({ organizationId, provider, event, ingestEventId }));
+    return { status: 'PROCESSED' };
+  }
+
+  return { status: mapped.status === 'ignored' ? 'IGNORED' : 'FAILED' };
 }
 
 async function verifyFailClosed(
@@ -160,7 +213,7 @@ export function resolveMappedResult(
  * result untouched.
  */
 async function retryWithReferencedCustomer(
-  deps: ReceiveProviderWebhookDeps,
+  deps: Pick<ReceiveProviderWebhookDeps, 'paymentCustomers' | 'mapper'>,
   organizationId: string,
   provider: PaymentProvider,
   payload: unknown,

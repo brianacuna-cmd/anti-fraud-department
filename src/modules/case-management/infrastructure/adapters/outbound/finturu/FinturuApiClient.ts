@@ -299,6 +299,25 @@ export class FinturuApiClient {
     return this.fetchStrict<{ identity: FinturuIdentityDto | null }>(`/identity?${params.toString()}`);
   }
 
+  /** Stripe events (platform and Connect) created after `since` (Unix seconds), raw. */
+  async getStripeEventFeed(sinceUnixSeconds: number): Promise<{
+    readonly items: readonly Record<string, unknown>[];
+    readonly until: number;
+    readonly truncated: boolean;
+  }> {
+    return this.fetchStrict(`/feeds/stripe-events?since=${sinceUnixSeconds}`, 120_000);
+  }
+
+  /** Raw Bridge transfers updated after `since`, among those created after `createdAfter`. */
+  async getBridgeTransferFeed(sinceIso: string, createdAfterIso: string): Promise<{
+    readonly items: readonly Record<string, unknown>[];
+    readonly until: string;
+    readonly truncated: boolean;
+  }> {
+    const params = new URLSearchParams({ since: sinceIso, createdAfter: createdAfterIso });
+    return this.fetchStrict(`/feeds/bridge-transfers?${params.toString()}`, 180_000);
+  }
+
   async getCustomers(): Promise<readonly FinturuCustomerDto[]> {
     const res = await this.fetchEndpoint<unknown>('/customers');
     return Array.isArray(res) ? (res as FinturuCustomerDto[]) : [];

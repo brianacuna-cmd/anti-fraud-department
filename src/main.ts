@@ -416,7 +416,9 @@ import { createGetBulkScreeningJobUseCase } from './modules/screening/applicatio
 import { createRunBulkScreeningJobUseCase } from './modules/screening/application/RunBulkScreeningJob.js';
 import { MongoOrganizationScreeningConfigRepository } from './modules/screening/infrastructure/adapters/outbound/mongo/MongoOrganizationScreeningConfigRepository.js';
 import { createGetOrganizationScreeningConfigUseCase } from './modules/screening/application/GetOrganizationScreeningConfig.js';
-import { createReceiveProviderWebhookUseCase } from './modules/ingest/application/ReceiveProviderWebhook.js';
+import { createIngestPolledProviderEventUseCase, createReceiveProviderWebhookUseCase } from './modules/ingest/application/ReceiveProviderWebhook.js';
+import { createPollProviderEventsUseCase } from './modules/ingest/application/PollProviderEvents.js';
+import { MongoPollCursorRepository } from './modules/ingest/infrastructure/adapters/outbound/mongo/MongoPollCursorRepository.js';
 import { createUpsertInboundWebhookSecretUseCase } from './modules/ingest/application/UpsertInboundWebhookSecret.js';
 import { generateInboundWebhookSecretId } from './modules/ingest/domain/model/value-objects/InboundWebhookSecretId.js';
 import { ingestErrorStatus } from './modules/ingest/infrastructure/adapters/inbound/http/errorStatus.js';
@@ -1983,6 +1985,51 @@ async function bootstrap(): Promise<void> {
     clock,
   });
   const ingestWebhookRouter = webhookRouter({ receiveProviderWebhook });
+
+  /*
+   * Polling: what Stripe and Bridge would deliver by webhook, fetched through
+   * api-business. It is the only way events reach an environment the
+   * providers cannot call (a local machine), and it recovers missed
+   * deliveries elsewhere. Same ingestion as a webhook, deduplicated by the
+   * provider event id. PROVIDER_POLLING_ENABLED=false turns it off.
+   */
+  const pollProviderEvents = createPollProviderEventsUseCase({
+    feed: {
+      stripeEventsSince: (since) => finturuApiClient.getStripeEventFeed(since),
+      bridgeTransfersSince: (since, createdAfter) => finturuApiClient.getBridgeTransferFeed(since, createdAfter),
+    },
+    cursors: new MongoPollCursorRepository(db),
+    ingest: createIngestPolledProviderEventUseCase({
+      events: providerIngestEvents,
+      mapper: { map: mapProviderEnvelope },
+      paymentCustomers: createPaymentCustomerLookup(paymentActivities),
+      composer: webhookToScore,
+      clock,
+    }),
+    clock,
+    backfillMs: Number(process.env.PROVIDER_POLL_BACKFILL_HOURS ?? 24) * 3_600_000,
+    bridgeCreatedWindowMs: 7 * 24 * 3_600_000,
+  });
+  const providerPollIntervalMs = Number(process.env.PROVIDER_POLL_INTERVAL_MS ?? 5 * 60_000);
+  let providerPollInFlight = false;
+  const runProviderPoll = async () => {
+    if (providerPollInFlight) return;
+    providerPollInFlight = true;
+    try {
+      const result = await pollProviderEvents(DEFAULT_ORGANIZATION_ID);
+      console.log('[provider-poll]', JSON.stringify(result));
+    } catch (error) {
+      console.error('[provider-poll]', error);
+    } finally {
+      providerPollInFlight = false;
+    }
+  };
+  const providerPollTimer =
+    process.env.PROVIDER_POLLING_ENABLED === 'false'
+      ? null
+      : setInterval(() => void runProviderPoll(), providerPollIntervalMs);
+  providerPollTimer?.unref();
+  if (providerPollTimer !== null) void runProviderPoll();
   const upsertInboundWebhookSecret = createUpsertInboundWebhookSecretUseCase({
     secrets: inboundWebhookSecrets,
     cipher: secretCipher,
