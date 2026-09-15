@@ -8,7 +8,9 @@ import { requireTenantContext } from '../modules/risk-assessment/application/aut
 import { invariantViolation } from '../modules/risk-assessment/domain/errors/RiskAssessmentError.js';
 import { assessMerchantRisk } from '../modules/risk-assessment/domain/model/MerchantRisk.js';
 import {
+  isQueriedProvider,
   reconcilePaymentLinks,
+  type ProviderChargeRecord,
   type ReconciliationReport,
 } from '../modules/risk-assessment/domain/model/PaymentLinkReconciliation.js';
 import type { PaymentActivityRepository } from '../modules/risk-assessment/domain/ports/PaymentActivityRepository.js';
@@ -21,7 +23,10 @@ import {
 } from '../modules/case-management/infrastructure/adapters/outbound/finturu/FinturuApiClient.js';
 
 /** The part of the Finturu client these routes read (lets tests fake it). */
-export type FinturuMerchantSource = Pick<FinturuApiClient, 'listMerchants' | 'getMerchant' | 'listPaymentLinks'>;
+export type FinturuMerchantSource = Pick<
+  FinturuApiClient,
+  'listMerchants' | 'getMerchant' | 'listPaymentLinks' | 'listStripeReconciliationCharges'
+>;
 
 export interface MerchantRiskRouterDeps {
   readonly finturu: FinturuMerchantSource;
@@ -34,7 +39,13 @@ const MERCHANT_PAGE_MAX = 50;
 const LINK_PAGE = 500;
 /** Beyond this the period is too wide for a synchronous report: narrow it. */
 export const RECONCILIATION_MAX_LINKS = 10_000;
-const REFERENCE_CHUNK = 1_000;
+/**
+ * Charges paid after the period for links created in it still count: the
+ * Stripe window runs this much past `to` (never past now).
+ */
+export const CHARGE_GRACE_DAYS = 30;
+/** Merchants queried against Stripe at once: Stripe allows ~100 requests/s. */
+const STRIPE_CONCURRENCY = 4;
 
 /**
  * Composition HTTP seam for Finturu merchant data:
@@ -44,7 +55,8 @@ const REFERENCE_CHUNK = 1_000;
  *   from the payment history, earlier cases).
  * - `GET /merchants/:userId/payment-links`: that merchant's links.
  * - `GET /reconciliation/payment-links`: Finturu links of a period crossed with
- *   what the providers reported; `format=csv` downloads it.
+ *   the charges Stripe reports right now for each merchant; `format=csv`
+ *   downloads it.
  *
  * Finturu failures answer 502 instead of an empty result: an empty merchant
  * list or reconciliation would look like real data.
@@ -92,8 +104,7 @@ export function merchantRiskRouter(deps: MerchantRiskRouterDeps): Router {
   });
 
   router.get('/reconciliation/payment-links', async (req, res) => {
-    const auth = authorize(requireAuthContext(req));
-    const organizationId = requireTenantContext(auth);
+    authorize(requireAuthContext(req));
     const from = parseDay('from', req.query.from);
     const to = parseDay('to', req.query.to);
     if (new Date(from) >= new Date(to)) {
@@ -108,8 +119,8 @@ export function merchantRiskRouter(deps: MerchantRiskRouterDeps): Router {
           `the period has more than ${RECONCILIATION_MAX_LINKS} payment links; narrow the dates or filter by merchant`,
         );
       }
-      const references = [...new Set(links.map((l) => l.providerPaymentId).filter((r): r is string => r !== null))];
-      const activities = await loadActivities(deps.activities, organizationId, references);
+      const chargeWindowEnd = new Date(Math.min(Date.parse(to) + CHARGE_GRACE_DAYS * 86_400_000, Date.parse(deps.clock.now())));
+      const stripe = await loadStripeCharges(deps.finturu, links, from, new Date(Math.max(chargeWindowEnd.getTime(), Date.parse(from) + 1)).toISOString());
       const report = reconcilePaymentLinks(
         links.map((l) => ({
           id: l.id,
@@ -123,7 +134,8 @@ export function merchantRiskRouter(deps: MerchantRiskRouterDeps): Router {
           refundAmount: l.refundAmount,
           createdAt: l.createdAt,
         })),
-        activities,
+        stripe.charges,
+        stripe.queriedMerchants,
       );
 
       if (req.query.format === 'csv') {
@@ -131,7 +143,15 @@ export function merchantRiskRouter(deps: MerchantRiskRouterDeps): Router {
         res.setHeader('Content-Disposition', `attachment; filename="conciliacion-${from.slice(0, 10)}-${to.slice(0, 10)}.csv"`);
         return { raw: toCsv(report) };
       }
-      return { from, to, userId: userId ?? null, ...report };
+      return {
+        from,
+        to,
+        userId: userId ?? null,
+        ...report,
+        /** Merchants whose Stripe account could not be read; their links are PROVIDER_NOT_QUERIED. */
+        unavailableMerchants: stripe.unavailableMerchants,
+        truncatedMerchants: stripe.truncatedMerchants,
+      };
     });
   });
 
@@ -205,14 +225,66 @@ async function loadLinks(
   }
 }
 
-async function loadActivities(activities: PaymentActivityRepository, organizationId: string, references: string[]) {
-  const rows = [];
-  for (let i = 0; i < references.length; i += REFERENCE_CHUNK) {
-    const found = await activities.findByReferences(organizationId, references.slice(i, i + REFERENCE_CHUNK));
-    rows.push(...found.map((row) => row.toProps()));
+interface StripeCharges {
+  readonly charges: ProviderChargeRecord[];
+  readonly queriedMerchants: Set<number>;
+  readonly unavailableMerchants: number[];
+  readonly truncatedMerchants: number[];
+}
+
+/**
+ * Asks Stripe (through api-business) for the charges of every merchant with
+ * Stripe links in the period. A merchant without a Connect account, or whose
+ * account Stripe would not read, stays out of `queriedMerchants`, so their
+ * links are reported as not queried rather than unpaid.
+ */
+async function loadStripeCharges(
+  finturu: FinturuMerchantSource,
+  links: readonly FinturuPaymentLinkDto[],
+  from: string,
+  to: string,
+): Promise<StripeCharges> {
+  const merchants = [
+    ...new Set(
+      links
+        .filter((l) => isQueriedProvider(l.provider) && l.userId !== null && l.providerPaymentId !== null)
+        .map((l) => l.userId as number),
+    ),
+  ];
+  const result: StripeCharges = { charges: [], queriedMerchants: new Set(), unavailableMerchants: [], truncatedMerchants: [] };
+
+  for (let i = 0; i < merchants.length; i += STRIPE_CONCURRENCY) {
+    const batch = merchants.slice(i, i + STRIPE_CONCURRENCY);
+    const answers = await Promise.all(
+      batch.map((userId) =>
+        finturu.listStripeReconciliationCharges({ userId, from, to }).then(
+          (page) => ({ userId, page }),
+          (error: unknown) => {
+            if (error instanceof FinturuUnavailableError) return { userId, page: null };
+            throw error;
+          },
+        ),
+      ),
+    );
+    for (const { userId, page } of answers) {
+      if (page === null || page.providerId === null) {
+        result.unavailableMerchants.push(userId);
+        continue;
+      }
+      result.queriedMerchants.add(userId);
+      if (page.truncated) result.truncatedMerchants.push(userId);
+      result.charges.push(
+        ...page.items.map((c) => ({
+          chargeId: c.chargeId,
+          paymentIntentId: c.paymentIntentId,
+          amountCents: c.amountCents,
+          succeeded: c.status === 'succeeded',
+          disputed: c.disputed,
+        })),
+      );
+    }
   }
-  // A row can match two chunks (charge id in one, PaymentIntent in another).
-  return [...new Map(rows.map((row) => [row.id, row])).values()];
+  return result;
 }
 
 function parseUserId(raw: unknown): number {

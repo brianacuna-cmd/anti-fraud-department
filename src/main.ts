@@ -360,8 +360,6 @@ import { createPaymentCustomerLookup } from './composition/paymentCustomerLookup
 import { caseCustomerActivityRouter } from './composition/caseCustomerActivityRouter.js';
 import { merchantRiskRouter } from './composition/merchantRiskRouter.js';
 import { customerProfileRouter } from './composition/customerProfileRouter.js';
-import { paymentActivityImportRouter } from './modules/risk-assessment/infrastructure/adapters/inbound/http/paymentActivityImportRouter.js';
-import { createImportPaymentActivitiesUseCase } from './modules/risk-assessment/application/ImportPaymentActivities.js';
 import { MongoPaymentActivityRepository } from './modules/risk-assessment/infrastructure/adapters/outbound/mongo/MongoPaymentActivityRepository.js';
 import { createRecordPaymentActivityUseCase } from './modules/risk-assessment/application/RecordPaymentActivity.js';
 import { createGetCustomerPaymentActivityUseCase } from './modules/risk-assessment/application/GetCustomerPaymentActivity.js';
@@ -1735,8 +1733,8 @@ async function bootstrap(): Promise<void> {
     getCustomerCaseHistory,
     clock,
   });
-  // Finturu data: merchants with risk, payment link reconciliation, and the
-  // CSV import that backfills the payment history they are computed from.
+  // Finturu data: merchants with risk and payment link reconciliation
+  // against the charges Stripe reports live.
   const merchantRiskHttpRouter = merchantRiskRouter({
     finturu: finturuApiClient,
     activities: paymentActivities,
@@ -1754,14 +1752,6 @@ async function bootstrap(): Promise<void> {
     activities: paymentActivities,
     finturu: finturuApiClient,
     clock,
-  });
-  const paymentActivityImportHttpRouter = paymentActivityImportRouter({
-    importPaymentActivities: createImportPaymentActivitiesUseCase({
-      activities: paymentActivities,
-      auditRecorder: riskAssessmentAuditRecorder,
-      clock,
-      generatePaymentActivityId,
-    }),
   });
 
   // screening-watchlist-matcher Slice 7: watchlist screening ports/adapters,
@@ -2593,7 +2583,6 @@ async function bootstrap(): Promise<void> {
   identityAccessRouter.use(caseCustomerActivityHttpRouter);
   identityAccessRouter.use(merchantRiskHttpRouter);
   identityAccessRouter.use(customerProfileHttpRouter);
-  identityAccessRouter.use(paymentActivityImportHttpRouter);
   identityAccessRouter.use(caseManagementFinturuRouter);
   identityAccessRouter.use(finturuWebhook);
   identityAccessRouter.use(investigationHttpRouter);

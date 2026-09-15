@@ -91,17 +91,6 @@ describe('payment activity read models (integration, real replica-set Mongo)', (
       expect(expected).toMatchObject({ attempts90d: 2, failed90d: 1, chargebacks90d: 1, fraudWarnings90d: 1, distinctCustomers90d: 3 });
     });
 
-    it('finds rows by provider reference or related reference, once each', async () => {
-      const repository = new MongoPaymentActivityRepository(db);
-      await repository.record(activity({ providerReference: 'ch_1', relatedReferences: ['pi_1'] }));
-      await repository.record(activity({ providerReference: 'cf_2' }));
-      await repository.record(activity({ providerReference: 'ch_3', relatedReferences: ['pi_3'] }));
-
-      const found = await repository.findByReferences(oid('org-1'), ['pi_1', 'ch_1', 'cf_2']);
-
-      expect(found.map((r) => r.toProps().providerReference).sort()).toEqual(['cf_2', 'ch_1']);
-      expect(await repository.findByReferences(oid('org-1'), [])).toEqual([]);
-    });
   });
 
   describe('MongoCustomerCaseHistoryReader', () => {

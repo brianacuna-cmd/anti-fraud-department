@@ -99,6 +99,25 @@ export interface FinturuPaymentLinkDto {
   readonly dueDate: string | null;
 }
 
+/** A merchant's Stripe charges in a period (api-business `listReconciliationCharges`). Cents. */
+export interface FinturuReconciliationChargesDto {
+  readonly userId: number;
+  /** `null`: the merchant has no Stripe Connect account. */
+  readonly providerId: string | null;
+  readonly items: readonly {
+    readonly chargeId: string;
+    readonly paymentIntentId: string | null;
+    readonly amountCents: number;
+    readonly amountRefundedCents: number;
+    readonly currency: string;
+    readonly status: string;
+    readonly paid: boolean;
+    readonly disputed: boolean;
+    readonly createdAt: string;
+  }[];
+  readonly truncated: boolean;
+}
+
 export interface FinturuPage<T> {
   readonly items: readonly T[];
   readonly total: number;
@@ -187,13 +206,13 @@ export class FinturuApiClient {
   }
 
   /** Like `fetchEndpoint` but never degrades: any failure throws `FinturuUnavailableError`. */
-  private async fetchStrict<T>(path: string): Promise<T> {
+  private async fetchStrict<T>(path: string, timeoutMs: number = this.timeoutMs): Promise<T> {
     let res: Response;
     try {
       res = await fetch(this.normalizeUrl(path), {
         method: 'GET',
         headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch {
       throw new FinturuUnavailableError(path, null);
@@ -242,6 +261,20 @@ export class FinturuApiClient {
     if (query.from) params.set('from', query.from);
     if (query.to) params.set('to', query.to);
     return this.fetchStrict<FinturuPage<FinturuPaymentLinkDto>>(`/payment-links?${params.toString()}`);
+  }
+
+  /**
+   * The merchant's Stripe charges created in the period, fetched live from
+   * Stripe by api-business. Walking a busy account takes several Stripe pages,
+   * so it gets a longer cut than the other reads.
+   */
+  async listStripeReconciliationCharges(query: {
+    readonly userId: number;
+    readonly from: string;
+    readonly to: string;
+  }): Promise<FinturuReconciliationChargesDto> {
+    const params = new URLSearchParams({ userId: String(query.userId), from: query.from, to: query.to });
+    return this.fetchStrict<FinturuReconciliationChargesDto>(`/stripe/reconciliation-charges?${params.toString()}`, 60_000);
   }
 
   async getCustomers(): Promise<readonly FinturuCustomerDto[]> {

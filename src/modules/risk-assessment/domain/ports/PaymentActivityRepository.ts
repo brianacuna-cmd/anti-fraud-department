@@ -28,9 +28,6 @@ export interface PaymentActivityRepository {
    */
   summarizeMerchant(organizationId: string, merchantIds: readonly string[], anchor: Instant): Promise<MerchantActivitySummary>;
 
-  /** Every row whose reference or related references include one of `references` (reconciliation). */
-  findByReferences(organizationId: string, references: readonly string[]): Promise<readonly PaymentActivity[]>;
-
   /**
    * The customer that owns an earlier payment. A Stripe dispute only carries
    * the charge id, so this is how a chargeback finds whose it is.

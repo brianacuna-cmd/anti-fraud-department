@@ -7,6 +7,7 @@ import {
 import {
   reconcilePaymentLinks,
   type PaymentLinkRecord,
+  type ProviderChargeRecord,
 } from '../../../../src/modules/risk-assessment/domain/model/PaymentLinkReconciliation.js';
 import { fromDate } from '../../../../src/shared/time/Instant.js';
 import { ANCHOR, activity, hoursBefore } from '../../../helpers/risk-assessment/paymentActivityFixtures.js';
@@ -115,38 +116,45 @@ describe('reconcilePaymentLinks', () => {
     };
   }
 
-  it('classifies every situation and only lists what needs a look', () => {
-    const rows = [
-      activity({ providerReference: 'ch_1', relatedReferences: ['pi_1'], amountCents: 10_500 }),
-      activity({ providerReference: 'ch_3', relatedReferences: ['pi_3'], amountCents: 10_000 }),
-      activity({ providerReference: 'ch_4', relatedReferences: ['pi_4'], amountCents: 9_000 }),
-      activity({ providerReference: 'ch_5', relatedReferences: ['pi_5'], amountCents: 10_000 }),
-      activity({ providerReference: 'ch_5', relatedReferences: ['pi_5'], kind: 'CHARGEBACK', outcome: null, amountCents: 10_000 }),
-      activity({ providerReference: 'cf_7', amountCents: 5_000, provider: 'coinflow' }),
-    ].map((r) => r.toProps());
+  function charge(overrides: Partial<ProviderChargeRecord>): ProviderChargeRecord {
+    return { chargeId: 'ch_x', paymentIntentId: null, amountCents: 10_000, succeeded: true, disputed: false, ...overrides };
+  }
+
+  it('classifies every situation against the live Stripe charges and only lists what needs a look', () => {
+    const charges = [
+      charge({ chargeId: 'ch_1', paymentIntentId: 'pi_1', amountCents: 10_500 }),
+      charge({ chargeId: 'ch_3', paymentIntentId: 'pi_3' }),
+      charge({ chargeId: 'ch_4', paymentIntentId: 'pi_4', amountCents: 9_000 }),
+      charge({ chargeId: 'ch_5', paymentIntentId: 'pi_5', disputed: true }),
+      // A failed attempt on the same PaymentIntent does not count as charged.
+      charge({ chargeId: 'ch_1b', paymentIntentId: 'pi_1', amountCents: 10_500, succeeded: false }),
+    ];
 
     const report = reconcilePaymentLinks(
       [
         link({ id: 1, shippingAmount: 5 }), // 105 USD charged: matched
-        link({ id: 2, providerPaymentId: 'pi_never' }), // paid, provider silent
-        link({ id: 3, providerPaymentId: 'pi_3', state: 'ACTIVE', isPaid: false }), // provider paid, link unpaid
+        link({ id: 2, providerPaymentId: 'pi_never' }), // paid, Stripe has no charge
+        link({ id: 3, providerPaymentId: 'pi_3', state: 'ACTIVE', isPaid: false }), // Stripe charged, link unpaid
         link({ id: 4, providerPaymentId: 'pi_4' }), // 90 vs 100
         link({ id: 5, providerPaymentId: 'pi_5' }), // disputed
         link({ id: 6, providerPaymentId: null }), // paid without id
-        link({ id: 7, providerPaymentId: 'cf_7', amount: 50, provider: 'coinflow', state: 'DISBURSED', isPaid: false }), // paid by state
+        link({ id: 7, providerPaymentId: 'cf_7', amount: 50, provider: 'coinflow', state: 'DISBURSED', isPaid: false }), // not a Stripe link
         link({ id: 8, providerPaymentId: null, state: 'EXPIRED', isPaid: false }), // nothing happened
+        link({ id: 9, merchantUserId: 99, providerPaymentId: 'pi_9' }), // merchant whose Stripe account was not read
       ],
-      rows,
+      charges,
+      new Set([10]),
     );
 
     expect(report.totals).toEqual({
-      MATCHED: 2,
+      MATCHED: 1,
       UNPAID: 1,
       PAID_WITHOUT_PROVIDER_PAYMENT: 1,
       PROVIDER_PAID_LINK_UNPAID: 1,
       AMOUNT_MISMATCH: 1,
       CHARGEBACK: 1,
       NO_PROVIDER_REFERENCE: 1,
+      PROVIDER_NOT_QUERIED: 2,
     });
     expect(report.discrepancies.map((d) => [d.linkId, d.status])).toEqual([
       [2, 'PAID_WITHOUT_PROVIDER_PAYMENT'],
@@ -154,8 +162,10 @@ describe('reconcilePaymentLinks', () => {
       [4, 'AMOUNT_MISMATCH'],
       [5, 'CHARGEBACK'],
       [6, 'NO_PROVIDER_REFERENCE'],
+      [7, 'PROVIDER_NOT_QUERIED'],
+      [9, 'PROVIDER_NOT_QUERIED'],
     ]);
     expect(report.discrepancies.find((d) => d.linkId === 4)).toMatchObject({ expectedAmountCents: 10_000, providerAmountCents: 9_000 });
-    expect(report.linksChecked).toBe(8);
+    expect(report.linksChecked).toBe(9);
   });
 });
